@@ -1,234 +1,187 @@
 # 净土法音 — 智能体工作手册
 
-> 本文件是智能体（AI Agent）启动时的必读文件。无论你是谁，第一次接手这个项目时请先通读本文件。
+> 你是一个 AI 智能体，被分配到本项目的一个工位上。请先通读本文件，再读 CURRENT-STATUS.md，然后开始工作。
 
 ---
 
 ## 项目简介
 
-**净土法音**是一个佛教净土宗音频播放器 PWA（Progressive Web App）。用户可以在线收听佛号、法师讲经等音频内容。
+**净土法音**是一个佛教净土宗音频内容平台 PWA。用户可以在线收听佛号、法师讲经等音频，未来会扩展文章阅读、AI 功能、社区互动等。
 
 - 线上地址：https://bojingji.pages.dev
-- 正式域名：https://foyue.org（新申请，待配置）
-- 旧域名：https://fayin.uk（将逐步迁移到 foyue.org）
+- 正式域名：https://foyue.org（配置中）
+- 旧域名：https://fayin.uk（迁移中）
 - GitHub 仓库：https://github.com/lianbang999-crypto/bojingji
-- 技术栈：纯前端，无后端服务器
-- 托管：Cloudflare Pages
-- 音频存储：Cloudflare R2
 
 ---
 
-## 团队成员
+## 工位与职责
 
-| 角色 | GitHub 账号 | 邮箱 | 职责 |
-|------|------------|------|------|
-| 产品经理（管理员） | lianbang999-crypto | lianbang999@qq.com | 需求定义、内容管理、最终验收 |
-| 前端开发（主力） | fayin001 | 2569331267@qq.com | 功能开发、代码拆分、bug修复 |
-| UI/UX + 测试 | fayin002 | xiaoshanyuan001@qq.com | 视觉设计、多设备兼容测试、回归测试 |
-| SEO + 运维 | fayin003 | xiaoshanyuan002@qq.com | SEO优化、部署、域名管理、数据统计 |
+本项目有 4 个 GitHub 账号（"工位"），由不同的智能体轮换使用。你需要确认自己在哪个工位，只做该工位的事。
+
+| 工位 | GitHub 账号 | 职责 | 文件范围 |
+|------|------------|------|---------|
+| 架构 + 审核 | lianbang999-crypto | 架构决策、代码 Review、PR 合并、文档维护、内容管理 | 所有文件（侧重 .md 文档和 data/） |
+| 前端开发 | fayin001 | 功能页面开发、PWA、Bug 修复、多设备适配 | index.html, css/, js/（UI 相关）, icons/ |
+| 后端 + AI | fayin002 | Workers API、D1 数据库、AI Gateway、AI 功能 | workers/, js/api.js（API 调用层） |
+| SEO + 测试 | fayin003 | SEO 优化、兼容性测试、部署运维、多主题 | meta 标签, sitemap.xml, robots.txt, manifest.json |
+
+**如果需要改不属于你工位的文件，先在 PR 中说明原因。**
 
 ---
+
+## 技术架构
+
+```
+当前：
+  前端 → Cloudflare Pages（HTML/CSS/JS）
+  音频 → Cloudflare R2
+
+未来（逐步演进）：
+  后端 API → Cloudflare Workers
+  数据库 → Cloudflare D1
+  AI → Cloudflare Workers AI + AI Gateway
+```
 
 ## 文件结构
 
 ```
 bojingji/
-├── index.html          # 主文件（包含所有 HTML + CSS + JS，约2400行）
-├── manifest.json       # PWA 配置文件
+├── index.html           # HTML 结构
+├── manifest.json        # PWA 配置
+├── css/
+│   └── style.css        # 全部样式
+├── js/
+│   ├── app.js           # 入口，初始化和事件绑定
+│   ├── data.js          # 数据加载（fetch audio-data.json）
+│   ├── render.js        # 页面渲染（首页、分类、集数、我的）
+│   ├── player.js        # 播放器核心逻辑
+│   ├── player-ui.js     # 播放器 UI 控制
+│   ├── history.js       # 播放历史管理
+│   ├── i18n.js          # 国际化（调用 lang/ 翻译文件）
+│   ├── navigation.js    # 后退导航保护
+│   ├── pwa.js           # PWA 安装引导
+│   └── state.js         # 播放状态持久化（localStorage）
+├── lang/
+│   ├── zh.js            # 中文翻译
+│   ├── en.js            # 英文翻译
+│   └── fr.js            # 法文翻译
 ├── data/
-│   └── audio-data.json # 音频数据（专辑、集数、URL）
-├── icons/
-│   ├── icon-192.png    # PWA 图标 192x192
-│   ├── icon-512.png    # PWA 图标 512x512
-│   ├── logo.png        # 导航栏 Logo
-│   └── profile.png     # "我的"页面头像
-├── CLAUDE.md           # 本文件（智能体工作手册）
-├── README.md           # 项目说明
-├── ARCHITECTURE.md     # 技术架构文档
-├── CONTRIBUTING.md     # 开发规范
-├── CHANGELOG.md        # 变更记录
-├── TODO.md             # 任务看板
-└── DEPLOY.md           # 部署指南
+│   └── audio-data.json  # 音频数据（专辑、集数、URL）
+├── icons/               # 图标和图片
+├── workers/             # （预留）Cloudflare Workers 后端代码
+├── CLAUDE.md            # 本文件
+├── CURRENT-STATUS.md    # 实时进度和交接记录
+├── ARCHITECTURE.md      # 技术架构详细文档
+├── CONTRIBUTING.md      # 开发规范
+├── CHANGELOG.md         # 变更记录
+├── TODO.md              # 功能规划
+├── DEPLOY.md            # 部署指南
+└── README.md            # 项目说明
 ```
 
 ---
 
-## index.html 内部结构（重要）
+## 项目红线
 
-当前项目是单文件架构，所有代码都在 `index.html` 中。结构如下：
+这些是绝对不能做的事：
 
-```
-行 1-20       : <!DOCTYPE> + <head>（meta、字体、manifest）
-行 20-600     : <style>（全部 CSS）
-  - CSS 变量（主题色、字体）
-  - 布局样式（导航栏、标签页、内容区）
-  - 迷你播放器样式
-  - 全屏播放器样式
-  - "我的"页面样式
-  - 历史弹层样式
-  - About 弹层样式
-  - PWA 安装引导样式
-  - 首页样式
-  - Toast 提示样式
-行 600-700    : <body> HTML 结构
-  - 导航栏（logo + 搜索）
-  - 底部 Tab 栏（首页/有声书/播放按钮/听经台/我的）
-  - 内容区 #contentArea
-  - 迷你播放器 #playerTrack
-  - About 弹层 #aboutOverlay
-  - 历史弹层 #historyOverlay
-  - PWA 安装横幅
-  - 全屏播放器 #expPlayer
-  - Toast #toast
-行 700-950    : <script> i18n 国际化（zh/en/fr 三种语言）
-行 950-2366   : <script> JavaScript 主逻辑
-  - 音频数据加载
-  - Tab 切换 / 路由
-  - 页面渲染（首页、分类、集数列表、我的页面）
-  - 迷你播放器控制
-  - 全屏播放器控制
-  - 播放历史（localStorage）
-  - 播放状态持久化
-  - 后退导航保护
-  - PWA 安装检测
-  - 下滑关闭手势
-  - 双击快进/快退
-  - 进度条拖动增强
-```
+1. **佛法内容必须准确** — 不能随意修改、AI 生成或翻译法师开示内容
+2. **不提交敏感信息** — API Token、密钥等不能出现在代码中，用 Cloudflare 环境变量
+3. **不直接推 main** — 所有改动通过功能分支 + PR 合并
+4. **不删除 R2 音频** — 音频文件在 Cloudflare R2 上，不在仓库中
+5. **AI 翻译必须标注** — 任何 AI 生成的翻译必须标注"仅供参考"，优先推荐权威译本
+6. **0 控制台错误** — 提交前确认浏览器控制台无错误
 
 ---
 
-## 关键技术概念
+## 智能体交接流程
 
-### i18n 国际化
-- 支持 zh（中文）、en（英文）、fr（法文）
-- 翻译函数：`t(key)` 返回当前语言的翻译
-- HTML 中使用 `data-i18n="key"` 属性标记需翻译的元素
-- **修改翻译时，三种语言必须同步修改**
+### 你刚到这个项目时
 
-### 数据存储（localStorage）
-- `pl-history`：播放历史记录（JSON 数组，最多20条）
-- `pl-state`：当前播放状态（正在播放哪个专辑/集数/进度）
-- `pl-lang`：用户选择的语言
-- `pl-theme`：用户选择的主题（light/dark）
+1. 读本文件（CLAUDE.md）→ 了解项目和你的工位
+2. 读 CURRENT-STATUS.md → 了解当前进度和上一个智能体的交接记录
+3. 读你的 Issue → 了解具体任务
+4. 按需读相关代码 → 只读要改的部分
 
-### 音频 URL 格式
-音频文件存储在 Cloudflare R2，URL 格式：
-```
-https://pub-7be57e30faae4f81bbd76b61006ac8fc.r2.dev/{文件夹}/{文件名}.mp3
-```
+### 你完成任务后
 
-### 后退导航保护
-使用 `history.pushState` + `popstate` 事件防止用户意外离开页面。层级：
-1. 全屏播放器打开 → 后退关闭播放器
-2. 集数列表打开 → 后退回到分类列表
-3. 播放列表面板打开 → 后退关闭面板
-4. 已在首页 → 后退时重新 push state，不离开页面
+在 CURRENT-STATUS.md 中补充交接记录，三行即可：
+- 做了什么
+- 没做完什么
+- 要注意什么
 
 ---
 
-## 开发注意事项
+## 功能规划（9 个阶段）
 
-1. **修改前必须先读代码**：不要凭猜测修改，先 Read 相关代码段
-2. **0 控制台错误**：每次修改后必须验证浏览器控制台无错误
-3. **三语言同步**：涉及 i18n 的修改，zh/en/fr 必须同步
-4. **不要删除 R2 音频**：音频文件在 Cloudflare R2 上，不在本仓库中
-5. **测试播放功能**：改了播放相关代码后，必须测试播放、切集、切专辑
-6. **后退保护**：改了路由/导航相关代码后，必须测试所有后退场景
+### 阶段 1：基础建设 ✅
+- 代码拆分（已完成）
+- 构建部署流程
+- audio-data.json 纳入仓库
+
+### 阶段 2：数据后端
+- D1 数据库搭建
+- 播放计数 API
+- 随喜功能（莲花图标，"随喜 +1"）
+- AI Gateway 搭建
+
+### 阶段 3：内容体系
+- 文章阅读页面（大安法师开示文字稿）
+- 音频-文档关联（边听边读）
+- 内容上传管理界面
+
+### 阶段 4：社区互动
+- 莲友留言墙（审核后展示）
+- 反馈表单
+
+### 阶段 5：AI 功能
+- AI 语义搜索
+- AI 问答助手
+- AI 内容摘要
+- 音频转文字（Whisper）
+- AI 留言审核
+- AI 推荐
+- AI 辅助翻译（标注"仅供参考"，用户主动触发）
+
+### 阶段 6：SEO 与推广
+- Open Graph / 结构化数据
+- sitemap.xml / robots.txt
+- 多页面（文章页利于搜索引擎收录）
+- 分享海报生成
+
+### 阶段 7：APP 化
+- Service Worker 离线缓存
+- Web Push 新内容通知
+- TWA 打包上架 Google Play
+
+### 阶段 8：念佛计数器
+- 计数界面 + 每日/累计统计
+- 边听边念模式
+
+### 阶段 9：体验优化
+- 多主题皮肤
+- 无障碍优化
+- 数据备份方案
+
+### 暂不做
+- 用户注册登录系统
+- 视频播放
+- 论坛/社区
+- 原生 APP
+- AI 自动替换原文翻译
+
+---
+
+## 语言策略
+
+- 核心内容（讲经开示）：仅中文原文
+- 界面语言：中文 + 英文（手动维护），法文已有
+- AI 翻译：用户主动触发，标注"AI 翻译，仅供参考"，优先推荐权威译本
+- 佛教术语保留音译（Amitabha、Namo 等）
 
 ---
 
 ## 部署
 
 详见 [DEPLOY.md](DEPLOY.md)
-
-快速部署命令：
-```bash
-CLOUDFLARE_API_TOKEN=<token> CLOUDFLARE_ACCOUNT_ID=<account_id> npx wrangler pages deploy . --project-name=bojingji --branch=main
-```
-
----
-
-## 当前状态（2026-02-26）
-
-### 最近完成
-- 播放历史优化：弹层查看全部、单条删除、一键清空、进度条可视化
-- 全屏播放器：下滑手势关闭、双击快进快退、进度条拖动增强
-- 后退导航 bug 修复
-
-### 下一步计划
-- 项目文件拆分（单文件 → 多文件模块化）— 最优先
-- SEO 优化（meta 标签、Open Graph、sitemap）
-- UI 视觉升级
-- 多设备兼容测试（微信浏览器、iOS Safari）
-
-详见 [TODO.md](TODO.md)
-
----
-
-## 长期规划
-
-本项目最终方向是**完整的佛教音频内容平台**，不仅仅是播放器。以下信息对架构设计至关重要：
-
-### 技术演进方向
-- 当前：纯前端（HTML/CSS/JS + Cloudflare Pages + R2）
-- 未来：加入 Cloudflare Workers（后端 API）+ D1（数据库）+ Workers AI（AI 功能）+ AI Gateway
-
-### 内容规模
-- 音频专辑会扩展到**几十到上百个**
-- 数据加载需要支持按需/分页加载，不能一次全部加载
-- 未来会加入文章内容（法师开示文字稿，边听边读）
-
-### 功能路线图（按阶段）
-
-**近期（纯前端）：**
-1. 代码拆分（多文件模块化）
-2. SEO 优化
-3. 搜索功能
-4. UI 视觉升级 + 分享海报生成
-5. 专辑封面图支持
-
-**中期（需要后端）：**
-6. 随喜功能（莲花图标，类似点赞，需要 D1 数据库）
-7. 留言墙 / 莲友留言（审核后展示，为未来社区功能打基础）
-8. 播放计数统计
-9. 文章阅读页（边听边读）
-10. 念佛计数器
-
-**远期（AI 功能）：**
-11. AI 语义搜索（搜"如何念佛"找到相关开示）
-12. AI 问答助手（基于开示内容回答）
-13. AI 辅助翻译（标注"仅供参考"，用户主动触发）
-14. 音频转文字（Whisper）
-15. AI 内容摘要 / AI 推荐
-
-**暂不做：**
-- 用户注册登录系统
-- 视频播放
-- 论坛/社区（留言墙先行，后续视情况扩展）
-- 原生 APP（PWA 已足够）
-- AI 自动替换原文翻译（佛法翻译必须准确）
-
-### 语言策略
-- 最终目标：**全球性多语言支持**
-- 当前阶段：中文 + 英文 + 法文（三语同步维护）
-- 未来会持续扩展更多语言，因此 i18n 架构必须具备良好的扩展性（添加新语言只需新增翻译文件，不改动逻辑代码）
-- 佛法内容原文：仅中文，保持原汁原味
-- AI 翻译：用户主动触发，明确标注"AI 翻译，仅供参考"，优先推荐权威译本
-
-### 管理后台规划
-未来需要一个网站管理后台（admin dashboard），用于：
-- 音频内容管理（添加/编辑/删除专辑和集数，替代手动编辑 JSON）
-- 留言审核（审批、删除用户留言）
-- 数据统计（播放量、随喜数、访问量）
-- 内容运营（文章管理、推荐位管理）
-- 系统设置（语言管理、主题配置）
-
-管理后台可以是独立的页面（如 /admin），通过 Workers + D1 实现，需要简单的管理员认证。
-
-### 架构设计原则
-- 代码拆分时需预留 `workers/` 目录（后端 API）和 `js/api.js`（API 调用层）
-- 数据层要为 D1 数据库做好切换准备（当前 localStorage → 未来 D1）
-- 留言功能需要后端审核机制（D1 存储 + Workers API）
-- i18n 架构要支持动态扩展语言（当前内联在 HTML 中的翻译，拆分后应独立为语言文件）
-- 预留 /admin 路径用于未来管理后台

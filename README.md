@@ -56,10 +56,10 @@ python3 -m http.server 8080
 
 | 角色 | GitHub | 职责 |
 |------|--------|------|
-| 产品经理 | @lianbang999-crypto | 需求定义、内容管理、最终验收 |
-| 前端开发 | @fayin001 | 功能开发、代码拆分、bug修复 |
-| UI/UX + 测试 | @fayin002 | 视觉设计、多设备兼容测试 |
-| SEO + 运维 | @fayin003 | SEO优化、部署、域名管理 |
+| 架构 + 审核 | @lianbang999-crypto | 架构决策、代码 Review、PR 合并、文档维护、内容管理 |
+| 前端开发 | @fayin001 | 功能页面开发、PWA、Bug 修复、多设备适配 |
+| 后端 + AI | @fayin002 | Workers API、D1 数据库、AI Gateway、AI 功能 |
+| SEO + 测试 | @fayin003 | SEO 优化、兼容性测试、部署运维 |
 
 ## 许可
 
