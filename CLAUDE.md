@@ -8,8 +8,8 @@
 
 **净土法音**是一个佛教净土宗音频内容平台 PWA。用户可以在线收听佛号、法师讲经等音频，未来会扩展文章阅读、AI 功能、社区互动等。
 
-- 线上地址：https://bojingji.pages.dev
-- 正式域名：https://foyue.org（配置中）
+- 线上地址：https://foyue.org
+- 备用地址：https://bojingji.pages.dev
 - 旧域名：https://fayin.uk（迁移中）
 - GitHub 仓库：https://github.com/lianbang999-crypto/bojingji
 

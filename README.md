@@ -4,7 +4,7 @@
 
 ## 在线访问
 
-- 主站：https://foyue.org（配置中）
+- 主站：https://foyue.org
 - 备用：https://bojingji.pages.dev
 
 ## 功能特性
