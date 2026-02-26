@@ -21,9 +21,9 @@
 | 角色 | GitHub 账号 | 邮箱 | 职责 |
 |------|------------|------|------|
 | 产品经理（管理员） | lianbang999-crypto | lianbang999@qq.com | 需求定义、内容管理、最终验收 |
-| 员工 fayin001 | fayin001 | 2569331267@qq.com | 待分配 |
-| 员工 fayin002 | fayin002 | xiaoshanyuan001@qq.com | 待分配 |
-| 员工 fayin003 | fayin003 | xiaoshanyuan002@qq.com | 待分配 |
+| 前端开发（主力） | fayin001 | 2569331267@qq.com | 功能开发、代码拆分、bug修复 |
+| UI/UX + 测试 | fayin002 | xiaoshanyuan001@qq.com | 视觉设计、多设备兼容测试、回归测试 |
+| SEO + 运维 | fayin003 | xiaoshanyuan002@qq.com | SEO优化、部署、域名管理、数据统计 |
 
 ---
 
