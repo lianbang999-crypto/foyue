@@ -209,14 +209,17 @@ function cycleLoop() {
 
 /* ===== Share ===== */
 function shareTrack(ep, series) {
-  var title = (ep.title || ep.fileName) + ' - ' + (series.title || '');
+  series = series || {};
+  var seriesId = series.id || series.seriesId || ep.seriesId || '';
+  var seriesTitle = series.title || series.seriesTitle || ep.seriesTitle || '';
+  var title = (ep.title || ep.fileName) + (seriesTitle ? ' - ' + seriesTitle : '');
   var text = title + '\n' + App.t('share_from');
-  var url = window.location.origin + window.location.pathname;
+  var baseUrl = window.location.origin + window.location.pathname;
+  var url = (seriesId && ep.id) ? (baseUrl + '#' + encodeURIComponent(seriesId + '/' + ep.id)) : baseUrl;
   if (navigator.share) {
     navigator.share({ title: title, text: text, url: url }).catch(function() {});
   } else {
-    var full = url + '#' + encodeURIComponent(series.id + '/' + ep.id);
-    navigator.clipboard.writeText(text + '\n' + full).then(function() {
+    navigator.clipboard.writeText(text + '\n' + url).then(function() {
       App.showToast(App.t('link_copied'));
     }).catch(function() {});
   }
