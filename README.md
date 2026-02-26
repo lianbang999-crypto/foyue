@@ -4,8 +4,8 @@
 
 ## 在线访问
 
-- 主站：https://bojingji.pages.dev
-- 备用：https://fayin.uk
+- 主站：https://foyue.org（配置中）
+- 备用：https://bojingji.pages.dev
 
 ## 功能特性
 

@@ -8,7 +8,9 @@
 
 **净土法音**是一个佛教净土宗音频播放器 PWA（Progressive Web App）。用户可以在线收听佛号、法师讲经等音频内容。
 
-- 线上地址：https://bojingji.pages.dev （备用：https://fayin.uk）
+- 线上地址：https://bojingji.pages.dev
+- 正式域名：https://foyue.org（新申请，待配置）
+- 旧域名：https://fayin.uk（将逐步迁移到 foyue.org）
 - GitHub 仓库：https://github.com/lianbang999-crypto/bojingji
 - 技术栈：纯前端，无后端服务器
 - 托管：Cloudflare Pages
