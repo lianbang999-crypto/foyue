@@ -8,17 +8,6 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#FAF9F6">
 <meta name="description" content="净土法音 - Pure Land Buddhist Dharma Audio Player. 南无阿弥陀佛 Namo Amitabha">
-<meta property="og:type" content="website">
-<meta property="og:title" content="净土法音 Pure Land Dharma Audio">
-<meta property="og:description" content="佛教净土宗音频播放器，随时随地听经闻法，支持播放历史、断点续播、PWA 安装。">
-<meta property="og:url" content="https://foyue.org/">
-<meta property="og:site_name" content="净土法音">
-<meta property="og:image" content="https://foyue.org/icons/icon-512.png">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="净土法音 Pure Land Dharma Audio">
-<meta name="twitter:description" content="佛教净土宗音频播放器，随时随地听经闻法。">
-<meta name="twitter:image" content="https://foyue.org/icons/icon-512.png">
-<link rel="canonical" href="https://foyue.org/">
 <title>净土法音</title>
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
@@ -29,46 +18,462 @@
 <link rel="preconnect" href="https://pub-7be57e30faae4f81bbd76b61006ac8fc.r2.dev">
 <link rel="preconnect" href="https://pub-8c99ae05414d4672b1ec08a569ab3299.r2.dev">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css">
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "WebApplication",
-  "name": "净土法音",
-  "alternateName": "Pure Land Dharma Audio",
-  "url": "https://foyue.org",
-  "description": "佛教净土宗音频播放器，提供佛号念诵、法师讲经等音频内容的在线收听服务。",
-  "applicationCategory": "MultimediaApplication",
-  "operatingSystem": "Web",
-  "inLanguage": ["zh-CN", "en", "fr"],
-  "isAccessibleForFree": true,
-  "publisher": {
-    "@type": "Organization",
-    "name": "净土法音",
-    "url": "https://foyue.org"
-  }
+<style>
+/* === TOKENS === */
+:root {
+  --bg: #FAF9F6;
+  --bg-secondary: #F3F1EC;
+  --bg-card: #F3F1EC;
+  --bg-card-hover: #ECEAE4;
+  --bg-header: rgba(250,249,246,0.92);
+  --bg-player: #FAF9F6;
+  --bg-expanded: linear-gradient(170deg, #FAF9F6, #F3F1EC);
+  --border: rgba(0,0,0,0.06);
+  --border-active: rgba(154,123,60,0.35);
+  --accent: #9A7B3C;
+  --accent-dim: rgba(154,123,60,0.6);
+  --accent-glow: rgba(154,123,60,0.08);
+  --text: #1A1A1A;
+  --text-secondary: rgba(26,26,26,0.5);
+  --text-muted: rgba(26,26,26,0.28);
+  --text-inverse: #FFFFFF;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.06);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --player-h: 72px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --font-zh: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-en: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
 }
-</script>
-</head>
 
+[data-theme="dark"] {
+  --bg: #0F0F0F;
+  --bg-secondary: #1A1A1A;
+  --bg-card: rgba(255,255,255,0.05);
+  --bg-card-hover: rgba(255,255,255,0.09);
+  --bg-header: rgba(15,15,15,0.92);
+  --bg-player: #0F0F0F;
+  --bg-expanded: linear-gradient(170deg, #0F0F0F, #1A1A1A);
+  --border: rgba(255,255,255,0.08);
+  --border-active: rgba(212,165,74,0.3);
+  --accent: #D4A54A;
+  --accent-dim: rgba(212,165,74,0.5);
+  --accent-glow: rgba(212,165,74,0.1);
+  --text: #EEEEEE;
+  --text-secondary: rgba(238,238,238,0.5);
+  --text-muted: rgba(238,238,238,0.28);
+  --text-inverse: #0F0F0F;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.2);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.3);
+}
+
+/* === RESET === */
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html{font-size:16px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;scroll-behavior:smooth;overflow-x:hidden}
+body{-webkit-tap-highlight-color:transparent;font-family:var(--font-zh);background:var(--bg);background-image:linear-gradient(180deg,rgba(154,123,60,0.04) 0%,transparent 40%);color:var(--text);min-height:100vh;min-height:100dvh;overflow-x:hidden;max-width:100vw;transition:background .35s,color .35s}
+[data-theme="dark"] body{background-image:linear-gradient(180deg,rgba(212,165,74,0.03) 0%,transparent 40%)}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:0.01ms!important;transition-duration:0.01ms!important}
+}
+
+/* === APP SHELL === */
+#app{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;max-width:100vw;overflow-x:hidden}
+
+/* === HEADER - top bar === */
+.header{position:sticky;top:0;z-index:100;background:var(--bg-header);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid var(--border);transition:background .35s}
+.nav{display:flex;align-items:center;padding:0 12px;height:48px;gap:0}
+.logo{display:flex;align-items:center;gap:6px;flex-shrink:0;color:var(--text)}
+.logo svg{width:34px;height:22px}
+.logo-title{font-size:.82rem;font-weight:400;color:var(--text-secondary);white-space:nowrap}
+.nav-spacer{flex:1}
+.nav-center{position:absolute;left:50%;transform:translateX(-50%);font-size:.92rem;font-weight:600;color:var(--text);white-space:nowrap;pointer-events:none;letter-spacing:.02em}
+
+/* === BOTTOM TAB BAR === */
+.tab-bar{position:fixed;bottom:0;left:0;right:0;z-index:190;background:var(--bg-header);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid var(--border);padding-bottom:var(--safe-bottom);display:flex;justify-content:space-around;align-items:flex-end;height:calc(64px + var(--safe-bottom));transition:transform .3s}
+.tab-bar.hide{transform:translateY(100%)}
+.tab{background:none;border:none;padding:8px 0 6px;font-family:var(--font-zh);font-size:.66rem;font-weight:400;color:var(--text-muted);cursor:pointer;position:relative;transition:color .2s;white-space:nowrap;flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0}
+.tab-icon{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.tab.active{color:var(--accent);font-weight:500}
+.tab.active .tab-icon{stroke-width:2}
+.tab-sub{display:none}
+
+/* === CENTER PLAY BUTTON in tab bar === */
+.tab-center{flex:1;display:flex;align-items:center;justify-content:center;padding:0 0 6px;position:relative}
+.center-play-btn{position:relative;width:48px;height:48px;margin-top:-18px;border:none;background:var(--accent);border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 16px rgba(154,123,60,0.3);transition:transform .15s,box-shadow .15s;z-index:2;-webkit-appearance:none;appearance:none}
+.center-play-btn:active{transform:scale(0.94)}
+.center-play-btn svg.center-play-icon{width:22px;height:22px;fill:var(--text-inverse);stroke:none;position:relative;z-index:2}
+.center-play-btn .progress-ring{position:absolute;inset:-4px;width:56px;height:56px;z-index:1;transform:rotate(-90deg)}
+.center-play-btn .progress-ring-bg{fill:none;stroke:var(--border);stroke-width:3}
+.center-play-btn .progress-ring-fill{fill:none;stroke:var(--accent);stroke-width:3;stroke-linecap:round;stroke-dasharray:157;stroke-dashoffset:157;transition:stroke-dashoffset .15s linear}
+.center-play-btn.playing{animation:centerSpin 8s linear infinite}
+@keyframes centerSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.center-play-btn.playing .progress-ring{animation:centerSpinReverse 8s linear infinite}
+@keyframes centerSpinReverse{from{transform:rotate(-90deg)}to{transform:rotate(calc(-90deg - 360deg))}}
+
+/* Icon buttons */
+.nav-actions{display:flex;align-items:center;gap:0;flex-shrink:0}
+.btn-icon{-webkit-appearance:none;appearance:none;background:none;border:none;border-radius:50%;width:36px;height:36px;min-width:36px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text-muted);transition:all .2s;padding:0}
+.btn-icon:hover,.btn-icon:active{color:var(--text)}
+.btn-icon.active{color:var(--accent)}
+.btn-icon svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+
+/* Search */
+.search-row{padding:6px 12px 4px;display:none}
+.search-row.show{display:block}
+.search-field{width:100%;padding:9px 14px 9px 36px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);font-family:var(--font-zh);font-size:.86rem;color:var(--text);outline:none;transition:border-color .2s}
+.search-field:focus{border-color:var(--border-active)}
+.search-field::placeholder{color:var(--text-muted)}
+.search-box{position:relative}
+.search-box svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:15px;height:15px;stroke:var(--text-muted);fill:none;stroke-width:1.8;pointer-events:none}
+
+/* === CONTENT === */
+.content{flex:1;padding:14px 16px calc(64px + var(--safe-bottom) + 14px);overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+.content.has-player{padding-bottom:calc(64px + var(--safe-bottom) + 14px)}
+
+.view{display:none;animation:viewIn .3s ease-out}
+.view.active{display:block}
+@keyframes viewIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+/* === SERIES CARDS - simplified minimal === */
+.series-list{display:flex;flex-direction:column;gap:8px}
+.card{display:flex;align-items:center;gap:12px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 14px;cursor:pointer;transition:all .2s;min-height:44px}
+.card:hover,.card:active{background:var(--bg-card-hover);border-color:var(--border-active)}
+.card-icon{width:36px;height:36px;border-radius:8px;background:var(--bg-secondary);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.card-icon svg{width:18px;height:18px;stroke:var(--text-muted);fill:none;stroke-width:1.8}
+.card-body{flex:1;min-width:0}
+.card-title{font-size:.9rem;font-weight:500;color:var(--text);line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card-meta{font-size:.72rem;color:var(--text-secondary);margin-top:2px}
+.card-intro{font-size:.72rem;color:var(--text-secondary);margin-top:3px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card-arrow{color:var(--text-muted);flex-shrink:0}
+.card-arrow svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
+.card.now-playing{border-color:var(--border-active);background:var(--accent-glow)}
+.card.now-playing .card-icon{background:var(--accent);opacity:.85}
+.card.now-playing .card-icon svg{stroke:var(--text-inverse)}
+.card-playing-tag{font-size:.6rem;color:var(--accent);margin-left:6px;font-weight:500;white-space:nowrap}
+
+@media(min-width:500px){
+  .series-list{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+}
+@media(min-width:768px){
+  .series-list{grid-template-columns:1fr 1fr 1fr}
+  .content{max-width:900px;margin:0 auto;padding-left:24px;padding-right:24px}
+  .nav{max-width:900px;margin-left:auto;margin-right:auto}
+  .tab-bar{max-width:420px;left:50%;transform:translateX(-50%);border-radius:16px 16px 0 0;border-left:1px solid var(--border);border-right:1px solid var(--border)}
+}
+
+/* === EPISODE LIST === */
+.ep-header{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.btn-back{-webkit-appearance:none;appearance:none;background:var(--accent-glow);border:none;border-radius:50%;width:36px;height:36px;min-width:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--accent);transition:all .2s}
+.btn-back:hover{background:var(--border-active)}
+.btn-back svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
+.ep-header-info{flex:1;min-width:0}
+.ep-header-title{font-size:1rem;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ep-header-sub{font-size:.72rem;color:var(--text-secondary);margin-top:1px}
+.ep-header-intro{font-size:.72rem;color:var(--text-secondary);margin-top:4px;line-height:1.4;opacity:.8}
+.btn-play-all{-webkit-appearance:none;appearance:none;background:var(--accent);border:none;border-radius:50%;width:38px;height:38px;min-width:38px;cursor:pointer;transition:all .2s;flex-shrink:0;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(154,123,60,0.2)}
+.btn-play-all:hover{opacity:.88;transform:scale(1.05)}
+.btn-play-all:active{transform:scale(0.95)}
+.btn-play-all svg{width:16px;height:16px;fill:var(--text-inverse);stroke:none}
+
+.ep-list{list-style:none}
+.ep-item{display:flex;align-items:center;gap:10px;padding:12px;border-radius:var(--radius-sm);cursor:pointer;transition:background .15s;min-height:44px}
+.ep-item:hover{background:var(--accent-glow)}
+.ep-item.playing{background:var(--accent-glow)}
+.ep-num{font-family:var(--font-en);font-size:.78rem;color:var(--text-muted);width:28px;text-align:center;flex-shrink:0}
+.ep-item.playing .ep-num{display:none}
+.eq-bars{display:none;width:28px;justify-content:center;align-items:flex-end;gap:2px;height:14px;flex-shrink:0}
+.ep-item.playing .eq-bars{display:flex}
+.eq-bar{width:2px;background:var(--accent);border-radius:1px;animation:eqBars .7s ease-in-out infinite}
+.eq-bar:nth-child(1){height:50%;animation-delay:0s}
+.eq-bar:nth-child(2){height:100%;animation-delay:.12s}
+.eq-bar:nth-child(3){height:40%;animation-delay:.24s}
+.eq-bar:nth-child(4){height:70%;animation-delay:.36s}
+@keyframes eqBars{0%,100%{transform:scaleY(.35)}50%{transform:scaleY(1)}}
+.ep-text{flex:1;min-width:0;overflow:hidden}
+.ep-title{font-size:.86rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ep-intro{display:block;font-size:.7rem;color:var(--text-secondary);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ep-item.playing .ep-title{color:var(--accent);font-weight:500}
+
+/* === PLAYLIST PANEL (slides up in expanded player) === */
+.playlist-panel{display:none;flex-direction:column;flex:1;overflow:hidden;padding:0 20px}
+.playlist-panel.show{display:flex}
+.playlist-head{display:flex;align-items:center;justify-content:space-between;padding:0 0 10px;border-bottom:1px solid var(--border);margin-bottom:6px;flex-shrink:0}
+.playlist-head-title{font-size:.86rem;font-weight:500;color:var(--text)}
+.playlist-count{font-family:var(--font-en);font-size:.7rem;color:var(--text-muted)}
+.playlist-items{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.pl-item{display:flex;align-items:center;gap:10px;padding:10px 4px;cursor:pointer;border-radius:var(--radius-sm);transition:background .15s;min-height:44px}
+.pl-item:hover{background:var(--accent-glow)}
+.pl-item.current{background:var(--accent-glow)}
+.pl-item-num{font-family:var(--font-en);font-size:.72rem;color:var(--text-muted);width:24px;text-align:center;flex-shrink:0}
+.pl-item.current .pl-item-num{color:var(--accent)}
+.pl-item-title{flex:1;font-size:.82rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.pl-item.current .pl-item-title{color:var(--accent);font-weight:500}
+
+/* === PLAYER BAR - hidden (replaced by center play button) === */
+.player{display:none}
+
+/* Control buttons - modern circle style */
+.ctrl{-webkit-appearance:none;appearance:none;background:none;border:none;color:var(--text-secondary);cursor:pointer;width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:50%;transition:all .15s}
+.ctrl:hover{color:var(--text);background:var(--accent-glow)}
+.ctrl svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.ctrl.active{color:var(--accent)}
+
+/* Play/pause - the hero button */
+.ctrl-play{width:44px;height:44px;background:var(--accent);border-radius:50%;color:var(--text-inverse);box-shadow:0 2px 12px rgba(154,123,60,0.25)}
+.ctrl-play:hover{background:var(--accent);opacity:.88;transform:scale(1.04);color:var(--text-inverse)}
+.ctrl-play svg{width:20px;height:20px;fill:currentColor;stroke:none}
+
+/* === EXPANDED PLAYER === */
+.expanded{position:fixed;inset:0;z-index:300;background:var(--bg);transform:translateY(100%);transition:transform .4s cubic-bezier(.16,1,.3,1);display:flex;flex-direction:column;overflow:hidden}
+.expanded.show{transform:translateY(0)}
+
+/* Top bar - fixed at top */
+.exp-top{display:flex;align-items:center;justify-content:space-between;padding:max(12px,env(safe-area-inset-top)) 16px 8px;flex-shrink:0}
+.exp-label{font-family:var(--font-en);font-size:.68rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.12em;font-weight:500}
+.exp-top .btn-icon{min-width:44px;height:44px}
+.exp-top-right{display:flex;align-items:center;gap:0}
+
+/* Scrollable middle area */
+.exp-player-content{display:flex;flex-direction:column;flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:0 20px}
+.exp-player-content.hide{display:none}
+
+/* Series info area (replaces cover art) */
+.exp-series-info{width:min(260px,70vw);margin:8px auto 20px;background:var(--accent-glow);border:1px solid var(--border);border-radius:16px;padding:22px 18px;text-align:center;position:relative;overflow:hidden;flex-shrink:0}
+.exp-series-info::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 35% 35%,rgba(212,175,55,0.06),transparent 60%)}
+.exp-series-icon{width:52px;height:34px;margin:0 auto 12px;stroke:var(--accent);fill:none;stroke-width:1;opacity:.4}
+.exp-series-name{font-size:.88rem;font-weight:500;color:var(--text);margin-bottom:3px;position:relative;line-height:1.4}
+.exp-series-speaker{font-size:.72rem;color:var(--text-secondary);position:relative}
+.exp-series-ep-count{font-family:var(--font-en);font-size:.66rem;color:var(--text-muted);margin-top:5px;position:relative}
+
+/* Track info */
+.exp-info{text-align:center;margin-bottom:20px;flex-shrink:0}
+.exp-title{font-size:1.05rem;font-weight:500;color:var(--text);margin-bottom:3px;line-height:1.4}
+.exp-series{font-size:.75rem;color:var(--text-secondary)}
+
+/* Bottom controls area - pinned to bottom */
+.exp-bottom{flex-shrink:0;padding:0 20px max(16px,var(--safe-bottom));background:var(--bg)}
+
+/* Progress bar */
+.exp-progress{margin-bottom:14px;touch-action:none;-webkit-user-select:none;user-select:none}
+.exp-progress-bar{width:100%;height:36px;cursor:pointer;position:relative;display:flex;align-items:center}
+.exp-progress-track{width:100%;height:4px;background:var(--border);border-radius:2px;position:relative}
+.exp-progress-fill{height:100%;background:var(--accent);border-radius:2px;width:0%;transition:width .1s linear;position:relative;z-index:1}
+.exp-progress-thumb{position:absolute;top:50%;transform:translate(-50%,-50%);width:16px;height:16px;background:var(--accent);border-radius:50%;box-shadow:0 0 8px rgba(154,123,60,0.25);left:0%;transition:left .1s linear;z-index:2}
+.exp-time{display:flex;justify-content:space-between;font-family:var(--font-en);font-size:.7rem;color:var(--text-muted);margin-top:2px}
+
+/* Expanded controls - 5 buttons: skip-15 / prev / play / next / skip+15 */
+.exp-ctrls{display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:12px}
+.exp-ctrls .ctrl{width:46px;height:46px}
+.exp-ctrls .ctrl svg{width:20px;height:20px}
+.exp-ctrls .ctrl-play{width:58px;height:58px;box-shadow:0 4px 20px rgba(154,123,60,0.3)}
+.exp-ctrls .ctrl-play svg{width:24px;height:24px}
+.exp-ctrls .ctrl-skip{position:relative}
+.exp-ctrls .ctrl-skip svg{width:20px;height:20px}
+.exp-ctrls .ctrl-skip .skip-label{position:absolute;font-family:var(--font-en);font-size:.5rem;font-weight:700;color:currentColor;bottom:8px;left:50%;transform:translateX(-50%);pointer-events:none;line-height:1}
+
+/* Secondary: loop / speed / timer / playlist */
+.exp-secondary{display:flex;align-items:center;justify-content:center;gap:12px}
+.exp-secondary .ctrl{width:42px;height:42px}
+
+/* Sleep timer badge */
+.timer-badge{position:absolute;top:2px;right:2px;background:var(--accent);color:var(--text-inverse);font-family:var(--font-en);font-size:.5rem;font-weight:600;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 3px;line-height:1}
+
+/* === SEARCH RESULTS === */
+.search-label{font-size:.78rem;color:var(--text-secondary);margin-bottom:10px;padding-left:4px}
+
+/* === LOADING === */
+.loader{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;gap:12px}
+.loader svg{width:36px;height:36px;stroke:var(--accent);fill:none;stroke-width:1.2;opacity:.4;animation:breathe 2.5s ease-in-out infinite}
+@keyframes breathe{0%,100%{transform:scale(1);opacity:.4}50%{transform:scale(1.05);opacity:.6}}
+.loader-text{font-family:var(--font-en);font-size:.78rem;color:var(--text-muted)}
+
+/* Error state */
+.error-msg{text-align:center;padding:40px 20px;color:var(--text-secondary);font-size:.88rem}
+.error-msg button{margin-top:12px;background:var(--accent);color:var(--text-inverse);border:none;border-radius:20px;padding:8px 20px;font-family:var(--font-zh);font-size:.82rem;cursor:pointer}
+
+/* === SCROLLBAR === */
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* === LANDSCAPE === */
+@media(orientation:landscape) and (max-height:500px){
+  .exp-series-info{width:min(160px,28vw);margin-bottom:8px;padding:14px 12px}
+  .exp-series-icon{width:40px;height:26px;margin-bottom:8px}
+  .exp-player-content{flex-direction:row;flex-wrap:wrap;align-items:flex-start;gap:12px}
+  .exp-player-content .exp-series-info{margin:0}
+  .exp-bottom{padding-top:4px}
+}
+
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+
+/* === ABOUT MODAL === */
+.about-overlay{display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,0.45);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:20px}
+.about-overlay.show{display:flex;animation:aboutFadeIn .25s ease-out}
+@keyframes aboutFadeIn{from{opacity:0}to{opacity:1}}
+.about-modal{background:var(--bg);border:1px solid var(--border);border-radius:16px;box-shadow:0 8px 40px rgba(0,0,0,0.15);max-width:420px;width:100%;max-height:80vh;overflow-y:auto;padding:28px 24px;position:relative;animation:aboutSlideUp .3s cubic-bezier(.16,1,.3,1)}
+@keyframes aboutSlideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.about-close{position:absolute;top:12px;right:12px;background:none;border:none;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text-muted);transition:all .2s}
+.about-close:hover{color:var(--text);background:var(--accent-glow)}
+.about-close svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+.about-logo{display:flex;justify-content:center;margin-bottom:16px}
+.about-logo svg{width:48px;height:48px}
+.about-title{text-align:center;font-size:1.05rem;font-weight:600;color:var(--text);margin-bottom:4px}
+.about-subtitle{text-align:center;font-family:var(--font-en);font-size:.72rem;color:var(--text-muted);letter-spacing:.08em;margin-bottom:20px}
+.about-section{margin-bottom:16px}
+.about-section-title{font-size:.78rem;font-weight:600;color:var(--accent);margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.about-section-title svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
+.about-text{font-size:.8rem;color:var(--text-secondary);line-height:1.65}
+.about-text a{color:var(--accent);text-decoration:none}
+.about-text a:hover{text-decoration:underline}
+.about-footer{text-align:center;font-size:.72rem;color:var(--text-muted);margin-top:20px;padding-top:16px;border-top:1px solid var(--border);line-height:1.5}
+
+/* === PWA INSTALL BANNER === */
+.install-banner{display:none;position:fixed;bottom:0;left:0;right:0;z-index:250;background:var(--bg);border-top:1px solid var(--border);box-shadow:0 -4px 20px rgba(0,0,0,0.08);padding:16px 16px calc(16px + var(--safe-bottom));animation:bannerSlide .4s cubic-bezier(.16,1,.3,1)}
+.install-banner.show{display:block}
+.install-banner.above-player{bottom:var(--player-h)}
+@keyframes bannerSlide{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.install-inner{display:flex;align-items:center;gap:12px;max-width:500px;margin:0 auto}
+.install-icon{width:40px;height:40px;border-radius:10px;background:var(--accent-glow);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.install-icon svg{width:22px;height:22px;stroke:var(--accent);fill:none;stroke-width:1.8}
+.install-text{flex:1;min-width:0}
+.install-title{font-size:.84rem;font-weight:500;color:var(--text)}
+.install-desc{font-size:.72rem;color:var(--text-secondary);margin-top:1px}
+.install-actions{display:flex;gap:8px;flex-shrink:0}
+.install-btn{-webkit-appearance:none;appearance:none;border:none;border-radius:20px;padding:8px 16px;font-family:var(--font-zh);font-size:.78rem;font-weight:500;cursor:pointer;transition:all .2s}
+.install-btn-primary{background:var(--text);color:var(--text-inverse)}
+.install-btn-primary:hover{opacity:.88}
+.install-btn-dismiss{background:var(--bg-card);color:var(--text-secondary);border:1px solid var(--border)}
+
+/* === SPEED CONTROL === */
+.speed-btn{font-family:var(--font-en);font-size:.7rem;font-weight:600;min-width:44px;letter-spacing:-.01em}
+.speed-btn .ctrl-label{font-size:.66rem}
+
+/* === MY PAGE === */
+.my-page{display:none;animation:viewIn .3s ease-out}
+.my-page.active{display:block}
+.my-profile{display:flex;flex-direction:column;align-items:center;padding:28px 0 20px}
+.my-avatar{width:72px;height:72px;border-radius:50%;border:2px solid var(--border);box-shadow:0 2px 12px rgba(154,123,60,0.12);background:var(--accent-glow);display:flex;align-items:center;justify-content:center}
+.my-avatar svg{width:40px;height:26px}
+.my-name{font-size:1rem;font-weight:500;color:var(--text);margin-top:10px}
+.my-subtitle{font-size:.72rem;color:var(--text-secondary);margin-top:2px}
+.my-section{margin-bottom:20px}
+.my-section-title{font-size:.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;padding:0 4px 8px;font-weight:500}
+.my-list{display:flex;flex-direction:column;gap:1px;background:var(--border);border-radius:var(--radius);overflow:hidden}
+.my-item{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--bg-card);cursor:pointer;transition:background .15s;min-height:44px}
+.my-item:hover{background:var(--bg-card-hover)}
+.my-item-icon{width:20px;height:20px;stroke:var(--text-secondary);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.my-item-label{flex:1;font-size:.86rem;color:var(--text)}
+.my-item-value{font-size:.78rem;color:var(--text-secondary)}
+.my-item-arrow{width:14px;height:14px;stroke:var(--text-muted);fill:none;stroke-width:2;flex-shrink:0}
+.my-namo{text-align:center;font-size:.82rem;color:var(--accent);font-weight:400;margin-top:24px;opacity:.6;letter-spacing:.08em}
+/* history list */
+.my-history-item{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--bg-card);cursor:pointer;transition:background .15s;min-height:44px}
+.my-history-item:hover{background:var(--bg-card-hover)}
+.my-history-icon{width:32px;height:32px;border-radius:8px;background:var(--accent-glow);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.my-history-icon svg{width:14px;height:14px;stroke:var(--accent);fill:none;stroke-width:2}
+.my-history-body{flex:1;min-width:0}
+.my-history-title{font-size:.84rem;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.my-history-sub{font-size:.72rem;color:var(--text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.my-history-time{font-size:.68rem;color:var(--text-muted);flex-shrink:0;white-space:nowrap}
+.my-history-empty{text-align:center;padding:20px 16px;color:var(--text-muted);font-size:.8rem}
+/* install guide card */
+.my-install-card{padding:16px;background:var(--bg-card);border-radius:var(--radius);overflow:hidden}
+.my-install-top{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.my-install-icon{width:40px;height:40px;border-radius:10px;background:var(--accent-glow);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.my-install-icon svg{width:20px;height:20px;stroke:var(--accent);fill:none;stroke-width:1.8;stroke-linecap:round}
+.my-install-text{flex:1}
+.my-install-text-title{font-size:.86rem;font-weight:500;color:var(--text)}
+.my-install-text-desc{font-size:.72rem;color:var(--text-secondary);margin-top:2px}
+.my-install-benefit{font-size:.72rem;color:var(--text-muted);margin-bottom:12px;line-height:1.5;padding:8px 12px;background:var(--accent-glow);border-radius:8px}
+.my-install-steps{font-size:.78rem;color:var(--text-secondary);line-height:1.6;margin-bottom:12px}
+.my-install-steps .ios-icon{display:inline-block;width:18px;height:18px;vertical-align:middle;margin:0 2px}
+.my-install-btn{display:block;width:100%;padding:10px;border:none;border-radius:8px;background:var(--accent);color:var(--text-inverse);font-size:.84rem;font-weight:500;cursor:pointer;text-align:center;transition:opacity .15s}
+.my-install-btn:hover{opacity:.85}
+
+/* === HOME PAGE === */
+.home-page{display:none;animation:viewIn .3s ease-out}
+.home-page.active{display:block}
+.home-section{margin-bottom:22px}
+.home-section-title{font-size:.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;padding:0 4px 10px;font-weight:500}
+.home-quote{background:var(--bg-card);border-radius:var(--radius);padding:20px 18px;position:relative;border:1px solid var(--border)}
+.home-quote::before{content:'\201C';position:absolute;top:8px;left:12px;font-size:2.4rem;color:var(--accent);opacity:.25;font-family:Georgia,serif;line-height:1}
+.home-quote-text{font-size:.88rem;line-height:1.7;color:var(--text);padding-left:8px;font-weight:400}
+.home-quote-author{font-size:.72rem;color:var(--text-secondary);margin-top:8px;text-align:right;padding-right:4px}
+.home-chanting-scroll{display:flex;gap:10px;overflow-x:auto;padding:0 0 8px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.home-chanting-scroll::-webkit-scrollbar{display:none}
+.home-chant-card{flex-shrink:0;width:120px;background:var(--bg-card);border-radius:var(--radius-sm);padding:14px 12px;text-align:center;border:1px solid var(--border);cursor:pointer;transition:background .15s,border-color .15s}
+.home-chant-card:hover{background:var(--bg-card-hover);border-color:var(--border-active)}
+.home-chant-card.playing{border-color:var(--accent);background:var(--accent-glow)}
+.home-chant-icon{width:32px;height:32px;margin:0 auto 8px;border-radius:50%;background:var(--accent-glow);display:flex;align-items:center;justify-content:center}
+.home-chant-icon svg{width:16px;height:16px;fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.home-chant-card.playing .home-chant-icon{background:var(--accent)}
+.home-chant-card.playing .home-chant-icon svg{stroke:var(--text-inverse)}
+.home-chant-name{font-size:.74rem;color:var(--text);line-height:1.3;font-weight:400}
+.home-continue-card{display:flex;align-items:center;gap:12px;background:var(--bg-card);border-radius:var(--radius);padding:14px 16px;border:1px solid var(--border);cursor:pointer;transition:background .15s;position:relative;overflow:hidden}
+.home-continue-card:hover{background:var(--bg-card-hover)}
+.home-continue-icon{width:40px;height:40px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.home-continue-icon svg{width:18px;height:18px;fill:none;stroke:var(--text-inverse);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.home-continue-body{flex:1;min-width:0}
+.home-continue-title{font-size:.86rem;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.home-continue-sub{font-size:.72rem;color:var(--text-secondary);margin-top:2px}
+.home-continue-progress{position:absolute;bottom:0;left:0;right:0;height:3px;background:var(--border);border-radius:0 0 var(--radius) var(--radius)}
+.home-continue-progress-fill{height:100%;background:var(--accent);border-radius:0 0 var(--radius) var(--radius);transition:width .3s}
+.home-continue-card.playing{border-color:var(--border-active);background:var(--accent-glow)}
+.home-continue-card.playing .home-continue-icon{animation:eqPulse 1.5s ease-in-out infinite}
+@keyframes eqPulse{0%,100%{opacity:1}50%{opacity:.6}}
+.home-rec-list{display:flex;flex-direction:column;gap:8px}
+.home-rec-card{display:flex;align-items:center;gap:12px;background:var(--bg-card);border-radius:var(--radius);padding:14px 16px;border:1px solid var(--border);cursor:pointer;transition:background .15s}
+.home-rec-card:hover{background:var(--bg-card-hover)}
+.home-rec-icon{width:40px;height:40px;border-radius:var(--radius-sm);background:var(--accent-glow);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.home-rec-icon svg{width:20px;height:20px;fill:none;stroke:var(--accent);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.home-rec-body{flex:1;min-width:0}
+.home-rec-title{font-size:.86rem;color:var(--text);font-weight:500}
+.home-rec-sub{font-size:.72rem;color:var(--text-secondary);margin-top:2px}
+
+/* === BUFFERING === */
+.player-track.buffering::after{content:'...';animation:bufDots 1s steps(3) infinite}
+@keyframes bufDots{0%{content:'.'}33%{content:'..'}66%{content:'...'}}
+.center-play-btn.buffering{animation:centerPulse 1.2s ease-in-out infinite}
+@keyframes centerPulse{0%,100%{box-shadow:0 2px 16px rgba(154,123,60,.3)}50%{box-shadow:0 2px 24px rgba(154,123,60,.6)}}
+.exp-progress-buffer{position:absolute;height:100%;background:var(--accent);opacity:.15;border-radius:2px;width:0%;transition:width .3s linear}
+/* === iOS PWA GUIDE === */
+.ios-guide{display:none;position:fixed;bottom:0;left:0;right:0;z-index:250;background:var(--bg);border-top:1px solid var(--border);box-shadow:0 -4px 20px rgba(0,0,0,0.08);padding:16px;padding-bottom:calc(16px + var(--safe-bottom));animation:bannerSlide .4s cubic-bezier(.16,1,.3,1)}
+.ios-guide.show{display:block}
+.ios-guide-inner{max-width:500px;margin:0 auto}
+.ios-guide-title{font-size:.84rem;font-weight:500;color:var(--text);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+.ios-guide-close{background:none;border:none;color:var(--text-muted);cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:50%;padding:0}
+.ios-guide-close:hover{color:var(--text);background:var(--accent-glow)}
+.ios-guide-close svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+.ios-guide-steps{font-size:.78rem;color:var(--text-secondary);line-height:1.6}
+.ios-guide-steps .ios-icon{display:inline-block;width:18px;height:18px;vertical-align:middle;margin:0 2px}
+</style>
+</head>
 <body>
 
 <div id="app">
-  <!-- HEADER -->
+  <!-- HEADER - top bar -->
   <header class="header">
     <nav class="nav">
       <div class="logo" aria-label="净土法音">
         <img src="/icons/logo.png" alt="净土法音" style="height:22px;width:auto;">
         <span class="logo-title">净土法音</span>
       </div>
+
       <span class="nav-center" id="navTitle" data-i18n="tab_lectures">听经台</span>
+
       <div class="nav-spacer"></div>
+
       <div class="nav-actions">
         <button class="btn-icon" id="btnSearch" aria-label="Search">
           <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
         </button>
       </div>
     </nav>
+
     <div class="search-row" id="searchRow">
       <div class="search-box">
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
@@ -151,8 +556,9 @@
         </button>
       </div>
     </div>
+
+    <!-- Scrollable content area (series info + track info) -->
     <div class="exp-player-content" id="expPlayerContent">
-      <div class="exp-dbl-indicator" id="expDblIndicator"></div>
       <div class="exp-series-info" id="expSeriesInfo">
         <img class="exp-series-icon" src="/icons/logo.png" style="width:52px;height:auto;opacity:.4;" alt="">
         <div class="exp-series-name" id="expSeriesName"></div>
@@ -164,6 +570,8 @@
         <div class="exp-series" id="expSeries"></div>
       </div>
     </div>
+
+    <!-- Fixed bottom controls -->
     <div class="exp-bottom" id="expBottom">
       <div class="exp-progress">
         <div class="exp-progress-bar" id="expProgressBar">
@@ -172,7 +580,6 @@
             <div class="exp-progress-fill" id="expProgressFill"></div>
           </div>
           <div class="exp-progress-thumb" id="expProgressThumb"></div>
-          <div class="exp-seek-tooltip" id="expSeekTooltip">0:00</div>
         </div>
         <div class="exp-time"><span id="expTimeCurr">0:00</span><span id="expTimeTotal">0:00</span></div>
       </div>
@@ -208,6 +615,8 @@
         </button>
       </div>
     </div>
+
+    <!-- Playlist panel (replaces content area when visible) -->
     <div class="playlist-panel" id="playlistPanel">
       <div class="playlist-head">
         <span class="playlist-head-title" data-i18n="playlist">播放列表</span>
@@ -227,6 +636,7 @@
     </div>
     <div class="about-title" data-i18n="about_app_name">净土法音</div>
     <div class="about-subtitle">Pureland Dharma Audio</div>
+
     <div class="about-section">
       <div class="about-section-title">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
@@ -234,6 +644,7 @@
       </div>
       <div class="about-text" data-i18n="about_us">本网站为莲友自发建立的公益平台，非东林寺官方站点。音频内容主要来源于庐山东林寺官网等官方渠道。为方便莲友随时随地听经闻法，特此整理收录。所有音频版权归原寺院及讲法法师所有。</div>
     </div>
+
     <div class="about-section">
       <div class="about-section-title">
         <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
@@ -242,18 +653,8 @@
       <div class="about-text" data-i18n="about_contact_desc">如有版权问题、网站使用问题或建议反馈，欢迎来信告知。</div>
       <div class="about-text" style="margin-top:4px"><span data-i18n="about_contact_label">邮箱：</span><a href="mailto:lianbang999@qq.com">lianbang999@qq.com</a></div>
     </div>
-    <div class="about-footer">&copy; 2026 净土法音 &middot; 愿一切众生同生极乐</div>
-  </div>
-</div>
 
-<!-- HISTORY OVERLAY -->
-<div class="history-overlay" id="historyOverlay">
-  <div class="history-modal">
-    <div class="history-head">
-      <span class="history-head-title" data-i18n="my_history">播放历史</span>
-      <button class="history-clear-btn" id="historyClearBtn" data-i18n="my_history_clear">清空</button>
-    </div>
-    <div class="history-list" id="historyList"></div>
+    <div class="about-footer">&copy; 2026 净土法音 &middot; 愿一切众生同生极乐</div>
   </div>
 </div>
 
@@ -289,21 +690,1444 @@
 
 <audio id="audioEl" preload="metadata"></audio>
 
-<!-- JS Modules (order matters) -->
-<script src="js/state.js"></script>
-<script src="lang/zh.js"></script>
-<script src="lang/en.js"></script>
-<script src="lang/fr.js"></script>
-<script src="js/i18n.js"></script>
-<script src="js/data.js"></script>
-<script src="js/history.js"></script>
-<script src="js/player.js"></script>
-<script src="js/player-ui.js"></script>
-<script src="js/render.js"></script>
-<script src="js/navigation.js"></script>
-<script src="js/pwa.js"></script>
-<script src="js/app.js"></script>
+<script>
+(function(){
+'use strict';
 
+/* ===== SVG icon helpers ===== */
+const SVG = {
+  play: '<svg viewBox="0 0 24 24"><polygon points="6,3 20,12 6,21"/></svg>',
+  pause: '<svg viewBox="0 0 24 24"><rect x="5" y="3" width="4" height="18" rx="1" fill="currentColor" stroke="none"/><rect x="15" y="3" width="4" height="18" rx="1" fill="currentColor" stroke="none"/></svg>',
+  sun: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>',
+  moon: '<svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
+  loopOne: '<svg viewBox="0 0 24 24"><polyline points="17,1 21,5 17,9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7,23 3,19 7,15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/><text x="12" y="14.5" font-size="8" font-weight="600" fill="currentColor" stroke="none" text-anchor="middle" font-family="sans-serif">1</text></svg>',
+  shuffle: '<svg viewBox="0 0 24 24"><polyline points="16,3 21,3 21,8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21,16 21,21 16,21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>',
+  loopAll: '<svg viewBox="0 0 24 24"><polyline points="17,1 21,5 17,9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7,23 3,19 7,15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
+};
+
+/* ===== i18n ===== */
+const I18N = {
+  zh: {
+    tab_lectures:'听经台', tab_lectures_sub:'Lectures',
+    tab_chanting:'佛号', tab_chanting_sub:'Chanting',
+    tab_audiobooks:'有声书', tab_audiobooks_sub:'Audiobooks',
+    tab_my:'我的',
+    tab_home:'首页',
+    home_daily_quote:'每日一句',
+    home_chanting:'东林佛号',
+    home_continue:'继续收听',
+    home_recommended:'精选推荐',
+    my_clear_cache:'清理缓存',
+    my_cache_cleared:'缓存已清理',
+    my_cache_size:'已缓存 {n} 个音频',
+    my_greeting:'南无阿弥陀佛',
+    my_subtitle:'Namo Amitabha',
+    my_settings:'设置',
+    my_lang:'语言',
+    my_theme:'主题',
+    my_about:'关于本站',
+    my_version:'版本',
+    search_placeholder:'搜索讲经、佛号...',
+    not_playing:'未在播放', now_playing:'正在播放',
+    play_all:'播放', episodes:'集', tracks:'曲',
+    no_content:'暂无内容', search_results:'搜索结果',
+    no_results:'未找到相关内容', playlist:'播放列表',
+    loading_fail:'加载失败', retry:'重试',
+    settings_lang:'语言', settings_theme:'主题',
+    theme_light:'浅色', theme_dark:'深色',
+    about:'关于',
+    about_app_name:'净土法音',
+    install_title:'安装净土法音',
+    install_desc:'添加到主屏幕，随时听经闻法',
+    install_now:'安装',
+    install_later:'稍后',
+    speed:'倍速',
+    timer_off:'定时关闭：关',
+    timer_set:'定时关闭：',
+    timer_min:'分钟后',
+    about_us_title:'关于我们',
+    about_us:'本网站为莲友自发建立的公益平台，非东林寺官方站点。音频内容主要来源于庐山东林寺官网等官方渠道。为方便莲友随时随地听经闻法，特此整理收录。所有音频版权归原寺院及讲法法师所有。',
+    about_contact_title:'联系方式',
+    about_contact_desc:'如有版权问题、网站使用问题或建议反馈，欢迎来信告知。',
+    about_contact_label:'邮箱：',
+    app_title:'净土法音',
+    ios_guide_title:'添加到主屏幕',
+    ios_guide_steps:'点击底部分享按钮，然后选择「添加到主屏幕」',
+    share_from:'— 净土法音 bojingji.pages.dev',
+    link_copied:'链接已复制',
+    install_menu_hint:'请点击浏览器菜单「添加到主屏幕」',
+    loop_none:'顺序播放',
+    loop_all:'列表循环',
+    loop_one:'单曲循环',
+    loop_shuffle:'随机播放',
+    my_history:'播放历史',
+    my_no_history:'暂无播放记录',
+    time_today:'今天',
+    time_yesterday:'昨天',
+    time_days_ago:'{n}天前',
+    my_install:'安装应用',
+    my_install_desc:'添加到手机主屏幕，获得更好的使用体验',
+    my_install_benefit:'安装后可全屏使用，不会被浏览器手势误触退出',
+    my_install_btn:'安装到主屏幕',
+    my_install_ios:'点击底部分享按钮 → 选择「添加到主屏幕」',
+    my_install_android:'点击下方按钮或浏览器菜单「添加到主屏幕」',
+  },
+  en: {
+    tab_lectures:'Lectures', tab_lectures_sub:'Dharma Talks',
+    tab_chanting:'Chanting', tab_chanting_sub:"Buddha's Name",
+    tab_audiobooks:'Audiobooks', tab_audiobooks_sub:'Books',
+    tab_my:'Me',
+    tab_home:'Home',
+    home_daily_quote:'Daily Quote',
+    home_chanting:'Donglin Chanting',
+    home_continue:'Continue Listening',
+    home_recommended:'Recommended',
+    my_clear_cache:'Clear Cache',
+    my_cache_cleared:'Cache cleared',
+    my_cache_size:'{n} audio cached',
+    my_greeting:'Namo Amitabha',
+    my_subtitle:'Pure Land Dharma Audio',
+    my_settings:'Settings',
+    my_lang:'Language',
+    my_theme:'Theme',
+    my_about:'About this site',
+    my_version:'Version',
+    search_placeholder:'Search lectures, chanting...',
+    not_playing:'Not Playing', now_playing:'Now Playing',
+    play_all:'Play', episodes:'ep.', tracks:'tracks',
+    no_content:'No content', search_results:'Search Results',
+    no_results:'No results found', playlist:'Playlist',
+    loading_fail:'Failed to load', retry:'Retry',
+    settings_lang:'Language', settings_theme:'Theme',
+    theme_light:'Light', theme_dark:'Dark',
+    about:'About',
+    about_app_name:'Pureland Dharma Audio',
+    install_title:'Install Pureland Audio',
+    install_desc:'Add to home screen for easy access',
+    install_now:'Install',
+    install_later:'Later',
+    speed:'Speed',
+    timer_off:'Sleep timer: Off',
+    timer_set:'Sleep timer: ',
+    timer_min:' min',
+    about_us_title:'About Us',
+    about_us:'This is a public-interest platform voluntarily established by Dharma friends, not an official site of Donglin Temple. Audio content is primarily sourced from official channels such as the Donglin Temple website. It has been compiled here for the convenience of practitioners to listen to teachings anytime, anywhere. All audio copyrights belong to the original temples and Dharma masters.',
+    about_contact_title:'Contact',
+    about_contact_desc:'For copyright issues, website problems, or feedback, please feel free to write to us.',
+    about_contact_label:'Email: ',
+    app_title:'Pureland Audio',
+    ios_guide_title:'Add to Home Screen',
+    ios_guide_steps:'Tap the share button below, then select "Add to Home Screen"',
+    share_from:'— Pureland Dharma Audio bojingji.pages.dev',
+    link_copied:'Link copied',
+    install_menu_hint:'Use browser menu to "Add to Home Screen"',
+    loop_none:'Sequential',
+    loop_all:'Loop all',
+    loop_one:'Single loop',
+    loop_shuffle:'Shuffle',
+    my_history:'Play History',
+    my_no_history:'No history yet',
+    time_today:'Today',
+    time_yesterday:'Yesterday',
+    time_days_ago:'{n} days ago',
+    my_install:'Install App',
+    my_install_desc:'Add to home screen for a better experience',
+    my_install_benefit:'Full-screen mode, no accidental browser navigation',
+    my_install_btn:'Install to Home Screen',
+    my_install_ios:'Tap the share button below, then select "Add to Home Screen"',
+    my_install_android:'Tap the button below or use browser menu "Add to Home Screen"',
+  },
+  fr: {
+    tab_lectures:'\u00C9couter', tab_lectures_sub:'Enseignements',
+    tab_chanting:'Chant', tab_chanting_sub:'Nom du Bouddha',
+    tab_audiobooks:'Livres audio', tab_audiobooks_sub:'Livres',
+    tab_my:'Moi',
+    tab_home:'Accueil',
+    home_daily_quote:'Citation du jour',
+    home_chanting:'Chant Donglin',
+    home_continue:'Continuer',
+    home_recommended:'Recommand\u00E9s',
+    my_clear_cache:'Vider le cache',
+    my_cache_cleared:'Cache vid\u00E9',
+    my_cache_size:'{n} audio en cache',
+    my_greeting:'Namo Amitabha',
+    my_subtitle:'Audio du Dharma de la Terre Pure',
+    my_settings:'Param\u00E8tres',
+    my_lang:'Langue',
+    my_theme:'Th\u00E8me',
+    my_about:'\u00C0 propos du site',
+    my_version:'Version',
+    search_placeholder:'Rechercher...',
+    not_playing:'Pas de lecture', now_playing:'En cours',
+    play_all:'Lire', episodes:'\u00E9p.', tracks:'pistes',
+    no_content:'Aucun contenu', search_results:'R\u00E9sultats',
+    no_results:'Aucun r\u00E9sultat', playlist:'Liste de lecture',
+    loading_fail:'\u00C9chec du chargement', retry:'R\u00E9essayer',
+    settings_lang:'Langue', settings_theme:'Th\u00E8me',
+    theme_light:'Clair', theme_dark:'Sombre',
+    about:'\u00C0 propos',
+    about_app_name:'Pureland Dharma Audio',
+    install_title:'Installer Pureland Audio',
+    install_desc:'\u00C9couter le Dharma partout',
+    install_now:'Installer',
+    install_later:'Plus tard',
+    speed:'Vitesse',
+    timer_off:'Minuterie: D\u00E9sactiv\u00E9',
+    timer_set:'Minuterie: ',
+    timer_min:' min',
+    about_us_title:'\u00C0 propos',
+    about_us:'Ce site est une plateforme d\u2019int\u00E9r\u00EAt public cr\u00E9\u00E9e par des amis du Dharma, ind\u00E9pendante du temple Donglin. Le contenu audio provient principalement des canaux officiels du temple Donglin. Tous les droits d\u2019auteur appartiennent aux temples et ma\u00EEtres d\u2019origine.',
+    about_contact_title:'Contact',
+    about_contact_desc:'Pour toute question de droits d\u2019auteur, probl\u00E8me technique ou suggestion, n\u2019h\u00E9sitez pas \u00E0 nous \u00E9crire.',
+    about_contact_label:'E-mail : ',
+    app_title:'Pureland Audio',
+    ios_guide_title:'\u00C0 l\u2019\u00E9cran d\u2019accueil',
+    ios_guide_steps:'Appuyez sur le bouton partager, puis s\u00E9lectionnez \u00AB Sur l\u2019\u00E9cran d\u2019accueil \u00BB',
+    share_from:'\u2014 Pureland Dharma Audio bojingji.pages.dev',
+    link_copied:'Lien copi\u00E9',
+    install_menu_hint:'Utilisez le menu du navigateur pour \u00AB Ajouter \u00E0 l\u2019\u00E9cran d\u2019accueil \u00BB',
+    loop_none:'S\u00E9quentiel',
+    loop_all:'Boucle compl\u00E8te',
+    loop_one:'Boucle unique',
+    loop_shuffle:'Al\u00E9atoire',
+    my_history:'Historique',
+    my_no_history:'Aucun historique',
+    time_today:"Aujourd'hui",
+    time_yesterday:'Hier',
+    time_days_ago:'Il y a {n} jours',
+    my_install:"Installer l'app",
+    my_install_desc:"Ajouter \u00E0 l'\u00E9cran d'accueil pour une meilleure exp\u00E9rience",
+    my_install_benefit:'Mode plein \u00E9cran, sans navigation accidentelle',
+    my_install_btn:'Installer',
+    my_install_ios:'Appuyez sur le bouton partager, puis \u00AB Sur l\u2019\u00E9cran d\u2019accueil \u00BB',
+    my_install_android:'Appuyez ci-dessous ou utilisez le menu du navigateur',
+  }
+};
+
+let lang = 'zh';
+function detectLang(){const n=(navigator.language||'').toLowerCase();if(n.startsWith('fr'))return 'fr';if(n.startsWith('en'))return 'en';return 'zh';}
+function t(k){return (I18N[lang]||I18N.zh)[k]||(I18N.zh)[k]||k;}
+
+function applyI18n(){
+  document.querySelectorAll('[data-i18n]').forEach(el=>{const k=el.dataset.i18n;if(k)el.textContent=t(k);});
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el=>{const k=el.dataset.i18nPlaceholder;if(k)el.placeholder=t(k);});
+  if(data&&!seriesId){
+    if(tab==='mypage')renderMyPage();
+    else if(tab==='home')renderHomePage();
+    else renderCategory(tab);
+  }
+}
+
+function setLang(l){lang=l;localStorage.setItem('pl-lang',l);applyI18n();}
+
+/* ===== THEME ===== */
+let dark=false;
+function applyTheme(){
+  document.documentElement.setAttribute('data-theme',dark?'dark':'light');
+  document.querySelector('meta[name="theme-color"]').content=dark?'#0F0F0F':'#FAF9F6';
+  localStorage.setItem('pl-theme',dark?'dark':'light');
+}
+
+/* ===== DOM ===== */
+const $=id=>document.getElementById(id);
+const audio=$('audioEl');
+const contentArea=$('contentArea');
+const loader=$('loader');
+const playerBar=$('playerBar');
+const expPlayer=$('expPlayer');
+const miniProgressFill=$('miniProgressFill');
+const miniProgress=$('miniProgress');
+const playerTrack=$('playerTrack');
+const playerSub=$('playerSub');
+const btnPlay=$('btnPlay');
+const playerInfo=$('playerInfo');
+const expTitle=$('expTitle');
+const expSeries=$('expSeries');
+const expProgressFill=$('expProgressFill');
+const expProgressThumb=$('expProgressThumb');
+const expBufferFill=$('expBufferFill');
+const expProgressBar=$('expProgressBar');
+const expTimeCurr=$('expTimeCurr');
+const expTimeTotal=$('expTimeTotal');
+const expPlay=$('expPlay');
+const expCollapse=$('expCollapse');
+const expQueue=$('expQueue');
+const expPlayerContent=$('expPlayerContent');
+const playlistPanel=$('playlistPanel');
+const plItems=$('plItems');
+const plCount=$('plCount');
+const navTitle=$('navTitle');
+const searchInput=$('searchInput');
+const searchRow=$('searchRow');
+const centerPlayBtn=$('centerPlayBtn');
+const centerPlayIcon=$('centerPlayIcon');
+const centerRingFill=$('centerRingFill');
+const expSeriesInfo=$('expSeriesInfo');
+const expSeriesName=$('expSeriesName');
+const expSeriesSpeaker=$('expSeriesSpeaker');
+const expSeriesEpCount=$('expSeriesEpCount');
+const RING_CIRCUMFERENCE=2*Math.PI*25; // r=25, circumference≈157
+
+/* ===== STATE ===== */
+let data=null;
+let tab='home';
+let seriesId=null;
+let epIdx=-1;
+let playlist=[];
+let loopMode='all'; // all (list loop), one (single loop), shuffle
+let isFirstVisit=false;
+
+/* ===== INIT ===== */
+(function init(){
+  const savedLang=localStorage.getItem('pl-lang');
+  lang=savedLang||detectLang();
+
+  const savedTheme=localStorage.getItem('pl-theme');
+  dark=savedTheme==='dark';
+  applyTheme();
+
+  isFirstVisit=!localStorage.getItem('pl-state');
+
+  // About modal
+  const aboutOverlay=$('aboutOverlay');
+  $('aboutClose').addEventListener('click',()=>aboutOverlay.classList.remove('show'));
+  aboutOverlay.addEventListener('click',(e)=>{
+    if(e.target===aboutOverlay)aboutOverlay.classList.remove('show');
+  });
+
+  // Search
+  $('btnSearch').addEventListener('click',()=>{
+    const vis=searchRow.classList.toggle('show');
+    if(vis)searchInput.focus();
+    else{searchInput.value='';renderCategory(tab);}
+    $('btnSearch').classList.toggle('active',vis);
+  });
+  let st;
+  searchInput.addEventListener('input',()=>{clearTimeout(st);st=setTimeout(()=>doSearch(searchInput.value.trim()),250);});
+
+  // Tabs
+  const TAB_I18N={home:'tab_home',tingjingtai:'tab_lectures',youshengshu:'tab_audiobooks',mypage:'tab_my'};
+  document.querySelectorAll('.tab').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      document.querySelectorAll('.tab').forEach(b=>{b.classList.remove('active');b.setAttribute('aria-selected','false');});
+      btn.classList.add('active');btn.setAttribute('aria-selected','true');
+      tab=btn.dataset.tab;seriesId=null;searchInput.value='';
+      navTitle.textContent=t(TAB_I18N[tab]||'tab_lectures');
+      navTitle.dataset.i18n=TAB_I18N[tab]||'tab_lectures';
+      if(tab==='mypage'){renderMyPage();}
+      else if(tab==='home'){renderHomePage();}
+      else{renderCategory(tab);}
+    });
+  });
+
+  // Center play button - only opens expanded player (no play/pause toggle)
+  centerPlayBtn.addEventListener('click',()=>{
+    if(!audio.src&&!playlist.length)return;
+    expPlayer.classList.add('show');
+  });
+
+  // Player controls
+  btnPlay.addEventListener('click',togglePlay);
+  expPlay.addEventListener('click',togglePlay);
+  $('btnPrev').addEventListener('click',prevTrack);
+  $('expPrev').addEventListener('click',prevTrack);
+  $('btnNext').addEventListener('click',nextTrack);
+  $('expNext').addEventListener('click',nextTrack);
+  $('expLoop').addEventListener('click',cycleLoop);
+  $('expSkipBack').addEventListener('click',()=>{if(audio.duration)audio.currentTime=Math.max(0,audio.currentTime-15);});
+  $('expSkipFwd').addEventListener('click',()=>{if(audio.duration)audio.currentTime=Math.min(audio.duration,audio.currentTime+15);});
+  $('expShare').addEventListener('click',()=>{
+    if(epIdx>=0&&playlist[epIdx]){
+      const tr=playlist[epIdx];
+      shareTrack(tr,{title:tr.seriesTitle,id:tr.seriesId});
+    }
+  });
+
+  // Progress seek - expanded player
+  let dragging=false;
+  function expSeek(e){seekAt(e,expProgressBar);}
+  expProgressBar.addEventListener('mousedown',e=>{dragging=true;expSeek(e);});
+  expProgressBar.addEventListener('touchstart',e=>{dragging=true;expSeek(e.touches[0]);},{passive:true});
+  document.addEventListener('mousemove',e=>{if(dragging)expSeek(e);});
+  document.addEventListener('touchmove',e=>{if(dragging)expSeek(e.touches[0]);},{passive:true});
+  document.addEventListener('mouseup',()=>dragging=false);
+  document.addEventListener('touchend',()=>dragging=false);
+
+  // Expanded toggle (center play opens it, collapse button closes it)
+  expCollapse.addEventListener('click',()=>{
+    expPlayer.classList.remove('show');
+    // Reset playlist view when closing
+    if(playlistVisible){playlistVisible=false;playlistPanel.classList.remove('show');expPlayerContent.classList.remove('hide');expQueue.classList.remove('active');}
+  });
+
+  // Queue / playlist toggle
+  expQueue.addEventListener('click',togglePlaylist);
+
+  // Audio events
+  audio.addEventListener('timeupdate',onTimeUpdate);
+  audio.addEventListener('play',()=>{setPlayState(true);});
+  audio.addEventListener('playing',()=>{isSwitching=false;});
+  audio.addEventListener('pause',()=>{if(!isSwitching){setPlayState(false);saveState();}});
+  audio.addEventListener('ended',onEnded);
+  audio.addEventListener('error',onAudioError);
+
+  // Keyboard
+  document.addEventListener('keydown',e=>{
+    if(e.target.tagName==='INPUT')return;
+    if(e.code==='Space'){e.preventDefault();togglePlay();}
+    if(e.code==='ArrowLeft'&&audio.duration)audio.currentTime=Math.max(0,audio.currentTime-10);
+    if(e.code==='ArrowRight'&&audio.duration)audio.currentTime=Math.min(audio.duration,audio.currentTime+10);
+  });
+
+  // Speed control
+  $('expSpeed').addEventListener('click',cycleSpeed);
+
+  // Sleep timer
+  $('expTimer').addEventListener('click',cycleSleepTimer);
+
+  // PWA install
+  initInstallPrompt();
+
+  // Back navigation guard (browser mode only)
+  initBackGuard();
+
+  // Buffering indicator
+  audio.addEventListener('waiting',()=>{playerTrack.classList.add('buffering');centerPlayBtn.classList.add('buffering');});
+  audio.addEventListener('playing',()=>{playerTrack.classList.remove('buffering');centerPlayBtn.classList.remove('buffering');});
+  audio.addEventListener('canplay',()=>{playerTrack.classList.remove('buffering');centerPlayBtn.classList.remove('buffering');preloadNextTrack();});
+
+  // Network-aware preload control
+  if(navigator.connection){
+    navigator.connection.addEventListener('change',()=>{
+      const c=navigator.connection;
+      if(c.saveData||c.effectiveType==='2g')cleanupPreload();
+      else if(audio.src&&!audio.paused)preloadNextTrack();
+    });
+  }
+
+  applyI18n();
+  loadData();
+  setInterval(saveState,15000);
+
+  // One-time cleanup of old Service Worker and caches
+  if('serviceWorker' in navigator&&!localStorage.getItem('sw-cleaned')){
+    navigator.serviceWorker.getRegistrations().then(regs=>{regs.forEach(r=>r.unregister());});
+    caches.keys().then(keys=>{keys.forEach(k=>caches.delete(k));});
+    localStorage.setItem('sw-cleaned','1');
+  }
+})();
+
+/* ===== DATA LOADING with retry ===== */
+let loadAttempts=0;
+async function loadData(){
+  try{
+    const r=await fetch('/data/audio-data.json');
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    data=await r.json();
+    loader.style.display='none';
+    if(tab==='home')renderHomePage();
+    else renderCategory(tab);
+    restoreState();
+    // Default play on first visit
+    if(isFirstVisit&&epIdx<0)playDefaultTrack();
+  }catch(e){
+    loadAttempts++;
+    if(loadAttempts<3){setTimeout(loadData,1500*loadAttempts);return;}
+    loader.innerHTML=`<div class="error-msg">${t('loading_fail')}<br><button onclick="location.reload()">${t('retry')}</button></div>`;
+  }
+}
+
+function playDefaultTrack(){
+  if(!data)return;
+  // Find fohao category, donglin-fohao series, episode index 3 (id:4 = 欣赏版男声)
+  const cat=data.categories.find(c=>c.id==='fohao');
+  if(!cat)return;
+  const sr=cat.series.find(s=>s.id==='donglin-fohao');
+  if(!sr||!sr.episodes||sr.episodes.length<4)return;
+  playList(sr.episodes,3,sr);
+}
+
+/* ===== RENDER ===== */
+const ICONS = {
+  tingjingtai:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 3"/></svg>',
+  fohao:'<svg viewBox="0 0 24 24"><path d="M12 3c0 0-5 7-5 13s5 5 5 5 5 1 5-5S12 3 12 3z"/></svg>',
+  youshengshu:'<svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
+};
+
+function renderCategory(tabId){
+  contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el=>el.remove());
+  const cat=data.categories.find(c=>c.id===tabId);
+  if(!cat){contentArea.innerHTML=`<div class="loader-text">${t('no_content')}</div>`;return;}
+  const wrap=document.createElement('div');wrap.className='view active';
+  const list=document.createElement('div');list.className='series-list';
+  const unit=tabId==='fohao'?t('tracks'):t('episodes');
+  const nowSid=epIdx>=0&&playlist.length?playlist[epIdx].seriesId:null;
+
+  cat.series.forEach(s=>{
+    const card=document.createElement('div');
+    const isPlaying=s.id===nowSid;
+    card.className='card'+(isPlaying?' now-playing':'');
+    const introHtml=s.intro?`<div class="card-intro">${s.intro}</div>`:'';
+    const playTag=isPlaying?`<span class="card-playing-tag">${t('now_playing')}</span>`:'';
+    card.innerHTML=`<div class="card-icon">${ICONS[tabId]||ICONS.tingjingtai}</div>
+      <div class="card-body"><div class="card-title">${s.title}${playTag}</div>${introHtml}<div class="card-meta">${s.speaker||''} \u00B7 ${s.totalEpisodes} ${unit}</div></div>
+      <span class="card-arrow"><svg viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg></span>`;
+    card.addEventListener('click',()=>showEpisodes(s,tabId));
+    list.appendChild(card);
+  });
+  wrap.appendChild(list);contentArea.appendChild(wrap);
+}
+
+function showEpisodes(series,tabId){
+  contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el=>el.remove());
+  seriesId=series.id;
+  const unit=tabId==='fohao'?t('tracks'):t('episodes');
+  const introHdr=series.intro?`<div class="ep-header-intro">${series.intro}</div>`:'';
+  const view=document.createElement('div');view.className='view active ep-view';
+  view.innerHTML=`<div class="ep-header">
+    <button class="btn-back" id="backBtn"><svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg></button>
+    <div class="ep-header-info"><div class="ep-header-title">${series.title}</div><div class="ep-header-sub">${series.speaker||''} \u00B7 ${series.totalEpisodes} ${unit}</div>${introHdr}</div>
+    <button class="btn-play-all" id="playAllBtn" aria-label="${t('play_all')}"><svg viewBox="0 0 24 24"><polygon points="8,4 20,12 8,20"/></svg></button>
+  </div><ul class="ep-list" id="epList"></ul>`;
+  contentArea.appendChild(view);
+
+  view.querySelector('#backBtn').addEventListener('click',()=>{seriesId=null;if(tab==='home')renderHomePage();else renderCategory(tab);});
+  const playAllBtn=view.querySelector('#playAllBtn');
+  function updatePlayAllBtn(){
+    if(isSwitching)return;
+    const isThisSeries=playlist.length&&epIdx>=0&&playlist[epIdx]&&playlist[epIdx].seriesId===series.id;
+    const playing=isThisSeries&&!audio.paused;
+    playAllBtn.innerHTML=playing?ICON_PAUSE_FILLED:ICON_PLAY_FILLED;
+  }
+  updatePlayAllBtn();
+  audio.addEventListener('play',updatePlayAllBtn);
+  audio.addEventListener('pause',updatePlayAllBtn);
+  // Cleanup listeners when view is removed
+  const obs=new MutationObserver(()=>{
+    if(!view.parentNode){audio.removeEventListener('play',updatePlayAllBtn);audio.removeEventListener('pause',updatePlayAllBtn);obs.disconnect();}
+  });
+  obs.observe(contentArea,{childList:true});
+
+  playAllBtn.addEventListener('click',()=>{
+    const isThisSeries=playlist.length&&epIdx>=0&&playlist[epIdx]&&playlist[epIdx].seriesId===series.id;
+    if(isThisSeries){togglePlay();}
+    else{playList(series.episodes,0,series);}
+  });
+
+  // Auto-play only if nothing has been played yet (first time user)
+  const hasAudio=!!audio.src;
+  const alreadyPlaying=playlist.length&&epIdx>=0&&playlist[epIdx]&&playlist[epIdx].seriesId===series.id;
+  if(!hasAudio&&!alreadyPlaying&&series.episodes.length)playList(series.episodes,0,series);
+
+  const ul=view.querySelector('#epList');
+  series.episodes.forEach((ep,idx)=>{
+    const li=document.createElement('li');
+    li.className='ep-item'+(isCurrentTrack(series.id,idx)?' playing':'');
+    const introHtml=ep.intro?`<span class="ep-intro">${ep.intro}</span>`:'';
+    li.innerHTML=`<span class="ep-num">${ep.id||idx+1}</span>
+      <div class="eq-bars"><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span></div>
+      <div class="ep-text"><span class="ep-title">${ep.title||ep.fileName}</span>${introHtml}</div>`;
+    li.addEventListener('click',()=>{
+      if(isCurrentTrack(series.id,idx)){togglePlay();return;}
+      playList(series.episodes,idx,series);
+    });
+    ul.appendChild(li);
+  });
+}
+
+/* ===== SEARCH ===== */
+function doSearch(q){
+  if(!q||!data){if(tab==='home')renderHomePage();else renderCategory(tab);return;}
+  contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el=>el.remove());
+  const ql=q.toLowerCase();const results=[];
+  data.categories.forEach(cat=>{
+    cat.series.forEach(s=>{
+      if(s.title.toLowerCase().includes(ql)||(s.titleEn||'').toLowerCase().includes(ql))
+        results.push({type:'series',series:s,catId:cat.id});
+      s.episodes.forEach((ep,idx)=>{
+        if((ep.title||ep.fileName||'').toLowerCase().includes(ql))
+          results.push({type:'ep',series:s,ep,idx,catId:cat.id});
+      });
+    });
+  });
+  const wrap=document.createElement('div');wrap.className='view active';
+  if(!results.length){wrap.innerHTML=`<div class="loader-text">${t('no_results')}</div>`;}
+  else{
+    wrap.innerHTML=`<div class="search-label">${t('search_results')} (${results.length})</div>`;
+    const ul=document.createElement('ul');ul.className='ep-list';
+    results.slice(0,50).forEach(r=>{
+      const li=document.createElement('li');li.className='ep-item';
+      if(r.type==='series'){
+        li.innerHTML=`<span class="ep-num" style="color:var(--accent)">\u2022</span><span class="ep-title">${r.series.title} <small style="color:var(--text-muted)">(${r.series.totalEpisodes}${t('episodes')})</small></span>`;
+        li.addEventListener('click',()=>{searchInput.value='';searchRow.classList.remove('show');$('btnSearch').classList.remove('active');showEpisodes(r.series,r.catId);});
+      }else{
+        li.innerHTML=`<span class="ep-num">${r.ep.id||r.idx+1}</span><span class="ep-title">${r.ep.title||r.ep.fileName} <small style="color:var(--text-muted)">\u00B7 ${r.series.title}</small></span>`;
+        li.addEventListener('click',()=>playList(r.series.episodes,r.idx,r.series));
+      }
+      ul.appendChild(li);
+    });
+    wrap.appendChild(ul);
+  }
+  contentArea.appendChild(wrap);
+}
+
+/* ===== HOME PAGE ===== */
+const DAILY_QUOTES=[
+  {zh:'若人但念阿弥陀，是名无上深妙禅。',en:'To recite Amitabha is the supreme and profound meditation.',author:'永明延寿大师'},
+  {zh:'得生与否，全由信愿之有无；品位高下，全由持名之深浅。',en:'Rebirth depends on faith and vows; the grade depends on the depth of recitation.',author:'蕅益大师'},
+  {zh:'念佛法门，别无奇特，只深信力行为要耳。',en:'The Pure Land practice requires nothing special — just deep faith and earnest practice.',author:'印光大师'},
+  {zh:'真为生死，发菩提心，以深信愿，持佛名号。',en:'For the matter of birth and death, arouse Bodhi mind; with deep faith and vow, recite the Buddha\'s name.',author:'彻悟大师'},
+  {zh:'一句弥陀，是佛王、是法王、是咒王、是功德之王。',en:'One recitation of Amitabha is the king of Buddhas, king of Dharma, king of mantras, king of merit.',author:'莲池大师'},
+  {zh:'阿弥陀佛，无上医王，舍此不求，是为痴狂。',en:'Amitabha, the supreme healer; to abandon this and seek elsewhere is truly deluded.',author:'省庵大师'},
+  {zh:'但得见弥陀，何愁不开悟。',en:'If one can but meet Amitabha, why worry about not attaining awakening?',author:'大安法师'},
+  {zh:'净土一法，乃十方三世一切诸佛上成佛道、下化众生之成始成终之大法也。',en:'The Pure Land Dharma is the ultimate teaching by which all Buddhas attain Buddhahood and liberate sentient beings.',author:'印光大师'},
+  {zh:'信愿持名，求生净土，乃佛教之特别法门。',en:'Holding the name with faith and vow, seeking rebirth — this is the special Dharma gate of Buddhism.',author:'蕅益大师'},
+  {zh:'如来所以兴出世，唯说弥陀本愿海。',en:'The Tathagata appeared in this world solely to teach the ocean of Amitabha\'s primal vow.',author:'善导大师'},
+  {zh:'世间一切重苦，悉由自心所现。心若灭时，苦亦灭。',en:'All heavy sufferings in the world arise from one\'s own mind. When the mind ceases, suffering ceases.',author:'大安法师'},
+  {zh:'厌离娑婆，欣求极乐。',en:'Renounce the Saha world; aspire to the Land of Ultimate Bliss.',author:'善导大师'},
+];
+
+function renderHomePage(){
+  contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el=>el.remove());
+  const page=document.createElement('div');page.className='home-page active';
+
+  // 1. Daily Quote
+  const dayIdx=Math.floor(Date.now()/86400000)%DAILY_QUOTES.length;
+  const quote=DAILY_QUOTES[dayIdx];
+  const quoteText=lang==='zh'?quote.zh:(lang==='en'?quote.en:quote.en);
+
+  // 2. Chanting data
+  const fohaoCat=data.categories.find(c=>c.id==='fohao');
+  const fohaoSeries=fohaoCat?fohaoCat.series.find(s=>s.id==='donglin-fohao'):null;
+  const fohaoEps=fohaoSeries?fohaoSeries.episodes:[];
+  const nowSid=epIdx>=0&&playlist.length?playlist[epIdx].seriesId:null;
+
+  // 3. Continue listening (single entry from pl-state)
+  let continueHtml='';
+  try{
+    const st=JSON.parse(localStorage.getItem('pl-state'));
+    if(st&&st.seriesId){
+      let cSeries=null,cCat=null;
+      for(const c of data.categories){const s=c.series.find(x=>x.id===st.seriesId);if(s){cSeries=s;cCat=c;break;}}
+      if(cSeries){
+        const cIdx=st.idx||0;
+        const ep=cSeries.episodes[cIdx];
+        const epTitle=ep?(ep.title||ep.fileName):'';
+        const pct=st.duration>0?Math.min(100,Math.round((st.time||0)/st.duration*100)):0;
+        const isPlaying=nowSid===st.seriesId&&epIdx===cIdx&&!audio.paused;
+        const icon=isPlaying?ICON_PAUSE:ICON_PLAY;
+        continueHtml=`<div class="home-section"><div class="home-section-title">${t('home_continue')}</div>
+          <div class="home-continue-card${isPlaying?' playing':''}" data-sid="${cSeries.id}" data-cat="${cCat.id}" data-idx="${cIdx}" data-time="${st.time||0}">
+            <div class="home-continue-icon">${icon}</div>
+            <div class="home-continue-body">
+              <div class="home-continue-title">${cSeries.title}</div>
+              <div class="home-continue-sub">${epTitle} · ${cIdx+1}/${cSeries.totalEpisodes}</div>
+            </div>
+            <div class="home-continue-progress"><div class="home-continue-progress-fill" style="width:${pct}%"></div></div>
+          </div>
+        </div>`;
+      }
+    }
+  }catch(e){}
+
+  // 4. Recommended series (pick 3 from tingjingtai)
+  const lectCat=data.categories.find(c=>c.id==='tingjingtai');
+  const recSeries=lectCat?lectCat.series.slice(0,3):[];
+  let recHtml='';
+  if(recSeries.length){
+    recHtml=`<div class="home-section">
+      <div class="home-section-title">${t('home_recommended')}</div>
+      <div class="home-rec-list">${recSeries.map(s=>`
+        <div class="home-rec-card" data-sid="${s.id}" data-cat="tingjingtai">
+          <div class="home-rec-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 3"/></svg></div>
+          <div class="home-rec-body">
+            <div class="home-rec-title">${s.title}</div>
+            <div class="home-rec-sub">${s.speaker||''} · ${s.totalEpisodes} ${t('episodes')}</div>
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  // Chanting cards
+  const chantCards=fohaoEps.map((ep,idx)=>{
+    const isPlaying=nowSid==='donglin-fohao'&&epIdx===idx;
+    return `<div class="home-chant-card${isPlaying?' playing':''}" data-fh-idx="${idx}">
+      <div class="home-chant-icon"><svg viewBox="0 0 24 24"><path d="M12 3c0 0-5 7-5 13s5 5 5 5 5 1 5-5S12 3 12 3z"/></svg></div>
+      <div class="home-chant-name">${ep.title}</div>
+    </div>`;
+  }).join('');
+
+  page.innerHTML=`
+    <div class="home-section">
+      <div class="home-section-title">${t('home_daily_quote')}</div>
+      <div class="home-quote">
+        <div class="home-quote-text">${quoteText}</div>
+        <div class="home-quote-author">— ${quote.author}</div>
+      </div>
+    </div>
+    <div class="home-section">
+      <div class="home-section-title">${t('home_chanting')}</div>
+      <div class="home-chanting-scroll">${chantCards}</div>
+    </div>
+    ${continueHtml}
+    ${recHtml}
+  `;
+  contentArea.appendChild(page);
+
+  // Wire up chanting cards
+  page.querySelectorAll('.home-chant-card').forEach(card=>{
+    card.addEventListener('click',()=>{
+      const idx=parseInt(card.dataset.fhIdx);
+      if(!fohaoSeries)return;
+      // Already playing this track — toggle play/pause
+      const curSid=epIdx>=0&&playlist.length?playlist[epIdx].seriesId:null;
+      if(curSid==='donglin-fohao'&&epIdx===idx){togglePlay();return;}
+      playList(fohaoSeries.episodes,idx,fohaoSeries);
+    });
+  });
+
+  // Wire up continue card
+  const contCard=page.querySelector('.home-continue-card');
+  if(contCard){
+    contCard.addEventListener('click',()=>{
+      const sid=contCard.dataset.sid;
+      const catId=contCard.dataset.cat;
+      const idx=parseInt(contCard.dataset.idx)||0;
+      const restoreTime=parseFloat(contCard.dataset.time)||0;
+      const curSid=epIdx>=0&&playlist.length?playlist[epIdx].seriesId:null;
+      if(curSid===sid&&epIdx===idx){
+        expPlayer.classList.add('show');
+        return;
+      }
+      const cat=data.categories.find(c=>c.id===catId);
+      if(cat){
+        const sr=cat.series.find(s=>s.id===sid);
+        if(sr){
+          playList(sr.episodes,idx,sr,restoreTime);
+          expPlayer.classList.add('show');
+        }
+      }
+    });
+  }
+
+  // Live-update home page play states (continue card icon + chanting card highlights)
+  function updateHomePlayState(){
+    if(isSwitching)return;
+    const curSid=epIdx>=0&&playlist.length?playlist[epIdx].seriesId:null;
+    const playing=!audio.paused;
+    // Update continue card
+    if(contCard){
+      const sid=contCard.dataset.sid;
+      const idx=parseInt(contCard.dataset.idx)||0;
+      const active=curSid===sid&&epIdx===idx&&playing;
+      contCard.classList.toggle('playing',active);
+      const iconEl=contCard.querySelector('.home-continue-icon');
+      if(iconEl)iconEl.innerHTML=active?ICON_PAUSE:ICON_PLAY;
+    }
+    // Update chanting cards
+    page.querySelectorAll('.home-chant-card').forEach(card=>{
+      const idx=parseInt(card.dataset.fhIdx);
+      card.classList.toggle('playing',curSid==='donglin-fohao'&&epIdx===idx&&playing);
+    });
+  }
+  audio.addEventListener('play',updateHomePlayState);
+  audio.addEventListener('pause',updateHomePlayState);
+  const homeObs=new MutationObserver(()=>{
+    if(!page.parentNode){audio.removeEventListener('play',updateHomePlayState);audio.removeEventListener('pause',updateHomePlayState);homeObs.disconnect();}
+  });
+  homeObs.observe(contentArea,{childList:true});
+
+  // Wire up recommended cards
+  page.querySelectorAll('.home-rec-card').forEach(card=>{
+    card.addEventListener('click',()=>{
+      const sid=card.dataset.sid;
+      const catId=card.dataset.cat;
+      const cat=data.categories.find(c=>c.id===catId);
+      if(cat){
+        const sr=cat.series.find(s=>s.id===sid);
+        if(sr)showEpisodes(sr,catId);
+      }
+    });
+  });
+}
+
+/* ===== MY PAGE ===== */
+function fmtRelTime(ts){
+  var d=Date.now()-ts,day=86400000;
+  if(d<day)return t('time_today');
+  if(d<2*day)return t('time_yesterday');
+  var n=Math.floor(d/day);
+  return t('time_days_ago').replace('{n}',n);
+}
+function renderMyPage(){
+  contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el=>el.remove());
+  const page=document.createElement('div');page.className='my-page active';
+  const themeText=dark?t('theme_dark'):t('theme_light');
+  const langText={zh:'中文',en:'English',fr:'Fran\u00E7ais'}[lang]||'中文';
+
+  // Build history section
+  const hist=getHistory();
+  let histHTML='';
+  if(hist.length){
+    histHTML=hist.map(function(h,i){
+      var pct=h.duration>0?Math.round(h.time/h.duration*100):0;
+      return '<div class="my-history-item" data-hid="'+i+'">'
+        +'<div class="my-history-icon"><svg viewBox="0 0 24 24"><polygon points="8,4 20,12 8,20"/></svg></div>'
+        +'<div class="my-history-body">'
+        +'<div class="my-history-title">'+h.seriesTitle+'</div>'
+        +'<div class="my-history-sub">'+h.epTitle+' \u00B7 '+pct+'%</div>'
+        +'</div>'
+        +'<div class="my-history-time">'+fmtRelTime(h.timestamp)+'</div>'
+        +'</div>';
+    }).join('');
+  }else{
+    histHTML='<div class="my-history-empty" data-i18n="my_no_history">'+t('my_no_history')+'</div>';
+  }
+
+  // Build install guide section (only if not standalone)
+  const isStandalone=window.matchMedia('(display-mode: standalone)').matches||navigator.standalone;
+  const ua=navigator.userAgent;
+  const isInApp=/MicroMessenger|WeChat|QQ\/|Weibo|DingTalk|Alipay|baiduboxapp/i.test(ua);
+  const isIOS=/iPad|iPhone|iPod/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  const isSafari=/Safari/.test(ua)&&!/CriOS|FxiOS|Chrome/.test(ua);
+  let installHTML='';
+  if(!isStandalone&&!isInApp){
+    let stepsHTML='';
+    if(isIOS&&isSafari){
+      stepsHTML='<div class="my-install-steps"><svg class="ios-icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12l7-7 7 7" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> '+t('my_install_ios')+'</div>';
+    }else{
+      stepsHTML='<div class="my-install-steps">'+t('my_install_android')+'</div>'
+        +'<button class="my-install-btn" id="myInstallBtn" data-i18n="my_install_btn">'+t('my_install_btn')+'</button>';
+    }
+    installHTML=`
+    <div class="my-section">
+      <div class="my-section-title" data-i18n="my_install">${t('my_install')}</div>
+      <div class="my-install-card">
+        <div class="my-install-top">
+          <div class="my-install-icon"><svg viewBox="0 0 24 24"><path d="M12 15V3m0 12l-4-4m4 4l4-4"/><path d="M2 17l.621 2.485A2 2 0 0 0 4.561 21h14.878a2 2 0 0 0 1.94-1.515L22 17"/></svg></div>
+          <div class="my-install-text">
+            <div class="my-install-text-title" data-i18n="my_install">${t('my_install')}</div>
+            <div class="my-install-text-desc" data-i18n="my_install_desc">${t('my_install_desc')}</div>
+          </div>
+        </div>
+        <div class="my-install-benefit" data-i18n="my_install_benefit">${t('my_install_benefit')}</div>
+        ${stepsHTML}
+      </div>
+    </div>`;
+  }
+
+  page.innerHTML=`
+    <div class="my-profile">
+      <div class="my-avatar">
+        <img src="/icons/logo.png" alt="净土法音" style="width:100%;height:100%;object-fit:contain;">
+      </div>
+      <div class="my-name" data-i18n="my_greeting">${t('my_greeting')}</div>
+      <div class="my-subtitle" data-i18n="my_subtitle">${t('my_subtitle')}</div>
+    </div>
+    <div class="my-section">
+      <div class="my-section-title" data-i18n="my_history">${t('my_history')}</div>
+      <div class="my-list" id="myHistoryList">${histHTML}</div>
+    </div>
+    <div class="my-section">
+      <div class="my-section-title" data-i18n="my_settings">${t('my_settings')}</div>
+      <div class="my-list">
+        <div class="my-item" id="myLangItem">
+          <svg class="my-item-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          <span class="my-item-label" data-i18n="my_lang">${t('my_lang')}</span>
+          <span class="my-item-value" id="myLangValue">${langText}</span>
+          <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
+        </div>
+        <div class="my-item" id="myThemeItem">
+          <svg class="my-item-icon" viewBox="0 0 24 24">${dark?'<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>':'<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'}</svg>
+          <span class="my-item-label" data-i18n="my_theme">${t('my_theme')}</span>
+          <span class="my-item-value" id="myThemeValue">${themeText}</span>
+          <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
+        </div>
+      </div>
+    </div>
+    <div class="my-section">
+      <div class="my-list">
+        <div class="my-item" id="myAboutItem">
+          <svg class="my-item-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <span class="my-item-label" data-i18n="my_about">${t('my_about')}</span>
+          <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
+        </div>
+      </div>
+    </div>
+    ${installHTML}
+    <div class="my-namo">南无阿弥陀佛</div>
+  `;
+  contentArea.appendChild(page);
+
+  // Wire up history item clicks
+  page.querySelectorAll('.my-history-item').forEach(function(el){
+    el.addEventListener('click',function(){
+      var idx=parseInt(el.dataset.hid);
+      var h=getHistory()[idx];
+      if(!h)return;
+      var cat=data.categories.find(function(c){return c.id===h.catId;});
+      if(cat){
+        var sr=cat.series.find(function(s){return s.id===h.seriesId;});
+        if(sr){playList(sr.episodes,h.epIdx,sr,h.time);expPlayer.classList.add('show');}
+      }
+    });
+  });
+
+  // Wire up install button
+  var installBtn=page.querySelector('#myInstallBtn');
+  if(installBtn){
+    installBtn.addEventListener('click',async function(){
+      if(deferredPrompt){
+        deferredPrompt.prompt();
+        var result=await deferredPrompt.userChoice;
+        deferredPrompt=null;
+        if(result.outcome==='accepted')localStorage.setItem('pl-install-dismissed',String(Date.now()));
+      }else{
+        showToast(t('install_menu_hint'));
+      }
+    });
+  }
+
+  // Wire up My page items
+  page.querySelector('#myLangItem').addEventListener('click',()=>{
+    const langs=['zh','en','fr'];
+    const i=(langs.indexOf(lang)+1)%langs.length;
+    setLang(langs[i]);
+    // Re-render to update labels
+    renderMyPage();
+  });
+  page.querySelector('#myThemeItem').addEventListener('click',()=>{
+    dark=!dark;applyTheme();renderMyPage();
+  });
+  page.querySelector('#myAboutItem').addEventListener('click',()=>{
+    $('aboutOverlay').classList.add('show');
+  });
+}
+
+/* ===== PLAYBACK ===== */
+let pendingSeek=0;
+let isSwitching=false;
+const ICON_PLAY='<svg viewBox="0 0 24 24"><polygon points="8,4 20,12 8,20"/></svg>';
+const ICON_PAUSE='<svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+const ICON_PLAY_FILLED='<svg viewBox="0 0 24 24"><polygon points="8,4 20,12 8,20" fill="var(--text-inverse)"/></svg>';
+const ICON_PAUSE_FILLED='<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1" fill="var(--text-inverse)"/><rect x="14" y="4" width="4" height="16" rx="1" fill="var(--text-inverse)"/></svg>';
+function playList(episodes,idx,series,restoreTime){
+  cleanupPreload();
+  const sameSeries=playlist.length&&epIdx>=0&&playlist[epIdx]&&playlist[epIdx].seriesId===series.id;
+  if(!sameSeries){
+    playlist=episodes.map(ep=>({...ep,seriesId:series.id,seriesTitle:series.title,speaker:series.speaker}));
+  }
+  epIdx=idx;pendingSeek=restoreTime||0;playCurrent();
+}
+
+function playCurrent(){
+  if(epIdx<0||epIdx>=playlist.length)return;
+  isSwitching=true;
+  audioRetries=0;
+  const tr=playlist[epIdx];
+  const targetUrl=tr.url;
+  audio.pause();
+  audio.src=targetUrl;
+  audio.playbackRate=SPEEDS[speedIdx];
+  // Show loading state immediately
+  playerTrack.classList.add('buffering');
+  centerPlayBtn.classList.add('buffering');
+  const seekTime=pendingSeek>0?pendingSeek:0;
+  pendingSeek=0;
+  // Wait for canplay before calling play() — avoids play() on readyState=0
+  audio.addEventListener('canplay',function onReady(){
+    audio.removeEventListener('canplay',onReady);
+    // Guard: if user already switched to another track, do nothing
+    if(audio.src!==targetUrl&&!audio.src.endsWith(encodeURI(targetUrl.split('/').pop())))return;
+    if(seekTime>0)audio.currentTime=seekTime;
+    audio.play().catch(()=>{isSwitching=false;setPlayState(false);});
+  });
+  updateUI(tr);highlightEp();
+  updateMediaSession(tr);
+  renderPlaylistItems();
+  addHistory(tr);
+}
+
+function updateUI(tr){
+  const title=tr.title||tr.fileName;
+  playerTrack.textContent=title;
+  const epNum=epIdx>=0?` \u00B7 ${epIdx+1}/${playlist.length}`:'';
+  playerSub.textContent=(tr.seriesTitle||'')+epNum;
+  expTitle.textContent=title;
+  expSeries.textContent=`${tr.seriesTitle||''}${tr.speaker?' \u00B7 '+tr.speaker:''}`;
+  // Series info area in expanded player
+  expSeriesName.textContent=tr.seriesTitle||'';
+  expSeriesSpeaker.textContent=tr.speaker||'';
+  const epNumExp=epIdx>=0?`${epIdx+1} / ${playlist.length}`:'';
+  expSeriesEpCount.textContent=epNumExp;
+  // Reset progress UI to avoid stale display from previous track
+  miniProgressFill.style.width='0%';
+  expProgressFill.style.width='0%';
+  expProgressThumb.style.left='0%';
+  expBufferFill.style.width='0%';
+  expTimeCurr.textContent='0:00';
+  expTimeTotal.textContent='0:00';
+  centerRingFill.style.strokeDashoffset=RING_CIRCUMFERENCE;
+}
+
+function setPlayState(playing){
+  const icon=playing?SVG.pause:SVG.play;
+  btnPlay.innerHTML=icon;
+  expPlay.innerHTML=icon;
+  // Center play button icon + spinning
+  centerPlayIcon.innerHTML=playing?
+    '<rect x="5" y="3" width="4" height="18" rx="1"/><rect x="15" y="3" width="4" height="18" rx="1"/>':
+    '<polygon points="8,4 20,12 8,20"/>';
+  centerPlayBtn.classList.toggle('playing',playing);
+}
+
+function highlightEp(){
+  document.querySelectorAll('.ep-item').forEach((el,i)=>el.classList.toggle('playing',isCurrentTrack(seriesId,i)));
+}
+
+function isCurrentTrack(sid,idx){
+  if(epIdx<0||!playlist.length)return false;
+  const c=playlist[epIdx];
+  return c&&c.seriesId===sid&&idx===epIdx;
+}
+
+function onTimeUpdate(){
+  const dur=audio.duration;
+  if(!dur||!isFinite(dur))return;
+  const ct=audio.currentTime;
+  const p=Math.min(100,(ct/dur)*100);
+  miniProgressFill.style.width=p+'%';
+  expProgressFill.style.width=p+'%';
+  expProgressThumb.style.left=p+'%';
+  expTimeCurr.textContent=fmt(ct);
+  expTimeTotal.textContent=fmt(dur);
+  // Center play button ring
+  const offset=RING_CIRCUMFERENCE*(1-ct/dur);
+  centerRingFill.style.strokeDashoffset=offset;
+  // Buffer progress
+  if(audio.buffered.length>0){
+    const bufEnd=audio.buffered.end(audio.buffered.length-1);
+    expBufferFill.style.width=Math.min(100,(bufEnd/dur)*100)+'%';
+  }
+}
+
+function onEnded(){
+  if(loopMode==='one'){audio.currentTime=0;audio.play();}
+  else if(loopMode==='shuffle'){epIdx=Math.floor(Math.random()*playlist.length);playCurrent();}
+  else if(epIdx<playlist.length-1){epIdx++;playCurrent();}
+  else if(loopMode==='all'){epIdx=0;playCurrent();}
+}
+
+let audioRetries=0;
+function onAudioError(){
+  // Ignore abort errors (caused by switching tracks)
+  if(!audio.error||audio.error.code===MediaError.MEDIA_ERR_ABORTED)return;
+  isSwitching=false;
+  playerTrack.classList.remove('buffering');centerPlayBtn.classList.remove('buffering');
+  if(audio.src&&audioRetries<2){
+    audioRetries++;
+    const src=audio.src;
+    setTimeout(()=>{
+      // Only retry if user hasn't switched to a different track
+      if(audio.src===src){audio.load();audio.play().catch(()=>{});}
+    },1500*audioRetries);
+  } else {
+    setPlayState(false);
+  }
+}
+
+function togglePlay(){if(audio.paused&&audio.src)audio.play().catch(()=>{});else audio.pause();}
+function prevTrack(){if(audio.currentTime>3){audio.currentTime=0;return;}if(epIdx>0){epIdx--;playCurrent();}}
+function nextTrack(){
+  if(loopMode==='shuffle')epIdx=Math.floor(Math.random()*playlist.length);
+  else if(epIdx<playlist.length-1)epIdx++;
+  else if(loopMode==='all')epIdx=0;
+  else return;
+  playCurrent();
+}
+
+/* ===== PRELOAD NEXT TRACK ===== */
+let preloadAudio=null,preloadedUrl='';
+function getNextTrackIdx(){
+  if(!playlist.length)return -1;
+  if(loopMode==='shuffle')return -1;
+  if(epIdx<playlist.length-1)return epIdx+1;
+  if(loopMode==='all')return 0;
+  return -1;
+}
+function preloadNextTrack(){
+  const ni=getNextTrackIdx();
+  if(ni<0){cleanupPreload();return;}
+  const nurl=playlist[ni]?.url;
+  if(!nurl||nurl===preloadedUrl)return;
+  const conn=navigator.connection||navigator.mozConnection;
+  if(conn&&(conn.saveData||conn.effectiveType==='2g'))return;
+  cleanupPreload();
+  preloadAudio=new Audio();
+  preloadAudio.preload='metadata';
+  preloadAudio.src=nurl;
+  preloadedUrl=nurl;
+}
+function cleanupPreload(){
+  if(preloadAudio){preloadAudio.src='';preloadAudio.load();preloadAudio=null;}
+  preloadedUrl='';
+}
+
+function applyLoopUI(){
+  const btn=$('expLoop');
+  if(loopMode==='one'){
+    btn.innerHTML=SVG.loopOne;
+    btn.classList.add('active');
+    btn.title=t('loop_one')||'Single loop';
+  }else if(loopMode==='shuffle'){
+    btn.innerHTML=SVG.shuffle;
+    btn.classList.add('active');
+    btn.title=t('loop_shuffle')||'Shuffle';
+  }else{
+    // Default: all (list loop)
+    loopMode='all';
+    btn.innerHTML=SVG.loopAll;
+    btn.classList.add('active');
+    btn.title=t('loop_all')||'Loop all';
+  }
+}
+
+function cycleLoop(){
+  const modes=['all','one','shuffle'];
+  const i=(modes.indexOf(loopMode)+1)%modes.length;
+  loopMode=modes[i];
+  applyLoopUI();
+}
+
+function shareTrack(ep,series){
+  const title=(ep.title||ep.fileName)+' - '+(series.title||'');
+  const text=title+'\n'+t('share_from');
+  const url=window.location.origin+window.location.pathname;
+  if(navigator.share){
+    navigator.share({title:title,text:text,url:url}).catch(()=>{});
+  }else{
+    // Fallback: copy link to clipboard
+    const full=url+'#'+encodeURIComponent(series.id+'/'+ep.id);
+    navigator.clipboard.writeText(text+'\n'+full).then(()=>{
+      showToast(t('link_copied'));
+    }).catch(()=>{});
+  }
+}
+
+function showToast(msg){
+  let toast=document.querySelector('.toast');
+  if(!toast){
+    toast=document.createElement('div');
+    toast.className='toast';
+    toast.style.cssText='position:fixed;bottom:calc(64px + var(--safe-bottom) + 16px);left:50%;transform:translateX(-50%);background:var(--text);color:var(--text-inverse);padding:8px 20px;border-radius:20px;font-size:.78rem;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none;font-family:var(--font-zh)';
+    document.body.appendChild(toast);
+  }
+  toast.textContent=msg;
+  toast.style.opacity='1';
+  setTimeout(()=>{toast.style.opacity='0';},2000);
+}
+
+function seekAt(e,el){
+  const r=el.getBoundingClientRect();
+  const p=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width));
+  if(audio.duration&&isFinite(audio.duration))audio.currentTime=p*audio.duration;
+}
+
+function fmt(s){if(!s||!isFinite(s))return '0:00';const m=Math.floor(s/60);return m+':'+String(Math.floor(s%60)).padStart(2,'0');}
+
+/* ===== PLAYLIST PANEL ===== */
+let playlistVisible=false;
+function togglePlaylist(){
+  playlistVisible=!playlistVisible;
+  playlistPanel.classList.toggle('show',playlistVisible);
+  expPlayerContent.classList.toggle('hide',playlistVisible);
+  expQueue.classList.toggle('active',playlistVisible);
+  if(playlistVisible)renderPlaylistItems();
+}
+
+function renderPlaylistItems(){
+  if(!playlistVisible)return;
+  plCount.textContent=playlist.length+' '+t(tab==='fohao'?'tracks':'episodes');
+  plItems.innerHTML='';
+  playlist.forEach((tr,i)=>{
+    const div=document.createElement('div');
+    div.className='pl-item'+(i===epIdx?' current':'');
+    div.innerHTML=`<span class="pl-item-num">${i+1}</span><span class="pl-item-title">${tr.title||tr.fileName}</span>`;
+    div.addEventListener('click',()=>{epIdx=i;playCurrent();});
+    plItems.appendChild(div);
+  });
+  // Scroll current into view
+  const cur=plItems.querySelector('.current');
+  if(cur)cur.scrollIntoView({block:'center',behavior:'smooth'});
+}
+
+/* ===== SPEED CONTROL ===== */
+const SPEEDS=[0.75,1.0,1.25,1.5,1.75,2.0];
+let speedIdx=1;
+function cycleSpeed(){
+  speedIdx=(speedIdx+1)%SPEEDS.length;
+  const s=SPEEDS[speedIdx];
+  audio.playbackRate=s;
+  $('expSpeed').textContent=s===1?'1.0x':s+'x';
+  $('expSpeed').classList.toggle('active',s!==1);
+}
+
+/* ===== SLEEP TIMER ===== */
+const TIMER_OPTS=[0,30,60,120,180];
+let timerIdx=0;
+let sleepTimerId=null;
+let sleepRemaining=0;
+function cycleSleepTimer(){
+  timerIdx=(timerIdx+1)%TIMER_OPTS.length;
+  const mins=TIMER_OPTS[timerIdx];
+  if(sleepTimerId){clearInterval(sleepTimerId);sleepTimerId=null;}
+  const btn=$('expTimer');
+  // Remove any existing badge
+  const oldBadge=btn.querySelector('.timer-badge');
+  if(oldBadge)oldBadge.remove();
+  if(mins===0){
+    sleepRemaining=0;
+    btn.classList.remove('active');
+    showToast(t('timer_off'));
+  }else{
+    sleepRemaining=mins*60;
+    btn.classList.add('active');
+    // Add badge showing minutes
+    const badge=document.createElement('span');
+    badge.className='timer-badge';
+    badge.textContent=mins;
+    btn.appendChild(badge);
+    showToast(t('timer_set')+mins+t('timer_min'));
+    sleepTimerId=setInterval(()=>{
+      sleepRemaining--;
+      // Update badge with remaining minutes
+      const remaining=Math.ceil(sleepRemaining/60);
+      const b=btn.querySelector('.timer-badge');
+      if(b)b.textContent=remaining;
+      if(sleepRemaining<=0){
+        clearInterval(sleepTimerId);sleepTimerId=null;
+        audio.pause();timerIdx=0;
+        btn.classList.remove('active');
+        const bd=btn.querySelector('.timer-badge');
+        if(bd)bd.remove();
+      }
+    },1000);
+  }
+}
+
+/* ===== BACK NAVIGATION GUARD ===== */
+function initBackGuard(){
+  // Only needed in browser mode, not standalone PWA
+  if(window.matchMedia('(display-mode: standalone)').matches)return;
+  if(navigator.standalone)return;
+  history.replaceState({page:'main'},'');
+  history.pushState({page:'guard'},'');
+  window.addEventListener('popstate',function(e){
+    // Expanded player open → close it
+    if(expPlayer.classList.contains('show')){
+      expPlayer.classList.remove('show');
+      history.pushState({page:'guard'},'');
+      return;
+    }
+    // Episode detail view open → go back to category list
+    var epView=contentArea.querySelector('.ep-view');
+    if(epView){
+      epView.remove();
+      renderCategory(tab);
+      history.pushState({page:'guard'},'');
+      return;
+    }
+    // Not on home tab → switch to home
+    if(tab!=='home'){
+      document.querySelector('.tab[data-tab="home"]').click();
+      history.pushState({page:'guard'},'');
+      return;
+    }
+    // Already on home with nothing open → stay on page (don't navigate away)
+    history.pushState({page:'guard'},'');
+  });
+}
+
+/* ===== PWA INSTALL PROMPT ===== */
+let deferredPrompt=null;
+function initInstallPrompt(){
+  const banner=$('installBanner');
+  const iosGuide=$('iosGuide');
+  const dismissed=localStorage.getItem('pl-install-dismissed');
+  // Don't show if already installed or recently dismissed
+  if(window.matchMedia('(display-mode: standalone)').matches)return;
+  if(navigator.standalone)return;
+  if(dismissed){
+    const ts=parseInt(dismissed,10);
+    if(Date.now()-ts<7*24*60*60*1000)return;
+  }
+
+  // Skip install prompt in in-app browsers (WeChat, QQ, Weibo, etc.)
+  const ua=navigator.userAgent;
+  const isInApp=/MicroMessenger|WeChat|QQ\/|Weibo|DingTalk|Alipay|baiduboxapp/i.test(ua);
+  if(isInApp)return;
+
+  // Detect iOS Safari
+  const isIOS=/iPad|iPhone|iPod/.test(ua)||
+    (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  const isSafari=/Safari/.test(ua)&&!/CriOS|FxiOS|Chrome/.test(ua);
+
+  if(isIOS&&isSafari){
+    setTimeout(()=>{iosGuide.classList.add('show');},2000);
+    $('iosGuideClose').addEventListener('click',()=>{
+      iosGuide.classList.remove('show');
+      localStorage.setItem('pl-install-dismissed',String(Date.now()));
+    });
+    return;
+  }
+
+  // Android/Desktop: capture beforeinstallprompt then show our banner
+  window.addEventListener('beforeinstallprompt',(e)=>{
+    e.preventDefault();
+    deferredPrompt=e;
+    banner.classList.add('show');
+  });
+
+  // Install accept — directly trigger system install dialog
+  $('installAccept').addEventListener('click',async()=>{
+    if(deferredPrompt){
+      deferredPrompt.prompt();
+      const result=await deferredPrompt.userChoice;
+      deferredPrompt=null;
+      banner.classList.remove('show');
+      if(result.outcome==='accepted')localStorage.setItem('pl-install-dismissed',String(Date.now()));
+    }else{
+      showToast(t('install_menu_hint'));
+      banner.classList.remove('show');
+    }
+  });
+
+  $('installDismiss').addEventListener('click',()=>{
+    banner.classList.remove('show');
+    deferredPrompt=null;
+    localStorage.setItem('pl-install-dismissed',String(Date.now()));
+  });
+
+  window.addEventListener('appinstalled',()=>{
+    banner.classList.remove('show');
+    localStorage.setItem('pl-install-dismissed',String(Date.now()));
+  });
+}
+
+/* ===== MEDIA SESSION ===== */
+function updateMediaSession(tr){
+  if(!('mediaSession' in navigator))return;
+  navigator.mediaSession.metadata=new MediaMetadata({
+    title:tr.title||tr.fileName,
+    artist:tr.speaker||'\u5927\u5B89\u6CD5\u5E08',
+    album:tr.seriesTitle||'\u51C0\u571F\u6CD5\u97F3'
+  });
+  try{
+    navigator.mediaSession.setActionHandler('play',()=>audio.play());
+    navigator.mediaSession.setActionHandler('pause',()=>audio.pause());
+    navigator.mediaSession.setActionHandler('previoustrack',prevTrack);
+    navigator.mediaSession.setActionHandler('nexttrack',nextTrack);
+    navigator.mediaSession.setActionHandler('seekbackward',()=>{if(audio.duration)audio.currentTime=Math.max(0,audio.currentTime-10);});
+    navigator.mediaSession.setActionHandler('seekforward',()=>{if(audio.duration)audio.currentTime=Math.min(audio.duration,audio.currentTime+10);});
+    navigator.mediaSession.setActionHandler('seekto',(d)=>{if(d.seekTime!=null)audio.currentTime=d.seekTime;});
+  }catch(e){}
+}
+
+/* ===== PLAY HISTORY ===== */
+function getHistory(){
+  try{var h=JSON.parse(localStorage.getItem('pl-history'))||[];return h.filter(function(x){return x.seriesTitle&&x.epTitle&&x.timestamp;});}catch(e){return[];}
+}
+function addHistory(tr){
+  if(!tr||!tr.seriesId)return;
+  try{
+    var h=getHistory();
+    // Remove duplicate (same series + same episode)
+    h=h.filter(function(x){return !(x.seriesId===tr.seriesId&&x.epIdx===epIdx);});
+    // Find catId for this series
+    var catId='';
+    for(var ci=0;ci<data.categories.length;ci++){
+      if(data.categories[ci].series.some(function(s){return s.id===tr.seriesId;})){catId=data.categories[ci].id;break;}
+    }
+    h.unshift({
+      seriesId:tr.seriesId, seriesTitle:tr.seriesTitle||'', speaker:tr.speaker||'',
+      catId:catId, epIdx:epIdx, epTitle:tr.title||tr.fileName||'',
+      time:audio.currentTime||0, duration:audio.duration||0, timestamp:Date.now()
+    });
+    if(h.length>20)h=h.slice(0,20);
+    localStorage.setItem('pl-history',JSON.stringify(h));
+  }catch(e){}
+}
+function syncHistoryProgress(){
+  if(epIdx<0||!playlist[epIdx])return;
+  try{
+    var h=getHistory();
+    var tr=playlist[epIdx];
+    for(var i=0;i<h.length;i++){
+      if(h[i].seriesId===tr.seriesId&&h[i].epIdx===epIdx){
+        h[i].time=audio.currentTime||0;
+        h[i].duration=audio.duration||0;
+        break;
+      }
+    }
+    localStorage.setItem('pl-history',JSON.stringify(h));
+  }catch(e){}
+}
+
+/* ===== PERSISTENCE ===== */
+function saveState(){
+  try{
+    const tr=playlist[epIdx];
+    if(!tr)return;
+    localStorage.setItem('pl-state',JSON.stringify({
+      seriesId:tr.seriesId, idx:epIdx, time:audio.currentTime, duration:audio.duration||0,
+      tab:tab, loop:loopMode, speed:SPEEDS[speedIdx]
+    }));
+    syncHistoryProgress();
+  }catch(e){}
+}
+
+function restoreState(){
+  try{
+    const s=JSON.parse(localStorage.getItem('pl-state'));
+    if(!s||!s.seriesId)return;
+    for(const cat of data.categories){
+      const sr=cat.series.find(x=>x.id===s.seriesId);
+      if(sr){
+        playlist=sr.episodes.map(ep=>({...ep,seriesId:sr.id,seriesTitle:sr.title,speaker:sr.speaker}));
+        epIdx=s.idx||0;
+        const tr=playlist[epIdx];
+        if(tr){audio.src=tr.url;if(s.time)audio.addEventListener('loadedmetadata',()=>{audio.currentTime=s.time;},{once:true});updateUI(tr);}
+        if(s.loop){
+          loopMode=(s.loop==='none')?'all':s.loop;
+          applyLoopUI();
+        }
+        if(s.speed&&s.speed!==1){
+          const si=SPEEDS.indexOf(s.speed);
+          if(si>=0){speedIdx=si;audio.playbackRate=s.speed;$('expSpeed').textContent=s.speed+'x';$('expSpeed').classList.add('active');}
+        }
+        if(s.tab){
+          tab=s.tab==='fohao'?'home':s.tab;
+          document.querySelectorAll('.tab').forEach(b=>{
+            b.classList.toggle('active',b.dataset.tab===tab);
+            b.setAttribute('aria-selected',b.dataset.tab===tab?'true':'false');
+          });
+          const ti18n={home:'tab_home',tingjingtai:'tab_lectures',youshengshu:'tab_audiobooks',mypage:'tab_my'};
+          navTitle.textContent=t(ti18n[tab]||'tab_home');
+          navTitle.dataset.i18n=ti18n[tab]||'tab_home';
+          if(tab==='mypage')renderMyPage();
+          else if(tab==='home')renderHomePage();
+          else renderCategory(tab);
+        }
+        isFirstVisit=false;
+        break;
+      }
+    }
+  }catch(e){}
+}
+
+})();
+</script>
 <!-- Cloudflare Web Analytics -->
 <script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "f38885f2d3d74708bea94eb8c9c8531f"}'></script>
 <!-- End Cloudflare Web Analytics -->
