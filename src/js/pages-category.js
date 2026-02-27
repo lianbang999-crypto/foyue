@@ -1,0 +1,97 @@
+/* ===== Category & Episode Views ===== */
+import { state } from './state.js';
+import { t } from './i18n.js';
+import { getDOM } from './dom.js';
+import { CATEGORY_ICONS, ICON_PLAY_FILLED, ICON_PAUSE_FILLED } from './icons.js';
+import { playList, togglePlay, isCurrentTrack, getIsSwitching } from './player.js';
+import { renderHomePage } from './pages-home.js';
+
+export function renderCategory(tabId) {
+  const dom = getDOM();
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el => el.remove());
+  const cat = state.data.categories.find(c => c.id === tabId);
+  if (!cat) { dom.contentArea.innerHTML = `<div class="loader-text">${t('no_content')}</div>`; return; }
+  const wrap = document.createElement('div');
+  wrap.className = 'view active';
+  const list = document.createElement('div');
+  list.className = 'series-list';
+  const unit = tabId === 'fohao' ? t('tracks') : t('episodes');
+  const nowSid = state.epIdx >= 0 && state.playlist.length ? state.playlist[state.epIdx].seriesId : null;
+
+  cat.series.forEach(s => {
+    const card = document.createElement('div');
+    const isPlaying = s.id === nowSid;
+    card.className = 'card' + (isPlaying ? ' now-playing' : '');
+    const introHtml = s.intro ? `<div class="card-intro">${s.intro}</div>` : '';
+    const playTag = isPlaying ? `<span class="card-playing-tag">${t('now_playing')}</span>` : '';
+    card.innerHTML = `<div class="card-icon">${CATEGORY_ICONS[tabId] || CATEGORY_ICONS.tingjingtai}</div>
+      <div class="card-body"><div class="card-title">${s.title}${playTag}</div>${introHtml}<div class="card-meta">${s.speaker || ''} \u00B7 ${s.totalEpisodes} ${unit}</div></div>
+      <span class="card-arrow"><svg viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg></span>`;
+    card.addEventListener('click', () => showEpisodes(s, tabId));
+    list.appendChild(card);
+  });
+  wrap.appendChild(list);
+  dom.contentArea.appendChild(wrap);
+}
+
+export function showEpisodes(series, tabId) {
+  const dom = getDOM();
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el => el.remove());
+  state.seriesId = series.id;
+  const unit = tabId === 'fohao' ? t('tracks') : t('episodes');
+  const introHdr = series.intro ? `<div class="ep-header-intro">${series.intro}</div>` : '';
+  const view = document.createElement('div');
+  view.className = 'view active ep-view';
+  view.innerHTML = `<div class="ep-header">
+    <button class="btn-back" id="backBtn"><svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg></button>
+    <div class="ep-header-info"><div class="ep-header-title">${series.title}</div><div class="ep-header-sub">${series.speaker || ''} \u00B7 ${series.totalEpisodes} ${unit}</div>${introHdr}</div>
+    <button class="btn-play-all" id="playAllBtn" aria-label="${t('play_all')}"><svg viewBox="0 0 24 24"><polygon points="8,4 20,12 8,20"/></svg></button>
+  </div><ul class="ep-list" id="epList"></ul>`;
+  dom.contentArea.appendChild(view);
+
+  view.querySelector('#backBtn').addEventListener('click', () => {
+    state.seriesId = null;
+    if (state.tab === 'home') renderHomePage();
+    else renderCategory(state.tab);
+  });
+
+  const playAllBtn = view.querySelector('#playAllBtn');
+  function updatePlayAllBtn() {
+    if (getIsSwitching()) return;
+    const isThisSeries = state.playlist.length && state.epIdx >= 0 && state.playlist[state.epIdx] && state.playlist[state.epIdx].seriesId === series.id;
+    const playing = isThisSeries && !dom.audio.paused;
+    playAllBtn.innerHTML = playing ? ICON_PAUSE_FILLED : ICON_PLAY_FILLED;
+  }
+  updatePlayAllBtn();
+  dom.audio.addEventListener('play', updatePlayAllBtn);
+  dom.audio.addEventListener('pause', updatePlayAllBtn);
+  const obs = new MutationObserver(() => {
+    if (!view.parentNode) { dom.audio.removeEventListener('play', updatePlayAllBtn); dom.audio.removeEventListener('pause', updatePlayAllBtn); obs.disconnect(); }
+  });
+  obs.observe(dom.contentArea, { childList: true });
+
+  playAllBtn.addEventListener('click', () => {
+    const isThisSeries = state.playlist.length && state.epIdx >= 0 && state.playlist[state.epIdx] && state.playlist[state.epIdx].seriesId === series.id;
+    if (isThisSeries) { togglePlay(); }
+    else { playList(series.episodes, 0, series); }
+  });
+
+  const hasAudio = !!dom.audio.src;
+  const alreadyPlaying = state.playlist.length && state.epIdx >= 0 && state.playlist[state.epIdx] && state.playlist[state.epIdx].seriesId === series.id;
+  if (!hasAudio && !alreadyPlaying && series.episodes.length) playList(series.episodes, 0, series);
+
+  const ul = view.querySelector('#epList');
+  series.episodes.forEach((ep, idx) => {
+    const li = document.createElement('li');
+    li.className = 'ep-item' + (isCurrentTrack(series.id, idx) ? ' playing' : '');
+    const introHtml = ep.intro ? `<span class="ep-intro">${ep.intro}</span>` : '';
+    li.innerHTML = `<span class="ep-num">${ep.id || idx + 1}</span>
+      <div class="eq-bars"><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span></div>
+      <div class="ep-text"><span class="ep-title">${ep.title || ep.fileName}</span>${introHtml}</div>`;
+    li.addEventListener('click', () => {
+      if (isCurrentTrack(series.id, idx)) { togglePlay(); return; }
+      playList(series.episodes, idx, series);
+    });
+    ul.appendChild(li);
+  });
+}

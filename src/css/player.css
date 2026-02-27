@@ -1,0 +1,94 @@
+/* === PLAYLIST PANEL (slides up in expanded player) === */
+.playlist-panel{display:none;flex-direction:column;flex:1;overflow:hidden;padding:0 20px}
+.playlist-panel.show{display:flex}
+.playlist-head{display:flex;align-items:center;justify-content:space-between;padding:0 0 10px;border-bottom:1px solid var(--border);margin-bottom:6px;flex-shrink:0}
+.playlist-head-title{font-size:.86rem;font-weight:500;color:var(--text)}
+.playlist-count{font-family:var(--font-en);font-size:.7rem;color:var(--text-muted)}
+.playlist-items{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.pl-item{display:flex;align-items:center;gap:10px;padding:10px 4px;cursor:pointer;border-radius:var(--radius-sm);transition:background .15s;min-height:44px}
+.pl-item:hover{background:var(--accent-glow)}
+.pl-item.current{background:var(--accent-glow)}
+.pl-item-num{font-family:var(--font-en);font-size:.72rem;color:var(--text-muted);width:24px;text-align:center;flex-shrink:0}
+.pl-item.current .pl-item-num{color:var(--accent)}
+.pl-item-title{flex:1;font-size:.82rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.pl-item.current .pl-item-title{color:var(--accent);font-weight:500}
+
+/* === PLAYER BAR - hidden (replaced by center play button) === */
+.player{display:none}
+
+/* Control buttons - modern circle style */
+.ctrl{-webkit-appearance:none;appearance:none;background:none;border:none;color:var(--text-secondary);cursor:pointer;width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:50%;transition:all .15s}
+.ctrl:hover{color:var(--text);background:var(--accent-glow)}
+.ctrl svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.ctrl.active{color:var(--accent)}
+
+/* Play/pause - the hero button */
+.ctrl-play{width:44px;height:44px;background:var(--accent);border-radius:50%;color:var(--text-inverse);box-shadow:0 2px 12px rgba(154,123,60,0.25)}
+.ctrl-play:hover{background:var(--accent);opacity:.88;transform:scale(1.04);color:var(--text-inverse)}
+.ctrl-play svg{width:20px;height:20px;fill:currentColor;stroke:none}
+
+/* === EXPANDED PLAYER === */
+.expanded{position:fixed;inset:0;z-index:300;background:var(--bg);transform:translateY(100%);transition:transform .4s cubic-bezier(.16,1,.3,1);display:flex;flex-direction:column;overflow:hidden}
+.expanded.show{transform:translateY(0)}
+
+/* Top bar - fixed at top */
+.exp-top{display:flex;align-items:center;justify-content:space-between;padding:max(12px,env(safe-area-inset-top)) 16px 8px;flex-shrink:0}
+.exp-label{font-family:var(--font-en);font-size:.68rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.12em;font-weight:500}
+.exp-top .btn-icon{min-width:44px;height:44px}
+.exp-top-right{display:flex;align-items:center;gap:0}
+
+/* Scrollable middle area */
+.exp-player-content{display:flex;flex-direction:column;flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:0 20px}
+.exp-player-content.hide{display:none}
+
+/* Series info area (replaces cover art) */
+.exp-series-info{width:min(260px,70vw);margin:8px auto 20px;background:var(--accent-glow);border:1px solid var(--border);border-radius:16px;padding:22px 18px;text-align:center;position:relative;overflow:hidden;flex-shrink:0}
+.exp-series-info::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 35% 35%,rgba(212,175,55,0.06),transparent 60%)}
+.exp-series-icon{width:52px;height:34px;margin:0 auto 12px;stroke:var(--accent);fill:none;stroke-width:1;opacity:.4}
+.exp-series-name{font-size:.88rem;font-weight:500;color:var(--text);margin-bottom:3px;position:relative;line-height:1.4}
+.exp-series-speaker{font-size:.72rem;color:var(--text-secondary);position:relative}
+.exp-series-ep-count{font-family:var(--font-en);font-size:.66rem;color:var(--text-muted);margin-top:5px;position:relative}
+
+/* Track info */
+.exp-info{text-align:center;margin-bottom:20px;flex-shrink:0}
+.exp-title{font-size:1.05rem;font-weight:500;color:var(--text);margin-bottom:3px;line-height:1.4}
+.exp-series{font-size:.75rem;color:var(--text-secondary)}
+
+/* Bottom controls area - pinned to bottom */
+.exp-bottom{flex-shrink:0;padding:0 20px max(16px,var(--safe-bottom));background:var(--bg)}
+
+/* Progress bar */
+.exp-progress{margin-bottom:14px;touch-action:none;-webkit-user-select:none;user-select:none}
+.exp-progress-bar{width:100%;height:36px;cursor:pointer;position:relative;display:flex;align-items:center}
+.exp-progress-track{width:100%;height:4px;background:var(--border);border-radius:2px;position:relative}
+.exp-progress-fill{height:100%;background:var(--accent);border-radius:2px;width:0%;transition:width .1s linear;position:relative;z-index:1}
+.exp-progress-thumb{position:absolute;top:50%;transform:translate(-50%,-50%);width:16px;height:16px;background:var(--accent);border-radius:50%;box-shadow:0 0 8px rgba(154,123,60,0.25);left:0%;transition:left .1s linear;z-index:2}
+.exp-time{display:flex;justify-content:space-between;font-family:var(--font-en);font-size:.7rem;color:var(--text-muted);margin-top:2px}
+
+/* Expanded controls - 5 buttons: skip-15 / prev / play / next / skip+15 */
+.exp-ctrls{display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:12px}
+.exp-ctrls .ctrl{width:46px;height:46px}
+.exp-ctrls .ctrl svg{width:20px;height:20px}
+.exp-ctrls .ctrl-play{width:58px;height:58px;box-shadow:0 4px 20px rgba(154,123,60,0.3)}
+.exp-ctrls .ctrl-play svg{width:24px;height:24px}
+.exp-ctrls .ctrl-skip{position:relative}
+.exp-ctrls .ctrl-skip svg{width:20px;height:20px}
+.exp-ctrls .ctrl-skip .skip-label{position:absolute;font-family:var(--font-en);font-size:.5rem;font-weight:700;color:currentColor;bottom:8px;left:50%;transform:translateX(-50%);pointer-events:none;line-height:1}
+
+/* Secondary: loop / speed / timer / playlist */
+.exp-secondary{display:flex;align-items:center;justify-content:center;gap:12px}
+.exp-secondary .ctrl{width:42px;height:42px}
+
+/* Sleep timer badge */
+.timer-badge{position:absolute;top:2px;right:2px;background:var(--accent);color:var(--text-inverse);font-family:var(--font-en);font-size:.5rem;font-weight:600;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 3px;line-height:1}
+
+/* === SPEED CONTROL === */
+.speed-btn{font-family:var(--font-en);font-size:.7rem;font-weight:600;min-width:44px;letter-spacing:-.01em}
+.speed-btn .ctrl-label{font-size:.66rem}
+
+/* === BUFFERING === */
+.player-track.buffering::after{content:'...';animation:bufDots 1s steps(3) infinite}
+@keyframes bufDots{0%{content:'.'}33%{content:'..'}66%{content:'...'}}
+.center-play-btn.buffering{animation:centerPulse 1.2s ease-in-out infinite}
+@keyframes centerPulse{0%,100%{box-shadow:0 2px 16px rgba(154,123,60,.3)}50%{box-shadow:0 2px 24px rgba(154,123,60,.6)}}
+.exp-progress-buffer{position:absolute;height:100%;background:var(--accent);opacity:.15;border-radius:2px;width:0%;transition:width .3s linear}

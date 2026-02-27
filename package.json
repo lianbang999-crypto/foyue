@@ -1,0 +1,15 @@
+{
+  "name": "foyue",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "净土法音 - Pure Land Buddhist Dharma Audio Player",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}

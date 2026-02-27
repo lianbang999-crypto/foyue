@@ -4,6 +4,60 @@
 
 ---
 
+## 2026-02-27
+
+### Vite + ES Modules 全量重构
+
+将单文件 index.html（2135 行）重构为 Vite 模块化项目：
+
+**构建工具**
+- 引入 Vite 作为构建工具（`npm run dev` / `npm run build` / `npm run preview`）
+- 构建目标：es2020 + safari14
+- 压缩：esbuild
+- 开发模式 API 代理到 foyue.org
+
+**CSS 拆分**（从 index.html 提取到 7 个文件）
+- `src/css/tokens.css` — CSS 变量（浅色 + 深色主题）
+- `src/css/reset.css` — CSS Reset
+- `src/css/layout.css` — 应用壳布局
+- `src/css/player.css` — 播放器样式
+- `src/css/cards.css` — 卡片和列表
+- `src/css/pages.css` — 首页和"我的"页面
+- `src/css/components.css` — 通用组件
+
+**JavaScript 拆分**（从内联 IIFE 拆分为 13 个 ES Module）
+- `main.js` — 入口 + 事件绑定 + 数据加载
+- `state.js` — 共享状态
+- `dom.js` — DOM 引用
+- `i18n.js` — 国际化
+- `theme.js` — 主题管理
+- `icons.js` — SVG 图标常量
+- `utils.js` — 工具函数
+- `history.js` — 播放历史
+- `player.js` — 播放器核心
+- `search.js` — 搜索
+- `pwa.js` — PWA 安装引导 + 后退保护
+- `pages-home.js` — 首页
+- `pages-my.js` — "我的"页面
+- `pages-category.js` — 分类/集数页面
+
+**i18n 改造**
+- 从内嵌 JS 对象改为 JSON 文件（`src/locales/zh.json`, `en.json`, `fr.json`）
+- `share_from` 翻译键更新为 foyue.org
+
+**架构变更**
+- 静态资源移到 `public/` 目录
+- 删除 `workers/` 目录，统一使用 Pages Functions
+- 部署方式从手动 wrangler deploy 改为 Git Push 自动部署
+- index.html 从 2135 行缩减到 265 行
+
+**构建产物**
+- HTML: ~14 KB
+- CSS: ~31 KB (gzip ~6 KB)
+- JS: ~51 KB (gzip ~17 KB)
+
+---
+
 ## 2026-02-26
 
 ### 播放历史优化
@@ -36,7 +90,7 @@
 - 新增：PWA 安装引导（"我的"页面显示安装说明）
 
 ### 部署
-- 首次部署到 Cloudflare Pages（bojingji.pages.dev）
+- 首次部署到 Cloudflare Pages
 
 ---
 

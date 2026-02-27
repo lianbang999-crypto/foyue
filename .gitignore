@@ -12,6 +12,9 @@ Thumbs.db
 # Node
 node_modules/
 
+# Build output
+dist/
+
 # Cloudflare
 .wrangler/
 .dev.vars

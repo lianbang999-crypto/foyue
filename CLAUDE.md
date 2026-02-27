@@ -9,8 +9,7 @@
 **净土法音**是一个佛教净土宗音频内容平台 PWA。用户可以在线收听佛号、法师讲经等音频，未来会扩展文章阅读、AI 功能、社区互动等。
 
 - 线上地址：https://foyue.org
-- 备用地址：https://bojingji.pages.dev
-- 旧域名：https://fayin.uk（迁移中）
+- 备用地址：https://amituofo.pages.dev
 - GitHub 仓库：https://github.com/lianbang999-crypto/bojingji
 
 ---
@@ -21,10 +20,10 @@
 
 | 工位 | GitHub 账号 | 职责 | 文件范围 |
 |------|------------|------|---------|
-| 架构 + 审核 | lianbang999-crypto | 架构决策、代码 Review、PR 合并、文档维护、内容管理 | 所有文件（侧重 .md 文档和 data/） |
-| 前端开发 | fayin001 | 功能页面开发、PWA、Bug 修复、多设备适配 | index.html, css/, js/（UI 相关）, icons/ |
-| 后端 + AI | fayin002 | Workers API、D1 数据库、AI Gateway、AI 功能 | workers/, js/api.js（API 调用层） |
-| SEO + 测试 | fayin003 | SEO 优化、兼容性测试、部署运维、多主题 | meta 标签, sitemap.xml, robots.txt, manifest.json |
+| 架构 + 审核 | lianbang999-crypto | 架构决策、代码 Review、PR 合并、文档维护、内容管理 | 所有文件（侧重 .md 文档和 public/data/） |
+| 前端开发 | fayin001 | 功能页面开发、PWA、Bug 修复、多设备适配 | index.html, src/css/, src/js/（UI 相关）, public/icons/ |
+| 后端 + AI | fayin002 | Pages Functions API、D1 数据库、AI 功能 | functions/, src/js/（API 调用层） |
+| SEO + 测试 | fayin003 | SEO 优化、兼容性测试、部署运维 | index.html meta 标签, public/sitemap.xml, public/robots.txt, public/manifest.json |
 
 **如果需要改不属于你工位的文件，先在 PR 中说明原因。**
 
@@ -33,51 +32,70 @@
 ## 技术架构
 
 ```
-当前：
-  前端 → Cloudflare Pages（HTML/CSS/JS）
-  音频 → Cloudflare R2
-
-未来（逐步演进）：
-  后端 API → Cloudflare Workers
-  数据库 → Cloudflare D1
-  AI → Cloudflare Workers AI + AI Gateway
+前端构建 → Vite（ES Modules，输出到 dist/）
+静态托管 → Cloudflare Pages（Git Push 自动部署）
+后端 API → Cloudflare Pages Functions（functions/ 目录）
+数据库 → Cloudflare D1（foyue-db）
+音频存储 → Cloudflare R2（4 个存储桶）
+字体 → Google Fonts CDN（Noto Sans SC + DM Sans）
 ```
 
 ## 文件结构
 
 ```
-bojingji/
-├── index.html           # HTML 结构
-├── manifest.json        # PWA 配置
-├── css/
-│   └── style.css        # 全部样式
-├── js/
-│   ├── app.js           # 入口，初始化和事件绑定
-│   ├── data.js          # 数据加载（fetch audio-data.json）
-│   ├── render.js        # 页面渲染（首页、分类、集数、我的）
-│   ├── player.js        # 播放器核心逻辑
-│   ├── player-ui.js     # 播放器 UI 控制
-│   ├── history.js       # 播放历史管理
-│   ├── i18n.js          # 国际化（调用 lang/ 翻译文件）
-│   ├── navigation.js    # 后退导航保护
-│   ├── pwa.js           # PWA 安装引导
-│   └── state.js         # 播放状态持久化（localStorage）
-├── lang/
-│   ├── zh.js            # 中文翻译
-│   ├── en.js            # 英文翻译
-│   └── fr.js            # 法文翻译
-├── data/
-│   └── audio-data.json  # 音频数据（专辑、集数、URL）
-├── icons/               # 图标和图片
-├── workers/             # （预留）Cloudflare Workers 后端代码
-├── CLAUDE.md            # 本文件
-├── CURRENT-STATUS.md    # 实时进度和交接记录
-├── ARCHITECTURE.md      # 技术架构详细文档
-├── CONTRIBUTING.md      # 开发规范
-├── CHANGELOG.md         # 变更记录
-├── TODO.md              # 功能规划
-├── DEPLOY.md            # 部署指南
-└── README.md            # 项目说明
+foyue/
+├── index.html              # HTML 入口（仅 DOM 结构）
+├── package.json            # Vite 项目配置
+├── vite.config.js          # Vite 构建配置
+├── wrangler.toml           # Cloudflare D1 绑定
+├── public/                 # 静态资源（Vite 直接复制到 dist/）
+│   ├── manifest.json
+│   ├── robots.txt
+│   ├── sitemap.xml
+│   ├── data/audio-data.json
+│   └── icons/
+├── src/
+│   ├── css/                # 7 个 CSS 模块
+│   │   ├── tokens.css      # CSS 变量（浅色 + 深色主题）
+│   │   ├── reset.css       # CSS Reset
+│   │   ├── layout.css      # Header/TabBar/Content 布局
+│   │   ├── player.css      # 播放器（迷你 + 全屏）
+│   │   ├── cards.css       # 系列卡片 + 集数列表
+│   │   ├── pages.css       # 首页 + 我的页面
+│   │   └── components.css  # 弹窗/Toast/Banner/加载
+│   ├── js/                 # 13 个 ES Module
+│   │   ├── main.js         # 入口
+│   │   ├── state.js        # 共享状态
+│   │   ├── dom.js          # DOM 引用
+│   │   ├── i18n.js         # 国际化
+│   │   ├── theme.js        # 主题管理
+│   │   ├── icons.js        # SVG 图标常量
+│   │   ├── utils.js        # 工具函数
+│   │   ├── history.js      # 播放历史
+│   │   ├── player.js       # 播放器核心
+│   │   ├── search.js       # 搜索
+│   │   ├── pwa.js          # PWA 安装引导
+│   │   ├── pages-home.js   # 首页
+│   │   ├── pages-my.js     # "我的"页面
+│   │   └── pages-category.js # 分类/集数页面
+│   └── locales/            # i18n 翻译文件（JSON）
+│       ├── zh.json
+│       ├── en.json
+│       └── fr.json
+├── functions/              # Cloudflare Pages Functions
+│   └── api/[[path]].js     # API 路由
+└── dist/                   # 构建输出（.gitignore）
+```
+
+---
+
+## 开发命令
+
+```bash
+npm install          # 安装依赖
+npm run dev          # 本地开发（HMR + API 代理）
+npm run build        # 生产构建
+npm run preview      # 预览构建结果
 ```
 
 ---
@@ -92,6 +110,7 @@ bojingji/
 4. **不删除 R2 音频** — 音频文件在 Cloudflare R2 上，不在仓库中
 5. **AI 翻译必须标注** — 任何 AI 生成的翻译必须标注"仅供参考"，优先推荐权威译本
 6. **0 控制台错误** — 提交前确认浏览器控制台无错误
+7. **i18n 三语同步** — 修改任何翻译时，zh/en/fr 三种语言必须同步修改
 
 ---
 
@@ -116,9 +135,10 @@ bojingji/
 ## 功能规划（9 个阶段）
 
 ### 阶段 1：基础建设 ✅
-- 代码拆分（已完成）
-- 构建部署流程
+- 代码拆分为 Vite + ES Modules
+- 构建部署流程（npm run build → Cloudflare Pages）
 - audio-data.json 纳入仓库
+- Pages Functions API 搭建
 
 ### 阶段 2：数据后端
 - D1 数据库搭建

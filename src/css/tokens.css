@@ -1,0 +1,48 @@
+/* === TOKENS === */
+:root {
+  --bg: #FAF9F6;
+  --bg-secondary: #F3F1EC;
+  --bg-card: #F3F1EC;
+  --bg-card-hover: #ECEAE4;
+  --bg-header: rgba(250,249,246,0.92);
+  --bg-player: #FAF9F6;
+  --bg-expanded: linear-gradient(170deg, #FAF9F6, #F3F1EC);
+  --border: rgba(0,0,0,0.06);
+  --border-active: rgba(154,123,60,0.35);
+  --accent: #9A7B3C;
+  --accent-dim: rgba(154,123,60,0.6);
+  --accent-glow: rgba(154,123,60,0.08);
+  --text: #1A1A1A;
+  --text-secondary: rgba(26,26,26,0.5);
+  --text-muted: rgba(26,26,26,0.28);
+  --text-inverse: #FFFFFF;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.06);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --player-h: 72px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --font-zh: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-en: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+[data-theme="dark"] {
+  --bg: #0F0F0F;
+  --bg-secondary: #1A1A1A;
+  --bg-card: rgba(255,255,255,0.05);
+  --bg-card-hover: rgba(255,255,255,0.09);
+  --bg-header: rgba(15,15,15,0.92);
+  --bg-player: #0F0F0F;
+  --bg-expanded: linear-gradient(170deg, #0F0F0F, #1A1A1A);
+  --border: rgba(255,255,255,0.08);
+  --border-active: rgba(212,165,74,0.3);
+  --accent: #D4A54A;
+  --accent-dim: rgba(212,165,74,0.5);
+  --accent-glow: rgba(212,165,74,0.1);
+  --text: #EEEEEE;
+  --text-secondary: rgba(238,238,238,0.5);
+  --text-muted: rgba(238,238,238,0.28);
+  --text-inverse: #0F0F0F;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.2);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.3);
+}

@@ -16,21 +16,27 @@ _当前无进行中的任务_
 - [x] PWA 安装引导
 - [x] 播放历史记录功能
 - [x] 播放历史弹层（查看全部、单条删除、一键清空）
-- [x] 全屏播放器手势（下滑关闭、双击快进快退）
+- [x] 全屏播放器手势（下滑关闭）
 - [x] 进度条拖动增强（thumb 放大 + 时间气泡）
 - [x] 后退导航保护
 - [x] 断点续播（localStorage 持久化）
 - [x] 搜索功能
-- [x] 代码拆分（单文件 → 10 个 JS 模块 + 独立 CSS + 语言文件）
+- [x] 首页（每日一句、佛号卡片、继续收听、推荐系列）
+- [x] Media Session API（锁屏控制）
+- [x] 预加载下一首（网络感知）
+- [x] **Vite + ES Modules 重构（单文件 → 模块化）**
+- [x] Pages Functions API 搭建
+- [x] D1 数据库绑定
 - [x] 项目文档体系建立
+- [x] Git Push 自动部署配置
 
 ---
 
 ## 阶段 2：数据后端（待启动）
 
-- [ ] D1 数据库搭建（负责人：fayin002）
-- [ ] 播放计数 API（负责人：fayin002）
-- [ ] 随喜功能 — 莲花图标，"随喜 +1"（负责人：fayin001 前端 + fayin002 后端）
+- [ ] 前端接入 D1 API（替换 JSON 静态数据）
+- [ ] 播放计数 API 前端集成
+- [ ] 随喜功能（前端 UI + 后端 API 联调）
 - [ ] AI Gateway 搭建（负责人：fayin002）
 
 ---
@@ -65,7 +71,7 @@ _当前无进行中的任务_
 ## 阶段 6：SEO 与推广
 
 - [ ] Open Graph / 结构化数据（负责人：fayin003）
-- [ ] sitemap.xml / robots.txt（负责人：fayin003）
+- [ ] sitemap.xml / robots.txt 完善（负责人：fayin003）
 - [ ] meta 描述标签（description, keywords）（负责人：fayin003）
 - [ ] Schema.org 结构化数据（AudioObject）（负责人：fayin003）
 - [ ] 多页面（文章页利于搜索引擎收录）
@@ -93,7 +99,7 @@ _当前无进行中的任务_
 - [ ] 多主题皮肤
 - [ ] 无障碍优化（ARIA 标签、键盘导航）
 - [ ] 数据备份方案
-- [ ] 网站访问统计（Cloudflare Web Analytics 或 Umami）
+- [ ] 网站访问统计（Cloudflare Web Analytics 已集成）
 - [ ] 错误监控（捕获 JS 错误并上报）
 - [ ] 性能监控（页面加载时间、音频缓冲时间）
 
