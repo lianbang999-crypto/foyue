@@ -1,0 +1,11 @@
+# 净土法音 Pages 配置
+# 此文件让 Cloudflare Pages 绑定 D1 数据库
+# Pages Functions (functions/ 目录) 会自动使用此配置
+
+name = "amituofo"
+compatibility_date = "2024-12-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "foyue-db"
+database_id = "be0b21ab-4549-45bc-ac38-5f9e1864d061"
