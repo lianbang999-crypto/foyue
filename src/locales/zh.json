@@ -84,5 +84,9 @@
   "my_history_more": "查看全部 ({n})",
   "my_clear_history": "清除",
   "error_retry": "网络不稳定，重试中...",
-  "error_play": "播放失败，请检查网络"
+  "error_play": "播放失败，请检查网络",
+  "play_count_unit": "次",
+  "appreciate": "随喜",
+  "appreciate_thanks": "随喜功德",
+  "appreciate_done": "今日已随喜"
 }

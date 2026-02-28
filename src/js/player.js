@@ -5,6 +5,7 @@ import { SVG, ICON_PLAY, ICON_PAUSE, ICON_PLAY_FILLED, ICON_PAUSE_FILLED } from 
 import { t } from './i18n.js';
 import { fmt, showToast, seekAt } from './utils.js';
 import { addHistory, syncHistoryProgress, getHistory } from './history.js';
+import { recordPlay } from './api.js';
 
 /* ===== Playback State ===== */
 let pendingSeek = 0;
@@ -72,6 +73,8 @@ function playCurrent() {
   updateMediaSession(tr);
   renderPlaylistItems();
   addHistory(tr, dom.audio);
+  // Record play to D1 database (non-blocking)
+  recordPlay(tr.seriesId, tr.id || state.epIdx + 1);
 }
 
 function updateUI(tr) {

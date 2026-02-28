@@ -84,5 +84,9 @@
   "my_history_more": "Tout afficher ({n})",
   "my_clear_history": "Effacer",
   "error_retry": "Connexion instable, nouvelle tentative...",
-  "error_play": "Lecture \u00E9chou\u00E9e, v\u00E9rifiez le r\u00E9seau"
+  "error_play": "Lecture \u00E9chou\u00E9e, v\u00E9rifiez le r\u00E9seau",
+  "play_count_unit": " lectures",
+  "appreciate": "Appr\u00E9cier",
+  "appreciate_thanks": "Merci pour votre appr\u00E9ciation",
+  "appreciate_done": "D\u00E9j\u00E0 appr\u00E9ci\u00E9 aujourd'hui"
 }

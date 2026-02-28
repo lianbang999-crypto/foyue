@@ -84,5 +84,9 @@
   "my_history_more": "Show all ({n})",
   "my_clear_history": "Clear",
   "error_retry": "Unstable connection, retrying...",
-  "error_play": "Playback failed, check network"
+  "error_play": "Playback failed, check network",
+  "play_count_unit": " plays",
+  "appreciate": "Appreciate",
+  "appreciate_thanks": "Thank you for your appreciation",
+  "appreciate_done": "Already appreciated today"
 }
