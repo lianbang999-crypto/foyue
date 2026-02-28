@@ -26,11 +26,27 @@
 - [x] D1 数据库绑定（foyue-db）
 - [x] 项目文档体系
 
-### 当前阶段：阶段 2（数据后端）待启动
-下一步优先任务：
-1. 前端接入 D1 API（替换部分 JSON 静态数据）
-2. 播放计数功能上线
-3. 随喜功能前后端联调
+### 当前阶段：阶段 3（内容体系）进行中
+
+**法音文库子项目（wenku.foyue.org）** — 代码开发完成，待部署
+
+文库是独立的 Cloudflare Pages 项目，仓库：[foyue-wenku](https://github.com/lianbang999-crypto/foyue-wenku)
+
+已完成：
+- Vite + Vanilla JS 单页应用（4 个页面：首页、分类、系列、阅读器）
+- 4 种阅读模式（普通、护眼、夜间、墨水屏）
+- 字号 / 字体设置 + 阅读进度书签
+- D1 schema（documents + bookmarks 表，与主站共用 foyue-db）
+- Pages Functions API（5 个接口）
+- R2 同步脚本（jingdianwendang → D1，~304 个文件）
+- 构建通过：19 modules → HTML 4.63KB + CSS 12.04KB + JS 16.62KB
+
+待完成：
+1. 创建 GitHub 仓库 foyue-wenku 并推送代码
+2. 创建 Cloudflare Pages 项目，绑定 D1 + R2
+3. 执行 D1 schema + R2 数据同步
+4. 绑定 wenku.foyue.org 域名
+5. 主站「我的」页面添加文库入口
 
 ---
 
@@ -81,6 +97,39 @@
 ---
 
 ## 交接记录
+
+### 2026-02-27 法音文库子项目开发完成
+
+**做了什么：**
+- 新建法音文库项目（foyue-wenku），独立于主站
+- 完成全部前端代码：首页、分类页、系列页、阅读器
+- 设计并实现 4 种阅读模式（普通 / 护眼 / 夜间 / 墨水屏）
+- 字号（小/中/大/特大）、字体（无衬线/宋体/楷体）设置
+- 阅读进度自动保存（localStorage 书签）
+- D1 数据库 schema 设计（documents 表 + bookmarks 表）
+- Pages Functions API 开发（分类 / 文档列表 / 文档详情 / 搜索 / 阅读计数）
+- R2 数据同步脚本（扫描 jingdianwendang 桶，解析文件元数据写入 D1）
+- PWA manifest
+- Vite 构建验证通过（19 modules, 0 errors）
+
+**架构决策：**
+- 文库作为独立 Cloudflare Pages 项目（wenku.foyue.org）
+- 与主站共用同一个 Cloudflare 账户、D1（foyue-db）、R2（jingdianwendang）
+- 技术栈与主站一致（Vite + Vanilla JS）
+- API 路径前缀 `/api/wenku/` 避免与主站 API 冲突
+
+**没做完：**
+- GitHub 仓库创建 + 代码推送
+- Cloudflare Pages 项目创建 + D1/R2 绑定
+- D1 schema 执行 + R2 数据同步
+- wenku.foyue.org 域名绑定
+- Logo 处理（已有 AI 生成稿，待裁切为 icon）
+- 主站「我的」页面文库入口
+
+**注意事项：**
+- wrangler.toml 中的 database_id 是占位符，需替换为真实 D1 ID
+- R2 同步脚本需要 D1 绑定才能运行
+- 文库 API 路径为 `/api/wenku/*`，主站 API 路径为 `/api/*`，互不冲突
 
 ### 2026-02-27 重构完成
 

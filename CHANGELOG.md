@@ -6,6 +6,34 @@
 
 ## 2026-02-27
 
+### 法音文库子项目（foyue-wenku）
+
+启动法音文库项目，提供净土宗经典文献与讲义稿的在线阅读功能。
+
+- 独立仓库：[foyue-wenku](https://github.com/lianbang999-crypto/foyue-wenku)
+- 域名：wenku.foyue.org（部署中）
+- 与主站共用 D1（foyue-db）和 R2（jingdianwendang）
+
+**前端**
+- 4 个页面：首页、分类、系列、阅读器
+- Hash 路由：`#/`、`#/category/:id`、`#/series/:cat/:name`、`#/read/:id`
+- 4 种阅读模式：普通、护眼（Sepia）、夜间（Dark）、墨水屏（E-ink）
+- 字号切换（小/中/大/特大）+ 字体切换（无衬线/宋体/楷体）
+- 阅读进度书签自动保存
+- 搜索功能（标题/内容/系列名）
+- 构建产物：HTML 4.63KB + CSS 12.04KB + JS 16.62KB
+
+**后端**
+- D1 schema：documents 表（id, title, type, category, series_name, episode_num, format, content 等）
+- 5 个 API：categories / documents / documents/:id / search / read-count
+- R2 同步脚本：扫描 jingdianwendang 桶 → 解析元数据 → 写入 D1
+
+**数据规模**
+- 大安法师讲法集：~35 个系列，~290 篇 TXT 讲义稿
+- 佛教经典：6 部 PDF
+- 印光大师文钞：5 个文件（PDF/EPUB/DOCX）
+- 省庵大师：1 部 PDF
+
 ### Vite + ES Modules 全量重构
 
 将单文件 index.html（2135 行）重构为 Vite 模块化项目：

@@ -2,7 +2,7 @@
 
 ## 进行中
 
-_当前无进行中的任务_
+- 法音文库部署（wenku.foyue.org）— 代码已完成，待创建 GitHub 仓库和 Cloudflare Pages 项目
 
 ---
 
@@ -43,7 +43,14 @@ _当前无进行中的任务_
 
 ## 阶段 3：内容体系
 
-- [ ] 文章阅读页面（大安法师开示文字稿）
+- [x] **法音文库子项目启动**（独立仓库 [foyue-wenku](https://github.com/lianbang999-crypto/foyue-wenku)）
+- [x] 文库前端开发（4 页面 SPA + 4 种阅读模式 + 字号字体设置）
+- [x] 文库 D1 schema 设计（documents + bookmarks 表）
+- [x] 文库 Pages Functions API（5 个接口）
+- [x] R2 数据同步脚本（jingdianwendang → D1）
+- [ ] 文库部署到 Cloudflare Pages（wenku.foyue.org）
+- [ ] D1 schema 执行 + R2 数据同步
+- [ ] 主站「我的」页面添加文库入口
 - [ ] 音频-文档关联（边听边读）
 - [ ] 内容上传管理界面
 

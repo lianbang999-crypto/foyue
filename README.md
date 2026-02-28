@@ -5,6 +5,7 @@
 ## 在线访问
 
 - 主站：https://foyue.org
+- 文库：https://wenku.foyue.org（部署中）
 - 备用：https://amituofo.pages.dev
 
 ## 功能特性
@@ -125,6 +126,12 @@ foyue/
 | 前端开发 | @fayin001 | 功能页面开发、PWA、Bug 修复、多设备适配 |
 | 后端 + AI | @fayin002 | Pages Functions API、D1 数据库、AI 功能 |
 | SEO + 测试 | @fayin003 | SEO 优化、兼容性测试、部署运维 |
+
+## 子项目
+
+| 项目 | 域名 | 仓库 | 说明 |
+|------|------|------|------|
+| 法音文库 | wenku.foyue.org | [foyue-wenku](https://github.com/lianbang999-crypto/foyue-wenku) | 经典文献与讲义稿在线阅读 |
 
 ## 许可
 
