@@ -8,6 +8,7 @@ import '../css/player.css';
 import '../css/cards.css';
 import '../css/pages.css';
 import '../css/components.css';
+import '../css/ai.css';
 
 // Module imports
 import { state } from './state.js';
@@ -28,6 +29,7 @@ import { renderMyPage } from './pages-my.js';
 import { renderCategory, showEpisodes } from './pages-category.js';
 import { doSearch } from './search.js';
 import { initInstallPrompt, initBackGuard } from './pwa.js';
+import { initAiChat, updateAiContext } from './ai-chat.js';
 
 /* ===== INIT ===== */
 (function init() {
@@ -152,7 +154,13 @@ import { initInstallPrompt, initBackGuard } from './pwa.js';
   // Audio events
   dom.audio.addEventListener('timeupdate', onTimeUpdate);
   dom.audio.addEventListener('play', () => { setPlayState(true); });
-  dom.audio.addEventListener('playing', () => { /* isSwitching handled in player.js */ });
+  dom.audio.addEventListener('playing', () => {
+    // Update AI chat context with current track info
+    if (state.epIdx >= 0 && state.playlist[state.epIdx]) {
+      const tr = state.playlist[state.epIdx];
+      updateAiContext(tr.seriesId, tr.id || state.epIdx + 1);
+    }
+  });
   dom.audio.addEventListener('pause', () => { if (!getIsSwitching()) { setPlayState(false); saveState(); } });
   dom.audio.addEventListener('ended', onEnded);
   dom.audio.addEventListener('error', onAudioError);
@@ -176,6 +184,9 @@ import { initInstallPrompt, initBackGuard } from './pwa.js';
 
   // Back navigation guard
   initBackGuard(renderCategory, state);
+
+  // AI 聊天面板
+  initAiChat(document.getElementById('app'));
 
   // Buffering indicator
   dom.audio.addEventListener('waiting', () => { dom.playerTrack.classList.add('buffering'); dom.centerPlayBtn.classList.add('buffering'); });

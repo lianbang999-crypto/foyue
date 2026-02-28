@@ -7,10 +7,12 @@ import { playList, togglePlay, isCurrentTrack, getIsSwitching } from './player.j
 import { renderHomePage } from './pages-home.js';
 import { getHistory } from './history.js';
 import { getPlayCount, appreciate } from './api.js';
-import { showToast } from './utils.js';
+import { showToast, escapeHtml } from './utils.js';
+import { mountSummary } from './ai-summary.js';
 
 export function renderCategory(tabId) {
   const dom = getDOM();
+  if (!state.data) return;
   dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el => el.remove());
   const cat = state.data.categories.find(c => c.id === tabId);
   if (!cat) { dom.contentArea.innerHTML = `<div class="loader-text">${t('no_content')}</div>`; return; }
@@ -25,11 +27,11 @@ export function renderCategory(tabId) {
     const card = document.createElement('div');
     const isPlaying = s.id === nowSid;
     card.className = 'card' + (isPlaying ? ' now-playing' : '');
-    const introHtml = s.intro ? `<div class="card-intro">${s.intro}</div>` : '';
+    const introHtml = s.intro ? `<div class="card-intro">${escapeHtml(s.intro)}</div>` : '';
     const playTag = isPlaying ? `<span class="card-playing-tag">${t('now_playing')}</span>` : '';
     const playCountText = s.playCount ? ` \u00B7 ${fmtCount(s.playCount)}${t('play_count_unit') || '\u6B21'}` : '';
     card.innerHTML = `<div class="card-icon">${CATEGORY_ICONS[tabId] || CATEGORY_ICONS.tingjingtai}</div>
-      <div class="card-body"><div class="card-title">${s.title}${playTag}</div>${introHtml}<div class="card-meta">${s.speaker || ''} \u00B7 ${s.totalEpisodes} ${unit}${playCountText}</div></div>
+      <div class="card-body"><div class="card-title">${escapeHtml(s.title)}${playTag}</div>${introHtml}<div class="card-meta">${escapeHtml(s.speaker || '')} \u00B7 ${s.totalEpisodes} ${unit}${playCountText}</div></div>
       <span class="card-arrow"><svg viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg></span>`;
     card.addEventListener('click', () => showEpisodes(s, tabId));
     list.appendChild(card);
@@ -43,12 +45,12 @@ export function showEpisodes(series, tabId) {
   dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el => el.remove());
   state.seriesId = series.id;
   const unit = tabId === 'fohao' ? t('tracks') : t('episodes');
-  const introHdr = series.intro ? `<div class="ep-header-intro">${series.intro}</div>` : '';
+  const introHdr = series.intro ? `<div class="ep-header-intro">${escapeHtml(series.intro)}</div>` : '';
   const view = document.createElement('div');
   view.className = 'view active ep-view';
   view.innerHTML = `<div class="ep-header">
     <button class="btn-back" id="backBtn"><svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg></button>
-    <div class="ep-header-info"><div class="ep-header-title">${series.title}</div><div class="ep-header-sub">${series.speaker || ''} \u00B7 ${series.totalEpisodes} ${unit}<span id="epPlayCount"></span></div>${introHdr}</div>
+    <div class="ep-header-info"><div class="ep-header-title">${escapeHtml(series.title)}</div><div class="ep-header-sub">${escapeHtml(series.speaker || '')} \u00B7 ${series.totalEpisodes} ${unit}<span id="epPlayCount"></span></div>${introHdr}</div>
     <button class="btn-play-all" id="playAllBtn" aria-label="${t('play_all')}"><svg viewBox="0 0 24 24"><polygon points="8,4 20,12 8,20"/></svg></button>
   </div><div class="ep-actions" id="epActions"></div><ul class="ep-list" id="epList"></ul>`;
   dom.contentArea.appendChild(view);
@@ -94,7 +96,7 @@ export function showEpisodes(series, tabId) {
   series.episodes.forEach((ep, idx) => {
     const li = document.createElement('li');
     li.className = 'ep-item' + (isCurrentTrack(series.id, idx) ? ' playing' : '');
-    const introHtml = ep.intro ? `<span class="ep-intro">${ep.intro}</span>` : '';
+    const introHtml = ep.intro ? `<span class="ep-intro">${escapeHtml(ep.intro)}</span>` : '';
     // Check history for played progress
     const hEntry = histMap.get(idx);
     let progressHtml = '';
@@ -104,7 +106,7 @@ export function showEpisodes(series, tabId) {
     }
     li.innerHTML = `<span class="ep-num">${ep.id || idx + 1}</span>
       <div class="eq-bars"><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span></div>
-      <div class="ep-text"><span class="ep-title">${ep.title || ep.fileName}</span>${introHtml}${progressHtml}</div>`;
+      <div class="ep-text"><span class="ep-title">${escapeHtml(ep.title || ep.fileName)}</span>${introHtml}${progressHtml}</div>`;
     li.addEventListener('click', () => {
       if (isCurrentTrack(series.id, idx)) { togglePlay(); return; }
       playList(series.episodes, idx, series);
@@ -120,15 +122,19 @@ export function showEpisodes(series, tabId) {
     <span id="appreciateLabel">${t('appreciate') || '\u968F\u559C'}</span><span id="appreciateCount"></span>
   </button>`;
   view.querySelector('#appreciateBtn').addEventListener('click', async () => {
-    const result = await appreciate(series.id);
-    if (!result) return;
-    const countEl = view.querySelector('#appreciateCount');
-    if (countEl) countEl.textContent = ' ' + result.total;
-    if (result.success) {
-      showToast(t('appreciate_thanks') || '\u968F\u559C\u529F\u5FB7');
-      view.querySelector('#appreciateBtn').classList.add('appreciated');
-    } else if (result.message === 'already_appreciated_today') {
-      showToast(t('appreciate_done') || '\u4ECA\u65E5\u5DF2\u968F\u559C');
+    try {
+      const result = await appreciate(series.id);
+      if (!result) return;
+      const countEl = view.querySelector('#appreciateCount');
+      if (countEl) countEl.textContent = ' ' + result.total;
+      if (result.success) {
+        showToast(t('appreciate_thanks') || '\u968F\u559C\u529F\u5FB7');
+        view.querySelector('#appreciateBtn').classList.add('appreciated');
+      } else if (result.message === 'already_appreciated_today') {
+        showToast(t('appreciate_done') || '\u4ECA\u65E5\u5DF2\u968F\u559C');
+      }
+    } catch (err) {
+      showToast(t('network_error') || '\u7F51\u7EDC\u5F02\u5E38\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5');
     }
   });
 
@@ -140,6 +146,9 @@ export function showEpisodes(series, tabId) {
       countSpan.textContent = ` \u00B7 ${fmtCount(data.totalPlayCount)}${t('play_count_unit') || '\u6B21'}`;
     }
   });
+
+  // AI 摘要（挂载在操作区下方）
+  mountSummary(actionsDiv, series.id);
 }
 
 /* Format large numbers: 1234 -> 1.2k, 12345 -> 1.2万 */

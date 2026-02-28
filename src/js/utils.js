@@ -6,7 +6,9 @@ export function fmt(s) {
   return m + ':' + String(Math.floor(s % 60)).padStart(2, '0');
 }
 
+let toastTimer;
 export function showToast(msg) {
+  clearTimeout(toastTimer);
   let toast = document.querySelector('.toast');
   if (!toast) {
     toast = document.createElement('div');
@@ -16,7 +18,7 @@ export function showToast(msg) {
   }
   toast.textContent = msg;
   toast.style.opacity = '1';
-  setTimeout(() => { toast.style.opacity = '0'; }, 2000);
+  toastTimer = setTimeout(() => { toast.style.opacity = '0'; }, 2000);
 }
 
 /* Calculate seek percentage from pointer event */
@@ -38,6 +40,14 @@ export function seekUI(p, dom) {
 /* Commit seek — actually set audio.currentTime (called once on pointer up) */
 export function seekCommit(p, audio) {
   if (audio.duration && isFinite(audio.duration)) audio.currentTime = p * audio.duration;
+}
+
+/* Escape HTML to prevent XSS */
+export function escapeHtml(str) {
+  if (!str) return '';
+  const div = document.createElement('div');
+  div.textContent = String(str);
+  return div.innerHTML;
 }
 
 /* Legacy — kept for any other callers */
