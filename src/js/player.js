@@ -341,13 +341,42 @@ export function togglePlaylist() {
   const dom = getDOM();
   playlistVisible = !playlistVisible;
   dom.playlistPanel.classList.toggle('show', playlistVisible);
+  dom.playlistPanel.setAttribute('aria-hidden', (!playlistVisible).toString());
   dom.expPlayerContent.classList.toggle('hide', playlistVisible);
   dom.expQueue.classList.toggle('active', playlistVisible);
   if (playlistVisible) {
     plTab = 'current';
     updatePlTabs();
     renderPlaylistItems();
+    // focus first item for keyboard/a11y
+    const first = dom.plItems.querySelector('.pl-item');
+    if (first) { first.setAttribute('tabindex', '0'); first.focus(); }
   }
+}
+
+/* ===== Fullscreen Player API ===== */
+export function openFullScreen(trackId) {
+  const dom = getDOM();
+  // Optional: if trackId provided, try to find and play it
+  if (trackId && state.playlist && state.playlist.length) {
+    const idx = state.playlist.findIndex(x => x.id === trackId || x.fileName === trackId);
+    if (idx >= 0 && idx !== state.epIdx) {
+      state.epIdx = idx;
+      playCurrent();
+    }
+  }
+  dom.expPlayer.classList.add('show');
+  dom.expPlayer.setAttribute('aria-hidden', 'false');
+  // ensure content area is hidden when playlist is visible
+  dom.expPlayer.focus?.();
+}
+
+export function closeFullScreen() {
+  const dom = getDOM();
+  dom.expPlayer.classList.remove('show');
+  dom.expPlayer.setAttribute('aria-hidden', 'true');
+  // if playlist open, close it to return to normal view
+  if (playlistVisible) togglePlaylist();
 }
 
 function updatePlTabs() {

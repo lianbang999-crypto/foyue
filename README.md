@@ -8,23 +8,6 @@
 - 文库：https://wenku.foyue.org（部署中）
 - 备用：https://amituofo.pages.dev
 
-## 功能特性
-
-- 首页推荐（每日一句、东林佛号卡片、继续收听、推荐系列）
-- 多专辑浏览（有声书 / 听经台分类）
-- 连续播放 + 自动切集
-- 全屏播放器（下滑关闭、进度条拖动增强）
-- 播放历史记录（查看全部、单条删除、一键清空）
-- 播放进度持久化（关闭后重新打开可继续播放）
-- 多语言支持（中文 / English / Français）
-- 浅色/深色主题切换
-- PWA 支持（可安装到手机主屏幕）
-- 后退导航保护（防止误操作离开页面）
-- 搜索功能
-- 倍速播放（0.5x – 2.0x）
-- 定时关闭（15/30/45/60/90 分钟）
-- Media Session API（锁屏控制）
-- 预加载下一首（网络感知）
 
 ## 技术栈
 
@@ -39,8 +22,8 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/lianbang999-crypto/bojingji.git
-cd bojingji
+git clone https://github.com/lianbang999-crypto/foyue.git
+cd foyue
 
 # 安装依赖
 npm install
@@ -118,14 +101,7 @@ foyue/
 - 3 个分类、14 个系列、466 集音频
 - 4 个 R2 存储桶
 
-## 团队
 
-| 角色 | GitHub | 职责 |
-|------|--------|------|
-| 架构 + 审核 | @lianbang999-crypto | 架构决策、代码 Review、PR 合并、文档维护、内容管理 |
-| 前端开发 | @fayin001 | 功能页面开发、PWA、Bug 修复、多设备适配 |
-| 后端 + AI | @fayin002 | Pages Functions API、D1 数据库、AI 功能 |
-| SEO + 测试 | @fayin003 | SEO 优化、兼容性测试、部署运维 |
 
 ## 子项目
 

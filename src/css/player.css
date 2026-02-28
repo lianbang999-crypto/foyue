@@ -1,6 +1,12 @@
-/* === PLAYLIST PANEL (slides up in expanded player) === */
-.playlist-panel{display:none;flex-direction:column;flex:1;overflow:hidden;padding:0 20px}
-.playlist-panel.show{display:flex}
+.playlist-panel{display:flex;flex-direction:column;overflow:hidden;padding:12px 16px 12px;row-gap:8px}
+
+/* Bottom sheet behaviour: peek -> half -> full. Uses safe-area inset for device bottom.
+	Default: peek (approx 22vh). When `.show` it's half-height (50vh). Add `.full` for fullscreen. */
+.playlist-panel{position:fixed;left:0;right:0;bottom:0;z-index:520;display:flex;flex-direction:column;background:var(--bg);box-shadow:0 -8px 40px rgba(0,0,0,0.12);border-top-left-radius:16px;border-top-right-radius:16px;transform:translateY(100%);transition:transform .32s cubic-bezier(.2,.9,.3,1),height .32s;}
+.playlist-panel::before{content:'';height:6px;width:44px;background:var(--border);border-radius:6px;margin:8px auto 0;display:block;opacity:.8}
+.playlist-panel{height:22vh;max-height:100vh;padding:8px 16px calc(env(safe-area-inset-bottom, 0px) + 12px);}
+.playlist-panel.show{transform:translateY(0);height:50vh}
+.playlist-panel.full{height:100vh;border-top-left-radius:0;border-top-right-radius:0}
 .playlist-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);flex-shrink:0}
 .pl-tab{-webkit-appearance:none;appearance:none;background:none;border:none;padding:10px 16px 8px;font-size:.84rem;font-weight:500;color:var(--text-muted);cursor:pointer;position:relative;transition:color .15s}
 .pl-tab.active{color:var(--accent)}
