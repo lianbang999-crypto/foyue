@@ -1,0 +1,30 @@
+name = "foyue-api"
+main = "src/index.js"
+compatibility_date = "2024-12-01"
+
+# ========================================
+# 部署步骤：
+# 1. 创建 D1 数据库：
+#    wrangler d1 create foyue-db
+# 2. 将返回的 database_id 填入下方
+# 3. 运行数据库迁移：
+#    wrangler d1 migrations apply foyue-db
+# 4. 导入初始数据：
+#    node scripts/migrate-json-to-d1.js
+# 5. 部署 Worker：
+#    wrangler deploy
+# ========================================
+
+[[d1_databases]]
+binding = "DB"
+database_name = "foyue-db"
+database_id = "be0b21ab-4549-45bc-ac38-5f9e1864d061"
+
+# 开发环境配置
+[env.dev]
+name = "foyue-api-dev"
+
+[[env.dev.d1_databases]]
+binding = "DB"
+database_name = "foyue-db-dev"
+database_id = "YOUR_DEV_DATABASE_ID_HERE"  # ← 替换为实际 ID
