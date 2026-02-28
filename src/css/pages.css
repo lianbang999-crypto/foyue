@@ -2,12 +2,12 @@
 .my-page{display:none;animation:viewIn .3s ease-out}
 .my-page.active{display:block}
 .my-profile{display:flex;flex-direction:column;align-items:center;padding:28px 0 20px}
-.my-avatar{width:72px;height:72px;border-radius:50%;border:2px solid var(--border);box-shadow:0 2px 12px rgba(154,123,60,0.12);background:var(--accent-glow);display:flex;align-items:center;justify-content:center}
+.my-avatar{width:72px;height:72px;border-radius:50%;border:2px solid var(--border);box-shadow:0 2px 12px rgba(131,106,50,0.12);background:var(--accent-glow);display:flex;align-items:center;justify-content:center}
 .my-avatar svg{width:40px;height:26px}
 .my-name{font-size:1rem;font-weight:500;color:var(--text);margin-top:10px}
-.my-subtitle{font-size:.72rem;color:var(--text-secondary);margin-top:2px}
+.my-subtitle{font-size:.76rem;color:var(--text-secondary);margin-top:2px}
 .my-section{margin-bottom:20px}
-.my-section-title{font-size:.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;padding:0 4px 8px;font-weight:500}
+.my-section-title{font-size:.76rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;padding:0 4px 8px;font-weight:500}
 .my-list{display:flex;flex-direction:column;gap:1px;background:var(--border);border-radius:var(--radius);overflow:hidden}
 .my-item{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--bg-card);cursor:pointer;transition:background .15s;min-height:44px}
 .my-item:hover{background:var(--bg-card-hover)}
@@ -19,7 +19,7 @@
 /* history list */
 .my-section-header{display:flex;align-items:center;justify-content:space-between;padding:0 4px 8px}
 .my-section-header .my-section-title{padding:0}
-.my-history-clear{-webkit-appearance:none;appearance:none;background:none;border:none;font-size:.68rem;color:var(--text-muted);cursor:pointer;padding:2px 4px;transition:color .15s}
+.my-history-clear{-webkit-appearance:none;appearance:none;background:none;border:none;font-size:.72rem;color:var(--text-muted);cursor:pointer;padding:2px 4px;transition:color .15s}
 .my-history-clear:hover{color:var(--accent)}
 .my-history-item{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--bg-card);cursor:pointer;transition:background .15s;min-height:44px}
 .my-history-item:hover{background:var(--bg-card-hover)}
@@ -27,10 +27,10 @@
 .my-history-icon svg{width:14px;height:14px;stroke:var(--accent);fill:none;stroke-width:2}
 .my-history-body{flex:1;min-width:0}
 .my-history-title{font-size:.84rem;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.my-history-sub{font-size:.72rem;color:var(--text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.my-history-sub{font-size:.76rem;color:var(--text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .my-history-bar{height:3px;background:var(--border);border-radius:2px;margin-top:5px;overflow:hidden}
 .my-history-bar-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .3s}
-.my-history-time{font-size:.68rem;color:var(--text-muted);flex-shrink:0;white-space:nowrap}
+.my-history-time{font-size:.72rem;color:var(--text-muted);flex-shrink:0;white-space:nowrap}
 .my-history-empty{text-align:center;padding:20px 16px;color:var(--text-muted);font-size:.8rem}
 .my-history-more{text-align:center;padding:12px 16px;font-size:.78rem;color:var(--accent);cursor:pointer;background:var(--bg-card);transition:background .15s}
 .my-history-more:hover{background:var(--bg-card-hover)}
@@ -41,8 +41,8 @@
 .my-install-icon svg{width:20px;height:20px;stroke:var(--accent);fill:none;stroke-width:1.8;stroke-linecap:round}
 .my-install-text{flex:1}
 .my-install-text-title{font-size:.86rem;font-weight:500;color:var(--text)}
-.my-install-text-desc{font-size:.72rem;color:var(--text-secondary);margin-top:2px}
-.my-install-benefit{font-size:.72rem;color:var(--text-muted);margin-bottom:12px;line-height:1.5;padding:8px 12px;background:var(--accent-glow);border-radius:8px}
+.my-install-text-desc{font-size:.76rem;color:var(--text-secondary);margin-top:2px}
+.my-install-benefit{font-size:.76rem;color:var(--text-muted);margin-bottom:12px;line-height:1.5;padding:8px 12px;background:var(--accent-glow);border-radius:8px}
 .my-install-steps{font-size:.78rem;color:var(--text-secondary);line-height:1.6;margin-bottom:12px}
 .my-install-steps .ios-icon{display:inline-block;width:18px;height:18px;vertical-align:middle;margin:0 2px}
 .my-install-btn{display:block;width:100%;padding:10px;border:none;border-radius:8px;background:var(--accent);color:var(--text-inverse);font-size:.84rem;font-weight:500;cursor:pointer;text-align:center;transition:opacity .15s}
@@ -56,7 +56,7 @@
 .home-quote{background:var(--bg-card);border-radius:var(--radius);padding:20px 18px;position:relative;border:1px solid var(--border)}
 .home-quote::before{content:'\201C';position:absolute;top:8px;left:12px;font-size:2.4rem;color:var(--accent);opacity:.25;font-family:Georgia,serif;line-height:1}
 .home-quote-text{font-size:.88rem;line-height:1.7;color:var(--text);padding-left:8px;font-weight:400}
-.home-quote-author{font-size:.72rem;color:var(--text-secondary);margin-top:8px;text-align:right;padding-right:4px}
+.home-quote-author{font-size:.76rem;color:var(--text-secondary);margin-top:8px;text-align:right;padding-right:4px}
 .home-chanting-scroll{display:flex;gap:10px;overflow-x:auto;padding:0 0 8px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .home-chanting-scroll::-webkit-scrollbar{display:none}
 .home-chant-card{flex-shrink:0;width:120px;background:var(--bg-card);border-radius:var(--radius-sm);padding:14px 12px;text-align:center;border:1px solid var(--border);cursor:pointer;transition:background .15s,border-color .15s}
@@ -66,14 +66,14 @@
 .home-chant-icon svg{width:16px;height:16px;fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .home-chant-card.playing .home-chant-icon{background:var(--accent)}
 .home-chant-card.playing .home-chant-icon svg{stroke:var(--text-inverse)}
-.home-chant-name{font-size:.74rem;color:var(--text);line-height:1.3;font-weight:400}
+.home-chant-name{font-size:.78rem;color:var(--text);line-height:1.3;font-weight:400}
 .home-continue-card{display:flex;align-items:center;gap:12px;background:var(--bg-card);border-radius:var(--radius);padding:14px 16px;border:1px solid var(--border);cursor:pointer;transition:background .15s;position:relative;overflow:hidden}
 .home-continue-card:hover{background:var(--bg-card-hover)}
 .home-continue-icon{width:40px;height:40px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .home-continue-icon svg{width:18px;height:18px;fill:none;stroke:var(--text-inverse);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .home-continue-body{flex:1;min-width:0}
 .home-continue-title{font-size:.86rem;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.home-continue-sub{font-size:.72rem;color:var(--text-secondary);margin-top:2px}
+.home-continue-sub{font-size:.76rem;color:var(--text-secondary);margin-top:2px}
 .home-continue-progress{position:absolute;bottom:0;left:0;right:0;height:3px;background:var(--border);border-radius:0 0 var(--radius) var(--radius)}
 .home-continue-progress-fill{height:100%;background:var(--accent);border-radius:0 0 var(--radius) var(--radius);transition:width .3s}
 .home-continue-card.playing{border-color:var(--border-active);background:var(--accent-glow)}
@@ -86,4 +86,4 @@
 .home-rec-icon svg{width:20px;height:20px;fill:none;stroke:var(--accent);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .home-rec-body{flex:1;min-width:0}
 .home-rec-title{font-size:.86rem;color:var(--text);font-weight:500}
-.home-rec-sub{font-size:.72rem;color:var(--text-secondary);margin-top:2px}
+.home-rec-sub{font-size:.76rem;color:var(--text-secondary);margin-top:2px}

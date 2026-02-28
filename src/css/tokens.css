@@ -8,10 +8,10 @@
   --bg-player: #FAF9F6;
   --bg-expanded: linear-gradient(170deg, #FAF9F6, #F3F1EC);
   --border: rgba(0,0,0,0.06);
-  --border-active: rgba(154,123,60,0.35);
-  --accent: #9A7B3C;
-  --accent-dim: rgba(154,123,60,0.6);
-  --accent-glow: rgba(154,123,60,0.08);
+  --border-active: rgba(131,106,50,0.35);
+  --accent: #836A32;
+  --accent-dim: rgba(131,106,50,0.6);
+  --accent-glow: rgba(131,106,50,0.08);
   --text: #1A1A1A;
   --text-secondary: rgba(26,26,26,0.5);
   --text-muted: rgba(26,26,26,0.28);

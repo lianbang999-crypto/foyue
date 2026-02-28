@@ -82,5 +82,7 @@
   "search_series": "Series",
   "search_episodes": "Episodes",
   "my_history_more": "Show all ({n})",
-  "my_clear_history": "Clear"
+  "my_clear_history": "Clear",
+  "error_retry": "Unstable connection, retrying...",
+  "error_play": "Playback failed, check network"
 }

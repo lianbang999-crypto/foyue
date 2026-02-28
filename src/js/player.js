@@ -163,12 +163,14 @@ export function onAudioError() {
   dom.centerPlayBtn.classList.remove('buffering');
   if (dom.audio.src && audioRetries < 2) {
     audioRetries++;
+    showToast(t('error_retry') || '\u7F51\u7EDC\u4E0D\u7A33\u5B9A\uFF0C\u91CD\u8BD5\u4E2D...');
     const src = dom.audio.src;
     setTimeout(() => {
       if (dom.audio.src === src) { dom.audio.load(); dom.audio.play().catch(() => {}); }
     }, 1500 * audioRetries);
   } else {
     setPlayState(false);
+    showToast(t('error_play') || '\u64AD\u653E\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC');
   }
 }
 

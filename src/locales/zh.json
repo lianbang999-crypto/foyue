@@ -82,5 +82,7 @@
   "search_series": "系列",
   "search_episodes": "单集",
   "my_history_more": "查看全部 ({n})",
-  "my_clear_history": "清除"
+  "my_clear_history": "清除",
+  "error_retry": "网络不稳定，重试中...",
+  "error_play": "播放失败，请检查网络"
 }

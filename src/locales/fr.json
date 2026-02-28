@@ -82,5 +82,7 @@
   "search_series": "S\u00E9ries",
   "search_episodes": "\u00C9pisodes",
   "my_history_more": "Tout afficher ({n})",
-  "my_clear_history": "Effacer"
+  "my_clear_history": "Effacer",
+  "error_retry": "Connexion instable, nouvelle tentative...",
+  "error_play": "Lecture \u00E9chou\u00E9e, v\u00E9rifiez le r\u00E9seau"
 }

@@ -75,10 +75,18 @@ import { initInstallPrompt, initBackGuard } from './pwa.js';
     });
   });
 
-  // Center play button - only opens expanded player
+  // Center play button - toggle play/pause, or open expanded player
   dom.centerPlayBtn.addEventListener('click', () => {
     if (!dom.audio.src && !state.playlist.length) return;
-    dom.expPlayer.classList.add('show');
+    if (dom.audio.src) {
+      togglePlay();
+      // Also open expanded player if not already open
+      if (!dom.expPlayer.classList.contains('show')) {
+        dom.expPlayer.classList.add('show');
+      }
+    } else {
+      dom.expPlayer.classList.add('show');
+    }
   });
 
   // Player controls
