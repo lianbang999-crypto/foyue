@@ -9,7 +9,10 @@ Cloudflare Pages（托管 Vite 构建产物 + Pages Functions）
     ├── 静态资源 → dist/（HTML/CSS/JS/JSON/图标）
     ├── API 路由 → functions/api/（Pages Functions）
     ├── 数据库 → Cloudflare D1（foyue-db）
-    └── 音频文件 → Cloudflare R2（4 个存储桶）
+    ├── 音频文件 → Cloudflare R2（4 个存储桶）
+    ├── AI 推理 → Cloudflare Workers AI（bge-m3 / GLM / Whisper）
+    ├── 向量搜索 → Cloudflare Vectorize（dharma-content 索引）
+    └── AI 网关 → Cloudflare AI Gateway（buddhist-ai-gateway）
 ```
 
 ---
@@ -32,7 +35,7 @@ foyue/
 ├── index.html              # HTML 入口（仅 DOM 结构，265 行）
 ├── package.json            # 项目配置 + Vite 依赖
 ├── vite.config.js          # Vite 构建配置
-├── wrangler.toml           # Cloudflare D1 绑定配置
+├── wrangler.toml           # Cloudflare D1 + AI + Vectorize 绑定配置
 ├── public/                 # 静态资源（不经 Vite 处理）
 │   ├── manifest.json       # PWA manifest
 │   ├── robots.txt
@@ -48,6 +51,7 @@ foyue/
 │   │   ├── cards.css       # 系列卡片 + 集数列表
 │   │   ├── pages.css       # 首页 + 我的页面
 │   │   └── components.css  # 加载/错误/弹窗/Toast/PWA引导
+│   │   └── ai.css          # AI 组件（聊天面板/摘要/搜索切换）
 │   ├── js/                 # ES Module
 │   │   ├── main.js         # 入口：初始化 + 事件绑定 + 数据加载
 │   │   ├── state.js        # 共享可变状态对象
@@ -55,20 +59,26 @@ foyue/
 │   │   ├── i18n.js         # 国际化：detectLang/t/setLang/applyI18n
 │   │   ├── theme.js        # 主题：isDark/toggleTheme/initTheme
 │   │   ├── icons.js        # SVG 图标常量
-│   │   ├── utils.js        # 工具：fmt/showToast/seekAt
+│   │   ├── utils.js        # 工具：fmt/showToast/seekAt/escapeHtml
 │   │   ├── history.js      # 播放历史（localStorage）
 │   │   ├── player.js       # 播放器核心（~350行）
-│   │   ├── search.js       # 搜索功能
+│   │   ├── search.js       # 搜索功能（关键词 + AI 语义）
 │   │   ├── pwa.js          # PWA 安装引导 + 后退保护
 │   │   ├── pages-home.js   # 首页渲染（每日一句/佛号卡片/继续收听/推荐）
 │   │   ├── pages-my.js     # "我的"页面渲染（历史/设置/关于）
-│   │   └── pages-category.js # 分类列表 + 集数列表渲染
+│   │   ├── pages-category.js # 分类列表 + 集数列表渲染
+│   │   ├── ai-client.js    # AI API 客户端（askQuestion/getEpisodeSummary/aiSearch）
+│   │   ├── ai-chat.js      # AI 悬浮问答面板组件
+│   │   └── ai-summary.js   # AI 摘要展示组件
 │   └── locales/            # i18n 翻译文件（JSON）
 │       ├── zh.json         # 中文
 │       ├── en.json         # English
 │       └── fr.json         # Français
 ├── functions/              # Cloudflare Pages Functions
-│   └── api/[[path]].js     # 通配路由：/api/* 的统一处理
+│   ├── api/[[path]].js     # 通配路由：/api/* 的统一处理
+│   └── lib/ai-utils.js     # 共享 AI 工具模块
+├── workers/
+│   └── migrations/0004_ai_tables.sql  # D1 AI 表迁移脚本
 └── dist/                   # Vite 构建输出（.gitignore 忽略）
 ```
 
@@ -91,7 +101,10 @@ main.js（入口）
   ├── pwa.js
   ├── pages-home.js → 动态 import pages-category.js（避免循环依赖）
   ├── pages-my.js
-  └── pages-category.js
+  ├── pages-category.js → import ai-summary.js
+  ├── ai-client.js ← ai-chat.js, ai-summary.js, search.js 依赖
+  ├── ai-chat.js
+  └── ai-summary.js
 ```
 
 ---
@@ -109,11 +122,14 @@ main.js（入口）
 | 工具 | utils.js | 时间格式化 fmt()、Toast 提示、进度条 seek |
 | 历史 | history.js | 播放历史 CRUD（localStorage 'pl-history'，最多 20 条） |
 | 播放核心 | player.js | playList/togglePlay/prev/next/loop/speed/timer/media session/save/restore |
-| 搜索 | search.js | 全局搜索，模糊匹配系列和集数 |
+| 搜索 | search.js | 关键词搜索 + AI 语义搜索，模式切换 |
 | PWA | pwa.js | 安装引导（beforeinstallprompt/iOS 检测）、后退导航保护 |
 | 首页 | pages-home.js | 每日一句、佛号横滚卡片、继续收听、推荐系列 |
 | 我的 | pages-my.js | 播放历史列表、语言/主题设置、关于弹窗、PWA 安装引导 |
-| 分类 | pages-category.js | 分类系列列表 + 集数列表 + 当前播放高亮 |
+| 分类 | pages-category.js | 分类系列列表 + 集数列表 + 当前播放高亮 + AI 摘要挂载 |
+| AI 客户端 | ai-client.js | askQuestion/getEpisodeSummary/aiSearch，30s 超时 |
+| AI 聊天 | ai-chat.js | 悬浮问答面板，ESC/外部点击关闭，消息上限 50 条 |
+| AI 摘要 | ai-summary.js | 集摘要懒加载组件，点击展开/收起 |
 
 ---
 
@@ -213,15 +229,61 @@ HTML 中通过 `data-i18n` 标记：
 
 使用 Cloudflare Pages Functions（`functions/api/[[path]].js`），通配路由处理所有 `/api/*` 请求。
 
-已实现端点：
-- `GET /api/categories` — 获取所有分类
-- `GET /api/series?category_id=` — 获取系列列表
-- `GET /api/episodes?series_id=` — 获取集数列表
-- `POST /api/play-count` — 记录播放
-- `POST /api/appreciate` — 随喜功能
-- `GET /api/stats` — 统计数据
+### 数据 API
 
-数据库绑定通过 `wrangler.toml` 配置 D1 `foyue-db`。
+- `GET /api/categories` — 获取所有分类（含系列列表）
+- `GET /api/series/:id` — 获取系列详情（含集数列表）
+- `GET /api/series/:id/episodes` — 获取集数列表
+- `POST /api/play-count` — 记录播放计数
+- `GET /api/play-count/:id` — 获取播放计数
+- `POST /api/appreciate/:id` — 随喜功能（每 IP 每天一次）
+- `GET /api/stats` — 统计数据（支持 origin 过滤）
+
+### AI API
+
+- `POST /api/ai/ask` — RAG 问答（支持 series_id 范围限定）
+- `GET /api/ai/summary/:id` — 获取/生成内容摘要（自动缓存到 D1）
+- `GET /api/ai/search?q=` — 语义搜索（bge-m3 嵌入 → Vectorize 检索）
+
+### 管理员 API（需 X-Admin-Token header）
+
+- `POST /api/admin/embeddings/build` — 批量构建向量嵌入
+- `POST /api/admin/cleanup` — 清理过期限流记录
+
+### AI 工具模块（`functions/lib/ai-utils.js`）
+
+共享的服务端 AI 工具，供路由处理器调用：
+
+| 函数 | 功能 |
+|------|------|
+| `chunkText(text, docId, metadata)` | 文档切块（800字/块，100字重叠） |
+| `generateEmbeddings(env, texts)` | bge-m3 向量生成 |
+| `semanticSearch(env, query, options)` | Vectorize 向量检索 |
+| `retrieveDocuments(env, matches)` | D1 源文档检索 |
+| `ragAnswer(env, question, docs)` | RAG 管线（带模型回退） |
+| `generateSummary(env, title, content)` | 内容摘要生成 |
+| `checkRateLimit(env, ip, action)` | IP 限流检查 |
+| `timingSafeCompare(a, b)` | 恒定时间字符串比较 |
+
+### RAG 数据流
+
+```
+用户问题
+    ↓
+bge-m3 嵌入（1024 维向量）
+    ↓
+Vectorize 检索（top-5，score ≥ 0.45）
+    ↓
+D1 获取原文（documents 表）
+    ↓
+GLM-4.7-flash 生成回答（带系统提示 + 上下文）
+    ↓ 失败时
+Llama-3.3-70b 回退生成
+    ↓
+返回 { answer, sources, disclaimer }
+```
+
+数据库绑定通过 `wrangler.toml` 配置 D1 `foyue-db`、AI、Vectorize。
 
 ---
 
@@ -229,8 +291,8 @@ HTML 中通过 `data-i18n` 标记：
 
 `npm run build` 输出到 `dist/`：
 - `index.html`（~14 KB）
-- `assets/index-*.css`（~31 KB，gzip ~6 KB）
-- `assets/index-*.js`（~51 KB，gzip ~17 KB）
+- `assets/index-*.css`（~41 KB，gzip ~8 KB）
+- `assets/index-*.js`（~71 KB，gzip ~22 KB）
 - `public/` 中的静态文件直接复制
 
 ---

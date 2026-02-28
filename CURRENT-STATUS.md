@@ -25,8 +25,11 @@
 - [x] Pages Functions API（categories/series/episodes/play-count/appreciate/stats）
 - [x] D1 数据库绑定（foyue-db）
 - [x] 项目文档体系
+- [x] **AI 功能 Phase 1+2**（RAG 问答、语义搜索、内容摘要、聊天面板）— 代码已完成，待 Cloudflare 部署配置
 
-### 当前阶段：阶段 3（内容体系）进行中
+### 当前阶段：AI 功能部署 + 文库部署
+
+**AI 功能（Foyue 主站）** — 后端+前端代码已完成，待 Cloudflare 部署配置（详见下方 AI 功能章节）
 
 **法音文库子项目（wenku.foyue.org）** — 代码开发完成，待部署
 
@@ -91,12 +94,144 @@
 
 ## 已知问题
 
+- AI 功能需要完成 Cloudflare 部署配置才能生效（见下方 AI 部署步骤）
 - Cloudflare Dashboard 构建设置需更新（构建命令 + 输出目录）
 - manifest.json 引用了 icon-512.png，需确认文件存在
 
 ---
 
+## AI 功能（Phase 1+2）详情
+
+### 架构
+
+```
+                    Cloudflare AI Gateway
+                   (buddhist-ai-gateway)
+                  /         |            \
+          Workers AI    Vectorize      AI Gateway
+          (env.AI)    (env.VECTORIZE)  (缓存/监控/限流)
+         /    |    \       |
+     bge-m3  GLM  Whisper  |
+     (嵌入) (对话) (语音)   |
+                           |
+                 共享 D1 (foyue-db)
+```
+
+### 模型选择
+
+| 用途 | 模型 | 说明 |
+|------|------|------|
+| 文本嵌入 | `@cf/baai/bge-m3` (1024维) | 多语言，支持中文 |
+| 中文对话/摘要 | `@cf/zai-org/glm-4.7-flash` | 中文优化，131K上下文 |
+| 对话备用 | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | GLM 不可用时自动切换 |
+| 语音转文字 | `@cf/openai/whisper-large-v3-turbo` | Phase 4 预留 |
+
+### 新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `functions/lib/ai-utils.js` | 共享 AI 工具模块（切块/嵌入/搜索/RAG/摘要/限流/安全比较） |
+| `src/js/ai-client.js` | 前端 AI API 客户端（30s 超时，安全 JSON 解析） |
+| `src/js/ai-chat.js` | 悬浮 AI 问答面板组件 |
+| `src/js/ai-summary.js` | 集摘要展示组件 |
+| `src/css/ai.css` | AI 组件样式（暗色适配、响应式） |
+| `workers/migrations/0004_ai_tables.sql` | D1 迁移：ai_rate_limits + ai_summaries + ai_embedding_jobs 表 |
+
+### 修改的文件
+
+| 文件 | 变更 |
+|------|------|
+| `functions/api/[[path]].js` | 添加 AI 路由 + XSS/安全修复 |
+| `src/js/main.js` | 挂载 AI 聊天组件，播放时更新上下文 |
+| `src/js/pages-category.js` | 集成摘要组件 + escapeHtml 修复 |
+| `src/js/search.js` | 添加关键词/语义搜索切换 |
+| `src/js/utils.js` | 新增 escapeHtml，修复 showToast 计时器泄漏 |
+| `wrangler.toml` | 添加 AI + Vectorize 绑定 |
+| `index.html` | 引入 ai.css |
+
+### API 端点
+
+| 端点 | 方法 | 功能 |
+|------|------|------|
+| `/api/ai/ask` | POST | RAG 问答（支持 series_id 范围限定） |
+| `/api/ai/summary/:id` | GET | 获取/生成内容摘要（自动缓存） |
+| `/api/ai/search?q=` | GET | 语义搜索 |
+| `/api/admin/embeddings/build` | POST | 批量构建向量嵌入（需 X-Admin-Token） |
+| `/api/admin/cleanup` | POST | 清理过期限流记录（需 X-Admin-Token） |
+
+### 安全措施
+
+- XSS 防护：所有 innerHTML 数据均通过 `escapeHtml()` 转义
+- TOCTOU 修复：限流采用先插入后检查模式
+- 时序攻击防护：管理员 Token 使用 XOR 恒定时间比较
+- 提示注入防护：系统提示含角色锁定规则 + 上下文分隔符
+- CORS 白名单：仅允许 foyue.org / amituofo.pages.dev
+- 限流：每 IP 10次/分钟、100次/天
+
+### 部署步骤（必须在 Cloudflare Dashboard 完成）
+
+**1. 创建 Vectorize 索引**
+```bash
+npx wrangler vectorize create dharma-content --dimensions=1024 --metric=cosine
+npx wrangler vectorize create-metadata-index dharma-content --property-name=source --type=string
+npx wrangler vectorize create-metadata-index dharma-content --property-name=doc_id --type=string
+```
+
+**2. 执行 D1 迁移**
+```bash
+npx wrangler d1 execute foyue-db --remote --file=workers/migrations/0004_ai_tables.sql
+```
+
+**3. 设置环境变量**（Cloudflare Pages → Settings → Environment variables）
+- `ADMIN_TOKEN` — 管理员 API 密钥（自定义一个强密码）
+- `ALLOWED_ORIGINS` — 允许的 CORS 来源，如 `https://foyue.org,https://amituofo.pages.dev`
+
+**4. 部署**
+```bash
+git push  # 自动触发 Cloudflare Pages 构建
+```
+
+**5. 构建向量数据**（部署成功后执行一次）
+```bash
+curl -X POST https://foyue.org/api/admin/embeddings/build \
+  -H "X-Admin-Token: <你设置的ADMIN_TOKEN>"
+```
+
+### 后续开发方向
+
+- **Phase 3（Wenku AI）**：复用 `ai-utils.js`，添加阅读器侧边栏问答、文本选中解释
+- **Phase 4（Whisper）**：对缺少文稿的音频集使用 `whisper-large-v3-turbo` 转录
+- **成本预估**：< $1/月（Vectorize 免费额度内，AI 推理极低用量）
+
+---
+
 ## 交接记录
+
+### 2026-02-28 AI 功能 Phase 1+2 实施完成
+
+**做了什么：**
+- 实现完整 AI 后端：RAG 问答、语义搜索、内容摘要、向量化管线
+- 实现完整 AI 前端：悬浮聊天面板、摘要组件、关键词/语义搜索切换
+- 创建共享 AI 工具模块（`functions/lib/ai-utils.js`）
+- 创建 D1 迁移脚本（3 张 AI 表）
+- 配置 wrangler.toml（AI + Vectorize 绑定）
+- 经 6 个审查 agent 两轮安全审查，修复 ~30 个问题
+- 构建通过：32 modules，CSS 40.80 KB，JS 70.64 KB
+- 代码推送到 GitHub main 分支（2 个 commit）
+
+**没做完：**
+- Cloudflare Vectorize 索引创建（需要 `wrangler vectorize create`）
+- D1 AI 表迁移（需要 `wrangler d1 execute`）
+- 环境变量设置（ADMIN_TOKEN、ALLOWED_ORIGINS）
+- 向量嵌入数据构建（需调用管理员 API）
+- Phase 3 Wenku AI 集成
+- Phase 4 Whisper 音频转文字
+
+**注意事项：**
+- AI 功能在线上报错是因为 Vectorize 索引和 D1 AI 表尚未创建
+- 部署步骤严格按上方"部署步骤"章节执行
+- `ai-utils.js` 设计为可复用模块，wenku 项目可直接复制使用
+- 管理员 API 通过 `X-Admin-Token` header 认证，token 不可提交到代码中
 
 ### 2026-02-27 法音文库子项目开发完成
 

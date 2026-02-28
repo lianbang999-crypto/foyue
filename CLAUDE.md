@@ -10,7 +10,7 @@
 
 - 线上地址：https://foyue.org
 - 备用地址：https://amituofo.pages.dev
-- GitHub 仓库：https://github.com/lianbang999-crypto/bojingji
+- GitHub 仓库：https://github.com/lianbang999-crypto/foyue
 
 ---
 
@@ -37,6 +37,9 @@
 后端 API → Cloudflare Pages Functions（functions/ 目录）
 数据库 → Cloudflare D1（foyue-db）
 音频存储 → Cloudflare R2（4 个存储桶）
+AI 推理 → Cloudflare Workers AI（bge-m3 / GLM / Whisper）
+向量搜索 → Cloudflare Vectorize（dharma-content 索引）
+AI 网关 → Cloudflare AI Gateway（buddhist-ai-gateway）
 字体 → Google Fonts CDN（Noto Sans SC + DM Sans）
 ```
 
@@ -47,7 +50,7 @@ foyue/
 ├── index.html              # HTML 入口（仅 DOM 结构）
 ├── package.json            # Vite 项目配置
 ├── vite.config.js          # Vite 构建配置
-├── wrangler.toml           # Cloudflare D1 绑定
+├── wrangler.toml           # Cloudflare D1 + AI + Vectorize 绑定
 ├── public/                 # 静态资源（Vite 直接复制到 dist/）
 │   ├── manifest.json
 │   ├── robots.txt
@@ -55,35 +58,43 @@ foyue/
 │   ├── data/audio-data.json
 │   └── icons/
 ├── src/
-│   ├── css/                # 7 个 CSS 模块
+│   ├── css/                # 8 个 CSS 模块
 │   │   ├── tokens.css      # CSS 变量（浅色 + 深色主题）
 │   │   ├── reset.css       # CSS Reset
 │   │   ├── layout.css      # Header/TabBar/Content 布局
 │   │   ├── player.css      # 播放器（迷你 + 全屏）
 │   │   ├── cards.css       # 系列卡片 + 集数列表
 │   │   ├── pages.css       # 首页 + 我的页面
-│   │   └── components.css  # 弹窗/Toast/Banner/加载
-│   ├── js/                 # 13 个 ES Module
+│   │   ├── components.css  # 弹窗/Toast/Banner/加载
+│   │   └── ai.css          # AI 组件（聊天面板/摘要/搜索切换）
+│   ├── js/                 # 16 个 ES Module
 │   │   ├── main.js         # 入口
 │   │   ├── state.js        # 共享状态
 │   │   ├── dom.js          # DOM 引用
 │   │   ├── i18n.js         # 国际化
 │   │   ├── theme.js        # 主题管理
 │   │   ├── icons.js        # SVG 图标常量
-│   │   ├── utils.js        # 工具函数
+│   │   ├── utils.js        # 工具函数（含 escapeHtml）
 │   │   ├── history.js      # 播放历史
 │   │   ├── player.js       # 播放器核心
-│   │   ├── search.js       # 搜索
+│   │   ├── search.js       # 搜索（关键词 + AI 语义）
 │   │   ├── pwa.js          # PWA 安装引导
 │   │   ├── pages-home.js   # 首页
 │   │   ├── pages-my.js     # "我的"页面
-│   │   └── pages-category.js # 分类/集数页面
+│   │   ├── pages-category.js # 分类/集数页面
+│   │   ├── ai-client.js    # AI API 客户端
+│   │   ├── ai-chat.js      # AI 悬浮问答面板
+│   │   └── ai-summary.js   # AI 摘要组件
 │   └── locales/            # i18n 翻译文件（JSON）
 │       ├── zh.json
 │       ├── en.json
 │       └── fr.json
 ├── functions/              # Cloudflare Pages Functions
-│   └── api/[[path]].js     # API 路由
+│   ├── api/[[path]].js     # API 路由（数据 + AI + 管理员）
+│   └── lib/ai-utils.js     # 共享 AI 工具模块
+├── workers/
+│   └── migrations/         # D1 数据库迁移脚本
+│       └── 0004_ai_tables.sql
 └── dist/                   # 构建输出（.gitignore）
 ```
 
@@ -140,7 +151,7 @@ npm run preview      # 预览构建结果
 - audio-data.json 纳入仓库
 - Pages Functions API 搭建
 
-### 阶段 2：数据后端
+### 阶段 2：数据后端 ✅
 - D1 数据库搭建
 - 播放计数 API
 - 随喜功能（莲花图标，"随喜 +1"）
@@ -155,14 +166,13 @@ npm run preview      # 预览构建结果
 - 莲友留言墙（审核后展示）
 - 反馈表单
 
-### 阶段 5：AI 功能
-- AI 语义搜索
-- AI 问答助手
-- AI 内容摘要
-- 音频转文字（Whisper）
-- AI 留言审核
-- AI 推荐
-- AI 辅助翻译（标注"仅供参考"，用户主动触发）
+### 阶段 5：AI 功能（Phase 1+2 ✅，待 Cloudflare 部署配置）
+- ✅ AI 语义搜索（bge-m3 + Vectorize）
+- ✅ AI 问答助手（RAG 管线 + GLM）
+- ✅ AI 内容摘要（GLM + D1 缓存）
+- ✅ 安全加固（XSS/TOCTOU/时序攻击/提示注入/CORS）
+- 待部署：Vectorize 索引创建 + D1 迁移 + 环境变量
+- 待开发：Wenku AI 集成、Whisper 音频转文字、AI 留言审核、AI 推荐
 
 ### 阶段 6：SEO 与推广
 - Open Graph / 结构化数据

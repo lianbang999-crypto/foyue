@@ -4,6 +4,57 @@
 
 ---
 
+## 2026-02-28
+
+### AI 功能 Phase 1+2（Foyue 主站）
+
+为主站添加基于 Cloudflare AI 全栈的智能功能。使用 RAG（检索增强生成）架构。
+
+**后端（`functions/api/[[path]].js` + `functions/lib/ai-utils.js`）**
+- RAG 问答：用户问题 → bge-m3 嵌入 → Vectorize 检索 top-5 → D1 获取原文 → GLM 生成回答
+- 语义搜索：bge-m3 嵌入 → Vectorize 检索 top-10 → 返回匹配片段
+- 内容摘要：GLM 生成 100-200 字摘要，缓存到 D1 `ai_summaries` 表
+- 向量化管线：管理员 API 批量切块 + 嵌入 + 写入 Vectorize
+- 模型回退：GLM-4.7-flash 主模型，失败自动切换 Llama-3.3-70b
+- IP 限流：10次/分钟、100次/天，INSERT-first 避免 TOCTOU 竞态
+
+**前端**
+- `ai-chat.js` — 悬浮 AI 问答面板（右下角"问法"按钮，ESC/外部点击关闭）
+- `ai-summary.js` — 集摘要组件（懒加载，点击展开）
+- `ai-client.js` — AI API 客户端（30s AbortController 超时）
+- `ai.css` — AI 组件样式（暖色调、深色模式适配、44px 触控目标、响应式）
+- `search.js` — 添加关键词/语义搜索模式切换
+
+**安全加固**
+- 所有 innerHTML 数据字段通过 `escapeHtml()` 防 XSS
+- 管理员 token 使用恒定时间 XOR 比较防时序攻击
+- 系统提示包含角色锁定规则 + `---` 分隔符防提示注入
+- CORS 白名单限制来源域名
+- 请求体 JSON 解析 try/catch，POST 响应 `Cache-Control: no-store`
+
+**新增文件（6 个）**
+- `functions/lib/ai-utils.js` — 共享 AI 工具模块
+- `src/js/ai-client.js` — 前端 AI API 客户端
+- `src/js/ai-chat.js` — AI 聊天面板组件
+- `src/js/ai-summary.js` — 摘要展示组件
+- `src/css/ai.css` — AI 组件样式
+- `workers/migrations/0004_ai_tables.sql` — D1 迁移脚本
+
+**修改文件（6 个）**
+- `functions/api/[[path]].js` — 添加 5 个 AI/管理员路由
+- `src/js/main.js` — 挂载 AI 聊天组件
+- `src/js/pages-category.js` — 集成摘要 + XSS 修复
+- `src/js/search.js` — 语义搜索 + XSS 修复
+- `src/js/utils.js` — 新增 escapeHtml + 修复 showToast 计时器
+- `wrangler.toml` — 添加 AI + Vectorize 绑定
+
+**构建产物**
+- 32 modules
+- CSS: 40.80 KB (gzip ~8 KB)
+- JS: 70.64 KB (gzip ~22 KB)
+
+---
+
 ## 2026-02-27
 
 ### 法音文库子项目（foyue-wenku）

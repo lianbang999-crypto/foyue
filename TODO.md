@@ -2,6 +2,7 @@
 
 ## 进行中
 
+- AI 功能 Cloudflare 部署配置（Vectorize 索引 + D1 迁移 + 环境变量）— 代码已完成
 - 法音文库部署（wenku.foyue.org）— 代码已完成，待创建 GitHub 仓库和 Cloudflare Pages 项目
 
 ---
@@ -32,12 +33,12 @@
 
 ---
 
-## 阶段 2：数据后端（待启动）
+## 阶段 2：数据后端 ✅
 
-- [ ] 前端接入 D1 API（替换 JSON 静态数据）
-- [ ] 播放计数 API 前端集成
-- [ ] 随喜功能（前端 UI + 后端 API 联调）
-- [ ] AI Gateway 搭建（负责人：fayin002）
+- [x] 前端接入 D1 API（替换 JSON 静态数据）
+- [x] 播放计数 API 前端集成
+- [x] 随喜功能（前端 UI + 后端 API 联调）
+- [x] AI Gateway 搭建
 
 ---
 
@@ -63,12 +64,20 @@
 
 ---
 
-## 阶段 5：AI 功能
+## 阶段 5：AI 功能（Phase 1+2 已完成，待部署）
 
-- [ ] AI 语义搜索
-- [ ] AI 问答助手
-- [ ] AI 内容摘要
-- [ ] 音频转文字（Whisper）
+- [x] AI 基础设施（Workers AI + Vectorize + AI Gateway 绑定）
+- [x] AI 语义搜索（bge-m3 嵌入 → Vectorize 检索）
+- [x] AI 问答助手（RAG 管线：检索→上下文→GLM 生成）
+- [x] AI 内容摘要（GLM 生成 + D1 缓存）
+- [x] AI 聊天面板前端（悬浮"问法"按钮 + 对话面板）
+- [x] 关键词/语义搜索切换
+- [x] 向量化管线（管理员 API + 批量构建）
+- [x] 安全加固（XSS/TOCTOU/时序攻击/提示注入/CORS）
+- [ ] **Cloudflare 部署配置**（Vectorize 索引 + D1 迁移 + 环境变量）
+- [ ] **向量嵌入数据构建**（调用 admin API）
+- [ ] Wenku 文库 AI 集成（Phase 3）
+- [ ] 音频转文字 Whisper（Phase 4）
 - [ ] AI 留言审核
 - [ ] AI 推荐
 - [ ] AI 辅助翻译（标注"仅供参考"，用户主动触发）
