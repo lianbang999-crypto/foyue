@@ -381,6 +381,10 @@ export function renderPlaylistItems() {
   const items = plSortAsc ? [...state.playlist] : [...state.playlist].reverse();
   dom.plCount.textContent = state.playlist.length + ' ' + t(state.tab === 'fohao' ? 'tracks' : 'episodes');
   dom.plItems.innerHTML = '';
+  const hist = getHistory();
+  const histMap = new Map();
+  hist.forEach(h => { const key = h.seriesId + ':' + h.epIdx; histMap.set(key, h); });
+  const frag = document.createDocumentFragment();
   items.forEach((tr, displayIdx) => {
     const realIdx = plSortAsc ? displayIdx : state.playlist.length - 1 - displayIdx;
     const isCurrent = realIdx === state.epIdx;
@@ -393,8 +397,7 @@ export function renderPlaylistItems() {
       metaHTML += `<span class="pl-item-duration">${fmt(tr.duration)}</span>`;
     }
     // Show progress from history if available
-    const hist = getHistory();
-    const hEntry = hist.find(h => h.seriesId === tr.seriesId && h.epIdx === realIdx);
+    const hEntry = histMap.get(tr.seriesId + ':' + realIdx);
     if (hEntry && hEntry.duration > 0) {
       const pct = Math.round(hEntry.time / hEntry.duration * 100);
       if (pct > 0 && pct < 100) metaHTML += `<span class="pl-item-progress">${t('pl_played')}${pct}%</span>`;
@@ -402,8 +405,9 @@ export function renderPlaylistItems() {
 
     div.innerHTML = `<span class="pl-item-num">${realIdx + 1}</span><div class="pl-item-body"><div class="pl-item-title">${tr.title || tr.fileName}</div>${metaHTML ? '<div class="pl-item-meta">' + metaHTML + '</div>' : ''}</div>`;
     div.addEventListener('click', () => { state.epIdx = realIdx; playCurrent(); });
-    dom.plItems.appendChild(div);
+    frag.appendChild(div);
   });
+  dom.plItems.appendChild(frag);
   const cur = dom.plItems.querySelector('.current');
   if (cur) cur.scrollIntoView({ block: 'center', behavior: 'smooth' });
 }

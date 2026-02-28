@@ -86,12 +86,17 @@ export function showEpisodes(series, tabId) {
 
   const ul = view.querySelector('#epList');
   const hist = getHistory();
+  // Build a history lookup map for O(1) access instead of O(n) .find() per episode
+  const histMap = new Map();
+  hist.forEach(h => { if (h.seriesId === series.id) histMap.set(h.epIdx, h); });
+  // Use DocumentFragment for batch DOM insertion (avoids 196+ reflows)
+  const frag = document.createDocumentFragment();
   series.episodes.forEach((ep, idx) => {
     const li = document.createElement('li');
     li.className = 'ep-item' + (isCurrentTrack(series.id, idx) ? ' playing' : '');
     const introHtml = ep.intro ? `<span class="ep-intro">${ep.intro}</span>` : '';
     // Check history for played progress
-    const hEntry = hist.find(h => h.seriesId === series.id && h.epIdx === idx);
+    const hEntry = histMap.get(idx);
     let progressHtml = '';
     if (hEntry && hEntry.duration > 0) {
       const pct = Math.min(100, Math.round(hEntry.time / hEntry.duration * 100));
@@ -104,8 +109,9 @@ export function showEpisodes(series, tabId) {
       if (isCurrentTrack(series.id, idx)) { togglePlay(); return; }
       playList(series.episodes, idx, series);
     });
-    ul.appendChild(li);
+    frag.appendChild(li);
   });
+  ul.appendChild(frag);
 
   // Add appreciation button
   const actionsDiv = view.querySelector('#epActions');

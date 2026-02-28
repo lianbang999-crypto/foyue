@@ -203,14 +203,32 @@ import { initInstallPrompt, initBackGuard } from './pwa.js';
   }
 })();
 
-/* ===== DATA LOADING with retry ===== */
+/* ===== DATA LOADING with cache + retry ===== */
 let loadAttempts = 0;
+const DATA_CACHE_KEY = 'pl-data-cache';
+const DATA_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
 async function loadData() {
   const dom = getDOM();
   try {
+    // Try localStorage cache first for instant render
+    const cached = loadCachedData();
+    if (cached) {
+      state.data = cached;
+      dom.loader.style.display = 'none';
+      if (state.tab === 'home') renderHomePage();
+      else renderCategory(state.tab);
+      restoreState(renderCategory, renderHomePage, renderMyPage);
+      if (state.isFirstVisit && state.epIdx < 0) playDefaultTrack();
+      // Refresh in background (non-blocking)
+      fetchFreshData();
+      return;
+    }
+    // No cache: fetch fresh
     const r = await fetch('/data/audio-data.json');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.data = await r.json();
+    saveCachedData(state.data);
     dom.loader.style.display = 'none';
     if (state.tab === 'home') renderHomePage();
     else renderCategory(state.tab);
@@ -222,6 +240,35 @@ async function loadData() {
     if (loadAttempts < 3) { setTimeout(loadData, 1500 * loadAttempts); return; }
     dom.loader.innerHTML = `<div class="error-msg">${t('loading_fail')}<br><button onclick="location.reload()">${t('retry')}</button></div>`;
   }
+}
+
+function loadCachedData() {
+  try {
+    const raw = localStorage.getItem(DATA_CACHE_KEY);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw);
+    if (Date.now() - ts > DATA_CACHE_TTL) return null;
+    return data;
+  } catch (e) { return null; }
+}
+
+function saveCachedData(data) {
+  try {
+    localStorage.setItem(DATA_CACHE_KEY, JSON.stringify({ data, ts: Date.now() }));
+  } catch (e) { /* storage full or unavailable */ }
+}
+
+async function fetchFreshData() {
+  try {
+    const r = await fetch('/data/audio-data.json');
+    if (!r.ok) return;
+    const fresh = await r.json();
+    saveCachedData(fresh);
+    // Only update state if data actually changed (avoid unnecessary re-renders)
+    if (JSON.stringify(fresh) !== JSON.stringify(state.data)) {
+      state.data = fresh;
+    }
+  } catch (e) { /* silent */ }
 }
 
 function playDefaultTrack() {
