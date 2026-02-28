@@ -47,6 +47,10 @@
 .ep-title{font-size:.86rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ep-intro{display:block;font-size:.7rem;color:var(--text-secondary);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ep-item.playing .ep-title{color:var(--accent);font-weight:500}
+.ep-progress{height:2px;background:var(--border);border-radius:1px;margin-top:4px;overflow:hidden}
+.ep-progress-fill{height:100%;background:var(--accent);border-radius:1px;opacity:.6}
 
 /* === SEARCH RESULTS === */
 .search-label{font-size:.78rem;color:var(--text-secondary);margin-bottom:10px;padding-left:4px}
+.search-group-label{font-size:.68rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;padding:8px 4px 4px;font-weight:500;border-bottom:1px solid var(--border);margin-bottom:4px}
+.search-hl{background:var(--accent-glow);color:var(--accent);font-weight:500;padding:0 1px;border-radius:2px}

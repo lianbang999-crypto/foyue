@@ -72,5 +72,15 @@
   "my_install_benefit": "Full-screen mode, no accidental browser navigation",
   "my_install_btn": "Install to Home Screen",
   "my_install_ios": "Tap the share button below, then select \"Add to Home Screen\"",
-  "my_install_android": "Tap the button below or use browser menu \"Add to Home Screen\""
+  "my_install_android": "Tap the button below or use browser menu \"Add to Home Screen\"",
+  "pl_current": "Current",
+  "pl_history": "History",
+  "pl_sort_asc": "Ascending",
+  "pl_sort_desc": "Descending",
+  "pl_played": "Played ",
+  "timer_end_episode": "End of episode",
+  "search_series": "Series",
+  "search_episodes": "Episodes",
+  "my_history_more": "Show all ({n})",
+  "my_clear_history": "Clear"
 }

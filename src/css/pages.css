@@ -17,6 +17,10 @@
 .my-item-arrow{width:14px;height:14px;stroke:var(--text-muted);fill:none;stroke-width:2;flex-shrink:0}
 .my-namo{text-align:center;font-size:.82rem;color:var(--accent);font-weight:400;margin-top:24px;opacity:.6;letter-spacing:.08em}
 /* history list */
+.my-section-header{display:flex;align-items:center;justify-content:space-between;padding:0 4px 8px}
+.my-section-header .my-section-title{padding:0}
+.my-history-clear{-webkit-appearance:none;appearance:none;background:none;border:none;font-size:.68rem;color:var(--text-muted);cursor:pointer;padding:2px 4px;transition:color .15s}
+.my-history-clear:hover{color:var(--accent)}
 .my-history-item{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--bg-card);cursor:pointer;transition:background .15s;min-height:44px}
 .my-history-item:hover{background:var(--bg-card-hover)}
 .my-history-icon{width:32px;height:32px;border-radius:8px;background:var(--accent-glow);display:flex;align-items:center;justify-content:center;flex-shrink:0}
@@ -24,8 +28,12 @@
 .my-history-body{flex:1;min-width:0}
 .my-history-title{font-size:.84rem;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .my-history-sub{font-size:.72rem;color:var(--text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.my-history-bar{height:3px;background:var(--border);border-radius:2px;margin-top:5px;overflow:hidden}
+.my-history-bar-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .3s}
 .my-history-time{font-size:.68rem;color:var(--text-muted);flex-shrink:0;white-space:nowrap}
 .my-history-empty{text-align:center;padding:20px 16px;color:var(--text-muted);font-size:.8rem}
+.my-history-more{text-align:center;padding:12px 16px;font-size:.78rem;color:var(--accent);cursor:pointer;background:var(--bg-card);transition:background .15s}
+.my-history-more:hover{background:var(--bg-card-hover)}
 /* install guide card */
 .my-install-card{padding:16px;background:var(--bg-card);border-radius:var(--radius);overflow:hidden}
 .my-install-top{display:flex;align-items:center;gap:12px;margin-bottom:10px}

@@ -34,6 +34,10 @@ export function addHistory(tr, audio) {
   } catch (e) { /* ignore */ }
 }
 
+export function clearHistory() {
+  localStorage.removeItem('pl-history');
+}
+
 export function syncHistoryProgress(audio) {
   if (state.epIdx < 0 || !state.playlist[state.epIdx]) return;
   try {

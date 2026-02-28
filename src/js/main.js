@@ -14,14 +14,14 @@ import { state } from './state.js';
 import { initDOM, getDOM } from './dom.js';
 import { initLang, applyI18n, t } from './i18n.js';
 import { initTheme } from './theme.js';
-import { seekAt } from './utils.js';
+import { seekCalc, seekUI, seekCommit } from './utils.js';
 import {
   playList, togglePlay, prevTrack, nextTrack,
   cycleLoop, cycleSpeed, cycleSleepTimer,
   shareTrack, onTimeUpdate, onEnded, onAudioError,
   setPlayState, highlightEp, preloadNextTrack, cleanupPreload,
   togglePlaylist, getPlaylistVisible, saveState, restoreState,
-  getIsSwitching,
+  getIsSwitching, setDragging, initPlaylistTabs,
 } from './player.js';
 import { renderHomePage } from './pages-home.js';
 import { renderMyPage } from './pages-my.js';
@@ -98,15 +98,36 @@ import { initInstallPrompt, initBackGuard } from './pwa.js';
     }
   });
 
-  // Progress seek - expanded player
+  // Progress seek - expanded player (smooth drag: UI-only during drag, commit on release)
   let dragging = false;
-  function expSeek(e) { seekAt(e, dom.expProgressBar, dom.audio); }
-  dom.expProgressBar.addEventListener('mousedown', e => { dragging = true; expSeek(e); });
-  dom.expProgressBar.addEventListener('touchstart', e => { dragging = true; expSeek(e.touches[0]); }, { passive: true });
-  document.addEventListener('mousemove', e => { if (dragging) expSeek(e); });
-  document.addEventListener('touchmove', e => { if (dragging) expSeek(e.touches[0]); }, { passive: true });
-  document.addEventListener('mouseup', () => dragging = false);
-  document.addEventListener('touchend', () => dragging = false);
+  let dragPct = 0;
+  function startDrag(e) {
+    dragging = true;
+    setDragging(true);
+    dom.expProgressFill.style.transition = 'none';
+    dom.expProgressThumb.style.transition = 'none';
+    dragPct = seekCalc(e, dom.expProgressBar);
+    seekUI(dragPct, dom);
+  }
+  function moveDrag(e) {
+    if (!dragging) return;
+    dragPct = seekCalc(e, dom.expProgressBar);
+    seekUI(dragPct, dom);
+  }
+  function endDrag() {
+    if (!dragging) return;
+    dragging = false;
+    dom.expProgressFill.style.transition = '';
+    dom.expProgressThumb.style.transition = '';
+    seekCommit(dragPct, dom.audio);
+    setDragging(false);
+  }
+  dom.expProgressBar.addEventListener('mousedown', e => startDrag(e));
+  dom.expProgressBar.addEventListener('touchstart', e => startDrag(e.touches[0]), { passive: true });
+  document.addEventListener('mousemove', e => moveDrag(e));
+  document.addEventListener('touchmove', e => moveDrag(e.touches[0]), { passive: true });
+  document.addEventListener('mouseup', endDrag);
+  document.addEventListener('touchend', endDrag);
 
   // Expanded toggle
   dom.expCollapse.addEventListener('click', () => {
@@ -118,6 +139,7 @@ import { initInstallPrompt, initBackGuard } from './pwa.js';
 
   // Queue / playlist toggle
   dom.expQueue.addEventListener('click', togglePlaylist);
+  initPlaylistTabs();
 
   // Audio events
   dom.audio.addEventListener('timeupdate', onTimeUpdate);

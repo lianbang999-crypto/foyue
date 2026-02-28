@@ -19,8 +19,29 @@ export function showToast(msg) {
   setTimeout(() => { toast.style.opacity = '0'; }, 2000);
 }
 
-export function seekAt(e, el, audio) {
+/* Calculate seek percentage from pointer event */
+export function seekCalc(e, el) {
   const r = el.getBoundingClientRect();
-  const p = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+  return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+}
+
+/* Update only the visual UI during drag (no audio.currentTime write) */
+export function seekUI(p, dom) {
+  const pct = p * 100 + '%';
+  dom.expProgressFill.style.width = pct;
+  dom.expProgressThumb.style.left = pct;
+  if (dom.audio.duration && isFinite(dom.audio.duration)) {
+    dom.expTimeCurr.textContent = fmt(p * dom.audio.duration);
+  }
+}
+
+/* Commit seek — actually set audio.currentTime (called once on pointer up) */
+export function seekCommit(p, audio) {
+  if (audio.duration && isFinite(audio.duration)) audio.currentTime = p * audio.duration;
+}
+
+/* Legacy — kept for any other callers */
+export function seekAt(e, el, audio) {
+  const p = seekCalc(e, el);
   if (audio.duration && isFinite(audio.duration)) audio.currentTime = p * audio.duration;
 }

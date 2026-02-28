@@ -4,22 +4,24 @@ import { getDOM, RING_CIRCUMFERENCE } from './dom.js';
 import { SVG, ICON_PLAY, ICON_PAUSE, ICON_PLAY_FILLED, ICON_PAUSE_FILLED } from './icons.js';
 import { t } from './i18n.js';
 import { fmt, showToast, seekAt } from './utils.js';
-import { addHistory, syncHistoryProgress } from './history.js';
+import { addHistory, syncHistoryProgress, getHistory } from './history.js';
 
 /* ===== Playback State ===== */
 let pendingSeek = 0;
 let isSwitching = false;
 let audioRetries = 0;
+let _dragging = false;
 
 /* ===== Speed Control ===== */
 const SPEEDS = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 let speedIdx = 1;
 
 /* ===== Sleep Timer ===== */
-const TIMER_OPTS = [0, 30, 60, 120, 180];
+const TIMER_OPTS = [0, -1, 30, 60, 120, 180]; // -1 = end of current episode
 let timerIdx = 0;
 let sleepTimerId = null;
 let sleepRemaining = 0;
+let sleepAfterEpisode = false;
 
 /* ===== Preload ===== */
 let preloadAudio = null;
@@ -30,6 +32,7 @@ let playlistVisible = false;
 
 export function getIsSwitching() { return isSwitching; }
 export function getPlaylistVisible() { return playlistVisible; }
+export function setDragging(v) { _dragging = v; }
 
 export function playList(episodes, idx, series, restoreTime) {
   cleanupPreload();
@@ -114,6 +117,7 @@ export function isCurrentTrack(sid, idx) {
 }
 
 export function onTimeUpdate() {
+  if (_dragging) return; // Skip UI updates while user is dragging progress bar
   const dom = getDOM();
   const dur = dom.audio.duration;
   if (!dur || !isFinite(dur)) return;
@@ -134,6 +138,17 @@ export function onTimeUpdate() {
 
 export function onEnded() {
   const dom = getDOM();
+  // Check sleep-after-episode timer
+  if (sleepAfterEpisode) {
+    sleepAfterEpisode = false;
+    timerIdx = 0;
+    const btn = document.getElementById('expTimer');
+    btn.classList.remove('active');
+    const bd = btn.querySelector('.timer-badge');
+    if (bd) bd.remove();
+    setPlayState(false);
+    return;
+  }
   if (state.loopMode === 'one') { dom.audio.currentTime = 0; dom.audio.play(); }
   else if (state.loopMode === 'shuffle') { state.epIdx = Math.floor(Math.random() * state.playlist.length); playCurrent(); }
   else if (state.epIdx < state.playlist.length - 1) { state.epIdx++; playCurrent(); }
@@ -243,6 +258,7 @@ export function cycleSleepTimer() {
   timerIdx = (timerIdx + 1) % TIMER_OPTS.length;
   const mins = TIMER_OPTS[timerIdx];
   if (sleepTimerId) { clearInterval(sleepTimerId); sleepTimerId = null; }
+  sleepAfterEpisode = false;
   const btn = document.getElementById('expTimer');
   const oldBadge = btn.querySelector('.timer-badge');
   if (oldBadge) oldBadge.remove();
@@ -250,6 +266,15 @@ export function cycleSleepTimer() {
     sleepRemaining = 0;
     btn.classList.remove('active');
     showToast(t('timer_off'));
+  } else if (mins === -1) {
+    // Stop after current episode ends
+    sleepAfterEpisode = true;
+    btn.classList.add('active');
+    const badge = document.createElement('span');
+    badge.className = 'timer-badge';
+    badge.textContent = '\u2759'; // pause symbol
+    btn.appendChild(badge);
+    showToast(t('timer_end_episode'));
   } else {
     const dom = getDOM();
     sleepRemaining = mins * 60;
@@ -304,29 +329,105 @@ export function cleanupPreload() {
 }
 
 /* ===== Playlist Panel ===== */
+let plTab = 'current'; // 'current' | 'history'
+let plSortAsc = true;
+
 export function togglePlaylist() {
   const dom = getDOM();
   playlistVisible = !playlistVisible;
   dom.playlistPanel.classList.toggle('show', playlistVisible);
   dom.expPlayerContent.classList.toggle('hide', playlistVisible);
   dom.expQueue.classList.toggle('active', playlistVisible);
-  if (playlistVisible) renderPlaylistItems();
+  if (playlistVisible) {
+    plTab = 'current';
+    updatePlTabs();
+    renderPlaylistItems();
+  }
+}
+
+function updatePlTabs() {
+  const tabCur = document.getElementById('plTabCurrent');
+  const tabHist = document.getElementById('plTabHistory');
+  const sortBtn = document.getElementById('plSortBtn');
+  if (tabCur) tabCur.classList.toggle('active', plTab === 'current');
+  if (tabHist) tabHist.classList.toggle('active', plTab === 'history');
+  if (sortBtn) sortBtn.style.display = plTab === 'current' ? '' : 'none';
+}
+
+export function initPlaylistTabs() {
+  const tabCur = document.getElementById('plTabCurrent');
+  const tabHist = document.getElementById('plTabHistory');
+  const sortBtn = document.getElementById('plSortBtn');
+  if (tabCur) tabCur.addEventListener('click', () => { plTab = 'current'; updatePlTabs(); renderPlaylistItems(); });
+  if (tabHist) tabHist.addEventListener('click', () => { plTab = 'history'; updatePlTabs(); renderPlaylistItems(); });
+  if (sortBtn) sortBtn.addEventListener('click', () => { plSortAsc = !plSortAsc; document.getElementById('plSortLabel').textContent = t(plSortAsc ? 'pl_sort_asc' : 'pl_sort_desc'); renderPlaylistItems(); });
 }
 
 export function renderPlaylistItems() {
   const dom = getDOM();
   if (!playlistVisible) return;
+
+  if (plTab === 'history') {
+    renderHistoryTab(dom);
+    return;
+  }
+
+  // Current series tab
+  const items = plSortAsc ? [...state.playlist] : [...state.playlist].reverse();
   dom.plCount.textContent = state.playlist.length + ' ' + t(state.tab === 'fohao' ? 'tracks' : 'episodes');
   dom.plItems.innerHTML = '';
-  state.playlist.forEach((tr, i) => {
+  items.forEach((tr, displayIdx) => {
+    const realIdx = plSortAsc ? displayIdx : state.playlist.length - 1 - displayIdx;
+    const isCurrent = realIdx === state.epIdx;
     const div = document.createElement('div');
-    div.className = 'pl-item' + (i === state.epIdx ? ' current' : '');
-    div.innerHTML = `<span class="pl-item-num">${i + 1}</span><span class="pl-item-title">${tr.title || tr.fileName}</span>`;
-    div.addEventListener('click', () => { state.epIdx = i; playCurrent(); });
+    div.className = 'pl-item' + (isCurrent ? ' current' : '');
+
+    // Build meta info (duration + progress)
+    let metaHTML = '';
+    if (tr.duration) {
+      metaHTML += `<span class="pl-item-duration">${fmt(tr.duration)}</span>`;
+    }
+    // Show progress from history if available
+    const hist = getHistory();
+    const hEntry = hist.find(h => h.seriesId === tr.seriesId && h.epIdx === realIdx);
+    if (hEntry && hEntry.duration > 0) {
+      const pct = Math.round(hEntry.time / hEntry.duration * 100);
+      if (pct > 0 && pct < 100) metaHTML += `<span class="pl-item-progress">${t('pl_played')}${pct}%</span>`;
+    }
+
+    div.innerHTML = `<span class="pl-item-num">${realIdx + 1}</span><div class="pl-item-body"><div class="pl-item-title">${tr.title || tr.fileName}</div>${metaHTML ? '<div class="pl-item-meta">' + metaHTML + '</div>' : ''}</div>`;
+    div.addEventListener('click', () => { state.epIdx = realIdx; playCurrent(); });
     dom.plItems.appendChild(div);
   });
   const cur = dom.plItems.querySelector('.current');
   if (cur) cur.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+
+function renderHistoryTab(dom) {
+  const hist = getHistory();
+  dom.plCount.textContent = hist.length + ' ' + t('episodes');
+  dom.plItems.innerHTML = '';
+  if (!hist.length) {
+    dom.plItems.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:.8rem">${t('my_no_history')}</div>`;
+    return;
+  }
+  hist.forEach(h => {
+    const div = document.createElement('div');
+    div.className = 'pl-item';
+    const pct = h.duration > 0 ? Math.round(h.time / h.duration * 100) : 0;
+    let metaHTML = '';
+    if (h.duration > 0) metaHTML += `<span class="pl-item-duration">${fmt(h.duration)}</span>`;
+    if (pct > 0) metaHTML += `<span class="pl-item-progress">${t('pl_played')}${pct}%</span>`;
+    div.innerHTML = `<span class="pl-item-num">\u25B6</span><div class="pl-item-body"><div class="pl-item-title">${h.epTitle}</div><div class="pl-hist-sub">${h.seriesTitle}${h.speaker ? ' \u00B7 ' + h.speaker : ''}</div>${metaHTML ? '<div class="pl-item-meta">' + metaHTML + '</div>' : ''}</div>`;
+    div.addEventListener('click', () => {
+      if (!state.data) return;
+      for (const cat of state.data.categories) {
+        const sr = cat.series.find(s => s.id === h.seriesId);
+        if (sr) { playList(sr.episodes, h.epIdx, sr, h.time); return; }
+      }
+    });
+    dom.plItems.appendChild(div);
+  });
 }
 
 /* ===== Media Session ===== */

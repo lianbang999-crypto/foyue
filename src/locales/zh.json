@@ -72,5 +72,15 @@
   "my_install_benefit": "安装后可全屏使用，不会被浏览器手势误触退出",
   "my_install_btn": "安装到主屏幕",
   "my_install_ios": "点击底部分享按钮 → 选择「添加到主屏幕」",
-  "my_install_android": "点击下方按钮或浏览器菜单「添加到主屏幕」"
+  "my_install_android": "点击下方按钮或浏览器菜单「添加到主屏幕」",
+  "pl_current": "当前系列",
+  "pl_history": "历史播放",
+  "pl_sort_asc": "正序",
+  "pl_sort_desc": "倒序",
+  "pl_played": "已播",
+  "timer_end_episode": "播完本集后",
+  "search_series": "系列",
+  "search_episodes": "单集",
+  "my_history_more": "查看全部 ({n})",
+  "my_clear_history": "清除"
 }

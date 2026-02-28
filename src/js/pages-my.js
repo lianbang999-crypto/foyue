@@ -3,7 +3,7 @@ import { state } from './state.js';
 import { t, getLang, setLang } from './i18n.js';
 import { getDOM } from './dom.js';
 import { isDark, toggleTheme } from './theme.js';
-import { getHistory } from './history.js';
+import { getHistory, clearHistory } from './history.js';
 import { playList } from './player.js';
 import { getDeferredPrompt, clearDeferredPrompt } from './pwa.js';
 import { showToast } from './utils.js';
@@ -15,6 +15,18 @@ function fmtRelTime(ts) {
   if (d < 2 * day) return t('time_yesterday');
   const n = Math.floor(d / day);
   return t('time_days_ago').replace('{n}', n);
+}
+
+function buildHistItem(h, i) {
+  const pct = h.duration > 0 ? Math.round(h.time / h.duration * 100) : 0;
+  return '<div class="my-history-item" data-hid="' + i + '">'
+    + '<div class="my-history-icon"><svg viewBox="0 0 24 24"><polygon points="8,4 20,12 8,20"/></svg></div>'
+    + '<div class="my-history-body">'
+    + '<div class="my-history-title">' + h.seriesTitle + '</div>'
+    + '<div class="my-history-sub">' + h.epTitle + ' · ' + fmtRelTime(h.timestamp) + '</div>'
+    + '<div class="my-history-bar"><div class="my-history-bar-fill" style="width:' + pct + '%"></div></div>'
+    + '</div>'
+    + '</div>';
 }
 
 export function renderMyPage() {
@@ -29,19 +41,14 @@ export function renderMyPage() {
 
   // Build history section
   const hist = getHistory();
+  const HIST_PREVIEW = 3;
   let histHTML = '';
   if (hist.length) {
-    histHTML = hist.map((h, i) => {
-      const pct = h.duration > 0 ? Math.round(h.time / h.duration * 100) : 0;
-      return '<div class="my-history-item" data-hid="' + i + '">'
-        + '<div class="my-history-icon"><svg viewBox="0 0 24 24"><polygon points="8,4 20,12 8,20"/></svg></div>'
-        + '<div class="my-history-body">'
-        + '<div class="my-history-title">' + h.seriesTitle + '</div>'
-        + '<div class="my-history-sub">' + h.epTitle + ' \u00B7 ' + pct + '%</div>'
-        + '</div>'
-        + '<div class="my-history-time">' + fmtRelTime(h.timestamp) + '</div>'
-        + '</div>';
-    }).join('');
+    const showItems = hist.slice(0, HIST_PREVIEW);
+    histHTML = showItems.map((h, i) => buildHistItem(h, i)).join('');
+    if (hist.length > HIST_PREVIEW) {
+      histHTML += '<div class="my-history-more" id="myHistMore">' + t('my_history_more').replace('{n}', hist.length) + '</div>';
+    }
   } else {
     histHTML = '<div class="my-history-empty" data-i18n="my_no_history">' + t('my_no_history') + '</div>';
   }
@@ -87,7 +94,10 @@ export function renderMyPage() {
       <div class="my-subtitle" data-i18n="my_subtitle">${t('my_subtitle')}</div>
     </div>
     <div class="my-section">
-      <div class="my-section-title" data-i18n="my_history">${t('my_history')}</div>
+      <div class="my-section-header">
+        <div class="my-section-title" data-i18n="my_history">${t('my_history')}</div>
+        ${hist.length ? '<button class="my-history-clear" id="myHistClear" data-i18n="my_clear_history">' + t('my_clear_history') + '</button>' : ''}
+      </div>
       <div class="my-list" id="myHistoryList">${histHTML}</div>
     </div>
     <div class="my-section">
@@ -134,6 +144,38 @@ export function renderMyPage() {
       }
     });
   });
+
+  // Wire up "show all" history
+  const histMoreBtn = page.querySelector('#myHistMore');
+  if (histMoreBtn) {
+    histMoreBtn.addEventListener('click', () => {
+      const list = page.querySelector('#myHistoryList');
+      const allHist = getHistory();
+      list.innerHTML = allHist.map((h, i) => buildHistItem(h, i)).join('');
+      // Re-wire clicks
+      list.querySelectorAll('.my-history-item').forEach(el => {
+        el.addEventListener('click', () => {
+          const idx = parseInt(el.dataset.hid);
+          const h = allHist[idx];
+          if (!h) return;
+          const cat = state.data.categories.find(c => c.id === h.catId);
+          if (cat) {
+            const sr = cat.series.find(s => s.id === h.seriesId);
+            if (sr) { playList(sr.episodes, h.epIdx, sr, h.time); dom.expPlayer.classList.add('show'); }
+          }
+        });
+      });
+    });
+  }
+
+  // Wire up "clear history"
+  const histClearBtn = page.querySelector('#myHistClear');
+  if (histClearBtn) {
+    histClearBtn.addEventListener('click', () => {
+      clearHistory();
+      renderMyPage();
+    });
+  }
 
   // Wire up install button
   const installBtn = page.querySelector('#myInstallBtn');

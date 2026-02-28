@@ -72,5 +72,15 @@
   "my_install_benefit": "Mode plein \u00E9cran, sans navigation accidentelle",
   "my_install_btn": "Installer",
   "my_install_ios": "Appuyez sur le bouton partager, puis \u00AB Sur l\u2019\u00E9cran d\u2019accueil \u00BB",
-  "my_install_android": "Appuyez ci-dessous ou utilisez le menu du navigateur"
+  "my_install_android": "Appuyez ci-dessous ou utilisez le menu du navigateur",
+  "pl_current": "En cours",
+  "pl_history": "Historique",
+  "pl_sort_asc": "Croissant",
+  "pl_sort_desc": "D\u00E9croissant",
+  "pl_played": "Jou\u00E9 ",
+  "timer_end_episode": "Fin de l'\u00E9pisode",
+  "search_series": "S\u00E9ries",
+  "search_episodes": "\u00C9pisodes",
+  "my_history_more": "Tout afficher ({n})",
+  "my_clear_history": "Effacer"
 }

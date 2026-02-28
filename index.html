@@ -127,7 +127,7 @@
     <!-- Scrollable content area (series info + track info) -->
     <div class="exp-player-content" id="expPlayerContent">
       <div class="exp-series-info" id="expSeriesInfo">
-        <img class="exp-series-icon" src="/icons/logo.png" style="width:52px;height:auto;opacity:.4;" alt="">
+        <img class="exp-series-icon" src="/icons/logo.png" alt="">
         <div class="exp-series-name" id="expSeriesName"></div>
         <div class="exp-series-speaker" id="expSeriesSpeaker"></div>
         <div class="exp-series-ep-count" id="expSeriesEpCount"></div>
@@ -185,9 +185,16 @@
 
     <!-- Playlist panel (replaces content area when visible) -->
     <div class="playlist-panel" id="playlistPanel">
-      <div class="playlist-head">
-        <span class="playlist-head-title" data-i18n="playlist">播放列表</span>
+      <div class="playlist-tabs">
+        <button class="pl-tab active" id="plTabCurrent" data-i18n="pl_current">当前系列</button>
+        <button class="pl-tab" id="plTabHistory" data-i18n="pl_history">历史播放</button>
+      </div>
+      <div class="playlist-sub">
         <span class="playlist-count" id="plCount"></span>
+        <button class="pl-sort-btn" id="plSortBtn" aria-label="Sort">
+          <svg viewBox="0 0 24 24" width="14" height="14"><path d="M3 6h18M3 12h12M3 18h6" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round"/></svg>
+          <span id="plSortLabel" data-i18n="pl_sort_asc">正序</span>
+        </button>
       </div>
       <div class="playlist-items" id="plItems"></div>
     </div>

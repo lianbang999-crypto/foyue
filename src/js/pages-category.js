@@ -5,6 +5,7 @@ import { getDOM } from './dom.js';
 import { CATEGORY_ICONS, ICON_PLAY_FILLED, ICON_PAUSE_FILLED } from './icons.js';
 import { playList, togglePlay, isCurrentTrack, getIsSwitching } from './player.js';
 import { renderHomePage } from './pages-home.js';
+import { getHistory } from './history.js';
 
 export function renderCategory(tabId) {
   const dom = getDOM();
@@ -81,13 +82,21 @@ export function showEpisodes(series, tabId) {
   if (!hasAudio && !alreadyPlaying && series.episodes.length) playList(series.episodes, 0, series);
 
   const ul = view.querySelector('#epList');
+  const hist = getHistory();
   series.episodes.forEach((ep, idx) => {
     const li = document.createElement('li');
     li.className = 'ep-item' + (isCurrentTrack(series.id, idx) ? ' playing' : '');
     const introHtml = ep.intro ? `<span class="ep-intro">${ep.intro}</span>` : '';
+    // Check history for played progress
+    const hEntry = hist.find(h => h.seriesId === series.id && h.epIdx === idx);
+    let progressHtml = '';
+    if (hEntry && hEntry.duration > 0) {
+      const pct = Math.min(100, Math.round(hEntry.time / hEntry.duration * 100));
+      progressHtml = `<div class="ep-progress"><div class="ep-progress-fill" style="width:${pct}%"></div></div>`;
+    }
     li.innerHTML = `<span class="ep-num">${ep.id || idx + 1}</span>
       <div class="eq-bars"><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span></div>
-      <div class="ep-text"><span class="ep-title">${ep.title || ep.fileName}</span>${introHtml}</div>`;
+      <div class="ep-text"><span class="ep-title">${ep.title || ep.fileName}</span>${introHtml}${progressHtml}</div>`;
     li.addEventListener('click', () => {
       if (isCurrentTrack(series.id, idx)) { togglePlay(); return; }
       playList(series.episodes, idx, series);
