@@ -30,7 +30,7 @@
 
 **法音文库子项目（wenku.foyue.org）** — 代码开发完成，待部署
 
-文库是独立的 Cloudflare Pages 项目，仓库：[foyue-wenku](https://github.com/lianbang999-crypto/foyue-wenku)
+文库是独立的 Cloudflare Pages 项目，仓库：[wenku](https://github.com/lianbang999-crypto/wenku)
 
 已完成：
 - Vite + Vanilla JS 单页应用（4 个页面：首页、分类、系列、阅读器）

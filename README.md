@@ -131,7 +131,7 @@ foyue/
 
 | 项目 | 域名 | 仓库 | 说明 |
 |------|------|------|------|
-| 法音文库 | wenku.foyue.org | [foyue-wenku](https://github.com/lianbang999-crypto/foyue-wenku) | 经典文献与讲义稿在线阅读 |
+| 法音文库 | wenku.foyue.org | [wenku](https://github.com/lianbang999-crypto/wenku) | 经典文献与讲义稿在线阅读 |
 
 ## 许可
 

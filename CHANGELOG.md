@@ -10,7 +10,7 @@
 
 启动法音文库项目，提供净土宗经典文献与讲义稿的在线阅读功能。
 
-- 独立仓库：[foyue-wenku](https://github.com/lianbang999-crypto/foyue-wenku)
+- 独立仓库：[wenku](https://github.com/lianbang999-crypto/wenku)
 - 域名：wenku.foyue.org（部署中）
 - 与主站共用 D1（foyue-db）和 R2（jingdianwendang）
 

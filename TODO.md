@@ -43,7 +43,7 @@
 
 ## 阶段 3：内容体系
 
-- [x] **法音文库子项目启动**（独立仓库 [foyue-wenku](https://github.com/lianbang999-crypto/foyue-wenku)）
+- [x] **法音文库子项目启动**（独立仓库 [wenku](https://github.com/lianbang999-crypto/wenku)）
 - [x] 文库前端开发（4 页面 SPA + 4 种阅读模式 + 字号字体设置）
 - [x] 文库 D1 schema 设计（documents + bookmarks 表）
 - [x] 文库 Pages Functions API（5 个接口）
