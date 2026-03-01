@@ -13,7 +13,7 @@ export const AI_CONFIG = {
     cacheTtl: 3600,
   },
   models: {
-    embedding: '@cf/baai/bge-m3',
+    embedding: '@cf/plamoresearch/plamo-embedding-1b',
     chat: '@cf/zai-org/glm-4.7-flash',
     chatFallback: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
     whisper: '@cf/openai/whisper-large-v3-turbo',
