@@ -178,6 +178,8 @@ import { appreciate } from './api.js';
   dom.expPlayer.addEventListener('click', (e) => {
     if (!getPlaylistVisible()) return;
     const t = e.target;
+    // If target was detached from DOM (e.g. playlist item rebuilt after click), ignore
+    if (!t.isConnected) return;
     // Only close if tapping the blank overlay area (not playlist, controls, or top bar)
     if (t.closest('.playlist-panel') || t.closest('.exp-bottom') || t.closest('.exp-top')) return;
     togglePlaylist();
@@ -330,7 +332,9 @@ async function loadData() {
     const r = await fetch('/data/audio-data.json');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.data = await r.json();
-    saveCachedData(state.data);
+    const initStr = JSON.stringify(state.data);
+    const initHash = Array.from(initStr).reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0);
+    saveCachedData(state.data, initHash);
     dom.loader.style.display = 'none';
     if (state.tab === 'home') renderHomePage();
     else renderCategory(state.tab);
@@ -354,9 +358,9 @@ function loadCachedData() {
   } catch (e) { return null; }
 }
 
-function saveCachedData(data) {
+function saveCachedData(data, hash) {
   try {
-    localStorage.setItem(DATA_CACHE_KEY, JSON.stringify({ data, ts: Date.now() }));
+    localStorage.setItem(DATA_CACHE_KEY, JSON.stringify({ data, ts: Date.now(), _hash: hash }));
   } catch (e) { /* storage full or unavailable */ }
 }
 
@@ -365,9 +369,13 @@ async function fetchFreshData() {
     const r = await fetch('/data/audio-data.json');
     if (!r.ok) return;
     const fresh = await r.json();
-    saveCachedData(fresh);
     // Only update state if data actually changed (avoid unnecessary re-renders)
-    if (JSON.stringify(fresh) !== JSON.stringify(state.data)) {
+    const freshStr = JSON.stringify(fresh);
+    const freshHash = Array.from(freshStr).reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0);
+    const cachedRaw = localStorage.getItem(DATA_CACHE_KEY);
+    const cachedHash = cachedRaw ? JSON.parse(cachedRaw)._hash : null;
+    saveCachedData(fresh, freshHash);
+    if (freshHash !== cachedHash || cachedHash === null) {
       state.data = fresh;
     }
   } catch (e) { /* silent */ }

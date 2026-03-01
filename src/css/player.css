@@ -2,10 +2,10 @@
 
 /* Bottom sheet behaviour: peek -> half -> full. Uses safe-area inset for device bottom.
 	Default: peek (approx 22vh). When `.show` it's half-height (50vh). Add `.full` for fullscreen. */
-.playlist-panel{position:fixed;left:0;right:0;bottom:0;z-index:520;display:flex;flex-direction:column;background:var(--bg);box-shadow:0 -8px 40px rgba(0,0,0,0.12);border-top-left-radius:16px;border-top-right-radius:16px;transform:translateY(100%);transition:transform .32s cubic-bezier(.2,.9,.3,1),height .32s;}
+.playlist-panel{position:fixed;left:0;right:0;bottom:0;z-index:520;display:flex;flex-direction:column;background:var(--bg);box-shadow:0 -8px 40px rgba(0,0,0,0.12);border-top-left-radius:16px;border-top-right-radius:16px;transform:translate3d(0,100%,0);transition:transform .32s cubic-bezier(.2,.9,.3,1),height .32s;will-change:transform}
 .playlist-panel::before{content:'';height:6px;width:44px;background:var(--border);border-radius:6px;margin:8px auto 0;display:block;opacity:.8}
 .playlist-panel{height:22vh;max-height:100vh;padding:8px 16px calc(env(safe-area-inset-bottom, 0px) + 12px);}
-.playlist-panel.show{transform:translateY(0);height:50vh}
+.playlist-panel.show{transform:translate3d(0,0,0);height:50vh}
 .playlist-panel.full{height:100vh;border-top-left-radius:0;border-top-right-radius:0}
 .playlist-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);flex-shrink:0}
 .pl-tab{-webkit-appearance:none;appearance:none;background:none;border:none;padding:10px 16px 8px;font-size:.84rem;font-weight:500;color:var(--text-muted);cursor:pointer;position:relative;transition:color .15s}
@@ -15,7 +15,7 @@
 .playlist-count{font-family:var(--font-en);font-size:.74rem;color:var(--text-muted)}
 .pl-sort-btn{-webkit-appearance:none;appearance:none;background:none;border:none;display:flex;align-items:center;gap:4px;font-size:.74rem;color:var(--text-muted);cursor:pointer;padding:4px 0}
 .pl-sort-btn:hover{color:var(--text-secondary)}
-.playlist-items{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.playlist-items{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;contain:layout style}
 .pl-item{display:flex;align-items:center;gap:10px;padding:10px 4px;cursor:pointer;border-radius:var(--radius-sm);transition:background .15s;min-height:48px}
 .pl-item:hover{background:var(--accent-glow)}
 .pl-item.current{background:var(--accent-glow)}
@@ -34,7 +34,7 @@
 .player{display:none}
 
 /* Control buttons - modern circle style */
-.ctrl{-webkit-appearance:none;appearance:none;background:none;border:none;color:var(--text-secondary);cursor:pointer;width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:50%;transition:all .15s}
+.ctrl{-webkit-appearance:none;appearance:none;background:none;border:none;color:var(--text-secondary);cursor:pointer;width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:50%;transition:color .15s,background-color .15s}
 .ctrl:hover{color:var(--text);background:var(--accent-glow)}
 .ctrl svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .ctrl.active{color:var(--accent)}
@@ -45,8 +45,8 @@
 .ctrl-play svg{width:20px;height:20px;fill:currentColor;stroke:none}
 
 /* === EXPANDED PLAYER === */
-.expanded{position:fixed;inset:0;z-index:300;background:var(--bg);transform:translateY(100%);transition:transform .4s cubic-bezier(.16,1,.3,1);display:flex;flex-direction:column;overflow:hidden}
-.expanded.show{transform:translateY(0)}
+.expanded{position:fixed;inset:0;z-index:300;background:var(--bg);transform:translate3d(0,100%,0);transition:transform .35s cubic-bezier(.16,1,.3,1);display:flex;flex-direction:column;overflow:hidden;will-change:transform}
+.expanded.show{transform:translate3d(0,0,0)}
 
 /* Top bar - fixed at top */
 .exp-top{display:flex;align-items:center;justify-content:space-between;padding:max(12px,env(safe-area-inset-top)) 16px 8px;flex-shrink:0}
@@ -56,7 +56,7 @@
 
 /* Scrollable middle area */
 .exp-player-content{display:flex;flex-direction:column;flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:0 20px;justify-content:center}
-.exp-player-content.hide{display:none}
+.exp-player-content.hide{display:none;pointer-events:none}
 
 /* Series info area — immersive visual center */
 .exp-series-info{width:min(300px,82vw);margin:0 auto 24px;background:var(--accent-glow);border:1px solid var(--border);border-radius:20px;padding:36px 24px 28px;text-align:center;position:relative;overflow:hidden;flex-shrink:0}
