@@ -13,7 +13,7 @@ export const AI_CONFIG = {
     cacheTtl: 3600,
   },
   models: {
-    embedding: '@cf/plamoresearch/plamo-embedding-1b',
+    embedding: '@cf/baai/bge-m3',
     chat: '@cf/zai-org/glm-4.7-flash',
     chatFallback: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
     whisper: '@cf/openai/whisper-large-v3-turbo',
@@ -80,7 +80,7 @@ export async function generateEmbeddings(env, texts) {
     AI_CONFIG.models.embedding,
     { text: texts }
   );
-  return response.data; // float[][] 每个 1024 维
+  return response.data; // float[][] 每个 768 维 (bge-m3)
 }
 
 // ============================================================
