@@ -53,6 +53,11 @@ function playCurrent() {
   audioRetries = 0;
   const tr = state.playlist[state.epIdx];
   const targetUrl = tr.url;
+  // Remove any stale canplay listeners from previous rapid switches
+  if (dom.audio._onReady) {
+    dom.audio.removeEventListener('canplay', dom.audio._onReady);
+    dom.audio._onReady = null;
+  }
   dom.audio.pause();
   dom.audio.src = targetUrl;
   dom.audio.playbackRate = SPEEDS[speedIdx];
@@ -62,12 +67,21 @@ function playCurrent() {
   const seekTime = pendingSeek > 0 ? pendingSeek : 0;
   pendingSeek = 0;
   // Wait for canplay before calling play()
-  dom.audio.addEventListener('canplay', function onReady() {
+  function onReady() {
     dom.audio.removeEventListener('canplay', onReady);
+    dom.audio._onReady = null;
     if (dom.audio.src !== targetUrl && !dom.audio.src.endsWith(encodeURI(targetUrl.split('/').pop()))) return;
     if (seekTime > 0) dom.audio.currentTime = seekTime;
-    dom.audio.play().catch(() => { isSwitching = false; setPlayState(false); });
-  });
+    // Keep isSwitching=true until play() promise resolves, to block stale pause events
+    dom.audio.play().then(() => {
+      isSwitching = false;
+    }).catch(() => {
+      isSwitching = false;
+      setPlayState(false);
+    });
+  }
+  dom.audio._onReady = onReady;
+  dom.audio.addEventListener('canplay', onReady);
   updateUI(tr);
   highlightEp();
   updateMediaSession(tr);
@@ -179,8 +193,20 @@ export function onAudioError() {
 
 export function togglePlay() {
   const dom = getDOM();
-  if (dom.audio.paused && dom.audio.src) dom.audio.play().catch(() => {});
-  else dom.audio.pause();
+  if (dom.audio.paused && dom.audio.src) {
+    dom.audio.play().catch(() => {});
+  } else {
+    // If switching tracks, cancel the switch cleanly
+    if (isSwitching) {
+      isSwitching = false;
+      if (dom.audio._onReady) {
+        dom.audio.removeEventListener('canplay', dom.audio._onReady);
+        dom.audio._onReady = null;
+      }
+    }
+    dom.audio.pause();
+    setPlayState(false);
+  }
 }
 
 export function prevTrack() {

@@ -15,7 +15,7 @@ import { state } from './state.js';
 import { initDOM, getDOM } from './dom.js';
 import { initLang, applyI18n, t } from './i18n.js';
 import { initTheme } from './theme.js';
-import { seekCalc, seekUI, seekCommit } from './utils.js';
+import { seekCalc, seekUI, seekCommit, showToast } from './utils.js';
 import {
   playList, togglePlay, prevTrack, nextTrack,
   cycleLoop, cycleSpeed, cycleSleepTimer,
@@ -30,6 +30,7 @@ import { renderCategory, showEpisodes } from './pages-category.js';
 import { doSearch } from './search.js';
 import { initInstallPrompt, initBackGuard } from './pwa.js';
 import { initAiChat, updateAiContext } from './ai-chat.js';
+import { appreciate } from './api.js';
 
 /* ===== INIT ===== */
 (function init() {
@@ -150,6 +151,68 @@ import { initAiChat, updateAiContext } from './ai-chat.js';
   // Queue / playlist toggle
   dom.expQueue.addEventListener('click', togglePlaylist);
   initPlaylistTabs();
+
+  // Appreciate button
+  document.getElementById('expAppreciate').addEventListener('click', async () => {
+    if (state.epIdx < 0 || !state.playlist[state.epIdx]) return;
+    const tr = state.playlist[state.epIdx];
+    const seriesId = tr.seriesId;
+    if (!seriesId) return;
+    const btn = document.getElementById('expAppreciate');
+    try {
+      const result = await appreciate(seriesId);
+      if (!result) return;
+      if (result.success) {
+        showToast(t('appreciate_thanks') || '随喜功德');
+        btn.classList.add('active');
+      } else if (result.message === 'already_appreciated_today') {
+        showToast(t('appreciate_done') || '今日已随喜');
+        btn.classList.add('active');
+      }
+    } catch (err) {
+      showToast(t('error_play') || '网络异常');
+    }
+  });
+
+  // Swipe-down gesture to close expanded player
+  {
+    let startY = 0, startX = 0, startTime = 0, swiping = false;
+    const threshold = 80;
+    const exp = dom.expPlayer;
+
+    exp.addEventListener('touchstart', (e) => {
+      // Skip if interacting with progress bar, playlist panel, or scrolled content area
+      const t = e.target;
+      if (t.closest('.exp-progress-bar') || t.closest('.playlist-panel') || t.closest('input') || t.closest('button')) return;
+      const content = dom.expPlayerContent;
+      if (content && content.scrollTop > 0) return;
+      startY = e.touches[0].clientY;
+      startX = e.touches[0].clientX;
+      startTime = Date.now();
+      swiping = false;
+    }, { passive: true });
+
+    exp.addEventListener('touchmove', (e) => {
+      if (!startY) return;
+      const dy = e.touches[0].clientY - startY;
+      const dx = Math.abs(e.touches[0].clientX - startX);
+      // Only vertical swipe (dy > dx) and downward
+      if (dy > 10 && dy > dx) swiping = true;
+    }, { passive: true });
+
+    exp.addEventListener('touchend', (e) => {
+      if (!startY || !swiping) { startY = 0; return; }
+      const dy = e.changedTouches[0].clientY - startY;
+      const elapsed = Date.now() - startTime;
+      const velocity = dy / elapsed; // px/ms
+      if (dy > threshold || velocity > 0.5) {
+        exp.classList.remove('show');
+        if (getPlaylistVisible()) togglePlaylist();
+      }
+      startY = 0;
+      swiping = false;
+    }, { passive: true });
+  }
 
   // Audio events
   dom.audio.addEventListener('timeupdate', onTimeUpdate);
