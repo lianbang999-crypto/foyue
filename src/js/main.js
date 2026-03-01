@@ -174,18 +174,40 @@ import { appreciate } from './api.js';
     }
   });
 
-  // Swipe-down gesture to close expanded player
+  // Tap blank area above playlist to close playlist
+  dom.expPlayer.addEventListener('click', (e) => {
+    if (!getPlaylistVisible()) return;
+    const t = e.target;
+    // Only close if tapping the blank overlay area (not playlist, controls, or top bar)
+    if (t.closest('.playlist-panel') || t.closest('.exp-bottom') || t.closest('.exp-top')) return;
+    togglePlaylist();
+  });
+
+  // Swipe-down gesture to close expanded player (or playlist if open)
   {
     let startY = 0, startX = 0, startTime = 0, swiping = false;
+    let touchAbovePlaylist = false;
     const threshold = 80;
     const exp = dom.expPlayer;
 
     exp.addEventListener('touchstart', (e) => {
-      // Skip if interacting with progress bar, playlist panel, or scrolled content area
       const t = e.target;
       if (t.closest('.exp-progress-bar') || t.closest('.playlist-panel') || t.closest('input') || t.closest('button')) return;
-      const content = dom.expPlayerContent;
-      if (content && content.scrollTop > 0) return;
+      // Check if playlist is open and touch is above the playlist panel
+      touchAbovePlaylist = false;
+      if (getPlaylistVisible()) {
+        const plRect = dom.playlistPanel.getBoundingClientRect();
+        if (e.touches[0].clientY < plRect.top) {
+          touchAbovePlaylist = true;
+        } else {
+          return; // Inside playlist area, let it scroll
+        }
+      }
+      // Skip if content is scrolled (only when playlist is not open)
+      if (!touchAbovePlaylist) {
+        const content = dom.expPlayerContent;
+        if (content && content.scrollTop > 0) return;
+      }
       startY = e.touches[0].clientY;
       startX = e.touches[0].clientX;
       startTime = Date.now();
@@ -196,21 +218,27 @@ import { appreciate } from './api.js';
       if (!startY) return;
       const dy = e.touches[0].clientY - startY;
       const dx = Math.abs(e.touches[0].clientX - startX);
-      // Only vertical swipe (dy > dx) and downward
       if (dy > 10 && dy > dx) swiping = true;
     }, { passive: true });
 
     exp.addEventListener('touchend', (e) => {
-      if (!startY || !swiping) { startY = 0; return; }
+      if (!startY || !swiping) { startY = 0; touchAbovePlaylist = false; return; }
       const dy = e.changedTouches[0].clientY - startY;
       const elapsed = Date.now() - startTime;
-      const velocity = dy / elapsed; // px/ms
+      const velocity = dy / elapsed;
       if (dy > threshold || velocity > 0.5) {
-        exp.classList.remove('show');
-        if (getPlaylistVisible()) togglePlaylist();
+        if (touchAbovePlaylist && getPlaylistVisible()) {
+          // Swipe down above playlist: close only the playlist
+          togglePlaylist();
+        } else {
+          // Swipe down on player content: close expanded player
+          exp.classList.remove('show');
+          if (getPlaylistVisible()) togglePlaylist();
+        }
       }
       startY = 0;
       swiping = false;
+      touchAbovePlaylist = false;
     }, { passive: true });
   }
 
