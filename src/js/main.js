@@ -21,7 +21,7 @@ import {
   cycleLoop, cycleSpeed, cycleSleepTimer,
   shareTrack, onTimeUpdate, onEnded, onAudioError,
   setPlayState, highlightEp, preloadNextTrack, cleanupPreload,
-  togglePlaylist, getPlaylistVisible, saveState, restoreState,
+  togglePlaylist, closePlaylist, getPlaylistVisible, saveState, restoreState,
   getIsSwitching, setDragging, initPlaylistTabs, closeFullScreen,
 } from './player.js';
 import { renderHomePage } from './pages-home.js';
@@ -155,6 +155,13 @@ import { appreciate } from './api.js';
   // Queue / playlist toggle
   dom.expQueue.addEventListener('click', () => { haptic(); togglePlaylist(); });
   initPlaylistTabs();
+
+  // Click outside playlist panel to close it
+  dom.expPlayer.addEventListener('click', (e) => {
+    if (!getPlaylistVisible()) return;
+    if (e.target.closest('.playlist-panel') || e.target.closest('#expQueue')) return;
+    closePlaylist();
+  });
 
   // Appreciate button
   document.getElementById('expAppreciate').addEventListener('click', async () => {
@@ -292,7 +299,7 @@ import { appreciate } from './api.js';
   initInstallPrompt();
 
   // Back navigation guard
-  initBackGuard(renderCategory, state);
+  initBackGuard(renderCategory, state, { closeFullScreen, getPlaylistVisible, closePlaylist });
 
   // AI 聊天面板
   initAiChat(document.getElementById('app'));

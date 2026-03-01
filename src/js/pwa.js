@@ -68,7 +68,7 @@ export function initInstallPrompt() {
 }
 
 /* ===== Back Navigation Guard ===== */
-export function initBackGuard(renderCategory, stateRef) {
+export function initBackGuard(renderCategory, stateRef, { closeFullScreen, getPlaylistVisible, closePlaylist }) {
   const dom = getDOM();
   if (window.matchMedia('(display-mode: standalone)').matches) return;
   if (navigator.standalone) return;
@@ -76,8 +76,14 @@ export function initBackGuard(renderCategory, stateRef) {
   history.replaceState({ page: 'main' }, '');
   history.pushState({ page: 'guard' }, '');
   window.addEventListener('popstate', (e) => {
+    // Priority: close playlist first, then fullscreen player, then navigate back
+    if (getPlaylistVisible()) {
+      closePlaylist();
+      history.pushState({ page: 'guard' }, '');
+      return;
+    }
     if (dom.expPlayer.classList.contains('show')) {
-      dom.expPlayer.classList.remove('show');
+      closeFullScreen();
       history.pushState({ page: 'guard' }, '');
       return;
     }

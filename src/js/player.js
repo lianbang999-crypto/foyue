@@ -162,6 +162,11 @@ export function setPlayState(playing) {
     '<rect x="5" y="3" width="4" height="18" rx="1"/><rect x="15" y="3" width="4" height="18" rx="1"/>' :
     '<polygon points="8,4 20,12 8,20"/>';
   dom.centerPlayBtn.classList.toggle('playing', playing);
+  // Update accessible labels
+  const label = playing ? 'Pause' : 'Play';
+  dom.centerPlayBtn.setAttribute('aria-label', label);
+  dom.expPlay.setAttribute('aria-label', label);
+  dom.btnPlay.setAttribute('aria-label', label);
 }
 
 export function highlightEp() {
@@ -433,7 +438,7 @@ export function togglePlaylist() {
   const dom = getDOM();
   playlistVisible = !playlistVisible;
   dom.playlistPanel.classList.toggle('show', playlistVisible);
-  dom.playlistPanel.setAttribute('aria-hidden', (!playlistVisible).toString());
+  dom.playlistPanel.setAttribute('aria-hidden', playlistVisible ? 'false' : 'true');
   dom.expPlayerContent.classList.toggle('hide', playlistVisible);
   dom.expQueue.classList.toggle('active', playlistVisible);
   if (playlistVisible) {
@@ -441,16 +446,19 @@ export function togglePlaylist() {
     updatePlTabs();
     dom.plItems.scrollTop = 0;
     renderPlaylistItems();
-    // focus first item for keyboard/a11y
     const first = dom.plItems.querySelector('.pl-item');
     if (first) { first.setAttribute('tabindex', '0'); first.focus(); }
   }
 }
 
+/* Close playlist only (without closing full screen) */
+export function closePlaylist() {
+  if (playlistVisible) togglePlaylist();
+}
+
 /* ===== Fullscreen Player API ===== */
 export function openFullScreen(trackId) {
   const dom = getDOM();
-  // Optional: if trackId provided, try to find and play it
   if (trackId && state.playlist && state.playlist.length) {
     const idx = state.playlist.findIndex(x => x.id === trackId || x.fileName === trackId);
     if (idx >= 0 && idx !== state.epIdx) {
@@ -460,16 +468,20 @@ export function openFullScreen(trackId) {
   }
   dom.expPlayer.classList.add('show');
   dom.expPlayer.setAttribute('aria-hidden', 'false');
-  // ensure content area is hidden when playlist is visible
-  dom.expPlayer.focus?.();
 }
 
 export function closeFullScreen() {
   const dom = getDOM();
+  // Close playlist first if open (without re-triggering full screen close)
+  if (playlistVisible) {
+    playlistVisible = false;
+    dom.playlistPanel.classList.remove('show');
+    dom.playlistPanel.setAttribute('aria-hidden', 'true');
+    dom.expPlayerContent.classList.remove('hide');
+    dom.expQueue.classList.remove('active');
+  }
   dom.expPlayer.classList.remove('show');
   dom.expPlayer.setAttribute('aria-hidden', 'true');
-  // if playlist open, close it to return to normal view
-  if (playlistVisible) togglePlaylist();
 }
 
 function updatePlTabs() {

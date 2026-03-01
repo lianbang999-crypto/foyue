@@ -1,10 +1,8 @@
 /* Bottom sheet behaviour — GPU-accelerated with transform only.
-   Closed: translate3d(0,100%,0). Open (.show): translate3d(0, calc(100% - 50vh), 0). Full: translate3d(0,0,0).
-   Height is always 100vh — we slide the panel up/down instead of animating height. */
-.playlist-panel{position:fixed;left:0;right:0;bottom:0;z-index:520;display:flex;flex-direction:column;background:var(--bg);box-shadow:0 -8px 40px rgba(0,0,0,0.12);border-top-left-radius:16px;border-top-right-radius:16px;height:100vh;max-height:100vh;padding:8px 16px calc(env(safe-area-inset-bottom, 0px) + 12px);overflow:hidden;row-gap:8px;transform:translate3d(0,100%,0);transition:transform .34s cubic-bezier(.22,1,.36,1);will-change:transform}
+   Closed: translate3d(0,100%,0) slides fully offscreen. Open (.show): translate3d(0,0,0). */
+.playlist-panel{position:fixed;left:0;right:0;bottom:0;z-index:520;display:flex;flex-direction:column;background:var(--bg);box-shadow:0 -8px 40px rgba(0,0,0,0.12);border-top-left-radius:16px;border-top-right-radius:16px;height:50vh;max-height:80vh;padding:8px 16px calc(env(safe-area-inset-bottom, 0px) + 12px);overflow:hidden;row-gap:8px;transform:translate3d(0,100%,0);transition:transform .34s cubic-bezier(.22,1,.36,1);will-change:transform}
 .playlist-panel::before{content:'';height:6px;width:44px;background:var(--border);border-radius:6px;margin:8px auto 0;display:block;opacity:.8;flex-shrink:0}
-.playlist-panel.show{transform:translate3d(0,50vh,0)}
-.playlist-panel.full{transform:translate3d(0,0,0);border-top-left-radius:0;border-top-right-radius:0}
+.playlist-panel.show{transform:translate3d(0,0,0)}
 .playlist-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);flex-shrink:0}
 .pl-tab{-webkit-appearance:none;appearance:none;background:none;border:none;padding:10px 16px 8px;font-size:.84rem;font-weight:500;color:var(--text-muted);cursor:pointer;position:relative;transition:color .2s}
 .pl-tab.active{color:var(--accent)}
@@ -130,5 +128,5 @@
   .exp-ctrls .ctrl-play{width:46px;height:46px}
   .exp-ctrls .ctrl-play svg{width:20px;height:20px}
   .exp-progress{margin-bottom:6px}
-  .playlist-panel.show{transform:translate3d(0,60vh,0)}
+  .playlist-panel{height:40vh}
 }
