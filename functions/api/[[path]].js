@@ -868,15 +868,53 @@ async function handleBuildEmbeddings(env, request, cors) {
     return json({ error: 'Unauthorized' }, cors, 401);
   }
 
-  // 获取所有有文本内容的文档
-  const { results: documents } = await env.DB.prepare(
-    `SELECT id, title, content, category, series_name,
-            audio_series_id, audio_episode_num
-     FROM documents WHERE content IS NOT NULL AND content != ''`
-  ).all();
+  // 支持分批参数: ?limit=3&offset=0&retry=true
+  const url = new URL(request.url);
+  const limit = Math.min(parseInt(url.searchParams.get('limit') || '3', 10), 10);
+  const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+  const retryFailed = url.searchParams.get('retry') === 'true';
+
+  // 获取待处理文档（跳过已完成的）
+  let query;
+  if (retryFailed) {
+    // 只重试失败的
+    query = env.DB.prepare(
+      `SELECT d.id, d.title, d.content, d.category, d.series_name,
+              d.audio_series_id, d.audio_episode_num
+       FROM documents d
+       INNER JOIN ai_embedding_jobs j ON j.document_id = d.id AND j.status = 'failed'
+       WHERE d.content IS NOT NULL AND d.content != ''
+       ORDER BY d.id LIMIT ? OFFSET ?`
+    ).bind(limit, offset);
+  } else {
+    // 跳过已成功处理的
+    query = env.DB.prepare(
+      `SELECT d.id, d.title, d.content, d.category, d.series_name,
+              d.audio_series_id, d.audio_episode_num
+       FROM documents d
+       LEFT JOIN ai_embedding_jobs j ON j.document_id = d.id AND j.status = 'completed'
+       WHERE d.content IS NOT NULL AND d.content != '' AND j.id IS NULL
+       ORDER BY d.id LIMIT ? OFFSET ?`
+    ).bind(limit, offset);
+  }
+
+  const { results: documents } = await query.all();
+
+  // 查询总待处理数
+  const { results: [{ total }] } = retryFailed
+    ? await env.DB.prepare(
+        `SELECT COUNT(*) as total FROM documents d
+         INNER JOIN ai_embedding_jobs j ON j.document_id = d.id AND j.status = 'failed'
+         WHERE d.content IS NOT NULL AND d.content != ''`
+      ).all()
+    : await env.DB.prepare(
+        `SELECT COUNT(*) as total FROM documents d
+         LEFT JOIN ai_embedding_jobs j ON j.document_id = d.id AND j.status = 'completed'
+         WHERE d.content IS NOT NULL AND d.content != '' AND j.id IS NULL`
+      ).all();
 
   if (!documents.length) {
-    return json({ error: '没有找到可用于嵌入的文档' }, cors, 404);
+    return json({ success: true, message: '所有文档已处理完毕', remaining: 0 }, cors);
   }
 
   let totalChunks = 0;
@@ -892,9 +930,9 @@ async function handleBuildEmbeddings(env, request, cors) {
         series_name: doc.series_name || '',
       });
 
-      // 分批处理（bge-m3 每次最多 100 条）
-      for (let i = 0; i < chunks.length; i += 100) {
-        const batch = chunks.slice(i, i + 100);
+      // 分批嵌入（每批最多 20 条，避免超 token 限制）
+      for (let i = 0; i < chunks.length; i += 20) {
+        const batch = chunks.slice(i, i + 20);
         const texts = batch.map(c => c.text);
         const embeddings = await generateEmbeddings(env, texts);
 
@@ -926,10 +964,13 @@ async function handleBuildEmbeddings(env, request, cors) {
     }
   }
 
+  const remaining = total - processed;
   return json({
     success: true,
     documentsProcessed: processed,
     totalChunks,
+    remaining,
+    hint: remaining > 0 ? `还有 ${remaining} 个文档待处理，请继续调用此 API` : '全部完成',
     errors: errors.length > 0 ? errors : undefined,
   }, cors);
 }

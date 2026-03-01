@@ -23,8 +23,8 @@ export const AI_CONFIG = {
     scoreThreshold: 0.45,
   },
   chunking: {
-    maxChunkSize: 800,
-    overlapSize: 100,
+    maxChunkSize: 500,
+    overlapSize: 80,
   },
   rateLimit: {
     maxPerMinute: 10,
