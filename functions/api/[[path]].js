@@ -137,6 +137,27 @@ export async function onRequest(context) {
       return await handleAdminCleanup(env, request, cors);
     }
 
+    // GET /api/admin/test-embedding — 诊断 embedding 模型
+    if (path === '/api/admin/test-embedding' && method === 'GET') {
+      const tk = url.searchParams.get('token');
+      if (!tk || !env.ADMIN_TOKEN || !timingSafeCompare(tk, env.ADMIN_TOKEN)) {
+        return json({ error: 'Unauthorized' }, cors, 401);
+      }
+      try {
+        const testText = '南无阿弥陀佛';
+        const resp = await env.AI.run('@cf/baai/bge-m3', { text: [testText] });
+        return json({
+          success: true,
+          model: '@cf/baai/bge-m3',
+          inputText: testText,
+          dimensions: resp.data?.[0]?.length || 'unknown',
+          firstValues: resp.data?.[0]?.slice(0, 5) || null,
+        }, cors);
+      } catch (err) {
+        return json({ success: false, error: err.message, stack: err.stack }, cors);
+      }
+    }
+
     return json({ error: 'Not Found' }, cors, 404);
 
   } catch (err) {
