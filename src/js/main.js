@@ -23,6 +23,7 @@ import {
   setPlayState, highlightEp, preloadNextTrack, cleanupPreload,
   togglePlaylist, closePlaylist, getPlaylistVisible, saveState, restoreState,
   getIsSwitching, setDragging, initPlaylistTabs, closeFullScreen,
+  markAppreciated, updateAppreciateBtn,
 } from './player.js';
 import { renderHomePage } from './pages-home.js';
 import { renderMyPage } from './pages-my.js';
@@ -164,25 +165,42 @@ import { appreciate } from './api.js';
   });
 
   // Appreciate button
+  let _appreciating = false;
   document.getElementById('expAppreciate').addEventListener('click', async () => {
     haptic();
+    if (_appreciating) return; // prevent double-tap during API call
     if (state.epIdx < 0 || !state.playlist[state.epIdx]) return;
     const tr = state.playlist[state.epIdx];
     const seriesId = tr.seriesId;
     if (!seriesId) return;
     const btn = document.getElementById('expAppreciate');
+    // Already appreciated today — gentle reminder, no API call
+    if (btn.classList.contains('active')) {
+      showToast(t('appreciate_done') || '今日已随喜');
+      return;
+    }
+    _appreciating = true;
+    btn.classList.add('loading');
     try {
       const result = await appreciate(seriesId);
-      if (!result) return;
+      if (!result) {
+        showToast(t('appreciate_fail') || '网络异常，请稍后再试');
+        return;
+      }
+      // Success or already_appreciated — both count as done
+      markAppreciated(seriesId);
+      btn.classList.add('active');
+      btn.classList.add('appreciate-pop');
       if (result.success) {
         showToast(t('appreciate_thanks') || '随喜功德');
-        btn.classList.add('active');
-      } else if (result.message === 'already_appreciated_today') {
+      } else {
         showToast(t('appreciate_done') || '今日已随喜');
-        btn.classList.add('active');
       }
     } catch (err) {
-      showToast(t('error_play') || '网络异常');
+      showToast(t('appreciate_fail') || '网络异常，请稍后再试');
+    } finally {
+      _appreciating = false;
+      btn.classList.remove('loading');
     }
   });
 

@@ -89,6 +89,7 @@
   "appreciate": "Appreciate",
   "appreciate_thanks": "Thank you for your appreciation",
   "appreciate_done": "Already appreciated today",
+  "appreciate_fail": "Network error, please try later",
   "view_transcript": "View Transcript",
   "transcript_loading": "Loading transcript...",
   "transcript_unavailable": "Transcript not available"

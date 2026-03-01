@@ -26,11 +26,10 @@ const SPEEDS = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 let speedIdx = 1;
 
 /* ===== Sleep Timer ===== */
-const TIMER_OPTS = [0, -1, 30, 60, 120, 180]; // -1 = end of current episode
+const TIMER_OPTS = [0, 30, 60, 120, 180];
 let timerIdx = 0;
 let sleepTimerId = null;
 let sleepRemaining = 0;
-let sleepAfterEpisode = false;
 
 /* ===== Preload ===== */
 let preloadAudio = null;
@@ -142,6 +141,7 @@ function playCurrent() {
   updateUI(tr);
   highlightEp();
   updateMediaSession(tr);
+  updateAppreciateBtn(tr.seriesId);
   renderPlaylistItems();
   addHistory(tr, dom.audio);
   // Record play to D1 database (non-blocking)
@@ -167,6 +167,36 @@ function updateUI(tr) {
   dom.expTimeCurr.textContent = '0:00';
   dom.expTimeTotal.textContent = '0:00';
   dom.centerRingFill.style.strokeDashoffset = RING_CIRCUMFERENCE;
+}
+
+/* ===== Appreciate State ===== */
+const APPRECIATE_KEY = 'appreciate-today';
+
+function getAppreciateMap() {
+  try {
+    const raw = localStorage.getItem(APPRECIATE_KEY);
+    if (!raw) return {};
+    const { date, map } = JSON.parse(raw);
+    if (date !== new Date().toISOString().split('T')[0]) return {};
+    return map || {};
+  } catch (e) { return {}; }
+}
+
+export function markAppreciated(seriesId) {
+  const map = getAppreciateMap();
+  map[seriesId] = true;
+  localStorage.setItem(APPRECIATE_KEY, JSON.stringify({
+    date: new Date().toISOString().split('T')[0],
+    map,
+  }));
+}
+
+export function updateAppreciateBtn(seriesId) {
+  const btn = document.getElementById('expAppreciate');
+  if (!btn) return;
+  const done = seriesId && getAppreciateMap()[seriesId];
+  btn.classList.toggle('active', !!done);
+  btn.classList.remove('appreciate-pop');
 }
 
 export function setPlayState(playing) {
@@ -217,17 +247,6 @@ export function onTimeUpdate() {
 
 export function onEnded() {
   const dom = getDOM();
-  // Check sleep-after-episode timer
-  if (sleepAfterEpisode) {
-    sleepAfterEpisode = false;
-    timerIdx = 0;
-    const btn = document.getElementById('expTimer');
-    btn.classList.remove('active');
-    const bd = btn.querySelector('.timer-badge');
-    if (bd) bd.remove();
-    setPlayState(false);
-    return;
-  }
   if (state.loopMode === 'one') { dom.audio.currentTime = 0; dom.audio.play(); }
   else if (state.loopMode === 'shuffle') { state.epIdx = Math.floor(Math.random() * state.playlist.length); playCurrent(); }
   else if (state.epIdx < state.playlist.length - 1) { state.epIdx++; playCurrent(); }
@@ -386,7 +405,6 @@ export function cycleSleepTimer() {
   timerIdx = (timerIdx + 1) % TIMER_OPTS.length;
   const mins = TIMER_OPTS[timerIdx];
   if (sleepTimerId) { clearInterval(sleepTimerId); sleepTimerId = null; }
-  sleepAfterEpisode = false;
   const btn = document.getElementById('expTimer');
   const oldBadge = btn.querySelector('.timer-badge');
   if (oldBadge) oldBadge.remove();
@@ -394,15 +412,6 @@ export function cycleSleepTimer() {
     sleepRemaining = 0;
     btn.classList.remove('active');
     showToast(t('timer_off'));
-  } else if (mins === -1) {
-    // Stop after current episode ends
-    sleepAfterEpisode = true;
-    btn.classList.add('active');
-    const badge = document.createElement('span');
-    badge.className = 'timer-badge';
-    badge.textContent = '\u2759'; // pause symbol
-    btn.appendChild(badge);
-    showToast(t('timer_end_episode'));
   } else {
     const dom = getDOM();
     sleepRemaining = mins * 60;
