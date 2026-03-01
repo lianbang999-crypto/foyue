@@ -174,17 +174,6 @@ import { appreciate } from './api.js';
     }
   });
 
-  // Tap blank area above playlist to close playlist
-  dom.expPlayer.addEventListener('click', (e) => {
-    if (!getPlaylistVisible()) return;
-    const t = e.target;
-    // If target was detached from DOM (e.g. playlist item rebuilt after click), ignore
-    if (!t.isConnected) return;
-    // Only close if tapping the blank overlay area (not playlist, controls, or top bar)
-    if (t.closest('.playlist-panel') || t.closest('.exp-bottom') || t.closest('.exp-top')) return;
-    togglePlaylist();
-  });
-
   // Swipe-down gesture to close expanded player (or playlist if open)
   {
     let startY = 0, startX = 0, startTime = 0, swiping = false;
