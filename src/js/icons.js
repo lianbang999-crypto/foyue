@@ -19,3 +19,8 @@ export const CATEGORY_ICONS = {
   fohao: '<svg viewBox="0 0 24 24"><path d="M12 3c0 0-5 7-5 13s5 5 5 5 5 1 5-5S12 3 12 3z"/></svg>',
   youshengshu: '<svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
 };
+
+/* Hands-together (合十) icon — outline version */
+export const ICON_APPRECIATE = '<svg viewBox="0 0 24 24"><path d="M12 2C12 2 8.5 8 8.5 12c0 1.5.5 2.8 1.3 3.7L7 22h10l-2.8-6.3c.8-.9 1.3-2.2 1.3-3.7C15.5 8 12 2 12 2z" fill="none"/><line x1="12" y1="8" x2="12" y2="17"/></svg>';
+/* Hands-together (合十) icon — filled version */
+export const ICON_APPRECIATE_FILLED = '<svg viewBox="0 0 24 24"><path d="M12 2C12 2 8.5 8 8.5 12c0 1.5.5 2.8 1.3 3.7L7 22h10l-2.8-6.3c.8-.9 1.3-2.2 1.3-3.7C15.5 8 12 2 12 2z" fill="currentColor" stroke="none"/><line x1="12" y1="8" x2="12" y2="17" stroke="var(--text-inverse)" stroke-width="1.5"/></svg>';

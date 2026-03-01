@@ -1,11 +1,11 @@
 /* ===== Audio Player Engine ===== */
 import { state } from './state.js';
 import { getDOM, RING_CIRCUMFERENCE } from './dom.js';
-import { SVG, ICON_PLAY, ICON_PAUSE, ICON_PLAY_FILLED, ICON_PAUSE_FILLED } from './icons.js';
+import { SVG, ICON_PLAY, ICON_PAUSE, ICON_PLAY_FILLED, ICON_PAUSE_FILLED, ICON_APPRECIATE, ICON_APPRECIATE_FILLED } from './icons.js';
 import { t } from './i18n.js';
 import { fmt, showToast, seekAt, haptic } from './utils.js';
 import { addHistory, syncHistoryProgress, getHistory } from './history.js';
-import { recordPlay } from './api.js';
+import { recordPlay, getAppreciateCount } from './api.js';
 
 /* ===== Playback State ===== */
 let pendingSeek = 0;
@@ -99,6 +99,8 @@ function playCurrent() {
       isSwitching = false;
       setPlayState(false);
     });
+    // Safety: ensure isSwitching never stays stuck forever
+    setTimeout(() => { isSwitching = false; }, 30000);
   }
 
   // Wait for canplay or loadeddata before calling play()
@@ -141,7 +143,11 @@ function playCurrent() {
   updateUI(tr);
   highlightEp();
   updateMediaSession(tr);
-  updateAppreciateBtn(tr.seriesId);
+  updateAppreciateBtn(tr.seriesId); // Reset badge first (no count yet)
+  // Fetch appreciate count in background
+  getAppreciateCount(tr.seriesId).then(data => {
+    if (data && data.total != null) updateAppreciateBtn(tr.seriesId, data.total);
+  });
   renderPlaylistItems();
   addHistory(tr, dom.audio);
   // Record play to D1 database (non-blocking)
@@ -155,7 +161,6 @@ function updateUI(tr) {
   const epNum = state.epIdx >= 0 ? ` \u00B7 ${state.epIdx + 1}/${state.playlist.length}` : '';
   dom.playerSub.textContent = (tr.seriesTitle || '') + epNum;
   dom.expTitle.textContent = title;
-  dom.expSeries.textContent = `${tr.seriesTitle || ''}${tr.speaker ? ' \u00B7 ' + tr.speaker : ''}`;
   dom.expSeriesName.textContent = tr.seriesTitle || '';
   dom.expSeriesSpeaker.textContent = tr.speaker || '';
   const epNumExp = state.epIdx >= 0 ? `${state.epIdx + 1} / ${state.playlist.length}` : '';
@@ -169,34 +174,48 @@ function updateUI(tr) {
   dom.centerRingFill.style.strokeDashoffset = RING_CIRCUMFERENCE;
 }
 
-/* ===== Appreciate State ===== */
-const APPRECIATE_KEY = 'appreciate-today';
+/* ===== Appreciate State (per-episode, no daily limit) ===== */
 
-function getAppreciateMap() {
-  try {
-    const raw = localStorage.getItem(APPRECIATE_KEY);
-    if (!raw) return {};
-    const { date, map } = JSON.parse(raw);
-    if (date !== new Date().toISOString().split('T')[0]) return {};
-    return map || {};
-  } catch (e) { return {}; }
+export function markAppreciated(seriesId, episodeNum) {
+  // No-op — appreciation is now fire-and-forget; badge shows server count
 }
 
-export function markAppreciated(seriesId) {
-  const map = getAppreciateMap();
-  map[seriesId] = true;
-  localStorage.setItem(APPRECIATE_KEY, JSON.stringify({
-    date: new Date().toISOString().split('T')[0],
-    map,
-  }));
-}
-
-export function updateAppreciateBtn(seriesId) {
+export function updateAppreciateBtn(seriesId, total) {
   const btn = document.getElementById('expAppreciate');
   if (!btn) return;
-  const done = seriesId && getAppreciateMap()[seriesId];
-  btn.classList.toggle('active', !!done);
+  // Reset state
+  btn.classList.remove('active');
   btn.classList.remove('appreciate-pop');
+  // Update icon to outline
+  btn.innerHTML = ICON_APPRECIATE;
+  // Show badge with total count if available
+  const oldBadge = btn.querySelector('.appreciate-badge');
+  if (oldBadge) oldBadge.remove();
+  if (total && total > 0) {
+    const badge = document.createElement('span');
+    badge.className = 'appreciate-badge';
+    badge.textContent = total > 999 ? '999+' : total;
+    btn.appendChild(badge);
+  }
+}
+
+export function appreciateSuccess(total) {
+  const btn = document.getElementById('expAppreciate');
+  if (!btn) return;
+  // Switch to filled icon
+  btn.innerHTML = ICON_APPRECIATE_FILLED;
+  btn.classList.add('active');
+  btn.classList.add('appreciate-pop');
+  // Update badge
+  const oldBadge = btn.querySelector('.appreciate-badge');
+  if (oldBadge) oldBadge.remove();
+  if (total && total > 0) {
+    const badge = document.createElement('span');
+    badge.className = 'appreciate-badge';
+    badge.textContent = total > 999 ? '999+' : total;
+    btn.appendChild(badge);
+  }
+  setTimeout(() => { btn.classList.remove('appreciate-pop'); }, 600);
 }
 
 export function setPlayState(playing) {
@@ -369,11 +388,12 @@ export function cycleLoop() {
 export function shareTrack(ep, series) {
   const title = (ep.title || ep.fileName) + ' - ' + (series.title || '');
   const text = title + '\n' + t('share_from');
-  const url = window.location.origin + window.location.pathname;
+  const base = window.location.origin + window.location.pathname;
+  const hash = '#' + encodeURIComponent(series.id + '/' + ep.id);
   if (navigator.share) {
-    navigator.share({ title, text, url }).catch(() => {});
+    navigator.share({ title, text, url: base + hash }).catch(() => {});
   } else {
-    const full = url + '#' + encodeURIComponent(series.id + '/' + ep.id);
+    const full = base + hash;
     navigator.clipboard.writeText(text + '\n' + full).then(() => {
       showToast(t('link_copied'));
     }).catch(() => {});

@@ -57,7 +57,7 @@ export function seekAt(e, el, audio) {
 }
 
 /* Haptic feedback — light vibration for button taps (Android) */
-export function haptic(ms = 10) {
+export function haptic(ms = 50) {
   if (navigator.vibrate) {
     try { navigator.vibrate(ms); } catch (e) { /* ignore */ }
   }

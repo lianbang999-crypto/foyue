@@ -18,7 +18,6 @@ export function initDOM() {
     btnPlay: $('btnPlay'),
     playerInfo: $('playerInfo'),
     expTitle: $('expTitle'),
-    expSeries: $('expSeries'),
     expProgressFill: $('expProgressFill'),
     expProgressThumb: $('expProgressThumb'),
     expBufferFill: $('expBufferFill'),

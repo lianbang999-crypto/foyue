@@ -23,7 +23,7 @@ import {
   setPlayState, highlightEp, preloadNextTrack, cleanupPreload,
   togglePlaylist, closePlaylist, getPlaylistVisible, saveState, restoreState,
   getIsSwitching, setDragging, initPlaylistTabs, closeFullScreen,
-  markAppreciated, updateAppreciateBtn,
+  markAppreciated, updateAppreciateBtn, appreciateSuccess,
 } from './player.js';
 import { renderHomePage } from './pages-home.js';
 import { renderMyPage } from './pages-my.js';
@@ -164,38 +164,27 @@ import { appreciate } from './api.js';
     closePlaylist();
   });
 
-  // Appreciate button
+  // Appreciate button — per-episode, no daily limit
   let _appreciating = false;
   document.getElementById('expAppreciate').addEventListener('click', async () => {
     haptic();
-    if (_appreciating) return; // prevent double-tap during API call
+    if (_appreciating) return;
     if (state.epIdx < 0 || !state.playlist[state.epIdx]) return;
     const tr = state.playlist[state.epIdx];
     const seriesId = tr.seriesId;
     if (!seriesId) return;
+    const episodeNum = tr.id || state.epIdx + 1;
     const btn = document.getElementById('expAppreciate');
-    // Already appreciated today — gentle reminder, no API call
-    if (btn.classList.contains('active')) {
-      showToast(t('appreciate_done') || '今日已随喜');
-      return;
-    }
     _appreciating = true;
     btn.classList.add('loading');
     try {
-      const result = await appreciate(seriesId);
+      const result = await appreciate(seriesId, episodeNum);
       if (!result) {
         showToast(t('appreciate_fail') || '网络异常，请稍后再试');
         return;
       }
-      // Success or already_appreciated — both count as done
-      markAppreciated(seriesId);
-      btn.classList.add('active');
-      btn.classList.add('appreciate-pop');
-      if (result.success) {
-        showToast(t('appreciate_thanks') || '随喜功德');
-      } else {
-        showToast(t('appreciate_done') || '今日已随喜');
-      }
+      appreciateSuccess(result.total);
+      showToast(t('appreciate_thanks') || '随喜功德');
     } catch (err) {
       showToast(t('appreciate_fail') || '网络异常，请稍后再试');
     } finally {

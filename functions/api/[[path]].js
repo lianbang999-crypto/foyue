@@ -68,7 +68,14 @@ export async function onRequest(context) {
     // POST /api/appreciate/:id
     const am = path.match(/^\/api\/appreciate\/([^/]+)$/);
     if (am && method === 'POST') {
-      return json(await appreciate(db, am[1], request), cors, 200, 'no-store');
+      let body = {};
+      try { body = await request.json(); } catch { /* empty body ok */ }
+      return json(await appreciate(db, am[1], body, request), cors, 200, 'no-store');
+    }
+
+    // GET /api/appreciate/:id — get total appreciate count
+    if (am && method === 'GET') {
+      return json(await getAppreciateCount(db, am[1]), cors);
     }
 
     // GET /api/stats
@@ -271,24 +278,25 @@ async function getPlayCount(db, seriesId) {
   return { seriesId, totalPlayCount: series.play_count, episodes: episodes.results };
 }
 
-async function appreciate(db, seriesId, request) {
-  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-  const clientHash = await hashString(ip);
-  const today = new Date().toISOString().split('T')[0];
+async function appreciate(db, seriesId, body, request) {
   const origin = new URL(request.url).hostname;
+  const episodeNum = (body && typeof body.episodeNum === 'number' && Number.isInteger(body.episodeNum)) ? body.episodeNum : null;
 
-  const existing = await db.prepare(
-    'SELECT id FROM appreciations WHERE series_id = ? AND client_hash = ? AND created_at >= ?'
-  ).bind(seriesId, clientHash, today).first();
+  await db.prepare(
+    'INSERT INTO appreciations (series_id, episode_num, origin) VALUES (?, ?, ?)'
+  ).bind(seriesId, episodeNum, origin).run();
 
-  if (existing) {
-    const count = await db.prepare('SELECT COUNT(*) as total FROM appreciations WHERE series_id = ?').bind(seriesId).first();
-    return { success: false, message: 'already_appreciated_today', total: count.total };
-  }
-
-  await db.prepare('INSERT INTO appreciations (series_id, client_hash, origin) VALUES (?, ?, ?)').bind(seriesId, clientHash, origin).run();
-  const count = await db.prepare('SELECT COUNT(*) as total FROM appreciations WHERE series_id = ?').bind(seriesId).first();
+  const count = await db.prepare(
+    'SELECT COUNT(*) as total FROM appreciations WHERE series_id = ?'
+  ).bind(seriesId).first();
   return { success: true, total: count.total };
+}
+
+async function getAppreciateCount(db, seriesId) {
+  const count = await db.prepare(
+    'SELECT COUNT(*) as total FROM appreciations WHERE series_id = ?'
+  ).bind(seriesId).first();
+  return { seriesId, total: count ? count.total : 0 };
 }
 
 async function getStats(db, origin = '') {

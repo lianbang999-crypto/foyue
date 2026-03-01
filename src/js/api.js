@@ -86,19 +86,41 @@ export async function getPlayCount(seriesId) {
 }
 
 /**
- * Send appreciation for a series (1 per day per user)
+ * Send appreciation for a series + episode (no daily limit)
  */
-export async function appreciate(seriesId) {
+export async function appreciate(seriesId, episodeNum) {
   try {
     const r = await fetch(`${API_BASE}/appreciate/${encodeURIComponent(seriesId)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ episodeNum }),
     });
     if (!r.ok) return null;
     return await r.json();
   } catch (e) {
     return null;
   }
+}
+
+/**
+ * Get total appreciation count for a series
+ */
+export async function getAppreciateCount(seriesId) {
+  const key = `ap:${seriesId}`;
+  const cached = cacheGet(key);
+  if (cached) return cached;
+
+  return dedupFetch(key, async () => {
+    try {
+      const r = await fetch(`${API_BASE}/appreciate/${encodeURIComponent(seriesId)}`);
+      if (!r.ok) return null;
+      const data = await r.json();
+      if (data) cacheSet(key, data);
+      return data;
+    } catch (e) {
+      return null;
+    }
+  });
 }
 
 /**
