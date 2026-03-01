@@ -78,8 +78,7 @@ export function chunkText(text, docId, metadata = {}) {
 export async function generateEmbeddings(env, texts) {
   const response = await env.AI.run(
     AI_CONFIG.models.embedding,
-    { text: texts },
-    { gateway: AI_CONFIG.gateway }
+    { text: texts }
   );
   return response.data; // float[][] 每个 1024 维
 }
