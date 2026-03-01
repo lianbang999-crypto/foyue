@@ -55,3 +55,10 @@ export function seekAt(e, el, audio) {
   const p = seekCalc(e, el);
   if (audio.duration && isFinite(audio.duration)) audio.currentTime = p * audio.duration;
 }
+
+/* Haptic feedback — light vibration for button taps (Android) */
+export function haptic(ms = 10) {
+  if (navigator.vibrate) {
+    try { navigator.vibrate(ms); } catch (e) { /* ignore */ }
+  }
+}

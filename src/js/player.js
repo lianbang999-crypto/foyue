@@ -3,7 +3,7 @@ import { state } from './state.js';
 import { getDOM, RING_CIRCUMFERENCE } from './dom.js';
 import { SVG, ICON_PLAY, ICON_PAUSE, ICON_PLAY_FILLED, ICON_PAUSE_FILLED } from './icons.js';
 import { t } from './i18n.js';
-import { fmt, showToast, seekAt } from './utils.js';
+import { fmt, showToast, seekAt, haptic } from './utils.js';
 import { addHistory, syncHistoryProgress, getHistory } from './history.js';
 import { recordPlay } from './api.js';
 
@@ -46,6 +46,8 @@ export function playList(episodes, idx, series, restoreTime) {
   playCurrent();
 }
 
+let _playCurrentId = 0; // monotonic ID to detect stale callbacks
+
 function playCurrent() {
   const dom = getDOM();
   if (state.epIdx < 0 || state.epIdx >= state.playlist.length) return;
@@ -53,10 +55,16 @@ function playCurrent() {
   audioRetries = 0;
   const tr = state.playlist[state.epIdx];
   const targetUrl = tr.url;
+  const callId = ++_playCurrentId; // unique ID for this invocation
   // Remove any stale canplay listeners from previous rapid switches
   if (dom.audio._onReady) {
     dom.audio.removeEventListener('canplay', dom.audio._onReady);
+    dom.audio.removeEventListener('loadeddata', dom.audio._onReady);
     dom.audio._onReady = null;
+  }
+  if (dom.audio._readyTimeout) {
+    clearTimeout(dom.audio._readyTimeout);
+    dom.audio._readyTimeout = null;
   }
   dom.audio.pause();
   dom.audio.src = targetUrl;
@@ -66,11 +74,9 @@ function playCurrent() {
   dom.centerPlayBtn.classList.add('buffering');
   const seekTime = pendingSeek > 0 ? pendingSeek : 0;
   pendingSeek = 0;
-  // Wait for canplay before calling play()
-  function onReady() {
-    dom.audio.removeEventListener('canplay', onReady);
-    dom.audio._onReady = null;
-    if (dom.audio.src !== targetUrl && !dom.audio.src.endsWith(encodeURI(targetUrl.split('/').pop()))) return;
+
+  function tryPlay() {
+    if (callId !== _playCurrentId) return; // stale callback from previous switch
     if (seekTime > 0) dom.audio.currentTime = seekTime;
     // Keep isSwitching=true until play() promise resolves, to block stale pause events
     dom.audio.play().then(() => {
@@ -80,8 +86,43 @@ function playCurrent() {
       setPlayState(false);
     });
   }
+
+  // Wait for canplay or loadeddata before calling play()
+  function onReady() {
+    dom.audio.removeEventListener('canplay', onReady);
+    dom.audio.removeEventListener('loadeddata', onReady);
+    dom.audio._onReady = null;
+    if (dom.audio._readyTimeout) {
+      clearTimeout(dom.audio._readyTimeout);
+      dom.audio._readyTimeout = null;
+    }
+    tryPlay();
+  }
   dom.audio._onReady = onReady;
   dom.audio.addEventListener('canplay', onReady);
+  dom.audio.addEventListener('loadeddata', onReady);
+
+  // Timeout fallback: if canplay/loadeddata never fires within 8s, try play() anyway
+  dom.audio._readyTimeout = setTimeout(() => {
+    dom.audio._readyTimeout = null;
+    if (dom.audio._onReady) {
+      dom.audio.removeEventListener('canplay', onReady);
+      dom.audio.removeEventListener('loadeddata', onReady);
+      dom.audio._onReady = null;
+      // readyState >= 2 (HAVE_CURRENT_DATA) means we can attempt play
+      if (dom.audio.readyState >= 2) {
+        tryPlay();
+      } else {
+        // Still not ready — clear buffering state and report error
+        isSwitching = false;
+        dom.playerTrack.classList.remove('buffering');
+        dom.centerPlayBtn.classList.remove('buffering');
+        setPlayState(false);
+        showToast(t('error_play') || '播放失败，请检查网络');
+      }
+    }
+  }, 8000);
+
   updateUI(tr);
   highlightEp();
   updateMediaSession(tr);
@@ -201,18 +242,43 @@ export function togglePlay() {
       isSwitching = false;
       if (dom.audio._onReady) {
         dom.audio.removeEventListener('canplay', dom.audio._onReady);
+        dom.audio.removeEventListener('loadeddata', dom.audio._onReady);
         dom.audio._onReady = null;
       }
+      if (dom.audio._readyTimeout) {
+        clearTimeout(dom.audio._readyTimeout);
+        dom.audio._readyTimeout = null;
+      }
+      dom.playerTrack.classList.remove('buffering');
+      dom.centerPlayBtn.classList.remove('buffering');
     }
     dom.audio.pause();
     setPlayState(false);
   }
 }
 
+let _skipDebounce = 0;
+const SKIP_DEBOUNCE_MS = 300;
+
+function schedulePlayCurrent() {
+  // Update UI immediately so user sees track title change
+  const tr = state.playlist[state.epIdx];
+  if (tr) updateUI(tr);
+  const now = Date.now();
+  _skipDebounce = now;
+  // Debounce: wait briefly so rapid presses settle on final index before loading audio
+  setTimeout(() => {
+    if (_skipDebounce === now) playCurrent();
+  }, SKIP_DEBOUNCE_MS);
+}
+
 export function prevTrack() {
   const dom = getDOM();
-  if (dom.audio.currentTime > 3) { dom.audio.currentTime = 0; return; }
-  if (state.epIdx > 0) { state.epIdx--; playCurrent(); }
+  if (dom.audio.currentTime > 3 && !isSwitching) { dom.audio.currentTime = 0; return; }
+  if (state.epIdx > 0) {
+    state.epIdx--;
+    schedulePlayCurrent();
+  }
 }
 
 export function nextTrack() {
@@ -220,7 +286,7 @@ export function nextTrack() {
   else if (state.epIdx < state.playlist.length - 1) state.epIdx++;
   else if (state.loopMode === 'all') state.epIdx = 0;
   else return;
-  playCurrent();
+  schedulePlayCurrent();
 }
 
 /* ===== Loop Modes ===== */
@@ -373,6 +439,7 @@ export function togglePlaylist() {
   if (playlistVisible) {
     plTab = 'current';
     updatePlTabs();
+    dom.plItems.scrollTop = 0;
     renderPlaylistItems();
     // focus first item for keyboard/a11y
     const first = dom.plItems.querySelector('.pl-item');
@@ -418,9 +485,9 @@ export function initPlaylistTabs() {
   const tabCur = document.getElementById('plTabCurrent');
   const tabHist = document.getElementById('plTabHistory');
   const sortBtn = document.getElementById('plSortBtn');
-  if (tabCur) tabCur.addEventListener('click', () => { plTab = 'current'; updatePlTabs(); renderPlaylistItems(); });
-  if (tabHist) tabHist.addEventListener('click', () => { plTab = 'history'; updatePlTabs(); renderPlaylistItems(); });
-  if (sortBtn) sortBtn.addEventListener('click', () => { plSortAsc = !plSortAsc; document.getElementById('plSortLabel').textContent = t(plSortAsc ? 'pl_sort_asc' : 'pl_sort_desc'); renderPlaylistItems(); });
+  if (tabCur) tabCur.addEventListener('click', () => { haptic(); plTab = 'current'; updatePlTabs(); renderPlaylistItems(); });
+  if (tabHist) tabHist.addEventListener('click', () => { haptic(); plTab = 'history'; updatePlTabs(); renderPlaylistItems(); });
+  if (sortBtn) sortBtn.addEventListener('click', () => { haptic(); plSortAsc = !plSortAsc; document.getElementById('plSortLabel').textContent = t(plSortAsc ? 'pl_sort_asc' : 'pl_sort_desc'); renderPlaylistItems(); });
 }
 
 export function renderPlaylistItems() {
@@ -459,7 +526,7 @@ export function renderPlaylistItems() {
     }
 
     div.innerHTML = `<span class="pl-item-num">${realIdx + 1}</span><div class="pl-item-body"><div class="pl-item-title">${tr.title || tr.fileName}</div>${metaHTML ? '<div class="pl-item-meta">' + metaHTML + '</div>' : ''}</div>`;
-    div.addEventListener('click', () => { state.epIdx = realIdx; playCurrent(); });
+    div.addEventListener('click', () => { haptic(); state.epIdx = realIdx; playCurrent(); });
     frag.appendChild(div);
   });
   dom.plItems.appendChild(frag);
@@ -484,6 +551,7 @@ function renderHistoryTab(dom) {
     if (pct > 0) metaHTML += `<span class="pl-item-progress">${t('pl_played')}${pct}%</span>`;
     div.innerHTML = `<span class="pl-item-num">\u25B6</span><div class="pl-item-body"><div class="pl-item-title">${h.epTitle}</div><div class="pl-hist-sub">${h.seriesTitle}${h.speaker ? ' \u00B7 ' + h.speaker : ''}</div>${metaHTML ? '<div class="pl-item-meta">' + metaHTML + '</div>' : ''}</div>`;
     div.addEventListener('click', () => {
+      haptic();
       if (!state.data) return;
       for (const cat of state.data.categories) {
         const sr = cat.series.find(s => s.id === h.seriesId);
