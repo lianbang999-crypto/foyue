@@ -530,8 +530,15 @@ export function renderPlaylistItems() {
     frag.appendChild(div);
   });
   dom.plItems.appendChild(frag);
+  // Scroll current item into view — manual calculation to avoid scrollIntoView
+  // bubbling up and shifting the fixed-position playlist panel
   const cur = dom.plItems.querySelector('.current');
-  if (cur) cur.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  if (cur) {
+    const containerH = dom.plItems.clientHeight;
+    const itemTop = cur.offsetTop;
+    const itemH = cur.offsetHeight;
+    dom.plItems.scrollTo({ top: itemTop - containerH / 2 + itemH / 2, behavior: 'smooth' });
+  }
 }
 
 function renderHistoryTab(dom) {
