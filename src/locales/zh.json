@@ -88,5 +88,8 @@
   "play_count_unit": "次",
   "appreciate": "随喜",
   "appreciate_thanks": "随喜功德",
-  "appreciate_done": "今日已随喜"
+  "appreciate_done": "今日已随喜",
+  "view_transcript": "查看文稿",
+  "transcript_loading": "正在加载文稿...",
+  "transcript_unavailable": "文稿暂不可用"
 }

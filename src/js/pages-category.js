@@ -9,6 +9,8 @@ import { getHistory } from './history.js';
 import { getPlayCount, appreciate } from './api.js';
 import { showToast, escapeHtml } from './utils.js';
 import { mountSummary } from './ai-summary.js';
+import { mountTranscript } from './transcript.js';
+import { getTranscriptAvailability } from './ai-client.js';
 
 export function renderCategory(tabId) {
   const dom = getDOM();
@@ -149,6 +151,19 @@ export function showEpisodes(series, tabId) {
 
   // AI 摘要（挂载在操作区下方）
   mountSummary(actionsDiv, series.id);
+
+  // 讲义文稿（查询有文稿的集数，按需挂载按钮）
+  getTranscriptAvailability(series.id).then(data => {
+    if (!data?.episodes?.length) return;
+    const availSet = new Set(data.episodes);
+    ul.querySelectorAll('.ep-item').forEach((li, idx) => {
+      const epNum = series.episodes[idx]?.id || idx + 1;
+      if (availSet.has(epNum)) {
+        const epText = li.querySelector('.ep-text');
+        if (epText) mountTranscript(epText, series.id, epNum);
+      }
+    });
+  }).catch(() => {}); // 静默失败，不影响主功能
 }
 
 /* Format large numbers: 1234 -> 1.2k, 12345 -> 1.2万 */

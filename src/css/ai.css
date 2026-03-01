@@ -382,3 +382,102 @@
     bottom: calc(var(--player-h) + var(--safe-bottom) + 40px);
   }
 }
+
+/* ---- 讲义文稿组件 ---- */
+.transcript-wrap {
+  margin-top: 6px;
+}
+.transcript-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--accent);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 4px 8px;
+  min-height: 28px;
+  cursor: pointer;
+  font-family: var(--font-zh);
+  transition: background 0.15s, border-color 0.15s;
+}
+.transcript-btn:hover {
+  background: var(--accent-glow);
+  border-color: var(--border);
+}
+.transcript-btn.active {
+  background: var(--accent-glow);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.transcript-btn svg {
+  flex-shrink: 0;
+}
+
+.transcript-body {
+  margin-top: 6px;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  line-height: 1.8;
+  color: var(--text);
+  max-height: 400px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  transition: opacity 0.2s ease, max-height 0.3s ease;
+  opacity: 1;
+}
+.transcript-body.hidden {
+  opacity: 0;
+  max-height: 0;
+  padding: 0 12px;
+  margin-top: 0;
+  border-color: transparent;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.transcript-content p {
+  margin: 0 0 12px;
+  text-align: justify;
+}
+.transcript-content p:last-child {
+  margin-bottom: 0;
+}
+
+.transcript-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.transcript-loading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.transcript-error {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 14px;
+}
+
+/* 文稿滚动条 */
+.transcript-body::-webkit-scrollbar {
+  width: 4px;
+}
+.transcript-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.transcript-body::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  border-radius: 2px;
+}

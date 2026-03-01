@@ -88,5 +88,8 @@
   "play_count_unit": " plays",
   "appreciate": "Appreciate",
   "appreciate_thanks": "Thank you for your appreciation",
-  "appreciate_done": "Already appreciated today"
+  "appreciate_done": "Already appreciated today",
+  "view_transcript": "View Transcript",
+  "transcript_loading": "Loading transcript...",
+  "transcript_unavailable": "Transcript not available"
 }

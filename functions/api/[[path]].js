@@ -77,6 +77,35 @@ export async function onRequest(context) {
       return json(await getStats(db, origin), cors, 200, 'private, no-cache');
     }
 
+    // ==================== 文稿路由 ====================
+
+    // GET /api/transcript/available/:seriesId — 批量查询有文稿的集数
+    const ta = path.match(/^\/api\/transcript\/available\/([^/]+)$/);
+    if (ta && method === 'GET') {
+      return await handleTranscriptAvailability(db, ta[1], cors);
+    }
+
+    // GET /api/transcript/:seriesId/:episodeNum — 获取文稿内容
+    const tm = path.match(/^\/api\/transcript\/([^/]+)\/(\d+)$/);
+    if (tm && method === 'GET') {
+      return await handleGetTranscript(db, tm[1], tm[2], cors);
+    }
+
+    // POST /api/admin/transcript/populate — 填充音频-文稿映射
+    if (path === '/api/admin/transcript/populate' && method === 'POST') {
+      return await handlePopulateTranscriptMapping(env, request, cors);
+    }
+
+    // POST /api/admin/transcript/auto-match — 自动匹配音频与文稿
+    if (path === '/api/admin/transcript/auto-match' && method === 'POST') {
+      return await handleAutoMatchTranscripts(env, request, cors);
+    }
+
+    // POST /api/admin/transcript/transcribe — 增量 Whisper 转写
+    if (path === '/api/admin/transcript/transcribe' && method === 'POST') {
+      return await handleIncrementalTranscribe(env, request, cors);
+    }
+
     // ==================== AI 路由 ====================
 
     // POST /api/ai/ask — RAG 问答
@@ -284,6 +313,372 @@ async function hashString(str) {
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
+}
+
+// ============================================================
+// 文稿路由处理器
+// ============================================================
+
+/**
+ * GET /api/transcript/available/:seriesId — 查询有文稿的集数列表
+ */
+async function handleTranscriptAvailability(db, seriesId, cors) {
+  if (!seriesId || typeof seriesId !== 'string') {
+    return json({ error: 'Missing seriesId' }, cors, 400);
+  }
+
+  const result = await db.prepare(
+    `SELECT audio_episode_num FROM documents
+     WHERE audio_series_id = ? AND content IS NOT NULL AND content != ''
+     ORDER BY audio_episode_num`
+  ).bind(seriesId).all();
+
+  const episodes = result.results.map(r => r.audio_episode_num);
+  return json({ seriesId, episodes }, cors, 200, 'public, max-age=3600');
+}
+
+/**
+ * GET /api/transcript/:seriesId/:episodeNum — 获取文稿内容
+ */
+async function handleGetTranscript(db, seriesId, episodeNum, cors) {
+  if (!seriesId) {
+    return json({ error: 'Missing seriesId' }, cors, 400);
+  }
+
+  const epNum = parseInt(episodeNum, 10);
+  if (!Number.isInteger(epNum) || epNum < 1) {
+    return json({ error: 'Invalid episode number' }, cors, 400);
+  }
+
+  const doc = await db.prepare(
+    `SELECT id, title, content, series_name, episode_num
+     FROM documents
+     WHERE audio_series_id = ? AND audio_episode_num = ?
+       AND content IS NOT NULL AND content != ''
+     LIMIT 1`
+  ).bind(seriesId, epNum).first();
+
+  if (!doc) {
+    return json({ error: 'Transcript not found', available: false }, cors, 404);
+  }
+
+  // 更新阅读计数（fire-and-forget）
+  db.prepare(
+    'UPDATE documents SET read_count = read_count + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+  ).bind(doc.id).run();
+
+  return json({
+    available: true,
+    documentId: doc.id,
+    title: doc.title,
+    seriesName: doc.series_name,
+    episodeNum: doc.episode_num,
+    content: doc.content,
+  }, cors, 200, 'public, max-age=3600');
+}
+
+/**
+ * POST /api/admin/transcript/populate — 批量填充音频-文稿映射
+ * Header: X-Admin-Token
+ * Body: { mappings: [{ seriesName, audioSeriesId }] }
+ */
+async function handlePopulateTranscriptMapping(env, request, cors) {
+  const token = request.headers.get('X-Admin-Token');
+  if (!token || !env.ADMIN_TOKEN || !timingSafeCompare(token, env.ADMIN_TOKEN)) {
+    return json({ error: 'Unauthorized' }, cors, 401);
+  }
+
+  let body;
+  try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
+
+  const { mappings } = body;
+  if (!mappings || !Array.isArray(mappings) || mappings.length === 0) {
+    return json({ error: 'Missing or empty mappings array' }, cors, 400);
+  }
+
+  let updated = 0;
+  const errors = [];
+
+  for (const mapping of mappings) {
+    const { seriesName, audioSeriesId } = mapping;
+    if (!seriesName || !audioSeriesId) {
+      errors.push({ seriesName, error: 'Missing seriesName or audioSeriesId' });
+      continue;
+    }
+
+    try {
+      const result = await env.DB.prepare(
+        `UPDATE documents
+         SET audio_series_id = ?, audio_episode_num = episode_num,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE series_name = ? AND episode_num IS NOT NULL
+           AND type = 'transcript' AND content IS NOT NULL AND content != ''`
+      ).bind(audioSeriesId, seriesName).run();
+
+      updated += result.meta.changes || 0;
+    } catch (err) {
+      errors.push({ seriesName, error: err.message });
+    }
+  }
+
+  return json({
+    success: true,
+    updated,
+    errors: errors.length > 0 ? errors : undefined,
+  }, cors, 200, 'no-store');
+}
+
+/**
+ * POST /api/admin/transcript/auto-match — 自动匹配音频系列与文库文稿
+ * 通过字符串标准化匹配，无需 AI，零成本
+ *
+ * 流程：
+ * 1. 从 D1 读取所有 foyue series
+ * 2. 从 D1 读取所有 wenku documents 的 distinct series_name
+ * 3. 标准化两侧名称，自动配对
+ * 4. 批量 UPDATE documents 表
+ */
+async function handleAutoMatchTranscripts(env, request, cors) {
+  const token = request.headers.get('X-Admin-Token');
+  if (!token || !env.ADMIN_TOKEN || !timingSafeCompare(token, env.ADMIN_TOKEN)) {
+    return json({ error: 'Unauthorized' }, cors, 401);
+  }
+
+  const db = env.DB;
+
+  // 1. 获取所有音频系列
+  const { results: allSeries } = await db.prepare(
+    'SELECT id, title FROM series'
+  ).all();
+
+  // 2. 获取所有文库系列名（有文字内容的 transcript 类型）
+  const { results: wenkuSeries } = await db.prepare(
+    `SELECT DISTINCT series_name FROM documents
+     WHERE type = 'transcript' AND series_name IS NOT NULL
+       AND content IS NOT NULL AND content != ''
+       AND (audio_series_id IS NULL OR audio_series_id = '')`
+  ).all();
+
+  if (!wenkuSeries.length) {
+    return json({
+      success: true,
+      message: 'No unmatched wenku series found',
+      matched: 0,
+      updated: 0,
+    }, cors, 200, 'no-store');
+  }
+
+  // 3. 标准化名称用于匹配
+  function normalize(str) {
+    return str
+      .replace(/[（）()《》【】\[\]""''「」『』]/g, '')
+      .replace(/[：:，,。.、；;！!？?\s]/g, '')
+      .replace(/正编|续编|上册|下册|卷上|卷下|全卷/g, '')
+      .toLowerCase();
+  }
+
+  // 为每个音频系列建立标准化名称 → id 的映射
+  const audioMap = new Map();
+  for (const s of allSeries) {
+    audioMap.set(normalize(s.title), s.id);
+    // 也用 title 的子串做匹配（处理音频标题比文库标题长的情况）
+  }
+
+  // 4. 匹配并更新
+  let matched = 0;
+  let updated = 0;
+  const matches = [];
+  const unmatched = [];
+
+  for (const ws of wenkuSeries) {
+    const normWenku = normalize(ws.series_name);
+    let bestMatch = null;
+
+    // 精确匹配
+    if (audioMap.has(normWenku)) {
+      bestMatch = audioMap.get(normWenku);
+    }
+
+    // 子串匹配：文库名包含音频名，或反之
+    if (!bestMatch) {
+      for (const [normAudio, audioId] of audioMap) {
+        if (normWenku.includes(normAudio) || normAudio.includes(normWenku)) {
+          bestMatch = audioId;
+          break;
+        }
+      }
+    }
+
+    if (bestMatch) {
+      matched++;
+      matches.push({ wenkuSeries: ws.series_name, audioSeriesId: bestMatch });
+
+      // 批量更新该系列的所有文档
+      try {
+        const result = await db.prepare(
+          `UPDATE documents
+           SET audio_series_id = ?, audio_episode_num = episode_num,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE series_name = ? AND episode_num IS NOT NULL
+             AND type = 'transcript' AND content IS NOT NULL AND content != ''
+             AND (audio_series_id IS NULL OR audio_series_id = '')`
+        ).bind(bestMatch, ws.series_name).run();
+        updated += result.meta.changes || 0;
+      } catch (err) {
+        matches[matches.length - 1].error = err.message;
+      }
+    } else {
+      unmatched.push(ws.series_name);
+    }
+  }
+
+  return json({
+    success: true,
+    matched,
+    updated,
+    matches,
+    unmatched: unmatched.length > 0 ? unmatched : undefined,
+  }, cors, 200, 'no-store');
+}
+
+/**
+ * POST /api/admin/transcript/transcribe — 增量 Whisper 音频转文字
+ * 每次处理有限数量的集数，用完每日免费额度即止
+ *
+ * Body: { limit?: number } — 本次最多处理几集（默认 3）
+ *
+ * 流程：
+ * 1. 找到有音频但无文稿的集数
+ * 2. 下载音频，分段送 Whisper 转写
+ * 3. 将转写结果写入 documents 表
+ */
+async function handleIncrementalTranscribe(env, request, cors) {
+  const token = request.headers.get('X-Admin-Token');
+  if (!token || !env.ADMIN_TOKEN || !timingSafeCompare(token, env.ADMIN_TOKEN)) {
+    return json({ error: 'Unauthorized' }, cors, 401);
+  }
+
+  // 检查 AI 绑定
+  if (!env.AI) {
+    return json({ error: 'Workers AI not bound. Add [ai] binding to wrangler.toml' }, cors, 500);
+  }
+
+  let body = {};
+  try { body = await request.json(); } catch { /* use defaults */ }
+  const batchLimit = Math.min(body.limit || 3, 10); // 每次最多 10 集
+
+  const db = env.DB;
+
+  // 1. 找到有音频但无对应文稿的集数
+  //    即：episodes 表中有 url，但 documents 表中没有匹配的 audio_series_id + audio_episode_num
+  const { results: episodes } = await db.prepare(
+    `SELECT e.series_id, e.episode_num, e.title, e.url, s.title as series_title
+     FROM episodes e
+     JOIN series s ON e.series_id = s.id
+     WHERE e.url IS NOT NULL AND e.url != ''
+       AND NOT EXISTS (
+         SELECT 1 FROM documents d
+         WHERE d.audio_series_id = e.series_id
+           AND d.audio_episode_num = e.episode_num
+           AND d.content IS NOT NULL AND d.content != ''
+       )
+     ORDER BY s.play_count DESC, e.episode_num ASC
+     LIMIT ?`
+  ).bind(batchLimit).all();
+
+  if (!episodes.length) {
+    return json({
+      success: true,
+      message: 'All episodes have transcripts. Nothing to transcribe.',
+      processed: 0,
+    }, cors, 200, 'no-store');
+  }
+
+  let processed = 0;
+  const results = [];
+
+  for (const ep of episodes) {
+    const epResult = {
+      seriesId: ep.series_id,
+      episodeNum: ep.episode_num,
+      title: ep.title,
+    };
+
+    try {
+      // 2. 下载音频（只取前 10 分钟用于 Whisper，节省资源）
+      //    Whisper 在 Workers AI 上限制 ~30s 输入，所以我们取一个小片段做测试
+      const audioResponse = await fetch(ep.url, {
+        headers: { 'Range': 'bytes=0-1048576' }, // 前 1MB（约 30-60 秒 MP3）
+      });
+
+      if (!audioResponse.ok) {
+        throw new Error(`Audio download failed: ${audioResponse.status}`);
+      }
+
+      const audioBuffer = await audioResponse.arrayBuffer();
+
+      // 3. Whisper 转写
+      const transcription = await env.AI.run(
+        '@cf/openai/whisper-large-v3-turbo',
+        { audio: [...new Uint8Array(audioBuffer)] }
+      );
+
+      const text = transcription.text?.trim();
+      if (!text) {
+        throw new Error('Whisper returned empty transcription');
+      }
+
+      // 4. 写入 documents 表
+      const docId = `whisper-${ep.series_id}-${String(ep.episode_num).padStart(3, '0')}`;
+      const docTitle = `${ep.series_title} ${ep.title}（AI转写）`;
+
+      await db.prepare(
+        `INSERT OR REPLACE INTO documents
+         (id, title, type, category, series_name, episode_num, format,
+          r2_bucket, r2_key, content, audio_series_id, audio_episode_num,
+          created_at, updated_at)
+         VALUES (?, ?, 'transcript', '大安法师', ?, ?, 'txt',
+                 'whisper', ?, ?, ?, ?,
+                 CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+      ).bind(
+        docId,
+        docTitle,
+        ep.series_title,
+        ep.episode_num,
+        `whisper/${ep.series_id}/${ep.episode_num}`,
+        text,
+        ep.series_id,
+        ep.episode_num,
+      ).run();
+
+      epResult.status = 'completed';
+      epResult.textLength = text.length;
+      epResult.preview = text.slice(0, 100) + '...';
+      processed++;
+    } catch (err) {
+      epResult.status = 'failed';
+      epResult.error = err.message;
+
+      // 如果是 AI 配额耗尽，停止处理
+      if (err.message.includes('rate') || err.message.includes('limit') || err.message.includes('quota')) {
+        epResult.note = 'Daily AI quota likely exhausted. Try again tomorrow.';
+        results.push(epResult);
+        break;
+      }
+    }
+
+    results.push(epResult);
+  }
+
+  return json({
+    success: true,
+    processed,
+    remaining: episodes.length - processed,
+    results,
+    hint: processed < episodes.length
+      ? 'Some episodes were not processed. Run again tomorrow to continue.'
+      : undefined,
+  }, cors, 200, 'no-store');
 }
 
 // ============================================================

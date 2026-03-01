@@ -51,3 +51,21 @@ export async function getEpisodeSummary(documentId) {
 export async function aiSearch(query) {
   return aiFetch(`${AI_BASE}/search?q=${encodeURIComponent(query)}`);
 }
+
+/**
+ * 获取音频对应的讲义文稿
+ * @param {string} seriesId - 音频系列 ID
+ * @param {number} episodeNum - 集数编号
+ */
+export async function getTranscript(seriesId, episodeNum) {
+  return aiFetch(`/api/transcript/${encodeURIComponent(seriesId)}/${episodeNum}`);
+}
+
+/**
+ * 查询某系列下有文稿的集数列表
+ * @param {string} seriesId - 音频系列 ID
+ * @returns {{ seriesId: string, episodes: number[] }}
+ */
+export async function getTranscriptAvailability(seriesId) {
+  return aiFetch(`/api/transcript/available/${encodeURIComponent(seriesId)}`);
+}
