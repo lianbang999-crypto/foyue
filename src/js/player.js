@@ -13,6 +13,14 @@ let isSwitching = false;
 let audioRetries = 0;
 let _dragging = false;
 
+/* ===== Buffering UI helper ===== */
+function setBuffering(on) {
+  const dom = getDOM();
+  dom.playerTrack.classList.toggle('buffering', on);
+  dom.centerPlayBtn.classList.toggle('buffering', on);
+  dom.expPlay.classList.toggle('buffering', on);
+}
+
 /* ===== Speed Control ===== */
 const SPEEDS = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 let speedIdx = 1;
@@ -37,10 +45,8 @@ export function setDragging(v) { _dragging = v; }
 
 export function playList(episodes, idx, series, restoreTime) {
   cleanupPreload();
-  const sameSeries = state.playlist.length && state.epIdx >= 0 && state.playlist[state.epIdx] && state.playlist[state.epIdx].seriesId === series.id;
-  if (!sameSeries) {
-    state.playlist = episodes.map(ep => ({ ...ep, seriesId: series.id, seriesTitle: series.title, speaker: series.speaker }));
-  }
+  // #8: Always rebuild playlist — even for same series, episodes data may have been refreshed
+  state.playlist = episodes.map(ep => ({ ...ep, seriesId: series.id, seriesTitle: series.title, speaker: series.speaker }));
   state.epIdx = idx;
   pendingSeek = restoreTime || 0;
   playCurrent();
@@ -48,15 +54,7 @@ export function playList(episodes, idx, series, restoreTime) {
 
 let _playCurrentId = 0; // monotonic ID to detect stale callbacks
 
-function playCurrent() {
-  const dom = getDOM();
-  if (state.epIdx < 0 || state.epIdx >= state.playlist.length) return;
-  isSwitching = true;
-  audioRetries = 0;
-  const tr = state.playlist[state.epIdx];
-  const targetUrl = tr.url;
-  const callId = ++_playCurrentId; // unique ID for this invocation
-  // Remove any stale canplay listeners from previous rapid switches
+function cleanupReadyListeners(dom) {
   if (dom.audio._onReady) {
     dom.audio.removeEventListener('canplay', dom.audio._onReady);
     dom.audio.removeEventListener('loadeddata', dom.audio._onReady);
@@ -66,17 +64,34 @@ function playCurrent() {
     clearTimeout(dom.audio._readyTimeout);
     dom.audio._readyTimeout = null;
   }
+  if (dom.audio._slowTimeout) {
+    clearTimeout(dom.audio._slowTimeout);
+    dom.audio._slowTimeout = null;
+  }
+}
+
+function playCurrent() {
+  const dom = getDOM();
+  if (state.epIdx < 0 || state.epIdx >= state.playlist.length) return;
+  isSwitching = true;
+  audioRetries = 0;
+  const tr = state.playlist[state.epIdx];
+  const callId = ++_playCurrentId; // unique ID for this invocation
+
+  // Remove any stale listeners from previous rapid switches
+  cleanupReadyListeners(dom);
+
   dom.audio.pause();
-  dom.audio.src = targetUrl;
+  dom.audio.src = tr.url;
   dom.audio.playbackRate = SPEEDS[speedIdx];
   // Show loading state immediately
-  dom.playerTrack.classList.add('buffering');
-  dom.centerPlayBtn.classList.add('buffering');
+  setBuffering(true);
   const seekTime = pendingSeek > 0 ? pendingSeek : 0;
   pendingSeek = 0;
 
   function tryPlay() {
     if (callId !== _playCurrentId) return; // stale callback from previous switch
+    setBuffering(false);
     if (seekTime > 0) dom.audio.currentTime = seekTime;
     // Keep isSwitching=true until play() promise resolves, to block stale pause events
     dom.audio.play().then(() => {
@@ -89,39 +104,40 @@ function playCurrent() {
 
   // Wait for canplay or loadeddata before calling play()
   function onReady() {
-    dom.audio.removeEventListener('canplay', onReady);
-    dom.audio.removeEventListener('loadeddata', onReady);
-    dom.audio._onReady = null;
-    if (dom.audio._readyTimeout) {
-      clearTimeout(dom.audio._readyTimeout);
-      dom.audio._readyTimeout = null;
-    }
+    if (callId !== _playCurrentId) return;
+    cleanupReadyListeners(dom);
     tryPlay();
   }
   dom.audio._onReady = onReady;
   dom.audio.addEventListener('canplay', onReady);
   dom.audio.addEventListener('loadeddata', onReady);
 
-  // Timeout fallback: if canplay/loadeddata never fires within 8s, try play() anyway
+  // #18: Soft timeout at 8s — show "loading slow" hint but keep waiting
+  dom.audio._slowTimeout = setTimeout(() => {
+    dom.audio._slowTimeout = null;
+    if (callId !== _playCurrentId) return;
+    if (dom.audio._onReady) {
+      showToast(t('loading_slow') || '\u52A0\u8F7D\u8F83\u6162\uFF0C\u8BF7\u8010\u5FC3\u7B49\u5F85...');
+    }
+  }, 8000);
+
+  // #18: Hard timeout at 20s — give up if still not ready
   dom.audio._readyTimeout = setTimeout(() => {
     dom.audio._readyTimeout = null;
+    if (callId !== _playCurrentId) return;
     if (dom.audio._onReady) {
-      dom.audio.removeEventListener('canplay', onReady);
-      dom.audio.removeEventListener('loadeddata', onReady);
-      dom.audio._onReady = null;
-      // readyState >= 2 (HAVE_CURRENT_DATA) means we can attempt play
+      cleanupReadyListeners(dom);
+      // readyState >= 2 (HAVE_CURRENT_DATA) means we can still attempt play
       if (dom.audio.readyState >= 2) {
         tryPlay();
       } else {
-        // Still not ready — clear buffering state and report error
         isSwitching = false;
-        dom.playerTrack.classList.remove('buffering');
-        dom.centerPlayBtn.classList.remove('buffering');
+        setBuffering(false);
         setPlayState(false);
-        showToast(t('error_play') || '播放失败，请检查网络');
+        showToast(t('error_play') || '\u52A0\u8F7D\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u8BD5');
       }
     }
-  }, 8000);
+  }, 20000);
 
   updateUI(tr);
   highlightEp();
@@ -222,18 +238,34 @@ export function onAudioError() {
   const dom = getDOM();
   if (!dom.audio.error || dom.audio.error.code === MediaError.MEDIA_ERR_ABORTED) return;
   isSwitching = false;
-  dom.playerTrack.classList.remove('buffering');
-  dom.centerPlayBtn.classList.remove('buffering');
-  if (dom.audio.src && audioRetries < 2) {
+  setBuffering(false);
+
+  const errCode = dom.audio.error.code;
+  const src = dom.audio.src;
+
+  // #17: Distinguish error types; first retry is silent
+  if (src && audioRetries < 2) {
     audioRetries++;
-    showToast(t('error_retry') || '\u7F51\u7EDC\u4E0D\u7A33\u5B9A\uFF0C\u91CD\u8BD5\u4E2D...');
-    const src = dom.audio.src;
+    // Only show toast on second retry, first retry is silent
+    if (audioRetries === 2) {
+      if (errCode === MediaError.MEDIA_ERR_NETWORK) {
+        showToast(t('error_retry') || '\u7F51\u7EDC\u4E0D\u7A33\u5B9A\uFF0C\u91CD\u8BD5\u4E2D...');
+      } else if (errCode === MediaError.MEDIA_ERR_DECODE) {
+        showToast(t('error_decode') || '\u97F3\u9891\u89E3\u7801\u5931\u8D25\uFF0C\u91CD\u8BD5\u4E2D...');
+      } else {
+        showToast(t('error_retry') || '\u52A0\u8F7D\u5F02\u5E38\uFF0C\u91CD\u8BD5\u4E2D...');
+      }
+    }
     setTimeout(() => {
       if (dom.audio.src === src) { dom.audio.load(); dom.audio.play().catch(() => {}); }
     }, 1500 * audioRetries);
   } else {
     setPlayState(false);
-    showToast(t('error_play') || '\u64AD\u653E\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC');
+    if (errCode === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
+      showToast(t('error_format') || '\u97F3\u9891\u683C\u5F0F\u4E0D\u652F\u6301');
+    } else {
+      showToast(t('error_play') || '\u64AD\u653E\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC');
+    }
   }
 }
 
@@ -245,17 +277,8 @@ export function togglePlay() {
     // If switching tracks, cancel the switch cleanly
     if (isSwitching) {
       isSwitching = false;
-      if (dom.audio._onReady) {
-        dom.audio.removeEventListener('canplay', dom.audio._onReady);
-        dom.audio.removeEventListener('loadeddata', dom.audio._onReady);
-        dom.audio._onReady = null;
-      }
-      if (dom.audio._readyTimeout) {
-        clearTimeout(dom.audio._readyTimeout);
-        dom.audio._readyTimeout = null;
-      }
-      dom.playerTrack.classList.remove('buffering');
-      dom.centerPlayBtn.classList.remove('buffering');
+      cleanupReadyListeners(dom);
+      setBuffering(false);
     }
     dom.audio.pause();
     setPlayState(false);
@@ -283,6 +306,9 @@ export function prevTrack() {
   if (state.epIdx > 0) {
     state.epIdx--;
     schedulePlayCurrent();
+  } else {
+    // #9: At first track with <=3s elapsed, restart from beginning
+    dom.audio.currentTime = 0;
   }
 }
 
@@ -394,6 +420,8 @@ export function cycleSleepTimer() {
       if (sleepRemaining <= 0) {
         clearInterval(sleepTimerId); sleepTimerId = null;
         dom.audio.pause(); timerIdx = 0;
+        // #6: Explicitly update play state UI so button reflects paused state
+        setPlayState(false);
         btn.classList.remove('active');
         const bd = btn.querySelector('.timer-badge');
         if (bd) bd.remove();
@@ -444,10 +472,9 @@ export function togglePlaylist() {
   if (playlistVisible) {
     plTab = 'current';
     updatePlTabs();
-    dom.plItems.scrollTop = 0;
     renderPlaylistItems();
-    const first = dom.plItems.querySelector('.pl-item');
-    if (first) { first.setAttribute('tabindex', '0'); first.focus(); }
+    // #1: Don't set scrollTop=0 then smooth-scroll — causes visible jump.
+    // renderPlaylistItems() handles instant scroll positioning after panel animation settles.
   }
 }
 
@@ -542,14 +569,22 @@ export function renderPlaylistItems() {
     frag.appendChild(div);
   });
   dom.plItems.appendChild(frag);
-  // Scroll current item into view — manual calculation to avoid scrollIntoView
-  // bubbling up and shifting the fixed-position playlist panel
+  // #1: Scroll current item into view after panel animation completes (340ms).
+  // Use instant scroll (no behavior:'smooth') to avoid visible jump.
   const cur = dom.plItems.querySelector('.current');
   if (cur) {
-    const containerH = dom.plItems.clientHeight;
-    const itemTop = cur.offsetTop;
-    const itemH = cur.offsetHeight;
-    dom.plItems.scrollTo({ top: itemTop - containerH / 2 + itemH / 2, behavior: 'smooth' });
+    const doScroll = () => {
+      const containerH = dom.plItems.clientHeight;
+      const itemTop = cur.offsetTop;
+      const itemH = cur.offsetHeight;
+      dom.plItems.scrollTo({ top: itemTop - containerH / 2 + itemH / 2 });
+    };
+    // If panel is still animating in, defer until animation settles
+    if (dom.plItems.clientHeight < 10) {
+      setTimeout(doScroll, 360);
+    } else {
+      doScroll();
+    }
   }
 }
 

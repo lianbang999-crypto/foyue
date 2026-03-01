@@ -187,11 +187,18 @@ import { appreciate } from './api.js';
   });
 
   // Swipe-down gesture to close expanded player (with visual follow-along)
+  // #2 & #3: Use a single swipeTimer to prevent rapid-touch race conditions
   {
     let startY = 0, startX = 0, startTime = 0, swiping = false;
     let touchAbovePlaylist = false;
+    let swipeTimer = null;
     const threshold = 80;
+    const ANIM_MS = 340;
     const exp = dom.expPlayer;
+
+    function clearSwipeTimer() {
+      if (swipeTimer) { clearTimeout(swipeTimer); swipeTimer = null; }
+    }
 
     exp.addEventListener('touchstart', (e) => {
       const t = e.target;
@@ -213,6 +220,8 @@ import { appreciate } from './api.js';
       startX = e.touches[0].clientX;
       startTime = Date.now();
       swiping = false;
+      // #2: Cancel any pending animation-end cleanup from previous swipe
+      clearSwipeTimer();
       // Disable CSS transition for real-time follow
       exp.style.transition = 'none';
     }, { passive: true });
@@ -229,11 +238,12 @@ import { appreciate } from './api.js';
     }, { passive: true });
 
     function resetSwipe() {
+      clearSwipeTimer();
       // Restore CSS transition with unified easing and snap back
-      exp.style.transition = 'transform .34s cubic-bezier(.22,1,.36,1)';
+      exp.style.transition = `transform ${ANIM_MS}ms cubic-bezier(.22,1,.36,1)`;
       exp.style.transform = '';
-      // Clear inline transition after animation completes
-      setTimeout(() => { exp.style.transition = ''; }, 340);
+      // Clear inline styles after animation completes
+      swipeTimer = setTimeout(() => { exp.style.transition = ''; exp.style.transform = ''; swipeTimer = null; }, ANIM_MS);
       startY = 0;
       swiping = false;
       touchAbovePlaylist = false;
@@ -245,16 +255,16 @@ import { appreciate } from './api.js';
       const elapsed = Date.now() - startTime;
       const velocity = dy / elapsed;
       if (dy > threshold || velocity > 0.5) {
-        // Restore transition for smooth close animation
-        exp.style.transition = 'transform .34s cubic-bezier(.22,1,.36,1)';
+        clearSwipeTimer();
+        // #3: Clear inline transform/transition FIRST, then let closeFullScreen
+        // remove .show class so CSS drives the close animation without conflict
+        exp.style.transition = '';
         exp.style.transform = '';
         if (touchAbovePlaylist && getPlaylistVisible()) {
           togglePlaylist();
         } else {
           closeFullScreen();
         }
-        // Clear inline transition after animation
-        setTimeout(() => { exp.style.transition = ''; }, 340);
       } else {
         // Snap back to open position
         resetSwipe();
@@ -269,7 +279,8 @@ import { appreciate } from './api.js';
 
   // Audio events
   dom.audio.addEventListener('timeupdate', onTimeUpdate);
-  dom.audio.addEventListener('play', () => { setPlayState(true); });
+  // #5: Guard play event with isSwitching to avoid stale play events during rapid track switching
+  dom.audio.addEventListener('play', () => { if (!getIsSwitching()) setPlayState(true); });
   dom.audio.addEventListener('playing', () => {
     // Update AI chat context with current track info
     if (state.epIdx >= 0 && state.playlist[state.epIdx]) {
@@ -304,23 +315,44 @@ import { appreciate } from './api.js';
   // AI 聊天面板
   initAiChat(document.getElementById('app'));
 
-  // Buffering indicator (mini bar + center button + fullscreen play button)
+  // #4: Unified buffering indicator — 'waiting' shows, 'playing' clears
+  // playCurrent() handles initial buffering via setBuffering(); these handle mid-playback buffer stalls
   dom.audio.addEventListener('waiting', () => { dom.playerTrack.classList.add('buffering'); dom.centerPlayBtn.classList.add('buffering'); dom.expPlay.classList.add('buffering'); });
   dom.audio.addEventListener('playing', () => { dom.playerTrack.classList.remove('buffering'); dom.centerPlayBtn.classList.remove('buffering'); dom.expPlay.classList.remove('buffering'); });
-  dom.audio.addEventListener('canplay', () => { dom.playerTrack.classList.remove('buffering'); dom.centerPlayBtn.classList.remove('buffering'); dom.expPlay.classList.remove('buffering'); preloadNextTrack(); });
+  // canplay: only trigger preload, no buffering state changes (handled by playCurrent's onReady)
+  dom.audio.addEventListener('canplay', () => { preloadNextTrack(); });
 
-  // Network-aware preload control
+  // Network-aware preload control + #23: retry stalled audio on network recovery
   if (navigator.connection) {
     navigator.connection.addEventListener('change', () => {
       const c = navigator.connection;
-      if (c.saveData || c.effectiveType === '2g') cleanupPreload();
-      else if (dom.audio.src && !dom.audio.paused) preloadNextTrack();
+      if (c.saveData || c.effectiveType === '2g') { cleanupPreload(); return; }
+      if (dom.audio.src && !dom.audio.paused) preloadNextTrack();
+      // #23: If audio is stalled/errored and network improved, retry playback
+      if (dom.audio.src && dom.audio.paused && dom.audio.error && c.effectiveType !== '2g') {
+        dom.audio.load();
+        dom.audio.play().catch(() => {});
+      }
     });
   }
+  // #23: Also retry on online event (works on all browsers)
+  window.addEventListener('online', () => {
+    if (dom.audio.src && dom.audio.paused && dom.audio.error) {
+      dom.audio.load();
+      dom.audio.play().catch(() => {});
+    }
+  });
 
   applyI18n();
   loadData();
   setInterval(saveState, 15000);
+
+  // #22: Save state when user leaves/returns to avoid progress loss from background throttling
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      saveState();
+    }
+  });
 
   // One-time cleanup of old Service Worker and caches
   if ('serviceWorker' in navigator && !localStorage.getItem('sw-cleaned')) {
@@ -366,8 +398,20 @@ async function loadData() {
     if (state.isFirstVisit && state.epIdx < 0) playDefaultTrack();
   } catch (e) {
     loadAttempts++;
-    if (loadAttempts < 3) { setTimeout(loadData, 1500 * loadAttempts); return; }
-    dom.loader.innerHTML = `<div class="error-msg">${t('loading_fail')}<br><button onclick="location.reload()">${t('retry')}</button></div>`;
+    if (loadAttempts < 3) {
+      // #20: Show reconnecting hint during retry, instead of silent loading
+      const loaderText = dom.loader.querySelector('.loader-text');
+      if (loaderText) loaderText.textContent = t('loading_retry') || '\u8FDE\u63A5\u4E2D\uFF0C\u8BF7\u7A0D\u5019...';
+      setTimeout(loadData, 1500 * loadAttempts);
+      return;
+    }
+    // #20: Retry button calls loadData() instead of location.reload() to preserve state
+    dom.loader.innerHTML = `<div class="error-msg">${t('loading_fail')}<br><button id="retryLoadBtn">${t('retry')}</button></div>`;
+    document.getElementById('retryLoadBtn').addEventListener('click', () => {
+      loadAttempts = 0;
+      dom.loader.innerHTML = '<img src="/icons/logo.png" style="width:60px;height:auto;opacity:.4;animation:breathe 2.5s ease-in-out infinite" alt=""><div class="loader-text">Loading...</div>';
+      loadData();
+    });
   }
 }
 
@@ -392,14 +436,17 @@ async function fetchFreshData() {
     const r = await fetch('/data/audio-data.json');
     if (!r.ok) return;
     const fresh = await r.json();
-    // Only update state if data actually changed (avoid unnecessary re-renders)
+    // #16: Compare BEFORE saving — read cached hash first, then decide
     const freshStr = JSON.stringify(fresh);
     const freshHash = Array.from(freshStr).reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0);
     const cachedRaw = localStorage.getItem(DATA_CACHE_KEY);
     const cachedHash = cachedRaw ? JSON.parse(cachedRaw)._hash : null;
-    saveCachedData(fresh, freshHash);
     if (freshHash !== cachedHash || cachedHash === null) {
       state.data = fresh;
+      saveCachedData(fresh, freshHash);
+    } else {
+      // Data unchanged — just refresh the timestamp so TTL doesn't expire
+      saveCachedData(fresh, freshHash);
     }
   } catch (e) { /* silent */ }
 }

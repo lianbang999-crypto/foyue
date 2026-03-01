@@ -4,7 +4,7 @@
   --bg-secondary: #F3F1EC;
   --bg-card: #F3F1EC;
   --bg-card-hover: #ECEAE4;
-  --bg-header: rgba(250,249,246,0.92);
+  --bg-header: rgba(250,249,246,0.97);
   --bg-player: #FAF9F6;
   --bg-expanded: linear-gradient(170deg, #FAF9F6, #F3F1EC);
   --border: rgba(0,0,0,0.06);
@@ -31,7 +31,7 @@
   --bg-secondary: #1A1A1A;
   --bg-card: rgba(255,255,255,0.05);
   --bg-card-hover: rgba(255,255,255,0.09);
-  --bg-header: rgba(15,15,15,0.92);
+  --bg-header: rgba(15,15,15,0.97);
   --bg-player: #0F0F0F;
   --bg-expanded: linear-gradient(170deg, #0F0F0F, #1A1A1A);
   --border: rgba(255,255,255,0.08);

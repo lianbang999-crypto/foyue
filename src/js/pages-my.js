@@ -6,7 +6,7 @@ import { isDark, toggleTheme } from './theme.js';
 import { getHistory, clearHistory } from './history.js';
 import { playList } from './player.js';
 import { getDeferredPrompt, clearDeferredPrompt } from './pwa.js';
-import { showToast } from './utils.js';
+import { showToast, escapeHtml } from './utils.js';
 
 function fmtRelTime(ts) {
   const d = Date.now() - ts;
@@ -19,11 +19,12 @@ function fmtRelTime(ts) {
 
 function buildHistItem(h, i) {
   const pct = h.duration > 0 ? Math.round(h.time / h.duration * 100) : 0;
+  // #15: Escape user-facing strings from localStorage to prevent XSS
   return '<div class="my-history-item" data-hid="' + i + '">'
     + '<div class="my-history-icon"><svg viewBox="0 0 24 24"><polygon points="8,4 20,12 8,20"/></svg></div>'
     + '<div class="my-history-body">'
-    + '<div class="my-history-title">' + h.seriesTitle + '</div>'
-    + '<div class="my-history-sub">' + h.epTitle + ' · ' + fmtRelTime(h.timestamp) + '</div>'
+    + '<div class="my-history-title">' + escapeHtml(h.seriesTitle) + '</div>'
+    + '<div class="my-history-sub">' + escapeHtml(h.epTitle) + ' · ' + fmtRelTime(h.timestamp) + '</div>'
     + '<div class="my-history-bar"><div class="my-history-bar-fill" style="width:' + pct + '%"></div></div>'
     + '</div>'
     + '</div>';

@@ -1,7 +1,7 @@
 /* ===== AI API 客户端 ===== */
 
 const AI_BASE = '/api/ai';
-const AI_TIMEOUT = 30000; // 30s
+const AI_TIMEOUT = 60000; // #19: 60s — AI operations (RAG, summary) need more time
 
 /**
  * 带超时和安全 JSON 解析的 fetch

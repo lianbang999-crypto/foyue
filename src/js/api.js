@@ -30,15 +30,22 @@ function dedupFetch(key, fetcher) {
 /**
  * Record a play event for a series/episode
  * Called when a new episode starts playing
+ * #21: Circuit breaker — stop sending after 3 consecutive failures
  */
+let _recordFailCount = 0;
+const RECORD_FAIL_LIMIT = 3;
+
 export async function recordPlay(seriesId, episodeNum) {
+  // Circuit breaker: skip if too many consecutive failures
+  if (_recordFailCount >= RECORD_FAIL_LIMIT) return null;
   try {
     const r = await fetch(`${API_BASE}/play-count`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ seriesId, episodeNum }),
     });
-    if (!r.ok) return null;
+    if (!r.ok) { _recordFailCount++; return null; }
+    _recordFailCount = 0; // Reset on success
     const data = await r.json();
     // Update cache with new count
     if (data && data.playCount) {
@@ -51,6 +58,7 @@ export async function recordPlay(seriesId, episodeNum) {
     }
     return data;
   } catch (e) {
+    _recordFailCount++;
     return null; // Silently fail - don't interrupt playback
   }
 }
