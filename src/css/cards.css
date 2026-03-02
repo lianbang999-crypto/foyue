@@ -57,6 +57,10 @@
 .appreciate-btn.appreciated{color:var(--accent);border-color:var(--accent)}
 .appreciate-btn svg{color:var(--text-muted);transition:color .2s}
 .appreciate-btn:hover svg,.appreciate-btn.appreciated svg{color:var(--accent)}
+.wenku-link-btn{-webkit-appearance:none;appearance:none;display:inline-flex;align-items:center;gap:5px;background:var(--accent-glow);border:1px solid var(--border);border-radius:20px;padding:6px 14px;font-family:var(--font-zh);font-size:.78rem;color:var(--text-secondary);cursor:pointer;transition:all .2s;text-decoration:none}
+.wenku-link-btn:hover{border-color:var(--border-active);color:var(--accent)}
+.wenku-link-btn svg{color:var(--text-muted);transition:color .2s}
+.wenku-link-btn:hover svg{color:var(--accent)}
 
 /* === SEARCH RESULTS === */
 .search-label{font-size:.78rem;color:var(--text-secondary);margin-bottom:10px;padding-left:4px}

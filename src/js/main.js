@@ -404,6 +404,8 @@ async function loadData() {
     restoreState(renderCategory, renderHomePage, renderMyPage);
     // Default play on first visit
     if (state.isFirstVisit && state.epIdx < 0) playDefaultTrack();
+    // Handle ?series= deep link from wenku
+    handleSeriesDeepLink();
   } catch (e) {
     loadAttempts++;
     if (loadAttempts < 3) {
@@ -466,4 +468,26 @@ function playDefaultTrack() {
   const sr = cat.series.find(s => s.id === 'donglin-fohao');
   if (!sr || !sr.episodes || sr.episodes.length < 4) return;
   playList(sr.episodes, 3, sr);
+}
+
+function handleSeriesDeepLink() {
+  const params = new URLSearchParams(window.location.search);
+  const seriesId = params.get('series');
+  if (!seriesId || !state.data) return;
+  // Find the series across all categories
+  for (const cat of state.data.categories) {
+    const series = cat.series.find(s => s.id === seriesId);
+    if (series) {
+      // Switch to the correct tab
+      state.tab = cat.id;
+      document.querySelectorAll('.tab').forEach(b => {
+        b.classList.toggle('active', b.dataset.tab === cat.id);
+        b.setAttribute('aria-selected', String(b.dataset.tab === cat.id));
+      });
+      showEpisodes(series, cat.id);
+      // Clean URL without reload
+      window.history.replaceState({}, '', window.location.pathname);
+      return;
+    }
+  }
 }

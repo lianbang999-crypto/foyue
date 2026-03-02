@@ -91,5 +91,6 @@
   "appreciate_fail": "网络异常，请稍后再试",
   "view_transcript": "查看文稿",
   "transcript_loading": "正在加载文稿...",
-  "transcript_unavailable": "文稿暂不可用"
+  "transcript_unavailable": "文稿暂不可用",
+  "read_transcript": "阅读讲义"
 }

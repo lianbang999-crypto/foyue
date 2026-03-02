@@ -91,5 +91,6 @@
   "appreciate_fail": "Network error, please try later",
   "view_transcript": "View Transcript",
   "transcript_loading": "Loading transcript...",
-  "transcript_unavailable": "Transcript not available"
+  "transcript_unavailable": "Transcript not available",
+  "read_transcript": "Read Transcript"
 }
