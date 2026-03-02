@@ -1006,9 +1006,12 @@ async function handleBuildEmbeddings(env, request, cors) {
         totalChunks += vectors.length;
       }
 
-      // 记录状态
+      // 记录状态（先删旧记录再插入，因为 document_id 无唯一约束）
       await env.DB.prepare(
-        `INSERT OR REPLACE INTO ai_embedding_jobs
+        `DELETE FROM ai_embedding_jobs WHERE document_id = ?`
+      ).bind(doc.id).run();
+      await env.DB.prepare(
+        `INSERT INTO ai_embedding_jobs
          (document_id, status, chunks_count, completed_at)
          VALUES (?, 'completed', ?, datetime('now'))`
       ).bind(doc.id, chunks.length).run();
@@ -1018,7 +1021,10 @@ async function handleBuildEmbeddings(env, request, cors) {
       const contentLen = doc.content?.length || 0;
       errors.push({ doc_id: doc.id, error: err.message, contentLength: contentLen });
       await env.DB.prepare(
-        `INSERT OR REPLACE INTO ai_embedding_jobs
+        `DELETE FROM ai_embedding_jobs WHERE document_id = ?`
+      ).bind(doc.id).run();
+      await env.DB.prepare(
+        `INSERT INTO ai_embedding_jobs
          (document_id, status, error)
          VALUES (?, 'failed', ?)`
       ).bind(doc.id, `${err.message} [contentLen=${contentLen}]`).run();
