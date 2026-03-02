@@ -1,8 +1,6 @@
-/* Bottom sheet behaviour — GPU-accelerated with transform only.
-   Closed: translate3d(0,100%,0) slides fully offscreen. Open (.show): translate3d(0,0,0). */
-.playlist-panel{position:fixed;left:0;right:0;bottom:0;z-index:520;display:flex;flex-direction:column;background:var(--bg);box-shadow:0 -8px 40px rgba(0,0,0,0.12);border-top-left-radius:16px;border-top-right-radius:16px;height:50vh;max-height:80vh;padding:8px 16px calc(env(safe-area-inset-bottom, 0px) + 12px);overflow:hidden;row-gap:8px;transform:translate3d(0,100%,0);transition:transform .34s cubic-bezier(.22,1,.36,1);will-change:transform}
-.playlist-panel::before{content:'';height:6px;width:44px;background:var(--border);border-radius:6px;margin:8px auto 0;display:block;opacity:.8;flex-shrink:0}
-.playlist-panel.show{transform:translate3d(0,0,0)}
+/* Playlist panel — inline flex child that replaces exp-player-content */
+.playlist-panel{display:none;flex-direction:column;flex:1;overflow:hidden;padding:0 20px}
+.playlist-panel.show{display:flex}
 .playlist-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);flex-shrink:0}
 .pl-tab{-webkit-appearance:none;appearance:none;background:none;border:none;padding:10px 16px 8px;font-size:.84rem;font-weight:500;color:var(--text-muted);cursor:pointer;position:relative;transition:color .2s}
 .pl-tab.active{color:var(--accent)}
@@ -44,8 +42,8 @@
 .ctrl-play svg{width:20px;height:20px;fill:currentColor;stroke:none}
 
 /* === EXPANDED PLAYER === */
-.expanded{position:fixed;inset:0;z-index:300;background:var(--bg);transform:translate3d(0,100%,0);transition:transform .34s cubic-bezier(.22,1,.36,1);display:flex;flex-direction:column;overflow:hidden;will-change:transform}
-.expanded.show{transform:translate3d(0,0,0)}
+.expanded{position:fixed;inset:0;z-index:300;background:var(--bg);transform:translate3d(0,100%,0);transition:transform .34s cubic-bezier(.22,1,.36,1),visibility 0s .34s;display:flex;flex-direction:column;overflow:hidden;will-change:transform;visibility:hidden;pointer-events:none}
+.expanded.show{transform:translate3d(0,0,0);visibility:visible;pointer-events:auto;transition:transform .34s cubic-bezier(.22,1,.36,1),visibility 0s}
 
 /* Top bar - fixed at top */
 .exp-top{display:flex;align-items:center;justify-content:space-between;padding:max(12px,env(safe-area-inset-top)) 16px 8px;flex-shrink:0}
@@ -54,8 +52,8 @@
 .exp-top-right{display:flex;align-items:center;gap:0}
 
 /* Scrollable middle area */
-.exp-player-content{display:flex;flex-direction:column;flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:0 20px;justify-content:center;transition:opacity .2s ease;opacity:1}
-.exp-player-content.hide{opacity:0;pointer-events:none;overflow:hidden}
+.exp-player-content{display:flex;flex-direction:column;flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:0 20px;justify-content:center}
+.exp-player-content.hide{display:none}
 
 /* Series info area — immersive visual center */
 .exp-series-info{width:min(300px,82vw);margin:0 auto 24px;background:var(--accent-glow);border:1px solid var(--border);border-radius:20px;padding:36px 24px 28px;text-align:center;position:relative;overflow:hidden;flex-shrink:0}
@@ -130,5 +128,4 @@
   .exp-ctrls .ctrl-play{width:46px;height:46px}
   .exp-ctrls .ctrl-play svg{width:20px;height:20px}
   .exp-progress{margin-bottom:6px}
-  .playlist-panel{height:40vh}
 }

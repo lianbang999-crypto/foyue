@@ -190,7 +190,6 @@ import { appreciate } from './api.js';
   // #2 & #3: Use a single swipeTimer to prevent rapid-touch race conditions
   {
     let startY = 0, startX = 0, startTime = 0, swiping = false;
-    let touchAbovePlaylist = false;
     let swipeTimer = null;
     const threshold = 80;
     const ANIM_MS = 340;
@@ -202,20 +201,13 @@ import { appreciate } from './api.js';
 
     exp.addEventListener('touchstart', (e) => {
       const t = e.target;
-      if (t.closest('.exp-progress-bar') || t.closest('.playlist-panel') || t.closest('input') || t.closest('button')) return;
-      touchAbovePlaylist = false;
+      if (t.closest('.exp-progress-bar') || t.closest('.playlist-items') || t.closest('input') || t.closest('button')) return;
+      // If playlist visible, only allow swipe from the top bar area
       if (getPlaylistVisible()) {
-        const plRect = dom.playlistPanel.getBoundingClientRect();
-        if (e.touches[0].clientY < plRect.top) {
-          touchAbovePlaylist = true;
-        } else {
-          return;
-        }
+        if (!t.closest('.exp-top')) return;
       }
-      if (!touchAbovePlaylist) {
-        const content = dom.expPlayerContent;
-        if (content && content.scrollTop > 0) return;
-      }
+      const content = dom.expPlayerContent;
+      if (!getPlaylistVisible() && content && content.scrollTop > 0) return;
       startY = e.touches[0].clientY;
       startX = e.touches[0].clientX;
       startTime = Date.now();
@@ -246,7 +238,6 @@ import { appreciate } from './api.js';
       swipeTimer = setTimeout(() => { exp.style.transition = ''; exp.style.transform = ''; swipeTimer = null; }, ANIM_MS);
       startY = 0;
       swiping = false;
-      touchAbovePlaylist = false;
     }
 
     exp.addEventListener('touchend', (e) => {
@@ -260,7 +251,7 @@ import { appreciate } from './api.js';
         // remove .show class so CSS drives the close animation without conflict
         exp.style.transition = '';
         exp.style.transform = '';
-        if (touchAbovePlaylist && getPlaylistVisible()) {
+        if (getPlaylistVisible()) {
           togglePlaylist();
         } else {
           closeFullScreen();
@@ -271,7 +262,6 @@ import { appreciate } from './api.js';
       }
       startY = 0;
       swiping = false;
-      touchAbovePlaylist = false;
     }, { passive: true });
 
     exp.addEventListener('touchcancel', resetSwipe, { passive: true });
