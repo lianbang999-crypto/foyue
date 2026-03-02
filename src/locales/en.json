@@ -92,5 +92,20 @@
   "view_transcript": "View Transcript",
   "transcript_loading": "Loading transcript...",
   "transcript_unavailable": "Transcript not available",
-  "read_transcript": "Read Transcript"
+  "read_transcript": "Read Transcript",
+  "msg_wall_title": "Message Wall",
+  "msg_nickname_placeholder": "Nickname (optional)",
+  "msg_input_placeholder": "Share your thoughts...",
+  "msg_submit": "Post",
+  "msg_submitting": "Posting...",
+  "msg_posted": "Message posted",
+  "msg_post_fail": "Failed to post, please try later",
+  "msg_empty": "No messages yet. Be the first!",
+  "msg_load_more": "Load more messages",
+  "msg_load_fail": "Failed to load messages",
+  "msg_pinned": "Pinned",
+  "time_just_now": "Just now",
+  "time_min_ago": " min ago",
+  "time_hour_ago": " hours ago",
+  "time_day_ago": " days ago"
 }

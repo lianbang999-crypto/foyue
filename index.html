@@ -8,6 +8,16 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#FAF9F6">
 <meta name="description" content="净土法音 - Pure Land Buddhist Dharma Audio Player. 南无阿弥陀佛 Namo Amitabha">
+<link rel="canonical" href="https://foyue.org/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="净土法音 - Pure Land Dharma Audio">
+<meta property="og:description" content="佛教净土宗音频播放器，提供佛号念诵、法师讲经等音频在线收听。南无阿弥陀佛。">
+<meta property="og:url" content="https://foyue.org/">
+<meta property="og:site_name" content="净土法音">
+<meta property="og:locale" content="zh_CN">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="净土法音 - Pure Land Dharma Audio">
+<meta name="twitter:description" content="佛教净土宗音频播放器，提供佛号念诵、法师讲经等音频在线收听。">
 <title>净土法音</title>
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
@@ -18,8 +28,26 @@
 <link rel="preconnect" href="https://pub-7be57e30faae4f81bbd76b61006ac8fc.r2.dev">
 <link rel="preconnect" href="https://pub-8c99ae05414d4672b1ec08a569ab3299.r2.dev">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "净土法音",
+  "alternateName": "Pure Land Dharma Audio",
+  "url": "https://foyue.org",
+  "description": "佛教净土宗音频播放器，提供佛号念诵、法师讲经等音频在线收听服务。",
+  "applicationCategory": "MultimediaApplication",
+  "operatingSystem": "All",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "CNY"
+  }
+}
+</script>
 </head>
 <body>
+<a href="#contentArea" class="skip-link">跳到主要内容</a>
 
 <div id="app">
   <!-- HEADER - top bar -->
@@ -50,7 +78,7 @@
   </header>
 
   <!-- BOTTOM TAB BAR -->
-  <div class="tab-bar" id="tabBar" role="tablist">
+  <nav class="tab-bar" id="tabBar" role="tablist" aria-label="主导航">
     <button class="tab active" role="tab" data-tab="home" aria-selected="true">
       <svg class="tab-icon" width="24" height="24" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
       <span data-i18n="tab_home">首页</span>
@@ -76,11 +104,11 @@
       <svg class="tab-icon" width="24" height="24" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       <span data-i18n="tab_my">我的</span>
     </button>
-  </div>
+  </nav>
 
   <!-- CONTENT -->
   <main class="content" id="contentArea">
-    <div class="loader" id="loader">
+    <div class="loader" id="loader" role="status" aria-live="polite">
       <img src="/icons/logo.png" style="width:60px;height:auto;opacity:.4;animation:breathe 2.5s ease-in-out infinite" alt="">
       <div class="loader-text">Loading...</div>
     </div>

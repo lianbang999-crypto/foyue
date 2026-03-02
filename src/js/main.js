@@ -9,6 +9,7 @@ import '../css/cards.css';
 import '../css/pages.css';
 import '../css/components.css';
 import '../css/ai.css';
+import '../css/message-wall.css';
 
 // Module imports
 import { state } from './state.js';

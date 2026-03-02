@@ -92,5 +92,20 @@
   "view_transcript": "查看文稿",
   "transcript_loading": "正在加载文稿...",
   "transcript_unavailable": "文稿暂不可用",
-  "read_transcript": "阅读讲义"
+  "read_transcript": "阅读讲义",
+  "msg_wall_title": "莲友留言",
+  "msg_nickname_placeholder": "昵称（选填）",
+  "msg_input_placeholder": "写下你的心得感悟...",
+  "msg_submit": "发布",
+  "msg_submitting": "发布中...",
+  "msg_posted": "留言发布成功",
+  "msg_post_fail": "发布失败，请稍后重试",
+  "msg_empty": "还没有留言，来写第一条吧",
+  "msg_load_more": "加载更多留言",
+  "msg_load_fail": "留言加载失败",
+  "msg_pinned": "置顶",
+  "time_just_now": "刚刚",
+  "time_min_ago": "分钟前",
+  "time_hour_ago": "小时前",
+  "time_day_ago": "天前"
 }

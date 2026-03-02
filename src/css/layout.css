@@ -70,3 +70,21 @@
 }
 
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+
+/* === SKIP LINK (Accessibility) === */
+.skip-link{position:absolute;top:-100%;left:50%;transform:translateX(-50%);z-index:9999;background:var(--accent);color:var(--text-inverse);padding:8px 20px;border-radius:0 0 8px 8px;font-size:.82rem;font-family:var(--font-zh);text-decoration:none;transition:top .2s}
+.skip-link:focus{top:0}
+
+/* === PRINT STYLES === */
+@media print{
+  .header,.tab-bar,.player,.expanded,.install-banner,.ios-guide,.about-overlay{display:none!important}
+  .content{padding:0!important}
+  body{background:#fff!important;color:#000!important}
+  .card,.ep-item{break-inside:avoid}
+}
+
+/* === HIGH CONTRAST === */
+@media(prefers-contrast:more){
+  :root{--border:rgba(0,0,0,0.2);--text-muted:rgba(26,26,26,0.5);--text-secondary:rgba(26,26,26,0.7)}
+  [data-theme="dark"]{--border:rgba(255,255,255,0.25);--text-muted:rgba(238,238,238,0.5);--text-secondary:rgba(238,238,238,0.7)}
+}

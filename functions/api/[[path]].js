@@ -18,11 +18,11 @@ export async function onRequest(context) {
   // CORS — 限制允许的来源
   const ALLOWED_ORIGINS = (env.ALLOWED_ORIGINS || 'https://foyue.org,https://amituofo.pages.dev').split(',');
   const origin = request.headers.get('Origin') || '';
-  const corsOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  const corsOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : '';
   const cors = {
     'Access-Control-Allow-Origin': corsOrigin,
     'Vary': 'Origin',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Token',
   };
 
@@ -132,6 +132,18 @@ export async function onRequest(context) {
       return await handleAiSearch(env, request, q, cors);
     }
 
+    // ==================== 留言墙路由 ====================
+
+    // GET /api/messages — 获取留言列表
+    if (path === '/api/messages' && method === 'GET') {
+      return await handleGetMessages(db, url, cors);
+    }
+
+    // POST /api/messages — 发布留言
+    if (path === '/api/messages' && method === 'POST') {
+      return await handlePostMessage(db, request, cors);
+    }
+
     // ==================== 管理员路由 ====================
 
     // POST /api/admin/embeddings/build — 批量构建向量
@@ -184,8 +196,136 @@ export async function onRequest(context) {
           firstValues: resp.data?.[0]?.slice(0, 5) || null,
         }, cors);
       } catch (err) {
-        return json({ success: false, error: err.message, stack: err.stack }, cors);
+        return json({ success: false, error: err.message }, cors);
       }
+    }
+
+    // ==================== 管理后台路由 ====================
+
+    // Admin auth helper — all admin dashboard routes below require this
+    function requireAdmin() {
+      const tk = request.headers.get('X-Admin-Token');
+      if (!tk || !env.ADMIN_TOKEN || !timingSafeCompare(tk, env.ADMIN_TOKEN)) {
+        return json({ error: 'Unauthorized' }, cors, 401);
+      }
+      return null;
+    }
+
+    // GET /api/admin/verify — validate token
+    if (path === '/api/admin/verify' && method === 'GET') {
+      return requireAdmin() || json({ ok: true }, cors, 200, 'no-store');
+    }
+
+    // GET /api/admin/stats — dashboard statistics
+    if (path === '/api/admin/stats' && method === 'GET') {
+      const authErr = requireAdmin();
+      if (authErr) return authErr;
+      return await handleAdminStats(db, cors);
+    }
+
+    // GET /api/admin/messages — list messages (all statuses)
+    if (path === '/api/admin/messages' && method === 'GET') {
+      const authErr = requireAdmin();
+      if (authErr) return authErr;
+      return await handleAdminGetMessages(db, url, cors);
+    }
+
+    // PUT /api/admin/messages/:id — update message status/pin
+    const admMsgPut = path.match(/^\/api\/admin\/messages\/(\d+)$/);
+    if (admMsgPut && method === 'PUT') {
+      const authErr = requireAdmin();
+      if (authErr) return authErr;
+      let body; try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
+      return await handleAdminUpdateMessage(db, parseInt(admMsgPut[1]), body, cors);
+    }
+
+    // DELETE /api/admin/messages/:id
+    const admMsgDel = path.match(/^\/api\/admin\/messages\/(\d+)$/);
+    if (admMsgDel && method === 'DELETE') {
+      const authErr = requireAdmin();
+      if (authErr) return authErr;
+      return await handleAdminDeleteMessage(db, parseInt(admMsgDel[1]), cors);
+    }
+
+    // GET /api/admin/categories — list categories with series count
+    if (path === '/api/admin/categories' && method === 'GET') {
+      const authErr = requireAdmin();
+      if (authErr) return authErr;
+      return await handleAdminGetCategories(db, cors);
+    }
+
+    // PUT /api/admin/categories/:id
+    const admCatPut = path.match(/^\/api\/admin\/categories\/([^/]+)$/);
+    if (admCatPut && method === 'PUT') {
+      const authErr = requireAdmin();
+      if (authErr) return authErr;
+      let body; try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
+      return await handleAdminUpdateCategory(db, admCatPut[1], body, cors);
+    }
+
+    // GET /api/admin/series — list series
+    if (path === '/api/admin/series' && method === 'GET') {
+      const authErr = requireAdmin();
+      if (authErr) return authErr;
+      return await handleAdminGetSeries(db, url, cors);
+    }
+
+    // POST /api/admin/series — create series
+    if (path === '/api/admin/series' && method === 'POST') {
+      const authErr = requireAdmin();
+      if (authErr) return authErr;
+      let body; try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
+      return await handleAdminCreateSeries(db, body, cors);
+    }
+
+    // PUT /api/admin/series/:id
+    const admSerPut = path.match(/^\/api\/admin\/series\/([^/]+)$/);
+    if (admSerPut && method === 'PUT') {
+      const authErr = requireAdmin();
+      if (authErr) return authErr;
+      let body; try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
+      return await handleAdminUpdateSeries(db, admSerPut[1], body, cors);
+    }
+
+    // DELETE /api/admin/series/:id
+    const admSerDel = path.match(/^\/api\/admin\/series\/([^/]+)$/);
+    if (admSerDel && method === 'DELETE') {
+      const authErr = requireAdmin();
+      if (authErr) return authErr;
+      return await handleAdminDeleteSeries(db, admSerDel[1], cors);
+    }
+
+    // GET /api/admin/episodes/:seriesId
+    const admEpGet = path.match(/^\/api\/admin\/episodes\/([^/]+)$/);
+    if (admEpGet && method === 'GET') {
+      const authErr = requireAdmin();
+      if (authErr) return authErr;
+      return await handleAdminGetEpisodes(db, admEpGet[1], cors);
+    }
+
+    // POST /api/admin/episodes
+    if (path === '/api/admin/episodes' && method === 'POST') {
+      const authErr = requireAdmin();
+      if (authErr) return authErr;
+      let body; try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
+      return await handleAdminCreateEpisode(db, body, cors);
+    }
+
+    // PUT /api/admin/episodes/:id
+    const admEpPut = path.match(/^\/api\/admin\/episodes\/(\d+)$/);
+    if (admEpPut && method === 'PUT') {
+      const authErr = requireAdmin();
+      if (authErr) return authErr;
+      let body; try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
+      return await handleAdminUpdateEpisode(db, parseInt(admEpPut[1]), body, cors);
+    }
+
+    // DELETE /api/admin/episodes/:id
+    const admEpDel = path.match(/^\/api\/admin\/episodes\/(\d+)$/);
+    if (admEpDel && method === 'DELETE') {
+      const authErr = requireAdmin();
+      if (authErr) return authErr;
+      return await handleAdminDeleteEpisode(db, parseInt(admEpDel[1]), cors);
     }
 
     return json({ error: 'Not Found' }, cors, 404);
@@ -1053,4 +1193,295 @@ async function handleAdminCleanup(env, request, cors) {
 
   await cleanupRateLimits(env);
   return json({ success: true, message: '过期限流记录已清理' }, cors);
+}
+
+// ============================================================
+// 留言墙路由处理器
+// ============================================================
+
+/**
+ * GET /api/messages — 获取留言列表（分页）
+ * Query: ?page=1&limit=20
+ */
+async function handleGetMessages(db, url, cors) {
+  const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
+  const limit = Math.min(50, Math.max(1, parseInt(url.searchParams.get('limit') || '20', 10)));
+  const offset = (page - 1) * limit;
+
+  const countResult = await db.prepare(
+    "SELECT COUNT(*) as total FROM messages WHERE status = 'approved'"
+  ).first();
+  const total = countResult ? countResult.total : 0;
+
+  const { results: messages } = await db.prepare(
+    `SELECT id, nickname, content, pinned, created_at
+     FROM messages WHERE status = 'approved'
+     ORDER BY pinned DESC, created_at DESC
+     LIMIT ? OFFSET ?`
+  ).bind(limit, offset).all();
+
+  return json({ messages, total, page, limit }, cors, 200, 'public, max-age=30');
+}
+
+/**
+ * POST /api/messages — 发布新留言
+ * Body: { nickname?: string, content: string }
+ */
+async function handlePostMessage(db, request, cors) {
+  let body;
+  try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
+
+  const content = (body.content || '').trim();
+  if (!content || content.length > 500) {
+    return json({ error: '留言内容不能为空且不超过500字' }, cors, 400);
+  }
+
+  let nickname = (body.nickname || '').trim().slice(0, 20);
+  if (!nickname) nickname = '莲友';
+
+  // Simple IP-based rate limiting (max 5 messages per 10 minutes per IP)
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const ipHash = await hashString(ip);
+
+  const recentCount = await db.prepare(
+    `SELECT COUNT(*) as cnt FROM messages
+     WHERE ip_hash = ? AND created_at > datetime('now', '-10 minutes')`
+  ).bind(ipHash).first();
+
+  if (recentCount && recentCount.cnt >= 5) {
+    return json({ error: '发言过于频繁，请稍后再试' }, cors, 429);
+  }
+
+  // Insert message
+  const result = await db.prepare(
+    `INSERT INTO messages (nickname, content, ip_hash, status, created_at, updated_at)
+     VALUES (?, ?, ?, 'approved', datetime('now'), datetime('now'))`
+  ).bind(nickname, content, ipHash).run();
+
+  const newId = result.meta?.last_row_id || 0;
+
+  return json({
+    success: true,
+    message: {
+      id: newId,
+      nickname,
+      content,
+      pinned: 0,
+      created_at: new Date().toISOString(),
+    },
+  }, cors, 201, 'no-store');
+}
+
+// ============================================================
+// 管理后台处理器
+// ============================================================
+
+/** GET /api/admin/stats */
+async function handleAdminStats(db, cors) {
+  const totalSeries = await db.prepare('SELECT COUNT(*) as c FROM series').first();
+  const totalEpisodes = await db.prepare('SELECT COUNT(*) as c FROM episodes').first();
+  const totalPlays = await db.prepare('SELECT COALESCE(SUM(play_count),0) as c FROM series').first();
+  const totalAppreciations = await db.prepare('SELECT COUNT(*) as c FROM appreciations').first();
+  const totalMessages = await db.prepare('SELECT COUNT(*) as c FROM messages').first();
+  const pendingMessages = await db.prepare("SELECT COUNT(*) as c FROM messages WHERE status='pending'").first();
+
+  const plays30 = await db.prepare(
+    `SELECT DATE(played_at) as date, COUNT(*) as count FROM play_logs
+     WHERE played_at >= datetime('now','-30 days')
+     GROUP BY DATE(played_at) ORDER BY date`
+  ).all();
+
+  const topSeries = await db.prepare(
+    'SELECT id, title, speaker, play_count FROM series ORDER BY play_count DESC LIMIT 10'
+  ).all();
+
+  const topEpisodes = await db.prepare(
+    `SELECT e.series_id, e.episode_num, e.title, e.play_count, s.title as series_title
+     FROM episodes e JOIN series s ON e.series_id = s.id
+     ORDER BY e.play_count DESC LIMIT 10`
+  ).all();
+
+  const origins = await db.prepare(
+    "SELECT origin, COUNT(*) as count FROM play_logs WHERE origin!='' GROUP BY origin ORDER BY count DESC"
+  ).all();
+
+  const msgStats = await db.prepare(
+    'SELECT status, COUNT(*) as count FROM messages GROUP BY status'
+  ).all();
+  const msgMap = {};
+  for (const r of (msgStats.results || [])) msgMap[r.status] = r.count;
+
+  return json({
+    overview: {
+      totalSeries: totalSeries?.c || 0,
+      totalEpisodes: totalEpisodes?.c || 0,
+      totalPlays: totalPlays?.c || 0,
+      totalAppreciations: totalAppreciations?.c || 0,
+      totalMessages: totalMessages?.c || 0,
+      pendingMessages: pendingMessages?.c || 0,
+    },
+    playsLast30Days: plays30.results || [],
+    topSeries: topSeries.results || [],
+    topEpisodes: topEpisodes.results || [],
+    originStats: origins.results || [],
+    messageStats: { approved: msgMap.approved || 0, pending: msgMap.pending || 0, hidden: msgMap.hidden || 0 },
+  }, cors, 200, 'private, max-age=60');
+}
+
+/** GET /api/admin/messages */
+async function handleAdminGetMessages(db, url, cors) {
+  const page = Math.max(1, parseInt(url.searchParams.get('page') || '1'));
+  const limit = Math.min(50, Math.max(1, parseInt(url.searchParams.get('limit') || '20')));
+  const status = url.searchParams.get('status') || 'all';
+  const offset = (page - 1) * limit;
+
+  let countQ, listQ;
+  if (status === 'all') {
+    countQ = db.prepare('SELECT COUNT(*) as total FROM messages');
+    listQ = db.prepare('SELECT id, nickname, content, ip_hash, status, pinned, created_at FROM messages ORDER BY created_at DESC LIMIT ? OFFSET ?').bind(limit, offset);
+  } else {
+    countQ = db.prepare('SELECT COUNT(*) as total FROM messages WHERE status=?').bind(status);
+    listQ = db.prepare('SELECT id, nickname, content, ip_hash, status, pinned, created_at FROM messages WHERE status=? ORDER BY created_at DESC LIMIT ? OFFSET ?').bind(status, limit, offset);
+  }
+
+  const total = (await countQ.first())?.total || 0;
+  const { results: messages } = await listQ.all();
+  return json({ messages, total, page, limit }, cors, 200, 'no-store');
+}
+
+/** PUT /api/admin/messages/:id */
+async function handleAdminUpdateMessage(db, id, body, cors) {
+  const fields = [];
+  const vals = [];
+  if (body.status !== undefined) { fields.push('status=?'); vals.push(body.status); }
+  if (body.pinned !== undefined) { fields.push('pinned=?'); vals.push(body.pinned ? 1 : 0); }
+  if (!fields.length) return json({ error: 'No fields to update' }, cors, 400);
+  fields.push("updated_at=datetime('now')");
+  vals.push(id);
+  await db.prepare(`UPDATE messages SET ${fields.join(',')} WHERE id=?`).bind(...vals).run();
+  const updated = await db.prepare('SELECT id, nickname, content, ip_hash, status, pinned, created_at FROM messages WHERE id=?').bind(id).first();
+  return json({ success: true, message: updated }, cors, 200, 'no-store');
+}
+
+/** DELETE /api/admin/messages/:id */
+async function handleAdminDeleteMessage(db, id, cors) {
+  await db.prepare('DELETE FROM messages WHERE id=?').bind(id).run();
+  return json({ success: true }, cors, 200, 'no-store');
+}
+
+/** GET /api/admin/categories */
+async function handleAdminGetCategories(db, cors) {
+  const { results } = await db.prepare(
+    `SELECT c.id, c.title, c.title_en, c.sort_order,
+            (SELECT COUNT(*) FROM series WHERE category_id=c.id) as series_count
+     FROM categories c ORDER BY c.sort_order`
+  ).all();
+  return json({ categories: results || [] }, cors, 200, 'no-store');
+}
+
+/** PUT /api/admin/categories/:id */
+async function handleAdminUpdateCategory(db, id, body, cors) {
+  const fields = [];
+  const vals = [];
+  if (body.title !== undefined) { fields.push('title=?'); vals.push(body.title); }
+  if (body.title_en !== undefined) { fields.push('title_en=?'); vals.push(body.title_en); }
+  if (body.sort_order !== undefined) { fields.push('sort_order=?'); vals.push(body.sort_order); }
+  if (!fields.length) return json({ error: 'No fields to update' }, cors, 400);
+  vals.push(id);
+  await db.prepare(`UPDATE categories SET ${fields.join(',')} WHERE id=?`).bind(...vals).run();
+  return json({ success: true }, cors, 200, 'no-store');
+}
+
+/** GET /api/admin/series */
+async function handleAdminGetSeries(db, url, cors) {
+  const category = url.searchParams.get('category') || '';
+  let q;
+  if (category && category !== 'all') {
+    q = db.prepare(
+      `SELECT s.id, s.title, s.title_en, s.speaker, s.speaker_en, s.category_id,
+              s.bucket, s.folder, s.total_episodes, s.intro, s.sort_order, s.play_count,
+              (SELECT COUNT(*) FROM episodes WHERE series_id=s.id) as episode_count
+       FROM series s WHERE s.category_id=? ORDER BY s.sort_order`
+    ).bind(category);
+  } else {
+    q = db.prepare(
+      `SELECT s.id, s.title, s.title_en, s.speaker, s.speaker_en, s.category_id,
+              s.bucket, s.folder, s.total_episodes, s.intro, s.sort_order, s.play_count,
+              (SELECT COUNT(*) FROM episodes WHERE series_id=s.id) as episode_count
+       FROM series s ORDER BY s.sort_order`
+    );
+  }
+  const { results } = await q.all();
+  return json({ series: results || [] }, cors, 200, 'no-store');
+}
+
+/** POST /api/admin/series */
+async function handleAdminCreateSeries(db, body, cors) {
+  const { id, category_id, title, title_en, speaker, speaker_en, bucket, folder, total_episodes, intro, sort_order } = body;
+  if (!id || !category_id || !title) return json({ error: 'Missing required fields (id, category_id, title)' }, cors, 400);
+  await db.prepare(
+    `INSERT INTO series (id, category_id, title, title_en, speaker, speaker_en, bucket, folder, total_episodes, intro, sort_order)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+  ).bind(id, category_id, title || '', title_en || '', speaker || '', speaker_en || '', bucket || '', folder || '', total_episodes || 0, intro || '', sort_order || 0).run();
+  return json({ success: true, id }, cors, 201, 'no-store');
+}
+
+/** PUT /api/admin/series/:id */
+async function handleAdminUpdateSeries(db, id, body, cors) {
+  const fields = [];
+  const vals = [];
+  const allowed = ['category_id','title','title_en','speaker','speaker_en','bucket','folder','total_episodes','intro','sort_order'];
+  for (const k of allowed) {
+    if (body[k] !== undefined) { fields.push(`${k}=?`); vals.push(body[k]); }
+  }
+  if (!fields.length) return json({ error: 'No fields to update' }, cors, 400);
+  vals.push(id);
+  await db.prepare(`UPDATE series SET ${fields.join(',')} WHERE id=?`).bind(...vals).run();
+  return json({ success: true }, cors, 200, 'no-store');
+}
+
+/** DELETE /api/admin/series/:id */
+async function handleAdminDeleteSeries(db, id, cors) {
+  const epResult = await db.prepare('DELETE FROM episodes WHERE series_id=?').bind(id).run();
+  await db.prepare('DELETE FROM series WHERE id=?').bind(id).run();
+  return json({ success: true, deletedEpisodes: epResult.meta?.changes || 0 }, cors, 200, 'no-store');
+}
+
+/** GET /api/admin/episodes/:seriesId */
+async function handleAdminGetEpisodes(db, seriesId, cors) {
+  const series = await db.prepare('SELECT id, title FROM series WHERE id=?').bind(seriesId).first();
+  const { results } = await db.prepare(
+    'SELECT id, series_id, episode_num, title, file_name, url, intro, story_number, play_count FROM episodes WHERE series_id=? ORDER BY episode_num'
+  ).bind(seriesId).all();
+  return json({ episodes: results || [], series: series || { id: seriesId } }, cors, 200, 'no-store');
+}
+
+/** POST /api/admin/episodes */
+async function handleAdminCreateEpisode(db, body, cors) {
+  const { series_id, episode_num, title, file_name, url, intro, story_number } = body;
+  if (!series_id || !episode_num || !title || !file_name) return json({ error: 'Missing required fields' }, cors, 400);
+  await db.prepare(
+    'INSERT INTO episodes (series_id, episode_num, title, file_name, url, intro, story_number) VALUES (?,?,?,?,?,?,?)'
+  ).bind(series_id, episode_num, title, file_name, url || '', intro || null, story_number || null).run();
+  return json({ success: true }, cors, 201, 'no-store');
+}
+
+/** PUT /api/admin/episodes/:id */
+async function handleAdminUpdateEpisode(db, id, body, cors) {
+  const fields = [];
+  const vals = [];
+  const allowed = ['episode_num','title','file_name','url','intro','story_number'];
+  for (const k of allowed) {
+    if (body[k] !== undefined) { fields.push(`${k}=?`); vals.push(body[k]); }
+  }
+  if (!fields.length) return json({ error: 'No fields to update' }, cors, 400);
+  vals.push(id);
+  await db.prepare(`UPDATE episodes SET ${fields.join(',')} WHERE id=?`).bind(...vals).run();
+  return json({ success: true }, cors, 200, 'no-store');
+}
+
+/** DELETE /api/admin/episodes/:id */
+async function handleAdminDeleteEpisode(db, id, cors) {
+  await db.prepare('DELETE FROM episodes WHERE id=?').bind(id).run();
+  return json({ success: true }, cors, 200, 'no-store');
 }

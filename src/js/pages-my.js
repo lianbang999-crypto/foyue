@@ -7,6 +7,7 @@ import { getHistory, clearHistory } from './history.js';
 import { playList } from './player.js';
 import { getDeferredPrompt, clearDeferredPrompt } from './pwa.js';
 import { showToast, escapeHtml } from './utils.js';
+import { renderMessageWall } from './message-wall.js';
 
 function fmtRelTime(ts) {
   const d = Date.now() - ts;
@@ -207,4 +208,7 @@ export function renderMyPage() {
   page.querySelector('#myAboutItem').addEventListener('click', () => {
     document.getElementById('aboutOverlay').classList.add('show');
   });
+
+  // Render message wall section
+  renderMessageWall(page);
 }

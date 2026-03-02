@@ -92,5 +92,20 @@
   "view_transcript": "Voir la transcription",
   "transcript_loading": "Chargement de la transcription...",
   "transcript_unavailable": "Transcription non disponible",
-  "read_transcript": "Lire la transcription"
+  "read_transcript": "Lire la transcription",
+  "msg_wall_title": "Mur de messages",
+  "msg_nickname_placeholder": "Pseudo (facultatif)",
+  "msg_input_placeholder": "Partagez vos r\u00E9flexions...",
+  "msg_submit": "Publier",
+  "msg_submitting": "Publication...",
+  "msg_posted": "Message publi\u00E9",
+  "msg_post_fail": "\u00C9chec de la publication, r\u00E9essayez",
+  "msg_empty": "Pas encore de messages. Soyez le premier !",
+  "msg_load_more": "Charger plus de messages",
+  "msg_load_fail": "\u00C9chec du chargement des messages",
+  "msg_pinned": "\u00C9pingl\u00E9",
+  "time_just_now": "\u00C0 l'instant",
+  "time_min_ago": " min",
+  "time_hour_ago": " heures",
+  "time_day_ago": " jours"
 }

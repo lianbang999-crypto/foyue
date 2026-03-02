@@ -1,0 +1,227 @@
+/* ===== Message Wall / 留言墙 ===== */
+import { t } from './i18n.js';
+import { escapeHtml, showToast } from './utils.js';
+
+const PAGE_SIZE = 20;
+let currentPage = 1;
+let totalMessages = 0;
+let isLoading = false;
+
+/**
+ * Render the message wall section into a container element.
+ * Called from pages-my.js when "我的" page is rendered.
+ */
+export function renderMessageWall(container) {
+  const section = document.createElement('div');
+  section.className = 'my-section msg-wall';
+  section.innerHTML = `
+    <div class="msg-wall-header">
+      <div class="msg-wall-title">${escapeHtml(t('msg_wall_title') || '莲友留言')}</div>
+      <div class="msg-wall-count" id="msgWallCount"></div>
+    </div>
+    <div class="msg-compose" id="msgCompose">
+      <div class="msg-compose-row">
+        <input class="msg-nickname" id="msgNickname" type="text" maxlength="20"
+               placeholder="${escapeHtml(t('msg_nickname_placeholder') || '昵称（选填）')}"
+               value="${escapeHtml(getSavedNickname())}">
+        <textarea class="msg-input" id="msgInput" rows="1" maxlength="500"
+                  placeholder="${escapeHtml(t('msg_input_placeholder') || '写下你的心得感悟...')}"></textarea>
+      </div>
+      <div class="msg-compose-footer">
+        <span class="msg-char-count" id="msgCharCount">0/500</span>
+        <button class="msg-submit" id="msgSubmit" disabled>${escapeHtml(t('msg_submit') || '发布')}</button>
+      </div>
+    </div>
+    <div class="msg-list" id="msgList">
+      <div class="msg-loading">${escapeHtml(t('loading') || '加载中...')}</div>
+    </div>
+  `;
+  container.appendChild(section);
+
+  // Wire up events
+  const input = section.querySelector('#msgInput');
+  const charCount = section.querySelector('#msgCharCount');
+  const submitBtn = section.querySelector('#msgSubmit');
+  const nicknameInput = section.querySelector('#msgNickname');
+
+  input.addEventListener('input', () => {
+    const len = input.value.trim().length;
+    charCount.textContent = `${len}/500`;
+    submitBtn.disabled = len === 0;
+    // Auto-resize textarea
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 100) + 'px';
+  });
+
+  submitBtn.addEventListener('click', () => submitMessage(input, nicknameInput, submitBtn, section));
+
+  // Allow Ctrl+Enter / Cmd+Enter to submit
+  input.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !submitBtn.disabled) {
+      submitMessage(input, nicknameInput, submitBtn, section);
+    }
+  });
+
+  // Load messages
+  currentPage = 1;
+  loadMessages(section);
+}
+
+async function submitMessage(input, nicknameInput, submitBtn, section) {
+  const content = input.value.trim();
+  if (!content) return;
+
+  const nickname = nicknameInput.value.trim() || '莲友';
+  submitBtn.disabled = true;
+  submitBtn.textContent = t('msg_submitting') || '发布中...';
+
+  try {
+    const resp = await fetch('/api/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nickname, content }),
+    });
+
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      throw new Error(data.error || `HTTP ${resp.status}`);
+    }
+
+    const data = await resp.json();
+
+    // Save nickname for next time
+    saveNickname(nickname);
+
+    // Clear input
+    input.value = '';
+    input.style.height = 'auto';
+    section.querySelector('#msgCharCount').textContent = '0/500';
+
+    showToast(t('msg_posted') || '留言发布成功');
+
+    // Prepend new message to list
+    const list = section.querySelector('#msgList');
+    const emptyMsg = list.querySelector('.msg-empty');
+    if (emptyMsg) emptyMsg.remove();
+
+    const msgEl = buildMessageCard(data.message || {
+      id: Date.now(),
+      nickname,
+      content,
+      created_at: new Date().toISOString(),
+      pinned: 0,
+    });
+    list.insertBefore(msgEl, list.firstChild);
+
+    totalMessages++;
+    updateCount(section);
+  } catch (err) {
+    showToast(err.message || t('msg_post_fail') || '发布失败，请稍后重试');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = t('msg_submit') || '发布';
+  }
+}
+
+async function loadMessages(section, append = false) {
+  if (isLoading) return;
+  isLoading = true;
+
+  const list = section.querySelector('#msgList');
+  if (!append) {
+    list.innerHTML = `<div class="msg-loading">${escapeHtml(t('loading') || '加载中...')}</div>`;
+  }
+
+  try {
+    const resp = await fetch(`/api/messages?page=${currentPage}&limit=${PAGE_SIZE}`);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+
+    if (!append) list.innerHTML = '';
+
+    // Remove "load more" button if exists
+    const oldMore = list.querySelector('.msg-load-more');
+    if (oldMore) oldMore.remove();
+
+    const messages = data.messages || [];
+    totalMessages = data.total || 0;
+    updateCount(section);
+
+    if (messages.length === 0 && currentPage === 1) {
+      list.innerHTML = `<div class="msg-empty">${escapeHtml(t('msg_empty') || '还没有留言，来写第一条吧')}</div>`;
+      return;
+    }
+
+    const frag = document.createDocumentFragment();
+    messages.forEach(msg => frag.appendChild(buildMessageCard(msg)));
+    list.appendChild(frag);
+
+    // Show "load more" if there are more pages
+    if (currentPage * PAGE_SIZE < totalMessages) {
+      const more = document.createElement('div');
+      more.className = 'msg-load-more';
+      more.textContent = t('msg_load_more') || '加载更多留言';
+      more.addEventListener('click', () => {
+        currentPage++;
+        loadMessages(section, true);
+      });
+      list.appendChild(more);
+    }
+  } catch (err) {
+    if (!append) {
+      list.innerHTML = `<div class="msg-empty">${escapeHtml(t('msg_load_fail') || '留言加载失败')}</div>`;
+    }
+  } finally {
+    isLoading = false;
+  }
+}
+
+function buildMessageCard(msg) {
+  const div = document.createElement('div');
+  div.className = 'msg-card' + (msg.pinned ? ' pinned' : '');
+
+  const initial = (msg.nickname || '莲')[0];
+  const timeStr = formatRelativeTime(msg.created_at);
+
+  div.innerHTML = `
+    <div class="msg-card-top">
+      <div class="msg-avatar">${escapeHtml(initial)}</div>
+      <div class="msg-meta">
+        <span class="msg-author">${escapeHtml(msg.nickname || '莲友')}</span>
+        <span class="msg-time">${escapeHtml(timeStr)}</span>
+      </div>
+      ${msg.pinned ? `<span class="msg-pin-tag">${escapeHtml(t('msg_pinned') || '置顶')}</span>` : ''}
+    </div>
+    <div class="msg-body">${escapeHtml(msg.content || '')}</div>
+  `;
+  return div;
+}
+
+function formatRelativeTime(isoStr) {
+  if (!isoStr) return '';
+  try {
+    const d = new Date(isoStr);
+    const now = Date.now();
+    const diff = (now - d.getTime()) / 1000;
+    if (diff < 60) return t('time_just_now') || '刚刚';
+    if (diff < 3600) return Math.floor(diff / 60) + (t('time_min_ago') || '分钟前');
+    if (diff < 86400) return Math.floor(diff / 3600) + (t('time_hour_ago') || '小时前');
+    if (diff < 604800) return Math.floor(diff / 86400) + (t('time_day_ago') || '天前');
+    return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+  } catch {
+    return '';
+  }
+}
+
+function updateCount(section) {
+  const el = section.querySelector('#msgWallCount');
+  if (el) el.textContent = totalMessages > 0 ? `${totalMessages} 条` : '';
+}
+
+function getSavedNickname() {
+  try { return localStorage.getItem('msg-nickname') || ''; } catch { return ''; }
+}
+
+function saveNickname(name) {
+  try { localStorage.setItem('msg-nickname', name); } catch { /* ignore */ }
+}

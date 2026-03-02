@@ -1,0 +1,37 @@
+/* === MESSAGE WALL / 留言墙 === */
+.msg-wall{margin-top:4px}
+.msg-wall-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.msg-wall-title{font-size:.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;font-weight:500}
+.msg-wall-count{font-size:.72rem;color:var(--text-muted)}
+
+/* Compose area */
+.msg-compose{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:14px;transition:border-color .2s}
+.msg-compose:focus-within{border-color:var(--border-active)}
+.msg-compose-row{display:flex;gap:10px;margin-bottom:10px}
+.msg-nickname{flex:0 0 100px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);font-family:var(--font-zh);font-size:.82rem;color:var(--text);outline:none;transition:border-color .2s}
+.msg-nickname:focus{border-color:var(--border-active)}
+.msg-nickname::placeholder{color:var(--text-muted)}
+.msg-input{flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);font-family:var(--font-zh);font-size:.82rem;color:var(--text);outline:none;resize:none;min-height:36px;max-height:100px;transition:border-color .2s}
+.msg-input:focus{border-color:var(--border-active)}
+.msg-input::placeholder{color:var(--text-muted)}
+.msg-compose-footer{display:flex;align-items:center;justify-content:space-between}
+.msg-char-count{font-size:.72rem;color:var(--text-muted)}
+.msg-submit{-webkit-appearance:none;appearance:none;background:var(--accent);color:var(--text-inverse);border:none;border-radius:20px;padding:7px 18px;font-family:var(--font-zh);font-size:.78rem;font-weight:500;cursor:pointer;transition:opacity .15s}
+.msg-submit:hover{opacity:.88}
+.msg-submit:disabled{opacity:.4;cursor:not-allowed}
+
+/* Message list */
+.msg-list{display:flex;flex-direction:column;gap:8px}
+.msg-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;transition:background .15s}
+.msg-card.pinned{border-color:var(--border-active);background:var(--accent-glow)}
+.msg-card-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.msg-avatar{width:28px;height:28px;border-radius:50%;background:var(--accent-glow);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:.72rem;color:var(--accent);font-weight:600}
+.msg-meta{flex:1;min-width:0}
+.msg-author{font-size:.8rem;font-weight:500;color:var(--text)}
+.msg-time{font-size:.7rem;color:var(--text-muted)}
+.msg-pin-tag{font-size:.66rem;color:var(--accent);background:var(--accent-glow);padding:1px 6px;border-radius:10px;font-weight:500}
+.msg-body{font-size:.84rem;color:var(--text);line-height:1.65;word-break:break-word}
+.msg-empty{text-align:center;padding:24px 16px;color:var(--text-muted);font-size:.82rem}
+.msg-load-more{text-align:center;padding:10px;font-size:.78rem;color:var(--accent);cursor:pointer;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);transition:background .15s}
+.msg-load-more:hover{background:var(--bg-card-hover)}
+.msg-loading{text-align:center;padding:16px;color:var(--text-muted);font-size:.78rem}

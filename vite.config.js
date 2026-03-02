@@ -9,7 +9,10 @@ export default defineConfig({
     target: ['es2015', 'chrome64', 'safari12'],
     minify: 'esbuild',
     rollupOptions: {
-      input: resolve(__dirname, 'index.html'),
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        admin: resolve(__dirname, 'admin.html'),
+      },
     },
   },
   server: {
