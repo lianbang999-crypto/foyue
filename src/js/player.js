@@ -95,22 +95,40 @@ function playCurrent() {
   cleanupReadyListeners(dom);
 
   dom.audio.pause();
+
+  // ✅ 核心优化：如果预加载的音频匹配当前要播放的URL，直接复用已缓冲的数据
+  let usePreloaded = false;
+  if (preloadAudio && preloadedUrl === tr.url && preloadAudio.readyState >= 2) {
+    // Swap: copy the preloaded src (already buffered) to main audio
+    usePreloaded = true;
+    console.log('[Player] Reusing preloaded audio, readyState:', preloadAudio.readyState);
+  }
+
   dom.audio.src = tr.url;
   dom.audio.playbackRate = SPEEDS[speedIdx];
-  // Show loading state immediately
-  setBuffering(true);
+  // Show loading state immediately (skip if preloaded — will resolve fast)
+  if (!usePreloaded) setBuffering(true);
   const seekTime = pendingSeek > 0 ? pendingSeek : 0;
   pendingSeek = 0;
 
-  // ✅ 优化：添加3秒超时保护，防止isSwitching卡住
+  // Clean up preload reference (src already set on main audio)
+  if (usePreloaded) {
+    preloadAudio.src = '';
+    preloadAudio.load();
+    preloadAudio = null;
+    preloadedUrl = '';
+  }
+
+  // ✅ 优化：添加超时保护，防止isSwitching卡住（预加载时缩短到1.5秒）
+  const switchTimeout = usePreloaded ? 1500 : 3000;
   let switchingTimeout = setTimeout(() => {
     if (isSwitching && callId === _playCurrentId) {
-      console.warn('[Player] isSwitching timeout after 3s, auto-reset');
+      console.warn('[Player] isSwitching timeout, auto-reset');
       isSwitching = false;
       setBuffering(false);
       setPlayState(false);
     }
-  }, 3000);
+  }, switchTimeout);
 
   function tryPlay() {
     if (callId !== _playCurrentId) return; // stale callback from previous switch
@@ -118,11 +136,11 @@ function playCurrent() {
     if (seekTime > 0) dom.audio.currentTime = seekTime;
     // Keep isSwitching=true until play() promise resolves, to block stale pause events
     dom.audio.play().then(() => {
-      clearTimeout(switchingTimeout); // ✅ 清除超时
+      clearTimeout(switchingTimeout);
       isSwitching = false;
       setPlayState(true);
     }).catch(() => {
-      clearTimeout(switchingTimeout); // ✅ 清除超时
+      clearTimeout(switchingTimeout);
       isSwitching = false;
       setPlayState(false);
     });
@@ -136,42 +154,47 @@ function playCurrent() {
     }, 30000);
   }
 
-  // Wait for canplay or loadeddata before calling play()
-  function onReady() {
-    if (callId !== _playCurrentId) return;
-    cleanupReadyListeners(dom);
+  // ✅ 如果音频已有足够数据（预加载命中或浏览器缓存），直接播放
+  if (dom.audio.readyState >= 2) {
     tryPlay();
-  }
-  dom.audio._onReady = onReady;
-  dom.audio.addEventListener('canplay', onReady);
-  dom.audio.addEventListener('loadeddata', onReady);
-
-  // #18: Soft timeout at 8s — show "loading slow" hint but keep waiting
-  dom.audio._slowTimeout = setTimeout(() => {
-    dom.audio._slowTimeout = null;
-    if (callId !== _playCurrentId) return;
-    if (dom.audio._onReady) {
-      showToast(t('loading_slow') || '\u52A0\u8F7D\u8F83\u6162\uFF0C\u8BF7\u8010\u5FC3\u7B49\u5F85...');
-    }
-  }, 8000);
-
-  // #18: Hard timeout at 20s — give up if still not ready
-  dom.audio._readyTimeout = setTimeout(() => {
-    dom.audio._readyTimeout = null;
-    if (callId !== _playCurrentId) return;
-    if (dom.audio._onReady) {
+  } else {
+    // Wait for canplay or loadeddata before calling play()
+    function onReady() {
+      if (callId !== _playCurrentId) return;
       cleanupReadyListeners(dom);
-      // readyState >= 2 (HAVE_CURRENT_DATA) means we can still attempt play
-      if (dom.audio.readyState >= 2) {
-        tryPlay();
-      } else {
-        isSwitching = false;
-        setBuffering(false);
-        setPlayState(false);
-        showToast(t('error_play') || '\u52A0\u8F7D\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u8BD5');
-      }
+      tryPlay();
     }
-  }, 20000);
+    dom.audio._onReady = onReady;
+    dom.audio.addEventListener('canplay', onReady);
+    dom.audio.addEventListener('loadeddata', onReady);
+
+    // #18: Soft timeout at 8s — show "loading slow" hint but keep waiting
+    dom.audio._slowTimeout = setTimeout(() => {
+      dom.audio._slowTimeout = null;
+      if (callId !== _playCurrentId) return;
+      if (dom.audio._onReady) {
+        showToast(t('loading_slow') || '\u52A0\u8F7D\u8F83\u6162\uFF0C\u8BF7\u8010\u5FC3\u7B49\u5F85...');
+      }
+    }, 8000);
+
+    // #18: Hard timeout at 20s — give up if still not ready
+    dom.audio._readyTimeout = setTimeout(() => {
+      dom.audio._readyTimeout = null;
+      if (callId !== _playCurrentId) return;
+      if (dom.audio._onReady) {
+        cleanupReadyListeners(dom);
+        // readyState >= 2 (HAVE_CURRENT_DATA) means we can still attempt play
+        if (dom.audio.readyState >= 2) {
+          tryPlay();
+        } else {
+          isSwitching = false;
+          setBuffering(false);
+          setPlayState(false);
+          showToast(t('error_play') || '\u52A0\u8F7D\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u8BD5');
+        }
+      }
+    }, 20000);
+  }
 
   updateUI(tr);
   highlightEp();
@@ -347,6 +370,11 @@ export function onTimeUpdate() {
       const bufEnd = dom.audio.buffered.end(dom.audio.buffered.length - 1);
       dom.expBufferFill.style.width = Math.min(100, (bufEnd / dur) * 100) + '%';
     }
+
+    // ✅ 优化：当播放进度达到80%时提前预加载下一曲，确保无缝切换
+    if (p >= 80 && !preloadedUrl) {
+      preloadNextTrack();
+    }
   });
 }
 
@@ -445,7 +473,7 @@ export function togglePlay() {
 }
 
 let _skipDebounce = 0;
-const SKIP_DEBOUNCE_MS = 300;
+const SKIP_DEBOUNCE_MS = 150;
 
 function schedulePlayCurrent() {
   // Update UI immediately so user sees track title change
@@ -592,55 +620,22 @@ function getNextTrackIdx() {
 export function preloadNextTrack() {
   const ni = getNextTrackIdx();
   if (ni < 0) { cleanupPreload(); return; }
-  const nurl = state.playlist[ni]?.url;
+  const nurl = state.playlist[ni] && state.playlist[ni].url;
   if (!nurl || nurl === preloadedUrl) return;
-  
-  // ✅ 优化：根据网络状况动态调整预加载策略
-  const conn = navigator.connection || navigator.mozConnection;
-  if (conn && conn.saveData) {
-    // 省流模式：不预加载
-    console.log('[Preload] Data saver enabled, skip preload');
-    return;
-  }
-  
+
+  // 省流模式：不预加载
+  var conn = navigator.connection || navigator.mozConnection;
+  if (conn && conn.saveData) return;
+  // 2G网络：不预加载
+  if (conn && conn.effectiveType === '2g') return;
+
   cleanupPreload();
   preloadAudio = new Audio();
-  
-  // ✅ 优化：根据网络类型选择预加载级别
-  if (conn) {
-    if (conn.effectiveType === '4g' || !conn.effectiveType) {
-      // 4G或未知网络：预加载完整音频
-      preloadAudio.preload = 'auto';
-      console.log('[Preload] 4G/WiFi: full preload');
-    } else if (conn.effectiveType === '3g') {
-      // 3G网络：预加载元数据和部分数据
-      preloadAudio.preload = 'metadata';
-      console.log('[Preload] 3G: metadata preload');
-    } else {
-      // 2G网络：不预加载
-      console.log('[Preload] 2G: skip preload');
-      return;
-    }
-  } else {
-    // 无法检测网络：默认预加载元数据
-    preloadAudio.preload = 'metadata';
-    console.log('[Preload] Unknown network: metadata preload');
-  }
-  
+  // ✅ 关键优化：始终使用 preload="auto" 让浏览器真正缓冲音频数据
+  // 这样切换下一曲时可以直接复用已缓冲的数据，大幅减少等待时间
+  preloadAudio.preload = 'auto';
   preloadAudio.src = nurl;
   preloadedUrl = nurl;
-  
-  // ✅ 优化：监听预加载进度
-  preloadAudio.addEventListener('progress', () => {
-    if (preloadAudio.buffered.length > 0) {
-      const buffered = preloadAudio.buffered.end(0);
-      const duration = preloadAudio.duration || 0;
-      if (duration > 0) {
-        const percent = Math.round((buffered / duration) * 100);
-        console.log(`[Preload] Buffered: ${percent}%`);
-      }
-    }
-  });
 }
 
 export function cleanupPreload() {
