@@ -33,7 +33,26 @@ export const AI_CONFIG = {
 };
 
 // ============================================================
-// 文本切块 — 保持段落完整性
+// 短 hash — 将长字符串压缩为 12 字符的 hex
+// ============================================================
+function shortHash(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  const h2 = h >>> 0;
+  let h3 = 0x6c62272e;
+  for (let i = str.length - 1; i >= 0; i--) {
+    h3 ^= str.charCodeAt(i);
+    h3 = Math.imul(h3, 0x01000193);
+  }
+  const h4 = h3 >>> 0;
+  return h2.toString(16).padStart(8, '0') + h4.toString(16).padStart(8, '0');
+}
+
+// ============================================================
+// 文本切块 — 保持段落完整性，超长段落按句子切分
 // ============================================================
 export function chunkText(text, docId, metadata = {}) {
   if (!text || typeof text !== 'string') return [];
@@ -46,8 +65,10 @@ export function chunkText(text, docId, metadata = {}) {
   function pushChunk(content) {
     const trimmed = content.trim();
     if (!trimmed) return;
+    // Vectorize ID 上限 64 字节，用 shortHash 压缩长 docId
+    const shortId = shortHash(docId);
     chunks.push({
-      id: `${docId}-c${idx}`,
+      id: `${shortId}-c${idx}`,
       text: trimmed,
       metadata: { ...metadata, doc_id: docId, chunk_index: idx },
     });
