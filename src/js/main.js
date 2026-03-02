@@ -320,16 +320,18 @@ import { appreciate } from './api.js';
       if (dom.audio.src && !dom.audio.paused) preloadNextTrack();
       // #23: If audio is stalled/errored and network improved, retry playback
       if (dom.audio.src && dom.audio.paused && dom.audio.error && c.effectiveType !== '2g') {
+        dom.playerTrack.classList.add('buffering'); dom.centerPlayBtn.classList.add('buffering'); dom.expPlay.classList.add('buffering');
         dom.audio.load();
-        dom.audio.play().catch(() => {});
+        dom.audio.play().catch(() => { dom.playerTrack.classList.remove('buffering'); dom.centerPlayBtn.classList.remove('buffering'); dom.expPlay.classList.remove('buffering'); });
       }
     });
   }
   // #23: Also retry on online event (works on all browsers)
   window.addEventListener('online', () => {
     if (dom.audio.src && dom.audio.paused && dom.audio.error) {
+      dom.playerTrack.classList.add('buffering'); dom.centerPlayBtn.classList.add('buffering'); dom.expPlay.classList.add('buffering');
       dom.audio.load();
-      dom.audio.play().catch(() => {});
+      dom.audio.play().catch(() => { dom.playerTrack.classList.remove('buffering'); dom.centerPlayBtn.classList.remove('buffering'); dom.expPlay.classList.remove('buffering'); });
     }
   });
 

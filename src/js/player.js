@@ -101,7 +101,12 @@ function playCurrent() {
       setPlayState(false);
     });
     // Safety: ensure isSwitching never stays stuck forever
-    setTimeout(() => { isSwitching = false; }, 30000);
+    setTimeout(() => {
+      if (isSwitching) {
+        isSwitching = false;
+        setBuffering(false);
+      }
+    }, 30000);
   }
 
   // Wait for canplay or loadeddata before calling play()
@@ -296,7 +301,11 @@ export function onAudioError() {
       }
     }
     setTimeout(() => {
-      if (dom.audio.src === src) { dom.audio.load(); dom.audio.play().catch(() => {}); }
+      if (dom.audio.src === src) {
+        setBuffering(true);
+        dom.audio.load();
+        dom.audio.play().catch(() => { setBuffering(false); });
+      }
     }, 1500 * audioRetries);
   } else {
     setPlayState(false);
