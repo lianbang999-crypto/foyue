@@ -86,4 +86,5 @@
 .home-rec-icon svg{width:20px;height:20px;fill:none;stroke:var(--accent);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .home-rec-body{flex:1;min-width:0}
 .home-rec-title{font-size:.86rem;color:var(--text);font-weight:500}
+.home-rec-intro{font-size:.74rem;color:var(--text-secondary);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .home-rec-sub{font-size:.76rem;color:var(--text-secondary);margin-top:2px}

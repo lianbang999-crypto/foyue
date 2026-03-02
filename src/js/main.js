@@ -80,6 +80,9 @@ import { appreciate } from './api.js';
     });
   });
 
+  // Center play button - start dimmed when no audio loaded
+  dom.centerPlayBtn.classList.add('no-audio');
+
   // Center play button - open expanded player, or toggle play if already in expanded view
   dom.centerPlayBtn.addEventListener('click', () => {
     haptic();

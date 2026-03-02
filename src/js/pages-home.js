@@ -73,23 +73,46 @@ export function renderHomePage() {
   if (recSeries.length) {
     recHtml = `<div class="home-section">
       <div class="home-section-title">${t('home_recommended')}</div>
-      <div class="home-rec-list">${recSeries.map(s => `
+      <div class="home-rec-list">${recSeries.map(s => {
+        const introHtml = s.intro ? `<div class="home-rec-intro">${s.intro}</div>` : '';
+        return `
         <div class="home-rec-card" data-sid="${s.id}" data-cat="tingjingtai">
           <div class="home-rec-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 3"/></svg></div>
           <div class="home-rec-body">
-            <div class="home-rec-title">${s.title}</div>
+            <div class="home-rec-title">${s.title}</div>${introHtml}
             <div class="home-rec-sub">${s.speaker || ''} · ${s.totalEpisodes} ${t('episodes')}</div>
           </div>
-        </div>`).join('')}
+        </div>`;
+      }).join('')}
       </div>
     </div>`;
   }
 
-  // Chanting cards
+  // Chanting cards — each gets a unique soft color tint for visual distinction
+  const CHANT_COLORS = [
+    'rgba(131,106,50,0.12)',  // warm gold (default)
+    'rgba(106,131,80,0.12)',  // sage green
+    'rgba(80,106,131,0.12)',  // muted blue
+    'rgba(131,80,106,0.12)',  // soft rose
+    'rgba(131,116,80,0.12)',  // warm amber
+    'rgba(106,80,131,0.12)',  // soft purple
+    'rgba(80,131,116,0.12)',  // teal
+  ];
+  const CHANT_STROKES = [
+    'rgba(131,106,50,0.7)',
+    'rgba(106,131,80,0.7)',
+    'rgba(80,106,131,0.7)',
+    'rgba(131,80,106,0.7)',
+    'rgba(131,116,80,0.7)',
+    'rgba(106,80,131,0.7)',
+    'rgba(80,131,116,0.7)',
+  ];
   const chantCards = fohaoEps.map((ep, idx) => {
     const isPlaying = nowSid === 'donglin-fohao' && state.epIdx === idx;
+    const bg = CHANT_COLORS[idx % CHANT_COLORS.length];
+    const stroke = CHANT_STROKES[idx % CHANT_STROKES.length];
     return `<div class="home-chant-card${isPlaying ? ' playing' : ''}" data-fh-idx="${idx}">
-      <div class="home-chant-icon"><svg viewBox="0 0 24 24"><path d="M12 3c0 0-5 7-5 13s5 5 5 5 5 1 5-5S12 3 12 3z"/></svg></div>
+      <div class="home-chant-icon" style="background:${bg}"><svg viewBox="0 0 24 24" style="stroke:${stroke}"><path d="M12 3c0 0-5 7-5 13s5 5 5 5 5 1 5-5S12 3 12 3z"/></svg></div>
       <div class="home-chant-name">${ep.title}</div>
     </div>`;
   }).join('');

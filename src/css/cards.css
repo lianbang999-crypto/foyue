@@ -1,9 +1,9 @@
 /* === SERIES CARDS - simplified minimal === */
 .series-list{display:flex;flex-direction:column;gap:8px}
-.card{display:flex;align-items:center;gap:12px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 14px;cursor:pointer;transition:all .2s;min-height:44px}
+.card{display:flex;align-items:center;gap:10px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:11px 14px;cursor:pointer;transition:all .2s;min-height:44px}
 .card:hover,.card:active{background:var(--bg-card-hover);border-color:var(--border-active)}
-.card-icon{width:36px;height:36px;border-radius:8px;background:var(--bg-secondary);display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.card-icon svg{width:18px;height:18px;stroke:var(--text-muted);fill:none;stroke-width:1.8}
+.card-icon{width:32px;height:32px;border-radius:8px;background:var(--bg-secondary);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.card-icon svg{width:16px;height:16px;stroke:var(--text-muted);fill:none;stroke-width:1.8}
 .card-body{flex:1;min-width:0}
 .card-title{font-size:.9rem;font-weight:500;color:var(--text);line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .card-meta{font-size:.76rem;color:var(--text-secondary);margin-top:2px}
@@ -30,7 +30,7 @@
 .btn-play-all svg{width:16px;height:16px;fill:var(--text-inverse);stroke:none}
 
 .ep-list{list-style:none}
-.ep-item{display:flex;align-items:center;gap:10px;padding:12px;border-radius:var(--radius-sm);cursor:pointer;transition:background .15s;min-height:44px}
+.ep-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius-sm);cursor:pointer;transition:background .15s;min-height:44px}
 .ep-item:hover{background:var(--accent-glow)}
 .ep-item.playing{background:var(--accent-glow)}
 .ep-num{font-family:var(--font-en);font-size:.78rem;color:var(--text-muted);width:28px;text-align:center;flex-shrink:0}
