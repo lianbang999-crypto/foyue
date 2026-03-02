@@ -95,6 +95,7 @@ function playCurrent() {
     // Keep isSwitching=true until play() promise resolves, to block stale pause events
     dom.audio.play().then(() => {
       isSwitching = false;
+      setPlayState(true);
     }).catch(() => {
       isSwitching = false;
       setPlayState(false);
