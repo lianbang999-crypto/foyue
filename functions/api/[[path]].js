@@ -967,9 +967,9 @@ async function handleBuildEmbeddings(env, request, cors) {
         series_name: doc.series_name || '',
       });
 
-      // 分批嵌入（每批最多 20 条，避免超 token 限制）
-      for (let i = 0; i < chunks.length; i += 20) {
-        const batch = chunks.slice(i, i + 20);
+      // 分批嵌入（每批最多 5 条，避免超 token 限制）
+      for (let i = 0; i < chunks.length; i += 5) {
+        const batch = chunks.slice(i, i + 5);
         const texts = batch.map(c => c.text);
         const embeddings = await generateEmbeddings(env, texts);
 
@@ -992,12 +992,13 @@ async function handleBuildEmbeddings(env, request, cors) {
 
       processed++;
     } catch (err) {
-      errors.push({ doc_id: doc.id, error: err.message });
+      const contentLen = doc.content?.length || 0;
+      errors.push({ doc_id: doc.id, error: err.message, contentLength: contentLen });
       await env.DB.prepare(
         `INSERT OR REPLACE INTO ai_embedding_jobs
          (document_id, status, error)
          VALUES (?, 'failed', ?)`
-      ).bind(doc.id, err.message).run();
+      ).bind(doc.id, `${err.message} [contentLen=${contentLen}]`).run();
     }
   }
 

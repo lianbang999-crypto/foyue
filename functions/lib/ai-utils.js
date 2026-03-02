@@ -80,7 +80,7 @@ export async function generateEmbeddings(env, texts) {
     AI_CONFIG.models.embedding,
     { text: texts }
   );
-  return response.data; // float[][] 每个 768 维 (bge-m3)
+  return response.data; // float[][] 每个 1024 维 (bge-m3 在 Workers AI 上输出 1024 维)
 }
 
 // ============================================================
