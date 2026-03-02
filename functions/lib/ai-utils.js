@@ -43,30 +43,56 @@ export function chunkText(text, docId, metadata = {}) {
   let current = '';
   let idx = 0;
 
+  function pushChunk(content) {
+    const trimmed = content.trim();
+    if (!trimmed) return;
+    chunks.push({
+      id: `${docId}-c${idx}`,
+      text: trimmed,
+      metadata: { ...metadata, doc_id: docId, chunk_index: idx },
+    });
+    idx++;
+  }
+
   for (const para of paragraphs) {
     const trimmed = para.trim();
     if (!trimmed) continue;
 
+    // 如果单个段落就超过 maxChunkSize，按句子强制切分
+    if (trimmed.length > maxChunkSize) {
+      // 先把 current 中已有内容推出
+      if (current) { pushChunk(current); current = ''; }
+      // 按句号/问号/叹号/换行切分超长段落
+      const sentences = trimmed.split(/(?<=[。！？\n])/);
+      let buf = '';
+      for (const s of sentences) {
+        if (buf.length + s.length > maxChunkSize && buf) {
+          pushChunk(buf);
+          buf = buf.slice(-overlapSize) + s;
+        } else {
+          buf += s;
+        }
+      }
+      // 如果 buf 还是超长（无标点的连续文本），硬切
+      while (buf.length > maxChunkSize) {
+        pushChunk(buf.slice(0, maxChunkSize));
+        buf = buf.slice(maxChunkSize - overlapSize);
+      }
+      if (buf) current = buf;
+      continue;
+    }
+
     if (current.length + trimmed.length > maxChunkSize && current.length > 0) {
-      chunks.push({
-        id: `${docId}-c${idx}`,
-        text: current.trim(),
-        metadata: { ...metadata, doc_id: docId, chunk_index: idx },
-      });
+      pushChunk(current);
       const overlap = current.slice(-overlapSize);
       current = overlap + '\n\n' + trimmed;
-      idx++;
     } else {
       current += (current ? '\n\n' : '') + trimmed;
     }
   }
 
   if (current.trim()) {
-    chunks.push({
-      id: `${docId}-c${idx}`,
-      text: current.trim(),
-      metadata: { ...metadata, doc_id: docId, chunk_index: idx },
-    });
+    pushChunk(current);
   }
 
   return chunks;
