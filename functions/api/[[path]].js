@@ -151,6 +151,29 @@ export async function onRequest(context) {
         return json({ error: 'Unauthorized' }, cors, 401);
       }
       try {
+        // mode=chunk: 从 D1 读文档并切块后测试
+        const mode = url.searchParams.get('mode') || 'simple';
+        if (mode === 'chunk') {
+          const doc = await env.DB.prepare(
+            `SELECT id, title, content FROM documents
+             WHERE content IS NOT NULL AND content != ''
+             ORDER BY id LIMIT 1`
+          ).first();
+          if (!doc) return json({ error: 'No documents found' }, cors);
+          const chunks = chunkText(doc.content, doc.id, { title: doc.title });
+          const firstChunk = chunks[0];
+          const resp = await env.AI.run('@cf/baai/bge-m3', { text: [firstChunk.text] });
+          return json({
+            success: true,
+            docId: doc.id,
+            contentLength: doc.content.length,
+            totalChunks: chunks.length,
+            chunkTextLength: firstChunk.text.length,
+            chunkTextPreview: firstChunk.text.slice(0, 100),
+            dimensions: resp.data?.[0]?.length || 'unknown',
+          }, cors);
+        }
+        // mode=simple: 简单文本测试
         const testText = '南无阿弥陀佛';
         const resp = await env.AI.run('@cf/baai/bge-m3', { text: [testText] });
         return json({
