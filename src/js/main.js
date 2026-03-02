@@ -30,7 +30,8 @@ import { renderMyPage } from './pages-my.js';
 import { renderCategory, showEpisodes } from './pages-category.js';
 import { doSearch } from './search.js';
 import { initInstallPrompt, initBackGuard } from './pwa.js';
-import { initAiChat, updateAiContext } from './ai-chat.js';
+// [暂停] AI 功能待数据整理后重新启用
+// import { initAiChat, updateAiContext } from './ai-chat.js';
 import { appreciate } from './api.js';
 
 /* ===== INIT ===== */
@@ -275,7 +276,8 @@ import { appreciate } from './api.js';
     // Update AI chat context with current track info
     if (state.epIdx >= 0 && state.playlist[state.epIdx]) {
       const tr = state.playlist[state.epIdx];
-      updateAiContext(tr.seriesId, tr.id || state.epIdx + 1);
+      // [暂停] AI 功能待数据整理后重新启用
+      // updateAiContext(tr.seriesId, tr.id || state.epIdx + 1);
     }
   });
   dom.audio.addEventListener('pause', () => { if (!getIsSwitching()) { setPlayState(false); saveState(); } });
@@ -302,8 +304,8 @@ import { appreciate } from './api.js';
   // Back navigation guard
   initBackGuard(renderCategory, state, { closeFullScreen, getPlaylistVisible, closePlaylist });
 
-  // AI 聊天面板
-  initAiChat(document.getElementById('app'));
+  // [暂停] AI 功能待数据整理后重新启用
+  // initAiChat(document.getElementById('app'));
 
   // #4: Unified buffering indicator — 'waiting' shows, 'playing' clears
   // playCurrent() handles initial buffering via setBuffering(); these handle mid-playback buffer stalls

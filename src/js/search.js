@@ -3,10 +3,11 @@ import { state } from './state.js';
 import { t } from './i18n.js';
 import { getDOM } from './dom.js';
 import { playList } from './player.js';
-import { aiSearch } from './ai-client.js';
+// [暂停] AI 功能待数据整理后重新启用
+// import { aiSearch } from './ai-client.js';
 import { escapeHtml } from './utils.js';
 
-let searchMode = 'keyword'; // 'keyword' | 'semantic'
+let searchMode = 'keyword'; // [暂停] 'semantic' 模式暂停，仅保留 keyword
 let _showEpisodes, _renderCategory, _renderHomePage;
 let searchRequestId = 0;
 
@@ -22,10 +23,11 @@ export function doSearch(q, showEpisodes, renderCategory, renderHomePage) {
   if (renderCategory) _renderCategory = renderCategory;
   if (renderHomePage) _renderHomePage = renderHomePage;
 
-  if (searchMode === 'semantic' && q && q.length >= 2) {
-    doSemanticSearch(q);
-    return;
-  }
+  // [暂停] AI 语义搜索暂停
+  // if (searchMode === 'semantic' && q && q.length >= 2) {
+  //   doSemanticSearch(q);
+  //   return;
+  // }
   doKeywordSearch(q, _showEpisodes, _renderCategory, _renderHomePage);
 }
 
@@ -54,7 +56,8 @@ function doKeywordSearch(q, showEpisodes, renderCategory, renderHomePage) {
   const wrap = document.createElement('div');
   wrap.className = 'view active';
 
-  wrap.appendChild(buildSearchToggle());
+  // [暂停] AI 搜索模式切换暂停
+  // wrap.appendChild(buildSearchToggle());
 
   if (!totalCount) {
     const noResult = document.createElement('div');
