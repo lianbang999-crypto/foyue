@@ -23,7 +23,7 @@ import {
   setPlayState, highlightEp, preloadNextTrack, cleanupPreload,
   togglePlaylist, closePlaylist, getPlaylistVisible, saveState, restoreState,
   getIsSwitching, setDragging, initPlaylistTabs, closeFullScreen,
-  markAppreciated, updateAppreciateBtn, appreciateSuccess,
+  markAppreciated, updateAppreciateBtn, appreciateSuccess, updateAppreciateCount,
 } from './player.js';
 import { renderHomePage } from './pages-home.js';
 import { renderMyPage } from './pages-my.js';

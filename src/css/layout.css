@@ -1,5 +1,6 @@
 /* === APP SHELL === */
-#app{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;max-width:100vw;overflow-x:hidden}
+#app{min-height:100vh;display:flex;flex-direction:column;max-width:100vw;overflow-x:hidden}
+@supports(min-height:100dvh){#app{min-height:100dvh}}
 
 /* === HEADER - top bar === */
 .header{position:sticky;top:0;z-index:100;background:var(--bg-header);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid var(--border);transition:background .35s}
@@ -24,7 +25,7 @@
 .center-play-btn{position:relative;width:48px;height:48px;margin-top:-18px;border:none;background:var(--accent);border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 16px rgba(131,106,50,0.3);transition:transform .15s,box-shadow .15s;z-index:2;-webkit-appearance:none;appearance:none}
 .center-play-btn:active{transform:scale(0.94)}
 .center-play-btn svg.center-play-icon{width:22px;height:22px;fill:var(--text-inverse);stroke:none;position:relative;z-index:2}
-.center-play-btn .progress-ring{position:absolute;inset:-4px;width:56px;height:56px;z-index:1;transform:rotate(-90deg)}
+.center-play-btn .progress-ring{position:absolute;top:-4px;right:-4px;bottom:-4px;left:-4px;width:56px;height:56px;z-index:1;transform:rotate(-90deg)}
 .center-play-btn .progress-ring-bg{fill:none;stroke:var(--border);stroke-width:3}
 .center-play-btn .progress-ring-fill{fill:none;stroke:var(--accent);stroke-width:3;stroke-linecap:round;stroke-dasharray:157;stroke-dashoffset:157;transition:stroke-dashoffset .15s linear}
 .center-play-btn.playing{animation:centerSpin 8s linear infinite}

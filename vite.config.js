@@ -6,7 +6,7 @@ export default defineConfig({
   publicDir: 'public',
   build: {
     outDir: 'dist',
-    target: ['es2020', 'safari14'],
+    target: ['es2015', 'chrome64', 'safari12'],
     minify: 'esbuild',
     rollupOptions: {
       input: resolve(__dirname, 'index.html'),
