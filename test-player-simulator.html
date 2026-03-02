@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>播放器性能测试模拟器</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
+  padding: 20px;
+}
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.panel {
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+}
+h1 {
+  color: #333;
+  margin-bottom: 20px;
+  font-size: 24px;
+  border-bottom: 3px solid #667eea;
+  padding-bottom: 10px;
+}
+h2 {
+  color: #555;
+  margin: 20px 0 15px;
+  font-size: 18px;
+}
+.test-section {
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border-left: 4px solid #667eea;
+}
+.test-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 5px;
+  transition: all 0.3s;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+.test-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+}
+.test-btn:active {
+  transform: translateY(0);
+}
+.test-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  transform: none;
+}
+.test-btn.danger {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+.test-btn.success {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+.log-container {
+  background: #1e1e1e;
+  color: #00ff00;
+  padding: 15px;
+  border-radius: 8px;
+  height: 400px;
+  overflow-y: auto;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.log-entry {
+  margin-bottom: 5px;
+  padding: 3px 8px;
+  border-radius: 3px;
+}
+.log-entry.info { color: #00bfff; }
+.log-entry.success { color: #00ff00; }
+.log-entry.error { color: #ff6b6b; }
+.log-entry.warning { color: #ffd93d; }
+.log-entry.performance { color: #ff9ff3; }
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 15px;
+}
+.stat-card {
+  background: white;
+  padding: 15px;
+  border-radius: 8px;
+  text-align: center;
+  border: 2px solid #e0e0e0;
+}
+.stat-value {
+  font-size: 28px;
+  font-weight: bold;
+  color: #667eea;
+  margin-bottom: 5px;
+}
+.stat-label {
+  font-size: 12px;
+  color: #666;
+  text-transform: uppercase;
+}
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 10px;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  transition: width 0.3s;
+  width: 0%;
+}
+.input-group {
+  margin: 10px 0;
+}
+.input-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 600;
+  color: #555;
+}
+.input-group input {
+  width: 100%;
+  padding: 10px;
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 14px;
+}
+.input-group input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <!-- 左侧：测试控制面板 -->
+  <div class="panel">
+    <h1>🧪 播放器性能测试模拟器</h1>
+    
+    <!-- 测试场景1：快速点击测试 -->
+    <div class="test-section">
+      <h2>⚡ 场景1：快速点击测试</h2>
+      <p style="color: #666; margin-bottom: 10px; font-size: 13px;">
+        模拟用户快速点击播放/暂停按钮，测试响应性能
+      </p>
+      <div class="input-group">
+        <label>点击次数：</label>
+        <input type="number" id="clickCount" value="100" min="1" max="1000">
+      </div>
+      <div class="input-group">
+        <label>点击间隔 (ms)：</label>
+        <input type="number" id="clickInterval" value="50" min="10" max="1000">
+      </div>
+      <button class="test-btn" onclick="runRapidClickTest()">开始测试</button>
+      <button class="test-btn danger" onclick="stopTest()">停止测试</button>
+    </div>
+    
+    <!-- 测试场景2：进度条拖拽测试 -->
+    <div class="test-section">
+      <h2>🎚️ 场景2：进度条拖拽测试</h2>
+      <p style="color: #666; margin-bottom: 10px; font-size: 13px;">
+        模拟进度条拖拽操作，测试UI更新性能
+      </p>
+      <div class="input-group">
+        <label>拖拽次数：</label>
+        <input type="number" id="dragCount" value="50" min="1" max="500">
+      </div>
+      <button class="test-btn" onclick="runProgressDragTest()">开始测试</button>
+    </div>
+    
+    <!-- 测试场景3：曲目切换测试 -->
+    <div class="test-section">
+      <h2>🎵 场景3：曲目切换测试</h2>
+      <p style="color: #666; margin-bottom: 10px; font-size: 13px;">
+        模拟快速切换曲目，测试状态管理
+      </p>
+      <div class="input-group">
+        <label>切换次数：</label>
+        <input type="number" id="switchCount" value="50" min="1" max="500">
+      </div>
+      <div class="input-group">
+        <label>切换间隔 (ms)：</label>
+        <input type="number" id="switchInterval" value="200" min="50" max="2000">
+      </div>
+      <button class="test-btn" onclick="runTrackSwitchTest()">开始测试</button>
+    </div>
+    
+    <!-- 测试场景4：内存泄漏测试 -->
+    <div class="test-section">
+      <h2>💾 场景4：内存泄漏测试</h2>
+      <p style="color: #666; margin-bottom: 10px; font-size: 13px;">
+        监控内存使用情况，检测内存泄漏
+      </p>
+      <div class="input-group">
+        <label>测试轮数：</label>
+        <input type="number" id="memoryRounds" value="10" min="1" max="100">
+      </div>
+      <button class="test-btn" onclick="runMemoryLeakTest()">开始测试</button>
+      <button class="test-btn success" onclick="checkMemory()">检查内存</button>
+    </div>
+    
+    <!-- 综合压力测试 -->
+    <div class="test-section">
+      <h2>🔥 综合压力测试</h2>
+      <p style="color: #666; margin-bottom: 10px; font-size: 13px;">
+        执行所有测试场景的综合压力测试
+      </p>
+      <button class="test-btn danger" onclick="runFullStressTest()">开始综合测试</button>
+    </div>
+  </div>
+  
+  <!-- 右侧：日志和统计 -->
+  <div class="panel">
+    <h1>📊 测试结果</h1>
+    
+    <!-- 实时统计 -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="totalOperations">0</div>
+        <div class="stat-label">总操作数</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="avgResponseTime">0ms</div>
+        <div class="stat-label">平均响应时间</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="errorCount">0</div>
+        <div class="stat-label">错误数</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="memoryUsage">0 MB</div>
+        <div class="stat-label">内存使用</div>
+      </div>
+    </div>
+    
+    <!-- 进度条 -->
+    <div style="margin-top: 20px;">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+        <span style="font-weight: 600; color: #555;">测试进度</span>
+        <span id="progressText" style="color: #667eea; font-weight: 600;">0%</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+    </div>
+    
+    <!-- 日志输出 -->
+    <h2 style="margin-top: 20px;">📝 测试日志</h2>
+    <div class="log-container" id="logContainer">
+      <div class="log-entry info">测试模拟器已就绪，等待开始测试...</div>
+    </div>
+    
+    <!-- 清空日志 -->
+    <div style="margin-top: 15px;">
+      <button class="test-btn" onclick="clearLog()">清空日志</button>
+      <button class="test-btn success" onclick="exportLog()">导出日志</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==================== 全局变量 ====================
+let testRunning = false;
+let testAbortController = null;
+let stats = {
+  totalOperations: 0,
+  responseTimes: [],
+  errors: 0,
+  startTime: null
+};
+
+// ==================== 日志系统 ====================
+function log(message, type = 'info') {
+  const logContainer = document.getElementById('logContainer');
+  const entry = document.createElement('div');
+  entry.className = `log-entry ${type}`;
+  
+  const timestamp = new Date().toLocaleTimeString();
+  entry.textContent = `[${timestamp}] ${message}`;
+  
+  logContainer.appendChild(entry);
+  logContainer.scrollTop = logContainer.scrollHeight;
+}
+
+function clearLog() {
+  document.getElementById('logContainer').innerHTML = '';
+  log('日志已清空', 'info');
+}
+
+function exportLog() {
+  const logContent = document.getElementById('logContainer').innerText;
+  const blob = new Blob([logContent], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `player-test-log-${Date.now()}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+  log('日志已导出', 'success');
+}
+
+// ==================== 统计更新 ====================
+function updateStats() {
+  document.getElementById('totalOperations').textContent = stats.totalOperations;
+  
+  if (stats.responseTimes.length > 0) {
+    const avg = stats.responseTimes.reduce((a, b) => a + b, 0) / stats.responseTimes.length;
+    document.getElementById('avgResponseTime').textContent = avg.toFixed(2) + 'ms';
+  }
+  
+  document.getElementById('errorCount').textContent = stats.errors;
+  
+  if (performance.memory) {
+    const memMB = (performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(2);
+    document.getElementById('memoryUsage').textContent = memMB + ' MB';
+  }
+}
+
+function updateProgress(current, total) {
+  const percent = Math.round((current / total) * 100);
+  document.getElementById('progressFill').style.width = percent + '%';
+  document.getElementById('progressText').textContent = percent + '%';
+}
+
+// ==================== 测试场景1：快速点击测试 ====================
+async function runRapidClickTest() {
+  if (testRunning) {
+    log('已有测试在运行中', 'warning');
+    return;
+  }
+  
+  testRunning = true;
+  testAbortController = new AbortController();
+  stats.startTime = Date.now();
+  stats.totalOperations = 0;
+  stats.responseTimes = [];
+  stats.errors = 0;
+  
+  const clickCount = parseInt(document.getElementById('clickCount').value);
+  const clickInterval = parseInt(document.getElementById('clickInterval').value);
+  
+  log(`开始快速点击测试：${clickCount}次，间隔${clickInterval}ms`, 'info');
+  
+  for (let i = 0; i < clickCount; i++) {
+    if (testAbortController.signal.aborted) {
+      log('测试已中止', 'warning');
+      break;
+    }
+    
+    const startTime = performance.now();
+    
+    try {
+      // 模拟点击事件
+      const playBtn = document.getElementById('expPlay');
+      if (playBtn) {
+        playBtn.click();
+        stats.totalOperations++;
+        
+        const endTime = performance.now();
+        stats.responseTimes.push(endTime - startTime);
+        
+        if (i % 10 === 0) {
+          log(`已完成 ${i}/${clickCount} 次点击`, 'info');
+          updateProgress(i, clickCount);
+          updateStats();
+        }
+      } else {
+        log('未找到播放按钮，请先打开播放器页面', 'error');
+        stats.errors++;
+        break;
+      }
+    } catch (error) {
+      log(`点击错误: ${error.message}`, 'error');
+      stats.errors++;
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, clickInterval));
+  }
+  
+  testRunning = false;
+  updateProgress(clickCount, clickCount);
+  updateStats();
+  
+  const totalTime = Date.now() - stats.startTime;
+  log(`快速点击测试完成！总耗时: ${totalTime}ms`, 'success');
+  log(`平均响应时间: ${(stats.responseTimes.reduce((a, b) => a + b, 0) / stats.responseTimes.length).toFixed(2)}ms`, 'performance');
+  log(`错误率: ${((stats.errors / clickCount) * 100).toFixed(2)}%`, 'performance');
+}
+
+// ==================== 测试场景2：进度条拖拽测试 ====================
+async function runProgressDragTest() {
+  if (testRunning) {
+    log('已有测试在运行中', 'warning');
+    return;
+  }
+  
+  testRunning = true;
+  stats.startTime = Date.now();
+  stats.totalOperations = 0;
+  stats.responseTimes = [];
+  stats.errors = 0;
+  
+  const dragCount = parseInt(document.getElementById('dragCount').value);
+  
+  log(`开始进度条拖拽测试：${dragCount}次`, 'info');
+  
+  const progressBar = document.getElementById('expProgressBar');
+  if (!progressBar) {
+    log('未找到进度条，请先打开播放器页面', 'error');
+    testRunning = false;
+    return;
+  }
+  
+  const rect = progressBar.getBoundingClientRect();
+  
+  for (let i = 0; i <= dragCount; i++) {
+    const startTime = performance.now();
+    
+    try {
+      const percent = i / dragCount;
+      const x = rect.left + (rect.width * percent);
+      
+      // 模拟鼠标移动事件
+      const moveEvent = new MouseEvent('mousemove', {
+        clientX: x,
+        clientY: rect.top,
+        bubbles: true
+      });
+      
+      document.dispatchEvent(moveEvent);
+      stats.totalOperations++;
+      
+      const endTime = performance.now();
+      stats.responseTimes.push(endTime - startTime);
+      
+      if (i % 5 === 0) {
+        log(`拖拽进度: ${Math.round(percent * 100)}%`, 'info');
+        updateProgress(i, dragCount);
+        updateStats();
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 20));
+    } catch (error) {
+      log(`拖拽错误: ${error.message}`, 'error');
+      stats.errors++;
+    }
+  }
+  
+  testRunning = false;
+  updateProgress(dragCount, dragCount);
+  updateStats();
+  
+  const totalTime = Date.now() - stats.startTime;
+  log(`进度条拖拽测试完成！总耗时: ${totalTime}ms`, 'success');
+  log(`平均响应时间: ${(stats.responseTimes.reduce((a, b) => a + b, 0) / stats.responseTimes.length).toFixed(2)}ms`, 'performance');
+}
+
+// ==================== 测试场景3：曲目切换测试 ====================
+async function runTrackSwitchTest() {
+  if (testRunning) {
+    log('已有测试在运行中', 'warning');
+    return;
+  }
+  
+  testRunning = true;
+  testAbortController = new AbortController();
+  stats.startTime = Date.now();
+  stats.totalOperations = 0;
+  stats.responseTimes = [];
+  stats.errors = 0;
+  
+  const switchCount = parseInt(document.getElementById('switchCount').value);
+  const switchInterval = parseInt(document.getElementById('switchInterval').value);
+  
+  log(`开始曲目切换测试：${switchCount}次，间隔${switchInterval}ms`, 'info');
+  
+  for (let i = 0; i < switchCount; i++) {
+    if (testAbortController.signal.aborted) {
+      log('测试已中止', 'warning');
+      break;
+    }
+    
+    const startTime = performance.now();
+    
+    try {
+      const nextBtn = document.getElementById('expNext');
+      if (nextBtn) {
+        nextBtn.click();
+        stats.totalOperations++;
+        
+        const endTime = performance.now();
+        stats.responseTimes.push(endTime - startTime);
+        
+        if (i % 5 === 0) {
+          log(`已切换 ${i}/${switchCount} 次`, 'info');
+          updateProgress(i, switchCount);
+          updateStats();
+        }
+      } else {
+        log('未找到下一曲按钮，请先打开播放器页面', 'error');
+        stats.errors++;
+        break;
+      }
+    } catch (error) {
+      log(`切换错误: ${error.message}`, 'error');
+      stats.errors++;
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, switchInterval));
+  }
+  
+  testRunning = false;
+  updateProgress(switchCount, switchCount);
+  updateStats();
+  
+  const totalTime = Date.now() - stats.startTime;
+  log(`曲目切换测试完成！总耗时: ${totalTime}ms`, 'success');
+  log(`平均响应时间: ${(stats.responseTimes.reduce((a, b) => a + b, 0) / stats.responseTimes.length).toFixed(2)}ms`, 'performance');
+  log(`错误率: ${((stats.errors / switchCount) * 100).toFixed(2)}%`, 'performance');
+}
+
+// ==================== 测试场景4：内存泄漏测试 ====================
+async function runMemoryLeakTest() {
+  if (testRunning) {
+    log('已有测试在运行中', 'warning');
+    return;
+  }
+  
+  testRunning = true;
+  stats.startTime = Date.now();
+  
+  const rounds = parseInt(document.getElementById('memoryRounds').value);
+  
+  log(`开始内存泄漏测试：${rounds}轮`, 'info');
+  
+  const initialMemory = performance.memory ? performance.memory.usedJSHeapSize : 0;
+  log(`初始内存: ${(initialMemory / 1024 / 1024).toFixed(2)} MB`, 'performance');
+  
+  for (let round = 0; round < rounds; round++) {
+    // 执行一系列操作
+    for (let i = 0; i < 100; i++) {
+      try {
+        const playBtn = document.getElementById('expPlay');
+        const nextBtn = document.getElementById('expNext');
+        
+        if (playBtn) playBtn.click();
+        if (nextBtn) nextBtn.click();
+      } catch (error) {
+        stats.errors++;
+      }
+    }
+    
+    // 每轮后检查内存
+    if (performance.memory) {
+      const currentMemory = performance.memory.usedJSHeapSize;
+      const memDiff = (currentMemory - initialMemory) / 1024 / 1024;
+      
+      log(`第 ${round + 1} 轮完成，内存变化: ${memDiff.toFixed(2)} MB`, 'performance');
+      updateProgress(round + 1, rounds);
+      updateStats();
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  
+  // 强制垃圾回收（如果可用）
+  if (window.gc) {
+    window.gc();
+    log('已执行垃圾回收', 'info');
+  }
+  
+  const finalMemory = performance.memory ? performance.memory.usedJSHeapSize : 0;
+  const totalLeak = (finalMemory - initialMemory) / 1024 / 1024;
+  
+  testRunning = false;
+  updateStats();
+  
+  log(`内存泄漏测试完成！`, 'success');
+  log(`初始内存: ${(initialMemory / 1024 / 1024).toFixed(2)} MB`, 'performance');
+  log(`最终内存: ${(finalMemory / 1024 / 1024).toFixed(2)} MB`, 'performance');
+  log(`内存增长: ${totalLeak.toFixed(2)} MB`, totalLeak > 10 ? 'error' : 'success');
+}
+
+// ==================== 检查内存 ====================
+function checkMemory() {
+  if (performance.memory) {
+    const used = (performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(2);
+    const total = (performance.memory.totalJSHeapSize / 1024 / 1024).toFixed(2);
+    const limit = (performance.memory.jsHeapSizeLimit / 1024 / 1024).toFixed(2);
+    
+    log(`内存状态:`, 'info');
+    log(`  已使用: ${used} MB`, 'performance');
+    log(`  总分配: ${total} MB`, 'performance');
+    log(`  上限: ${limit} MB`, 'performance');
+    
+    document.getElementById('memoryUsage').textContent = used + ' MB';
+  } else {
+    log('浏览器不支持 performance.memory API', 'warning');
+  }
+}
+
+// ==================== 综合压力测试 ====================
+async function runFullStressTest() {
+  if (testRunning) {
+    log('已有测试在运行中', 'warning');
+    return;
+  }
+  
+  log('开始综合压力测试...', 'info');
+  
+  await runRapidClickTest();
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  
+  await runProgressDragTest();
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  
+  await runTrackSwitchTest();
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  
+  await runMemoryLeakTest();
+  
+  log('综合压力测试全部完成！', 'success');
+}
+
+// ==================== 停止测试 ====================
+function stopTest() {
+  if (testAbortController) {
+    testAbortController.abort();
+  }
+  testRunning = false;
+  log('测试已停止', 'warning');
+}
+
+// ==================== 初始化 ====================
+log('测试模拟器初始化完成', 'success');
+log('请在另一个标签页打开播放器页面，然后在此页面运行测试', 'info');
+log('提示：某些测试需要播放器页面已加载音频', 'warning');
+</script>
+</body>
+</html>

@@ -239,16 +239,40 @@ export function appreciateSuccess(total) {
   btn.innerHTML = ICON_APPRECIATE_FILLED;
   btn.classList.add('active');
   btn.classList.add('appreciate-pop');
-  // Update badge
-  const oldBadge = btn.querySelector('.appreciate-badge');
-  if (oldBadge) oldBadge.remove();
-  if (total && total > 0) {
+  
+  // ✅ 优化：如果有总数，更新badge
+  if (total != null && total > 0) {
+    const oldBadge = btn.querySelector('.appreciate-badge');
+    if (oldBadge) oldBadge.remove();
     const badge = document.createElement('span');
     badge.className = 'appreciate-badge';
     badge.textContent = total > 999 ? '999+' : total;
     btn.appendChild(badge);
   }
+  
   setTimeout(() => { btn.classList.remove('appreciate-pop'); }, 600);
+}
+
+// ✅ 新增：更新点赞数（带动画）
+export function updateAppreciateCount(total) {
+  const btn = document.getElementById('expAppreciate');
+  if (!btn || total == null) return;
+  
+  const oldBadge = btn.querySelector('.appreciate-badge');
+  if (oldBadge) {
+    // ✅ 数字增加动画
+    oldBadge.classList.add('badge-bump');
+    oldBadge.textContent = total > 999 ? '999+' : total;
+    setTimeout(() => {
+      oldBadge.classList.remove('badge-bump');
+    }, 300);
+  } else if (total > 0) {
+    // 创建新badge
+    const badge = document.createElement('span');
+    badge.className = 'appreciate-badge';
+    badge.textContent = total > 999 ? '999+' : total;
+    btn.appendChild(badge);
+  }
 }
 
 export function setPlayState(playing) {
@@ -330,32 +354,58 @@ export function onAudioError() {
   const src = dom.audio.src;
 
   // #17: Distinguish error types; first retry is silent
-  if (src && audioRetries < 2) {
+  // ✅ 优化：增强错误重试机制，增加到3次
+  if (src && audioRetries < 3) {
     audioRetries++;
+    
+    // ✅ 优化：根据错误类型调整重试策略
+    const retryDelay = errCode === MediaError.MEDIA_ERR_NETWORK ? 
+      1000 * audioRetries :  // 网络错误：快速重试
+      2000 * audioRetries;   // 其他错误：慢速重试
+    
     // Only show toast on second retry, first retry is silent
     if (audioRetries === 2) {
       if (errCode === MediaError.MEDIA_ERR_NETWORK) {
-        showToast(t('error_retry') || '\u7F51\u7EDC\u4E0D\u7A33\u5B9A\uFF0C\u91CD\u8BD5\u4E2D...');
+        showToast(t('error_retry') || '网络不稳定，重试中...');
       } else if (errCode === MediaError.MEDIA_ERR_DECODE) {
-        showToast(t('error_decode') || '\u97F3\u9891\u89E3\u7801\u5931\u8D25\uFF0C\u91CD\u8BD5\u4E2D...');
+        showToast(t('error_decode') || '音频解码失败，重试中...');
       } else {
-        showToast(t('error_retry') || '\u52A0\u8F7D\u5F02\u5E38\uFF0C\u91CD\u8BD5\u4E2D...');
+        showToast(t('error_retry') || '加载异常，重试中...');
       }
     }
+    
+    console.log(`[Audio Error] Retry ${audioRetries}/3 after ${retryDelay}ms`);
+    
     setTimeout(() => {
       if (dom.audio.src === src) {
         setBuffering(true);
+        // ✅ 优化：重试前清理缓存
         dom.audio.load();
-        dom.audio.play().catch(() => { setBuffering(false); });
+        dom.audio.play().catch(() => { 
+          setBuffering(false);
+          console.log('[Audio Error] Retry failed');
+        });
       }
-    }, 1500 * audioRetries);
+    }, retryDelay);
   } else {
     setPlayState(false);
-    if (errCode === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
-      showToast(t('error_format') || '\u97F3\u9891\u683C\u5F0F\u4E0D\u652F\u6301');
-    } else {
-      showToast(t('error_play') || '\u64AD\u653E\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC');
+    // ✅ 优化：提供更详细的错误信息
+    let errorMsg = '';
+    switch (errCode) {
+      case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+        errorMsg = t('error_format') || '音频格式不支持';
+        break;
+      case MediaError.MEDIA_ERR_NETWORK:
+        errorMsg = '网络连接失败，请检查网络后重试';
+        break;
+      case MediaError.MEDIA_ERR_DECODE:
+        errorMsg = '音频文件损坏，请尝试其他音频';
+        break;
+      default:
+        errorMsg = t('error_play') || '播放失败，请检查网络';
     }
+    showToast(errorMsg);
+    console.error('[Audio Error] Final error:', errCode, errorMsg);
   }
 }
 
@@ -530,13 +580,53 @@ export function preloadNextTrack() {
   if (ni < 0) { cleanupPreload(); return; }
   const nurl = state.playlist[ni]?.url;
   if (!nurl || nurl === preloadedUrl) return;
+  
+  // ✅ 优化：根据网络状况动态调整预加载策略
   const conn = navigator.connection || navigator.mozConnection;
-  if (conn && (conn.saveData || conn.effectiveType === '2g')) return;
+  if (conn && conn.saveData) {
+    // 省流模式：不预加载
+    console.log('[Preload] Data saver enabled, skip preload');
+    return;
+  }
+  
   cleanupPreload();
   preloadAudio = new Audio();
-  preloadAudio.preload = 'metadata';
+  
+  // ✅ 优化：根据网络类型选择预加载级别
+  if (conn) {
+    if (conn.effectiveType === '4g' || !conn.effectiveType) {
+      // 4G或未知网络：预加载完整音频
+      preloadAudio.preload = 'auto';
+      console.log('[Preload] 4G/WiFi: full preload');
+    } else if (conn.effectiveType === '3g') {
+      // 3G网络：预加载元数据和部分数据
+      preloadAudio.preload = 'metadata';
+      console.log('[Preload] 3G: metadata preload');
+    } else {
+      // 2G网络：不预加载
+      console.log('[Preload] 2G: skip preload');
+      return;
+    }
+  } else {
+    // 无法检测网络：默认预加载元数据
+    preloadAudio.preload = 'metadata';
+    console.log('[Preload] Unknown network: metadata preload');
+  }
+  
   preloadAudio.src = nurl;
   preloadedUrl = nurl;
+  
+  // ✅ 优化：监听预加载进度
+  preloadAudio.addEventListener('progress', () => {
+    if (preloadAudio.buffered.length > 0) {
+      const buffered = preloadAudio.buffered.end(0);
+      const duration = preloadAudio.duration || 0;
+      if (duration > 0) {
+        const percent = Math.round((buffered / duration) * 100);
+        console.log(`[Preload] Buffered: ${percent}%`);
+      }
+    }
+  });
 }
 
 export function cleanupPreload() {

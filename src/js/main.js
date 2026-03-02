@@ -169,21 +169,27 @@ import { appreciate } from './api.js';
     if (!seriesId) return;
     const episodeNum = tr.id || state.epIdx + 1;
     const btn = document.getElementById('expAppreciate');
+    
+    // ✅ 优化：乐观UI更新 - 立即显示成功动画
     _appreciating = true;
-    btn.classList.add('loading');
+    
+    // 立即显示成功状态和动画
+    appreciateSuccess(null);  // 先显示动画，不更新数字
+    showToast(t('appreciate_thanks') || '随喜功德');
+    
+    // 后台发送请求
     try {
       const result = await appreciate(seriesId, episodeNum);
-      if (!result) {
-        showToast(t('appreciate_fail') || '网络异常，请稍后再试');
-        return;
+      if (result && result.total != null) {
+        // ✅ 成功后更新数字（带动画）
+        updateAppreciateCount(result.total);
       }
-      appreciateSuccess(result.total);
-      showToast(t('appreciate_thanks') || '随喜功德');
+      // 失败也静默处理，因为UI已经显示成功
     } catch (err) {
-      showToast(t('appreciate_fail') || '网络异常，请稍后再试');
+      // 静默失败，不影响用户体验
+      console.log('Appreciate request failed:', err);
     } finally {
       _appreciating = false;
-      btn.classList.remove('loading');
     }
   });
 
