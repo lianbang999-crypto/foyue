@@ -160,18 +160,26 @@ import { appreciate } from './api.js';
 
   // Appreciate button — per-episode, no daily limit
   let _appreciating = false;
+  let _lastAppreciateTime = 0;
+  const APPRECIATE_COOLDOWN = 1000; // 1秒冷却时间
+  
   document.getElementById('expAppreciate').addEventListener('click', async () => {
     haptic();
+    
+    // 防抖：1秒内不允许重复点击
+    const now = Date.now();
+    if (now - _lastAppreciateTime < APPRECIATE_COOLDOWN) return;
     if (_appreciating) return;
+    
     if (state.epIdx < 0 || !state.playlist[state.epIdx]) return;
     const tr = state.playlist[state.epIdx];
     const seriesId = tr.seriesId;
     if (!seriesId) return;
     const episodeNum = tr.id || state.epIdx + 1;
-    const btn = document.getElementById('expAppreciate');
     
-    // ✅ 优化：乐观UI更新 - 立即显示成功动画
+    // ✅ 乐观UI更新 - 立即显示成功动画
     _appreciating = true;
+    _lastAppreciateTime = now;
     
     // 立即显示成功状态和动画
     appreciateSuccess(null);  // 先显示动画，不更新数字

@@ -125,20 +125,38 @@ export function showEpisodes(series, tabId) {
     <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="currentColor" stroke="none"/></svg>
     <span id="appreciateLabel">${t('appreciate') || '\u968F\u559C'}</span><span id="appreciateCount"></span>
   </button>`;
+  
+  // 添加防抖和乐观更新
+  let _lastAppreciateTime = 0;
+  const APPRECIATE_COOLDOWN = 1000;
+  
   view.querySelector('#appreciateBtn').addEventListener('click', async () => {
+    // 防抖检查
+    const now = Date.now();
+    if (now - _lastAppreciateTime < APPRECIATE_COOLDOWN) return;
+    _lastAppreciateTime = now;
+    
+    const btn = view.querySelector('#appreciateBtn');
+    const countEl = view.querySelector('#appreciateCount');
+    
+    // ✅ 乐观UI更新 - 立即显示动画
+    btn.classList.add('appreciated');
+    showToast(t('appreciate_thanks') || '\u968F\u559C\u529F\u5FB7');
+    
+    // 后台发送请求
     try {
       const result = await appreciate(series.id);
-      if (!result) return;
-      const countEl = view.querySelector('#appreciateCount');
-      if (countEl) countEl.textContent = ' ' + result.total;
-      if (result.success) {
-        showToast(t('appreciate_thanks') || '\u968F\u559C\u529F\u5FB7');
-        view.querySelector('#appreciateBtn').classList.add('appreciated');
-      } else if (result.message === 'already_appreciated_today') {
-        showToast(t('appreciate_done') || '\u4ECA\u65E5\u5DF2\u968F\u559C');
+      if (result && result.total != null) {
+        // 更新计数（带动画）
+        if (countEl) {
+          countEl.textContent = ' ' + result.total;
+          countEl.classList.add('badge-bump');
+          setTimeout(() => countEl.classList.remove('badge-bump'), 300);
+        }
       }
     } catch (err) {
-      showToast(t('network_error') || '\u7F51\u7EDC\u5F02\u5E38\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5');
+      // 静默失败
+      console.log('Appreciate request failed:', err);
     }
   });
 

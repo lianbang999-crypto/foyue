@@ -100,11 +100,98 @@
 /* === BUFFERING === */
 .player-track.buffering::after{content:'...';animation:bufDots 1s steps(3) infinite}
 @keyframes bufDots{0%{content:'.'}33%{content:'..'}66%{content:'...'}}
-.center-play-btn.buffering{animation:centerPulse 1.2s ease-in-out infinite}
-@keyframes centerPulse{0%,100%{box-shadow:0 2px 16px rgba(131,106,50,.3)}50%{box-shadow:0 2px 24px rgba(131,106,50,.6)}}
-/* Fullscreen play button buffering */
-.exp-ctrls .ctrl-play.buffering{animation:expPlayPulse 1.2s ease-in-out infinite;opacity:.7}
-@keyframes expPlayPulse{0%,100%{box-shadow:0 4px 20px rgba(131,106,50,.3)}50%{box-shadow:0 4px 30px rgba(131,106,50,.6)}}
+
+/* ✅ 优化：涟漪扩散加载动画 */
+.center-play-btn.buffering {
+  position: relative;
+  animation: none;
+}
+
+.center-play-btn.buffering::before,
+.center-play-btn.buffering::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  transform: translate(-50%, -50%);
+  animation: rippleExpand 1.5s ease-out infinite;
+}
+
+.center-play-btn.buffering::after {
+  animation-delay: 0.5s;
+}
+
+.center-play-btn.buffering .ripple-extra {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  transform: translate(-50%, -50%);
+  animation: rippleExpand 1.5s ease-out infinite;
+  animation-delay: 1s;
+}
+
+@keyframes rippleExpand {
+  0% {
+    width: 100%;
+    height: 100%;
+    opacity: 0.6;
+    border-width: 2px;
+  }
+  100% {
+    width: 180%;
+    height: 180%;
+    opacity: 0;
+    border-width: 0px;
+  }
+}
+
+/* Fullscreen play button buffering - 涟漪动画 */
+.exp-ctrls .ctrl-play.buffering {
+  position: relative;
+  animation: none;
+  opacity: 1;
+}
+
+.exp-ctrls .ctrl-play.buffering::before,
+.exp-ctrls .ctrl-play.buffering::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  transform: translate(-50%, -50%);
+  animation: rippleExpandSmall 1.5s ease-out infinite;
+}
+
+.exp-ctrls .ctrl-play.buffering::after {
+  animation-delay: 0.5s;
+}
+
+@keyframes rippleExpandSmall {
+  0% {
+    width: 100%;
+    height: 100%;
+    opacity: 0.6;
+    border-width: 2px;
+  }
+  100% {
+    width: 160%;
+    height: 160%;
+    opacity: 0;
+    border-width: 0px;
+  }
+}
 .exp-progress-buffer{position:absolute;height:100%;background:var(--accent);opacity:.15;border-radius:2px;width:0%;transition:width .3s linear}
 
 /* ✅ 优化：增强按钮点击反馈 */
@@ -154,7 +241,9 @@
 .ctrl.loading{opacity:.5;pointer-events:none}
 .ctrl.appreciate-pop{animation:appreciatePop .5s cubic-bezier(.22,1,.36,1)}
 @keyframes appreciatePop{0%{transform:scale(1)}30%{transform:scale(1.3)}60%{transform:scale(0.9)}100%{transform:scale(1)}}
-.appreciate-badge{position:absolute;top:2px;right:2px;background:var(--accent);color:var(--text-inverse);font-family:var(--font-en);font-size:.5rem;font-weight:600;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 3px;line-height:1}
+.appreciate-badge{position:absolute;top:2px;right:2px;background:var(--accent);color:var(--text-inverse);font-family:var(--font-en);font-size:.5rem;font-weight:600;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 3px;line-height:1;transition:transform .2s ease}
+.appreciate-badge.badge-bump{animation:badgeBump .3s ease}
+@keyframes badgeBump{0%{transform:scale(1)}50%{transform:scale(1.3)}100%{transform:scale(1)}}
 
 /* === LANDSCAPE === */
 @media(orientation:landscape) and (max-height:500px){
