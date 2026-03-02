@@ -88,21 +88,34 @@ function playCurrent() {
   const seekTime = pendingSeek > 0 ? pendingSeek : 0;
   pendingSeek = 0;
 
+  // ✅ 优化：添加3秒超时保护，防止isSwitching卡住
+  let switchingTimeout = setTimeout(() => {
+    if (isSwitching && callId === _playCurrentId) {
+      console.warn('[Player] isSwitching timeout after 3s, auto-reset');
+      isSwitching = false;
+      setBuffering(false);
+      setPlayState(false);
+    }
+  }, 3000);
+
   function tryPlay() {
     if (callId !== _playCurrentId) return; // stale callback from previous switch
     setBuffering(false);
     if (seekTime > 0) dom.audio.currentTime = seekTime;
     // Keep isSwitching=true until play() promise resolves, to block stale pause events
     dom.audio.play().then(() => {
+      clearTimeout(switchingTimeout); // ✅ 清除超时
       isSwitching = false;
       setPlayState(true);
     }).catch(() => {
+      clearTimeout(switchingTimeout); // ✅ 清除超时
       isSwitching = false;
       setPlayState(false);
     });
-    // Safety: ensure isSwitching never stays stuck forever
+    // Safety: ensure isSwitching never stays stuck forever (30s backup)
     setTimeout(() => {
       if (isSwitching) {
+        console.warn('[Player] isSwitching stuck for 30s, emergency reset');
         isSwitching = false;
         setBuffering(false);
       }
@@ -150,10 +163,24 @@ function playCurrent() {
   highlightEp();
   updateMediaSession(tr);
   updateAppreciateBtn(tr.seriesId); // Reset badge first (no count yet)
-  // Fetch appreciate count in background
-  getAppreciateCount(tr.seriesId).then(data => {
-    if (data && data.total != null) updateAppreciateBtn(tr.seriesId, data.total);
-  });
+  
+  // ✅ 优化：延迟加载点赞计数，避免阻塞播放启动
+  // 使用 requestIdleCallback 在浏览器空闲时加载，或2秒后强制加载
+  if ('requestIdleCallback' in window) {
+    requestIdleCallback(() => {
+      getAppreciateCount(tr.seriesId).then(data => {
+        if (data && data.total != null) updateAppreciateBtn(tr.seriesId, data.total);
+      });
+    }, { timeout: 2000 });
+  } else {
+    // 降级方案：延迟500ms后加载
+    setTimeout(() => {
+      getAppreciateCount(tr.seriesId).then(data => {
+        if (data && data.total != null) updateAppreciateBtn(tr.seriesId, data.total);
+      });
+    }, 500);
+  }
+  
   renderPlaylistItems();
   addHistory(tr, dom.audio);
   // Record play to D1 database (non-blocking)
@@ -250,24 +277,39 @@ export function isCurrentTrack(sid, idx) {
   return c && c.seriesId === sid && idx === state.epIdx;
 }
 
+// ✅ 优化：使用 requestAnimationFrame 节流 onTimeUpdate
+let updateRafId = null;
+let cachedDom = null;
+
 export function onTimeUpdate() {
   if (_dragging) return; // Skip UI updates while user is dragging progress bar
-  const dom = getDOM();
-  const dur = dom.audio.duration;
-  if (!dur || !isFinite(dur)) return;
-  const ct = dom.audio.currentTime;
-  const p = Math.min(100, (ct / dur) * 100);
-  dom.miniProgressFill.style.width = p + '%';
-  dom.expProgressFill.style.width = p + '%';
-  dom.expProgressThumb.style.left = p + '%';
-  dom.expTimeCurr.textContent = fmt(ct);
-  dom.expTimeTotal.textContent = fmt(dur);
-  const offset = RING_CIRCUMFERENCE * (1 - ct / dur);
-  dom.centerRingFill.style.strokeDashoffset = offset;
-  if (dom.audio.buffered.length > 0) {
-    const bufEnd = dom.audio.buffered.end(dom.audio.buffered.length - 1);
-    dom.expBufferFill.style.width = Math.min(100, (bufEnd / dur) * 100) + '%';
-  }
+  if (updateRafId) return; // 已经有待处理的更新，跳过
+  
+  updateRafId = requestAnimationFrame(() => {
+    updateRafId = null;
+    
+    if (!cachedDom) cachedDom = getDOM();
+    const dom = cachedDom;
+    
+    const dur = dom.audio.duration;
+    if (!dur || !isFinite(dur)) return;
+    const ct = dom.audio.currentTime;
+    const p = Math.min(100, (ct / dur) * 100);
+    
+    // 批量更新DOM，减少重排/重绘
+    dom.miniProgressFill.style.width = p + '%';
+    dom.expProgressFill.style.width = p + '%';
+    dom.expProgressThumb.style.left = p + '%';
+    dom.expTimeCurr.textContent = fmt(ct);
+    dom.expTimeTotal.textContent = fmt(dur);
+    const offset = RING_CIRCUMFERENCE * (1 - ct / dur);
+    dom.centerRingFill.style.strokeDashoffset = offset;
+    
+    if (dom.audio.buffered.length > 0) {
+      const bufEnd = dom.audio.buffered.end(dom.audio.buffered.length - 1);
+      dom.expBufferFill.style.width = Math.min(100, (bufEnd / dur) * 100) + '%';
+    }
+  });
 }
 
 export function onEnded() {
@@ -320,7 +362,12 @@ export function onAudioError() {
 export function togglePlay() {
   const dom = getDOM();
   if (dom.audio.paused && dom.audio.src) {
-    dom.audio.play().catch(() => {});
+    // ✅ 优化：立即更新UI为播放状态，提供即时视觉反馈
+    setPlayState(true);
+    dom.audio.play().catch(() => {
+      // ✅ 如果播放失败，回滚UI状态
+      setPlayState(false);
+    });
   } else {
     // If switching tracks, cancel the switch cleanly
     if (isSwitching) {

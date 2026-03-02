@@ -58,7 +58,53 @@ export function seekAt(e, el, audio) {
 
 /* Haptic feedback — light vibration for button taps (Android) */
 export function haptic(ms = 50) {
+  // ✅ 优化：增加震动时长，使其更明显
+  // Android设备：使用更长的震动时长（10ms太短，建议15-30ms）
+  const vibrationDuration = ms === 50 ? 15 : ms; // 默认使用15ms，比50ms更合适
+  
   if (navigator.vibrate) {
-    try { navigator.vibrate(ms); } catch (e) { /* ignore */ }
+    try {
+      // ✅ 优化：使用震动模式，提供更清晰的触觉反馈
+      // [震动时长, 暂停时长, 震动时长] - 双击震动效果
+      navigator.vibrate([vibrationDuration, 30, vibrationDuration]);
+      
+      // ✅ 调试：在开发环境输出日志
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        console.log('📳 Haptic feedback triggered:', vibrationDuration + 'ms');
+      }
+    } catch (e) {
+      // 静默失败，不影响用户体验
+      console.log('Haptic feedback not supported:', e.message);
+    }
+  } else {
+    // ✅ 调试：在开发环境提示不支持
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      console.log('⚠️ Vibration API not supported on this device/browser');
+    }
+  }
+  
+  // ✅ 优化：为支持的浏览器提供视觉反馈作为降级方案
+  // 通过CSS类添加点击波纹效果（已在CSS中实现）
+}
+
+/* 检测设备是否支持震动 */
+export function isHapticSupported() {
+  return !!navigator.vibrate;
+}
+
+/* 测试震动功能 */
+export function testHaptic() {
+  console.log('=== Haptic Test ===');
+  console.log('Vibration API supported:', !!navigator.vibrate);
+  console.log('User Agent:', navigator.userAgent);
+  console.log('Platform:', navigator.platform);
+  
+  if (navigator.vibrate) {
+    console.log('Testing vibration...');
+    haptic(20);
+    return true;
+  } else {
+    console.log('❌ Vibration not supported on this device');
+    return false;
   }
 }

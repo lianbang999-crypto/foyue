@@ -107,6 +107,49 @@
 @keyframes expPlayPulse{0%,100%{box-shadow:0 4px 20px rgba(131,106,50,.3)}50%{box-shadow:0 4px 30px rgba(131,106,50,.6)}}
 .exp-progress-buffer{position:absolute;height:100%;background:var(--accent);opacity:.15;border-radius:2px;width:0%;transition:width .3s linear}
 
+/* ✅ 优化：增强按钮点击反馈 */
+.ctrl:active {
+  transform: scale(0.92) !important;
+  transition: transform 0.05s !important;
+}
+
+/* ✅ 优化：缓冲时显示明确的加载提示 */
+.ctrl-play.buffering::after {
+  content: '加载中';
+  position: absolute;
+  font-size: 0.6rem;
+  bottom: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+/* ✅ 优化：点赞按钮loading时显示spinner */
+.ctrl.loading {
+  position: relative;
+}
+
+.ctrl.loading::before {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+@keyframes spin {
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
 /* === APPRECIATE BUTTON === */
 .ctrl.loading{opacity:.5;pointer-events:none}
 .ctrl.appreciate-pop{animation:appreciatePop .5s cubic-bezier(.22,1,.36,1)}
