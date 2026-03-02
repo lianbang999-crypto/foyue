@@ -157,13 +157,6 @@ import { appreciate } from './api.js';
   dom.expQueue.addEventListener('click', () => { haptic(); togglePlaylist(); });
   initPlaylistTabs();
 
-  // Click outside playlist panel to close it
-  dom.expPlayer.addEventListener('click', (e) => {
-    if (!getPlaylistVisible()) return;
-    if (e.target.closest('.playlist-panel') || e.target.closest('#expQueue')) return;
-    closePlaylist();
-  });
-
   // Appreciate button — per-episode, no daily limit
   let _appreciating = false;
   document.getElementById('expAppreciate').addEventListener('click', async () => {

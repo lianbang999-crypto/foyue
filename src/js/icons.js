@@ -20,7 +20,7 @@ export const CATEGORY_ICONS = {
   youshengshu: '<svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
 };
 
-/* Hands-together (合十) icon — outline version */
-export const ICON_APPRECIATE = '<svg viewBox="0 0 24 24"><path d="M12 2C12 2 8.5 8 8.5 12c0 1.5.5 2.8 1.3 3.7L7 22h10l-2.8-6.3c.8-.9 1.3-2.2 1.3-3.7C15.5 8 12 2 12 2z" fill="none"/><line x1="12" y1="8" x2="12" y2="17"/></svg>';
-/* Hands-together (合十) icon — filled version */
-export const ICON_APPRECIATE_FILLED = '<svg viewBox="0 0 24 24"><path d="M12 2C12 2 8.5 8 8.5 12c0 1.5.5 2.8 1.3 3.7L7 22h10l-2.8-6.3c.8-.9 1.3-2.2 1.3-3.7C15.5 8 12 2 12 2z" fill="currentColor" stroke="none"/><line x1="12" y1="8" x2="12" y2="17" stroke="var(--text-inverse)" stroke-width="1.5"/></svg>';
+/* Thumbs-up icon — outline version */
+export const ICON_APPRECIATE = '<svg viewBox="0 0 24 24"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z" fill="none"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>';
+/* Thumbs-up icon — filled version */
+export const ICON_APPRECIATE_FILLED = '<svg viewBox="0 0 24 24"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z" fill="currentColor"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" fill="currentColor"/></svg>';

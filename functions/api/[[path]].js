@@ -282,9 +282,17 @@ async function appreciate(db, seriesId, body, request) {
   const origin = new URL(request.url).hostname;
   const episodeNum = (body && typeof body.episodeNum === 'number' && Number.isInteger(body.episodeNum)) ? body.episodeNum : null;
 
-  await db.prepare(
-    'INSERT INTO appreciations (series_id, episode_num, origin) VALUES (?, ?, ?)'
-  ).bind(seriesId, episodeNum, origin).run();
+  // Backward-compatible: try with episode_num first, fall back to without if column doesn't exist yet
+  try {
+    await db.prepare(
+      'INSERT INTO appreciations (series_id, episode_num, origin) VALUES (?, ?, ?)'
+    ).bind(seriesId, episodeNum, origin).run();
+  } catch (e) {
+    // episode_num column may not exist yet (migration 0005 not applied)
+    await db.prepare(
+      'INSERT INTO appreciations (series_id, origin) VALUES (?, ?)'
+    ).bind(seriesId, origin).run();
+  }
 
   const count = await db.prepare(
     'SELECT COUNT(*) as total FROM appreciations WHERE series_id = ?'
