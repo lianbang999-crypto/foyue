@@ -106,6 +106,8 @@ function playCurrent() {
 
   dom.audio.src = tr.url;
   dom.audio.playbackRate = SPEEDS[speedIdx];
+  // Explicitly start loading — mobile browsers may ignore preload="auto"
+  dom.audio.load();
   // Show loading state immediately (skip if preloaded — will resolve fast)
   if (!usePreloaded) setBuffering(true);
   const seekTime = pendingSeek > 0 ? pendingSeek : 0;
@@ -155,45 +157,58 @@ function playCurrent() {
   }
 
   // ✅ 如果音频已有足够数据（预加载命中或浏览器缓存），直接播放
+  // On mobile, play() must be called within user gesture context — calling it
+  // immediately allows the browser to start loading and auto-play once data arrives.
+  // Waiting for canplay/loadeddata loses the gesture context on iOS/Android.
   if (dom.audio.readyState >= 2) {
     tryPlay();
   } else {
-    // Wait for canplay or loadeddata before calling play()
-    function onReady() {
-      if (callId !== _playCurrentId) return;
-      cleanupReadyListeners(dom);
-      tryPlay();
-    }
-    dom.audio._onReady = onReady;
-    dom.audio.addEventListener('canplay', onReady);
-    dom.audio.addEventListener('loadeddata', onReady);
-
-    // #18: Soft timeout at 8s — show "loading slow" hint but keep waiting
-    dom.audio._slowTimeout = setTimeout(() => {
-      dom.audio._slowTimeout = null;
-      if (callId !== _playCurrentId) return;
-      if (dom.audio._onReady) {
-        showToast(t('loading_slow') || '\u52A0\u8F7D\u8F83\u6162\uFF0C\u8BF7\u8010\u5FC3\u7B49\u5F85...');
-      }
-    }, 8000);
-
-    // #18: Hard timeout at 20s — give up if still not ready
-    dom.audio._readyTimeout = setTimeout(() => {
-      dom.audio._readyTimeout = null;
-      if (callId !== _playCurrentId) return;
-      if (dom.audio._onReady) {
+    // Try play() immediately to preserve user gesture context (critical for mobile).
+    // The browser will buffer and start playing once enough data arrives.
+    if (seekTime > 0) dom.audio.currentTime = seekTime;
+    dom.audio.play().then(() => {
+      clearTimeout(switchingTimeout);
+      isSwitching = false;
+      setBuffering(false);
+      setPlayState(true);
+    }).catch(() => {
+      // play() rejected (e.g. no user gesture, or NotSupportedError) —
+      // fall back to waiting for canplay/loadeddata events
+      function onReady() {
+        if (callId !== _playCurrentId) return;
         cleanupReadyListeners(dom);
-        // readyState >= 2 (HAVE_CURRENT_DATA) means we can still attempt play
-        if (dom.audio.readyState >= 2) {
-          tryPlay();
-        } else {
-          isSwitching = false;
-          setBuffering(false);
-          setPlayState(false);
-          showToast(t('error_play') || '\u52A0\u8F7D\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u8BD5');
-        }
+        tryPlay();
       }
-    }, 20000);
+      dom.audio._onReady = onReady;
+      dom.audio.addEventListener('canplay', onReady);
+      dom.audio.addEventListener('loadeddata', onReady);
+
+      // #18: Soft timeout at 8s — show "loading slow" hint but keep waiting
+      dom.audio._slowTimeout = setTimeout(() => {
+        dom.audio._slowTimeout = null;
+        if (callId !== _playCurrentId) return;
+        if (dom.audio._onReady) {
+          showToast(t('loading_slow') || '\u52A0\u8F7D\u8F83\u6162\uFF0C\u8BF7\u8010\u5FC3\u7B49\u5F85...');
+        }
+      }, 8000);
+
+      // #18: Hard timeout at 20s — give up if still not ready
+      dom.audio._readyTimeout = setTimeout(() => {
+        dom.audio._readyTimeout = null;
+        if (callId !== _playCurrentId) return;
+        if (dom.audio._onReady) {
+          cleanupReadyListeners(dom);
+          if (dom.audio.readyState >= 2) {
+            tryPlay();
+          } else {
+            isSwitching = false;
+            setBuffering(false);
+            setPlayState(false);
+            showToast(t('error_play') || '\u52A0\u8F7D\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u8BD5');
+          }
+        }
+      }, 20000);
+    });
   }
 
   updateUI(tr);

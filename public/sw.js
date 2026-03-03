@@ -60,6 +60,8 @@ self.addEventListener('fetch', event => {
 
   if (event.request.method !== 'GET') return;
   if (shouldSkip(url)) return;
+  // Never intercept Range requests (audio/video streaming)
+  if (event.request.headers.get('range')) return;
 
   /* Static assets: cache-first */
   if (isStaticAsset(url)) {
