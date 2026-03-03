@@ -29,7 +29,7 @@ import {
 import { renderHomePage } from './pages-home.js';
 import { renderMyPage } from './pages-my.js';
 import { renderCategory, showEpisodes } from './pages-category.js';
-import { doSearch } from './search.js';
+import { doSearch, openSearchOverlay, closeSearchOverlay, isSearchOverlayOpen } from './search.js';
 import { initInstallPrompt, initBackGuard } from './pwa.js';
 import { initAiChat, updateAiContext, openAiChat, closeAiChat, isAiChatOpen, checkAiDeepLink } from './ai-chat.js';
 import { appreciate } from './api.js';
@@ -316,8 +316,11 @@ import { appreciate } from './api.js';
   // Back navigation guard (extended to handle AI chat)
   initBackGuard(renderCategory, state, { closeFullScreen, getPlaylistVisible, closePlaylist });
 
-  // Handle browser back button for AI fullscreen
+  // Handle browser back button for AI fullscreen and search overlay
   window.addEventListener('popstate', (e) => {
+    if (isSearchOverlayOpen()) {
+      closeSearchOverlay();
+    }
     if (isAiChatOpen()) {
       closeAiChat();
     }

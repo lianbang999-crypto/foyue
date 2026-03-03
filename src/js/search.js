@@ -3,13 +3,9 @@ import { state } from './state.js';
 import { t } from './i18n.js';
 import { getDOM } from './dom.js';
 import { playList } from './player.js';
-import { aiSearch } from './ai-client.js';
 import { escapeHtml } from './utils.js';
 
-let searchMode = 'keyword';
 let _showEpisodes, _renderCategory, _renderHomePage;
-let searchRequestId = 0;
-const WENKU_BASE = 'https://wenku.foyue.org';
 
 function highlight(text, query) {
   const safe = escapeHtml(text);
@@ -23,10 +19,6 @@ export function doSearch(q, showEpisodes, renderCategory, renderHomePage) {
   if (renderCategory) _renderCategory = renderCategory;
   if (renderHomePage) _renderHomePage = renderHomePage;
 
-  if (searchMode === 'semantic' && q && q.length >= 2) {
-    doSemanticSearch(q);
-    return;
-  }
   doKeywordSearch(q, _showEpisodes, _renderCategory, _renderHomePage);
 }
 
@@ -55,8 +47,6 @@ function doKeywordSearch(q, showEpisodes, renderCategory, renderHomePage) {
   const wrap = document.createElement('div');
   wrap.className = 'view active';
 
-  wrap.appendChild(buildSearchToggle());
-
   if (!totalCount) {
     const noResult = document.createElement('div');
     noResult.className = 'loader-text';
@@ -80,8 +70,7 @@ function doKeywordSearch(q, showEpisodes, renderCategory, renderHomePage) {
         li.className = 'ep-item';
         li.innerHTML = `<span class="ep-num" style="color:var(--accent)">\u2022</span><span class="ep-title">${highlight(r.series.title, q)} <small style="color:var(--text-muted)">(${r.series.totalEpisodes}${t('episodes')})</small></span>`;
         li.addEventListener('click', () => {
-          const homeInput = document.getElementById('homeSearchInput');
-          if (homeInput) homeInput.value = '';
+          closeSearchOverlay();
           if (_showEpisodes) _showEpisodes(r.series, r.catId);
         });
         ul.appendChild(li);
@@ -100,7 +89,10 @@ function doKeywordSearch(q, showEpisodes, renderCategory, renderHomePage) {
         const li = document.createElement('li');
         li.className = 'ep-item';
         li.innerHTML = `<span class="ep-num">${r.ep.id || r.idx + 1}</span><span class="ep-title">${highlight(r.ep.title || r.ep.fileName, q)} <small style="color:var(--text-muted)">\u00B7 ${escapeHtml(r.series.title)}</small></span>`;
-        li.addEventListener('click', () => playList(r.series.episodes, r.idx, r.series));
+        li.addEventListener('click', () => {
+          closeSearchOverlay();
+          playList(r.series.episodes, r.idx, r.series);
+        });
         ul.appendChild(li);
       });
       wrap.appendChild(ul);
@@ -109,101 +101,147 @@ function doKeywordSearch(q, showEpisodes, renderCategory, renderHomePage) {
   dom.contentArea.appendChild(wrap);
 }
 
-async function doSemanticSearch(q) {
-  const currentId = ++searchRequestId;
-  const dom = getDOM();
-  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el => el.remove());
+/* ===== Fullscreen Search Overlay ===== */
+let searchOverlay = null;
 
-  const wrap = document.createElement('div');
-  wrap.className = 'view active';
-  wrap.appendChild(buildSearchToggle());
-
-  const loading = document.createElement('div');
-  loading.className = 'loader-text';
-  loading.innerHTML = '<span class="ai-loading-dot"></span> AI 搜索中...';
-  wrap.appendChild(loading);
-  dom.contentArea.appendChild(wrap);
-
-  try {
-    const { results } = await aiSearch(q);
-    if (currentId !== searchRequestId) return;
-
-    // 清空保留 toggle（第一个子元素）
-    while (wrap.children.length > 1) wrap.removeChild(wrap.lastChild);
-
-    if (!results || !results.length) {
-      const noResult = document.createElement('div');
-      noResult.className = 'loader-text';
-      noResult.textContent = t('no_results');
-      wrap.appendChild(noResult);
-      return;
+export function openSearchOverlay() {
+  if (searchOverlay) {
+    searchOverlay.classList.add('show');
+    const input = searchOverlay.querySelector('.search-overlay-input');
+    if (input) {
+      input.value = '';
+      input.focus();
     }
+    return;
+  }
 
-    const label = document.createElement('div');
-    label.className = 'search-label';
-    label.textContent = `AI 语义搜索结果 (${results.length})`;
-    wrap.appendChild(label);
+  const overlay = document.createElement('div');
+  overlay.className = 'search-overlay show';
+  overlay.id = 'searchOverlay';
+  overlay.innerHTML = `
+    <div class="search-overlay-header">
+      <button class="search-overlay-back" id="searchOverlayBack" aria-label="返回">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div class="search-overlay-field">
+        <svg viewBox="0 0 24 24" width="15" height="15"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
+        <input class="search-overlay-input" type="text" placeholder="${t('search_placeholder')}" maxlength="100" autocomplete="off" autofocus>
+      </div>
+    </div>
+    <div class="search-overlay-results" id="searchOverlayResults"></div>
+  `;
 
-    const ul = document.createElement('ul');
-    ul.className = 'ep-list';
-    results.forEach(r => {
-      const li = document.createElement('li');
-      li.className = 'ep-item';
-      const scoreTag = `<small style="color:var(--accent);margin-left:4px">${Math.round(r.score * 100)}%</small>`;
-      const seriesTag = r.series_name ? `<br><small style="color:var(--text-muted)">${escapeHtml(r.series_name)}</small>` : '';
-      li.innerHTML = `<span class="ep-num" style="color:var(--accent)">AI</span><div class="ep-text"><span class="ep-title">${escapeHtml(r.title)} ${scoreTag}</span>${r.snippet ? '<br><small style="color:var(--text-secondary)">' + escapeHtml(r.snippet.slice(0, 80)) + '...</small>' : ''}${seriesTag}</div>`;
-      // 点击跳转：有音频关联则跳转音频系列，否则打开文库原文
-      li.addEventListener('click', () => {
-        if (r.audio_series_id && state.data) {
-          // 在音频数据中查找对应系列
-          for (const cat of state.data.categories) {
-            const series = cat.series.find(s => s.id === r.audio_series_id);
-            if (series && _showEpisodes) {
-              const homeInput = document.getElementById('homeSearchInput');
-              if (homeInput) homeInput.value = '';
-              _showEpisodes(series, cat.id);
-              return;
-            }
-          }
-        }
-        // Fallback: 打开文库原文
-        if (r.doc_id) {
-          window.open(`${WENKU_BASE}/#/read/${encodeURIComponent(r.doc_id)}`, '_blank', 'noopener');
-        }
-      });
-      ul.appendChild(li);
-    });
-    wrap.appendChild(ul);
-  } catch (err) {
-    if (currentId !== searchRequestId) return;
-    while (wrap.children.length > 1) wrap.removeChild(wrap.lastChild);
-    const errDiv = document.createElement('div');
-    errDiv.className = 'loader-text';
-    errDiv.textContent = err.message || 'AI搜索暂不可用';
-    wrap.appendChild(errDiv);
+  document.getElementById('app').appendChild(overlay);
+  searchOverlay = overlay;
+
+  const backBtn = overlay.querySelector('#searchOverlayBack');
+  const input = overlay.querySelector('.search-overlay-input');
+  const resultsArea = overlay.querySelector('#searchOverlayResults');
+
+  backBtn.addEventListener('click', () => closeSearchOverlay());
+
+  // ESC to close
+  function onKeydown(e) {
+    if (e.key === 'Escape') closeSearchOverlay();
+  }
+  document.addEventListener('keydown', onKeydown);
+  overlay._onKeydown = onKeydown;
+
+  let searchTimer;
+  input.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      const q = input.value.trim();
+      renderSearchResults(q, resultsArea);
+    }, 300);
+  });
+
+  // Focus input
+  requestAnimationFrame(() => input.focus());
+}
+
+export function closeSearchOverlay() {
+  if (searchOverlay) {
+    searchOverlay.classList.remove('show');
+    if (searchOverlay._onKeydown) {
+      document.removeEventListener('keydown', searchOverlay._onKeydown);
+    }
   }
 }
 
-function buildSearchToggle() {
-  const toggle = document.createElement('div');
-  toggle.className = 'search-mode-toggle';
-  toggle.setAttribute('role', 'radiogroup');
-  toggle.setAttribute('aria-label', '搜索模式');
-  toggle.innerHTML = `
-    <button class="search-mode-btn ${searchMode === 'keyword' ? 'active' : ''}" data-mode="keyword" role="radio" aria-checked="${searchMode === 'keyword'}">关键词</button>
-    <button class="search-mode-btn ${searchMode === 'semantic' ? 'active' : ''}" data-mode="semantic" role="radio" aria-checked="${searchMode === 'semantic'}">智能搜索</button>
-  `;
-  toggle.querySelectorAll('.search-mode-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      searchMode = btn.dataset.mode;
-      toggle.querySelectorAll('.search-mode-btn').forEach(b => {
-        b.classList.toggle('active', b.dataset.mode === searchMode);
-        b.setAttribute('aria-checked', String(b.dataset.mode === searchMode));
+export function isSearchOverlayOpen() {
+  return searchOverlay ? searchOverlay.classList.contains('show') : false;
+}
+
+function renderSearchResults(q, container) {
+  container.innerHTML = '';
+  if (!q || !state.data) {
+    container.innerHTML = `<div class="search-overlay-hint">${t('search_placeholder')}</div>`;
+    return;
+  }
+
+  const ql = q.toLowerCase();
+  const seriesResults = [];
+  const epResults = [];
+  state.data.categories.forEach(cat => {
+    cat.series.forEach(s => {
+      if (s.title.toLowerCase().includes(ql) || (s.titleEn || '').toLowerCase().includes(ql))
+        seriesResults.push({ series: s, catId: cat.id });
+      s.episodes.forEach((ep, idx) => {
+        if ((ep.title || ep.fileName || '').toLowerCase().includes(ql))
+          epResults.push({ series: s, ep, idx, catId: cat.id });
       });
-      const homeInput = document.getElementById('homeSearchInput');
-      const q = homeInput ? homeInput.value.trim() : '';
-      if (q) doSearch(q);
     });
   });
-  return toggle;
+
+  const totalCount = seriesResults.length + epResults.length;
+  if (!totalCount) {
+    container.innerHTML = `<div class="search-overlay-hint">${t('no_results')}</div>`;
+    return;
+  }
+
+  const label = document.createElement('div');
+  label.className = 'search-label';
+  label.textContent = `${t('search_results')} (${totalCount})`;
+  container.appendChild(label);
+
+  if (seriesResults.length) {
+    const groupLabel = document.createElement('div');
+    groupLabel.className = 'search-group-label';
+    groupLabel.textContent = t('search_series') || '\u7CFB\u5217';
+    container.appendChild(groupLabel);
+    const ul = document.createElement('ul');
+    ul.className = 'ep-list';
+    seriesResults.forEach(r => {
+      const li = document.createElement('li');
+      li.className = 'ep-item';
+      li.innerHTML = `<span class="ep-num" style="color:var(--accent)">\u2022</span><span class="ep-title">${highlight(r.series.title, q)} <small style="color:var(--text-muted)">(${r.series.totalEpisodes}${t('episodes')})</small></span>`;
+      li.addEventListener('click', () => {
+        closeSearchOverlay();
+        if (_showEpisodes) _showEpisodes(r.series, r.catId);
+      });
+      ul.appendChild(li);
+    });
+    container.appendChild(ul);
+  }
+
+  if (epResults.length) {
+    const groupLabel = document.createElement('div');
+    groupLabel.className = 'search-group-label';
+    groupLabel.textContent = t('search_episodes') || '\u5355\u96C6';
+    container.appendChild(groupLabel);
+    const ul = document.createElement('ul');
+    ul.className = 'ep-list';
+    epResults.slice(0, 50).forEach(r => {
+      const li = document.createElement('li');
+      li.className = 'ep-item';
+      li.innerHTML = `<span class="ep-num">${r.ep.id || r.idx + 1}</span><span class="ep-title">${highlight(r.ep.title || r.ep.fileName, q)} <small style="color:var(--text-muted)">\u00B7 ${escapeHtml(r.series.title)}</small></span>`;
+      li.addEventListener('click', () => {
+        closeSearchOverlay();
+        playList(r.series.episodes, r.idx, r.series);
+      });
+      ul.appendChild(li);
+    });
+    container.appendChild(ul);
+  }
 }

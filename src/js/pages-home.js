@@ -4,7 +4,7 @@ import { t, getLang } from './i18n.js';
 import { getDOM } from './dom.js';
 import { ICON_PLAY, ICON_PAUSE } from './icons.js';
 import { playList, togglePlay, getIsSwitching } from './player.js';
-import { doSearch } from './search.js';
+import { openSearchOverlay } from './search.js';
 
 const DAILY_QUOTES = [
   { zh: '若人但念阿弥陀，是名无上深妙禅。', en: 'To recite Amitabha is the supreme and profound meditation.', author: '永明延寿大师' },
@@ -122,7 +122,7 @@ export function renderHomePage() {
     <div class="home-search-wrap">
       <div class="home-search-box">
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
-        <input class="home-search-input" id="homeSearchInput" type="text" placeholder="${t('search_placeholder')}" maxlength="100" autocomplete="off">
+        <input class="home-search-input" id="homeSearchInput" type="text" placeholder="${t('search_placeholder')}" readonly>
       </div>
     </div>
     <div class="home-section">
@@ -141,16 +141,11 @@ export function renderHomePage() {
   `;
   dom.contentArea.appendChild(page);
 
-  // Wire up home search box
+  // Wire up home search box — tap opens fullscreen search overlay
   const homeSearchInput = page.querySelector('#homeSearchInput');
-  let searchTimer;
   if (homeSearchInput) {
-    homeSearchInput.addEventListener('input', () => {
-      clearTimeout(searchTimer);
-      searchTimer = setTimeout(() => {
-        const q = homeSearchInput.value.trim();
-        doSearch(q, null, null, renderHomePage);
-      }, 300);
+    homeSearchInput.addEventListener('click', () => {
+      openSearchOverlay();
     });
   }
 

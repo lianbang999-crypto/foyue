@@ -248,30 +248,107 @@ a.ai-source-tag:hover {
 }
 @keyframes ai-spin { to { transform: rotate(360deg); } }
 
-/* ---- 搜索模式切换 ---- */
-.search-mode-toggle {
+/* ---- Fullscreen Search Overlay ---- */
+.search-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 300;
+  background: var(--bg);
   display: flex;
-  gap: 0;
-  margin: 8px 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
+  flex-direction: column;
+  transform: translateY(100%);
+  transition: transform 0.3s cubic-bezier(.22,1,.36,1);
+  will-change: transform;
 }
-.search-mode-btn {
-  flex: 1;
-  padding: 10px 12px;
-  min-height: 44px;
-  font-size: 14px;
-  font-family: var(--font-zh);
-  color: var(--text-secondary);
-  background: transparent;
+.search-overlay.show {
+  transform: translateY(0);
+}
+.search-overlay-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  height: 48px;
+  background: var(--bg-header);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.search-overlay-back {
+  -webkit-appearance: none;
+  appearance: none;
+  background: none;
   border: none;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  color: var(--text);
+  flex-shrink: 0;
 }
-.search-mode-btn.active {
-  background: var(--accent);
-  color: var(--text-inverse);
+.search-overlay-field {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.search-overlay-field svg {
+  position: absolute;
+  left: 10px;
+  stroke: var(--text-muted);
+  fill: none;
+  stroke-width: 1.8;
+  pointer-events: none;
+}
+.search-overlay-input {
+  width: 100%;
+  padding: 9px 12px 9px 34px;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  background: var(--bg-secondary);
+  font-family: var(--font-zh);
+  font-size: 15px;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.search-overlay-input:focus {
+  border-color: var(--accent);
+}
+.search-overlay-input::placeholder {
+  color: var(--text-muted);
+}
+.search-overlay-results {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  -webkit-overflow-scrolling: touch;
+}
+.search-overlay-hint {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 40px 0;
+}
+
+@media (min-width: 768px) {
+  .search-overlay-header {
+    max-width: 680px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .search-overlay-results {
+    max-width: 680px;
+    margin: 0 auto;
+    width: 100%;
+  }
 }
 
 /* ---- AI 摘要组件 ---- */
