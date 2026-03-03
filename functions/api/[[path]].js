@@ -200,6 +200,46 @@ export async function onRequest(context) {
       }
     }
 
+    // GET /api/admin/test-chat — 诊断 chat 模型
+    if (path === '/api/admin/test-chat' && method === 'GET') {
+      const tk = url.searchParams.get('token');
+      if (!tk || !env.ADMIN_TOKEN || !timingSafeCompare(tk, env.ADMIN_TOKEN)) {
+        return json({ error: 'Unauthorized' }, cors, 401);
+      }
+      const testPrompt = url.searchParams.get('q') || '请用一句话解释什么是净土宗。';
+      const model = url.searchParams.get('model') || AI_CONFIG.models.chat;
+      try {
+        const rawResponse = await env.AI.run(
+          model,
+          {
+            messages: [
+              { role: 'system', content: '你是一个佛学助手。' },
+              { role: 'user', content: testPrompt },
+            ],
+            max_tokens: 200,
+            temperature: 0.3,
+          },
+          { gateway: { ...AI_CONFIG.gateway, skipCache: true } }
+        );
+        return json({
+          success: true,
+          model,
+          prompt: testPrompt,
+          rawResponseType: typeof rawResponse,
+          rawResponseKeys: rawResponse ? Object.keys(rawResponse) : null,
+          response: rawResponse?.response ?? null,
+          fullRaw: JSON.stringify(rawResponse).slice(0, 500),
+        }, cors);
+      } catch (err) {
+        return json({
+          success: false,
+          model,
+          error: err.message,
+          stack: err.stack?.slice(0, 300),
+        }, cors);
+      }
+    }
+
     // ==================== 管理后台路由 ====================
 
     // Admin auth helper — all admin dashboard routes below require this
@@ -1042,7 +1082,17 @@ async function handleAiSummary(env, documentId, request, cors) {
   }
 
   // 生成摘要
-  const summary = await generateSummary(env, doc.title, doc.content);
+  let summary;
+  try {
+    summary = await generateSummary(env, doc.title, doc.content);
+  } catch (err) {
+    console.error('generateSummary failed:', err.message);
+    return json({ error: 'AI摘要服务暂时不可用，请稍后再试' }, cors, 503);
+  }
+
+  if (!summary || !summary.trim()) {
+    return json({ error: 'AI未能生成有效摘要，请稍后再试' }, cors, 503);
+  }
 
   // 缓存
   await env.DB.prepare(
