@@ -43,14 +43,19 @@
 .btn-icon:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .btn-icon svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
-/* Search */
-.search-row{padding:6px 12px 4px;display:none}
-.search-row.show{display:block}
-.search-field{width:100%;padding:9px 14px 9px 36px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-card);font-family:var(--font-zh);font-size:.86rem;color:var(--text);outline:none;transition:border-color .2s}
-.search-field:focus{border-color:var(--border-active)}
-.search-field::placeholder{color:var(--text-muted)}
-.search-box{position:relative}
-.search-box svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:15px;height:15px;stroke:var(--text-muted);fill:none;stroke-width:1.8;pointer-events:none}
+/* AI Pill Button in header */
+.ai-pill-btn{-webkit-appearance:none;appearance:none;display:inline-flex;align-items:center;gap:4px;background:var(--accent);color:var(--text-inverse);border:none;border-radius:9999px;padding:6px 12px 6px 10px;font-family:var(--font-en);font-size:13px;font-weight:600;letter-spacing:.03em;cursor:pointer;transition:transform .15s,box-shadow .15s;box-shadow:0 1px 6px var(--accent-shadow);min-height:32px}
+.ai-pill-btn:hover{transform:scale(1.04);box-shadow:0 2px 10px var(--accent-shadow)}
+.ai-pill-btn:active{transform:scale(0.96)}
+.ai-pill-icon{width:14px;height:14px;stroke:currentColor;fill:none;flex-shrink:0}
+
+/* Home search box */
+.home-search-wrap{margin-bottom:20px}
+.home-search-box{position:relative}
+.home-search-box svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:15px;height:15px;stroke:var(--text-muted);fill:none;stroke-width:1.8;pointer-events:none}
+.home-search-input{width:100%;padding:11px 14px 11px 38px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-card);font-family:var(--font-zh);font-size:.88rem;color:var(--text);outline:none;transition:border-color .2s,box-shadow .2s}
+.home-search-input:focus{border-color:var(--border-active);box-shadow:0 0 0 3px var(--accent-glow)}
+.home-search-input::placeholder{color:var(--text-muted)}
 
 /* === CONTENT === */
 .content{flex:1;padding:16px 18px calc(64px + var(--safe-bottom) + 16px);overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}

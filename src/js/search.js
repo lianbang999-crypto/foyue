@@ -80,10 +80,8 @@ function doKeywordSearch(q, showEpisodes, renderCategory, renderHomePage) {
         li.className = 'ep-item';
         li.innerHTML = `<span class="ep-num" style="color:var(--accent)">\u2022</span><span class="ep-title">${highlight(r.series.title, q)} <small style="color:var(--text-muted)">(${r.series.totalEpisodes}${t('episodes')})</small></span>`;
         li.addEventListener('click', () => {
-          const dom2 = getDOM();
-          dom2.searchInput.value = '';
-          dom2.searchRow.classList.remove('show');
-          document.getElementById('btnSearch').classList.remove('active');
+          const homeInput = document.getElementById('homeSearchInput');
+          if (homeInput) homeInput.value = '';
           if (_showEpisodes) _showEpisodes(r.series, r.catId);
         });
         ul.appendChild(li);
@@ -161,10 +159,8 @@ async function doSemanticSearch(q) {
           for (const cat of state.data.categories) {
             const series = cat.series.find(s => s.id === r.audio_series_id);
             if (series && _showEpisodes) {
-              const dom2 = getDOM();
-              dom2.searchInput.value = '';
-              dom2.searchRow.classList.remove('show');
-              document.getElementById('btnSearch').classList.remove('active');
+              const homeInput = document.getElementById('homeSearchInput');
+              if (homeInput) homeInput.value = '';
               _showEpisodes(series, cat.id);
               return;
             }
@@ -204,8 +200,8 @@ function buildSearchToggle() {
         b.classList.toggle('active', b.dataset.mode === searchMode);
         b.setAttribute('aria-checked', String(b.dataset.mode === searchMode));
       });
-      const dom = getDOM();
-      const q = dom.searchInput.value.trim();
+      const homeInput = document.getElementById('homeSearchInput');
+      const q = homeInput ? homeInput.value.trim() : '';
       if (q) doSearch(q);
     });
   });

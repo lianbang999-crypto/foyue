@@ -4,6 +4,7 @@ import { t, getLang } from './i18n.js';
 import { getDOM } from './dom.js';
 import { ICON_PLAY, ICON_PAUSE } from './icons.js';
 import { playList, togglePlay, getIsSwitching } from './player.js';
+import { doSearch } from './search.js';
 
 const DAILY_QUOTES = [
   { zh: '若人但念阿弥陀，是名无上深妙禅。', en: 'To recite Amitabha is the supreme and profound meditation.', author: '永明延寿大师' },
@@ -118,6 +119,12 @@ export function renderHomePage() {
   }).join('');
 
   page.innerHTML = `
+    <div class="home-search-wrap">
+      <div class="home-search-box">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
+        <input class="home-search-input" id="homeSearchInput" type="text" placeholder="${t('search_placeholder')}" maxlength="100" autocomplete="off">
+      </div>
+    </div>
     <div class="home-section">
       <div class="home-section-title">${t('home_daily_quote')}</div>
       <div class="home-quote">
@@ -133,6 +140,19 @@ export function renderHomePage() {
     ${recHtml}
   `;
   dom.contentArea.appendChild(page);
+
+  // Wire up home search box
+  const homeSearchInput = page.querySelector('#homeSearchInput');
+  let searchTimer;
+  if (homeSearchInput) {
+    homeSearchInput.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        const q = homeSearchInput.value.trim();
+        doSearch(q, null, null, renderHomePage);
+      }, 300);
+    });
+  }
 
   // Wire up chanting cards
   page.querySelectorAll('.home-chant-card').forEach(card => {
@@ -203,7 +223,6 @@ export function renderHomePage() {
       if (cat) {
         const sr = cat.series.find(s => s.id === sid);
         if (sr) {
-          // Import showEpisodes dynamically to avoid circular dependency
           import('./pages-category.js').then(mod => mod.showEpisodes(sr, catId));
         }
       }

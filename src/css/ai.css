@@ -1,118 +1,94 @@
 /* ===== AI 组件样式 ===== */
 
-/* ---- 悬浮按钮 ---- */
-.ai-chat-btn {
+/* ---- 全屏聊天页 ---- */
+.ai-fullscreen {
   position: fixed;
-  bottom: calc(var(--player-h) + var(--safe-bottom) + 60px);
-  right: 16px;
-  z-index: 200;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 300;
   background: var(--bg);
-  color: var(--accent);
-  border: 1px solid var(--border-active);
-  border-radius: 9999px;
-  padding: 10px 16px;
-  min-height: 44px;
-  cursor: pointer;
-  box-shadow: var(--shadow-sm);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-family: var(--font-zh);
-  font-weight: 500;
-  transition: transform 0.2s, box-shadow 0.2s, opacity 0.25s, visibility 0.25s;
-}
-.ai-chat-btn:hover {
-  transform: scale(1.05);
-  box-shadow: var(--shadow-md);
-}
-.ai-chat-btn:active { transform: scale(0.97); }
-.ai-chat-btn.active { opacity: 0; visibility: hidden; pointer-events: none; }
-.ai-btn-icon {
-  width: 18px;
-  height: 18px;
-}
-
-/* ---- 聊天面板 ---- */
-.ai-chat-panel {
-  position: fixed;
-  bottom: calc(var(--player-h) + var(--safe-bottom) + 10px);
-  right: 12px;
-  width: min(380px, calc(100vw - 24px));
-  max-height: min(520px, calc(100vh - 160px));
-  z-index: 201;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-md), 0 0 0 1px var(--border);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  /* visibility + opacity 方案替代 display:none，保证 transition 生效 */
-  transition: opacity 0.25s ease, transform 0.25s ease, visibility 0.25s;
-  opacity: 1;
-  transform: translateY(0) scale(1);
-  visibility: visible;
+  transform: translateY(100%);
+  transition: transform 0.35s cubic-bezier(.22,1,.36,1);
+  will-change: transform;
 }
-.ai-chat-panel.hidden {
-  opacity: 0;
-  transform: translateY(8px) scale(0.98);
-  visibility: hidden;
-  pointer-events: none;
+.ai-fullscreen.show {
+  transform: translateY(0);
 }
 
-/* 面板头部 */
-.ai-chat-header {
-  background: var(--accent);
-  color: var(--text-inverse);
-  padding: 12px 16px;
+/* Header */
+.ai-fs-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: 8px;
+  padding: 0 8px;
+  height: 48px;
+  background: var(--bg-header);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
-.ai-chat-title {
-  font-size: 15px;
-  font-weight: 600;
-}
-.ai-chat-context {
-  font-size: 12px;
-  opacity: 0.7;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.ai-chat-close {
+.ai-fs-back {
+  -webkit-appearance: none;
+  appearance: none;
   background: none;
   border: none;
-  color: var(--text-inverse);
-  font-size: 22px;
-  cursor: pointer;
-  width: 44px;
-  height: 44px;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
-  margin: -8px -8px -8px 0;
-  opacity: 0.8;
-  flex-shrink: 0;
+  cursor: pointer;
+  color: var(--text);
+  transition: background 0.15s;
 }
-.ai-chat-close:hover { opacity: 1; }
+.ai-fs-back:hover { background: var(--accent-glow); }
+.ai-fs-title {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.ai-fs-title-icon {
+  color: var(--accent);
+}
+.ai-fs-share {
+  -webkit-appearance: none;
+  appearance: none;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: color 0.15s;
+}
+.ai-fs-share:hover { color: var(--text); }
 
-/* 消息区 */
-.ai-chat-messages {
+/* Messages area */
+.ai-fs-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 12px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  min-height: 200px;
+  gap: 12px;
+  -webkit-overflow-scrolling: touch;
 }
 
+/* Messages — shared with old panel */
 .ai-msg { display: flex; }
 .ai-msg-user { justify-content: flex-end; }
 .ai-msg-bot,
@@ -181,7 +157,7 @@ a.ai-source-tag:hover {
   color: var(--text-inverse);
 }
 
-/* 打字指示器 */
+/* Typing indicator */
 .ai-typing-dots {
   display: flex;
   gap: 4px;
@@ -201,7 +177,7 @@ a.ai-source-tag:hover {
   30% { transform: translateY(-6px); opacity: 1; }
 }
 
-/* 打字机光标 */
+/* Typewriter cursor */
 .ai-typewriter::after {
   content: '';
   display: inline-block;
@@ -217,16 +193,16 @@ a.ai-source-tag:hover {
   50% { opacity: 0; }
 }
 
-/* 输入区 */
-.ai-chat-form {
+/* Input area */
+.ai-fs-form {
   display: flex;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 10px 12px calc(10px + var(--safe-bottom));
   border-top: 1px solid var(--border);
   flex-shrink: 0;
   background: var(--bg);
 }
-.ai-chat-input {
+.ai-fs-input {
   flex: 1;
   border: 1px solid var(--border);
   border-radius: 9999px;
@@ -238,13 +214,13 @@ a.ai-source-tag:hover {
   outline: none;
   transition: border-color 0.15s;
 }
-.ai-chat-input:focus {
+.ai-fs-input:focus {
   border-color: var(--accent);
 }
-.ai-chat-input::placeholder {
+.ai-fs-input::placeholder {
   color: var(--text-muted);
 }
-.ai-chat-send {
+.ai-fs-send {
   background: var(--accent);
   color: var(--text-inverse);
   border: none;
@@ -258,8 +234,45 @@ a.ai-source-tag:hover {
   flex-shrink: 0;
   transition: opacity 0.15s;
 }
-.ai-chat-send:hover { opacity: 0.85; }
-.ai-chat-send:disabled { opacity: 0.5; cursor: not-allowed; }
+.ai-fs-send:hover { opacity: 0.85; }
+.ai-fs-send:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* AI loading dot */
+.ai-loading-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--accent);
+  border-top-color: transparent;
+  animation: ai-spin 0.6s linear infinite;
+}
+@keyframes ai-spin { to { transform: rotate(360deg); } }
+
+/* ---- 搜索模式切换 ---- */
+.search-mode-toggle {
+  display: flex;
+  gap: 0;
+  margin: 8px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.search-mode-btn {
+  flex: 1;
+  padding: 10px 12px;
+  min-height: 44px;
+  font-size: 14px;
+  font-family: var(--font-zh);
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.search-mode-btn.active {
+  background: var(--accent);
+  color: var(--text-inverse);
+}
 
 /* ---- AI 摘要组件 ---- */
 .ai-summary {
@@ -300,7 +313,6 @@ a.ai-source-tag:hover {
   font-size: 15px;
   line-height: 1.7;
   color: var(--text);
-  /* 动画替代 display:none */
   transition: opacity 0.2s ease, max-height 0.3s ease;
   opacity: 1;
   max-height: 500px;
@@ -322,87 +334,10 @@ a.ai-source-tag:hover {
   color: var(--text-secondary);
   font-size: 14px;
 }
-.ai-loading-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  border: 1.5px solid var(--accent);
-  border-top-color: transparent;
-  animation: ai-spin 0.6s linear infinite;
-}
-@keyframes ai-spin { to { transform: rotate(360deg); } }
 
 .ai-error {
   color: var(--text-muted);
   font-style: italic;
-}
-
-/* ---- 搜索模式切换 ---- */
-.search-mode-toggle {
-  display: flex;
-  gap: 0;
-  margin: 8px 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-}
-.search-mode-btn {
-  flex: 1;
-  padding: 10px 12px;
-  min-height: 44px;
-  font-size: 14px;
-  font-family: var(--font-zh);
-  color: var(--text-secondary);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-.search-mode-btn.active {
-  background: var(--accent);
-  color: var(--text-inverse);
-}
-
-/* ---- 暗色模式补充 ---- */
-[data-theme="dark"] .ai-chat-btn {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-}
-[data-theme="dark"] .ai-chat-panel {
-  border-color: rgba(255, 255, 255, 0.12);
-}
-
-/* ---- 响应式 ---- */
-@media (max-width: 420px) {
-  .ai-chat-panel {
-    right: 8px;
-    bottom: calc(var(--player-h) + var(--safe-bottom) + 8px);
-    width: calc(100vw - 16px);
-    max-height: calc(100vh - 140px);
-  }
-  .ai-chat-btn {
-    right: 12px;
-    bottom: calc(var(--player-h) + var(--safe-bottom) + 52px);
-  }
-}
-
-@media (min-width: 768px) {
-  .ai-chat-panel {
-    width: 420px;
-    max-height: min(600px, calc(100vh - 160px));
-  }
-}
-
-@media (orientation: landscape) and (max-height: 500px) {
-  .ai-chat-panel {
-    max-height: calc(100vh - 80px);
-    bottom: 8px;
-  }
-  .ai-chat-messages {
-    min-height: 100px;
-  }
-  .ai-chat-btn {
-    bottom: calc(var(--player-h) + var(--safe-bottom) + 40px);
-  }
 }
 
 /* ---- 讲义文稿组件 ---- */
@@ -502,4 +437,21 @@ a.ai-source-tag:hover {
 .transcript-body::-webkit-scrollbar-thumb {
   background: var(--text-muted);
   border-radius: 2px;
+}
+
+/* ---- Responsive ---- */
+@media (min-width: 768px) {
+  .ai-fs-messages {
+    max-width: 680px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .ai-fs-form {
+    max-width: 680px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .ai-msg-content {
+    max-width: 70%;
+  }
 }

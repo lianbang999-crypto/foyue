@@ -1,97 +1,73 @@
-/* ===== AI 聊天面板组件 ===== */
+/* ===== AI 全屏聊天页 ===== */
 import { askQuestion } from './ai-client.js';
 import { t } from './i18n.js';
 import { escapeHtml } from './utils.js';
+import { getDOM } from './dom.js';
 
 let chatInstance = null;
 const MAX_MESSAGES = 50;
-const TYPEWRITER_SPEED = 30; // ms per character
+const TYPEWRITER_SPEED = 30;
 const WENKU_BASE = 'https://wenku.foyue.org';
 
 /**
- * 初始化 AI 聊天面板
- * @param {HTMLElement} container - 挂载容器
+ * 打开全屏 AI 聊天页
  */
-export function initAiChat(container) {
-  if (chatInstance) return chatInstance;
+export function openAiChat() {
+  if (chatInstance && chatInstance.isOpen) return;
+  if (!chatInstance) createChatPage();
+  chatInstance.show();
+}
 
-  let isOpen = false;
+/**
+ * 关闭全屏 AI 聊天页
+ */
+export function closeAiChat() {
+  if (chatInstance) chatInstance.hide();
+}
+
+/**
+ * AI 聊天是否打开
+ */
+export function isAiChatOpen() {
+  return chatInstance ? chatInstance.isOpen : false;
+}
+
+function createChatPage() {
   let isLoading = false;
-  let currentContext = {};
-  const chatHistory = []; // 多轮对话记忆
+  const chatHistory = [];
 
-  // 悬浮按钮
-  const btn = document.createElement('button');
-  btn.className = 'ai-chat-btn';
-  btn.id = 'aiChatBtn';
-  btn.setAttribute('aria-label', 'AI问答');
-  btn.setAttribute('aria-expanded', 'false');
-  btn.innerHTML = '<svg class="ai-btn-icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" fill="currentColor" opacity="0.6"/></svg><span>问法</span>';
+  // 全屏聊天容器
+  const page = document.createElement('div');
+  page.className = 'ai-fullscreen';
+  page.id = 'aiFullscreen';
 
-  // 面板
-  const panel = document.createElement('div');
-  panel.className = 'ai-chat-panel hidden';
-  panel.id = 'aiChatPanel';
-  panel.setAttribute('role', 'dialog');
-  panel.setAttribute('aria-label', 'AI问答面板');
-  panel.innerHTML = `
-    <div class="ai-chat-header">
-      <span class="ai-chat-title">AI 问答助手</span>
-      <span class="ai-chat-context" id="aiChatContext"></span>
-      <button class="ai-chat-close" aria-label="关闭">&times;</button>
-    </div>
-    <div class="ai-chat-messages" id="aiChatMessages" role="log" aria-live="polite">
-      <div class="ai-msg ai-msg-bot">
-        <div class="ai-msg-content">
-          <p>您好！我是佛法问答助手。可以就当前收听的内容向我提问。</p>
-          <p class="ai-disclaimer">AI回答仅供参考，请以原始经典为准。</p>
-        </div>
-      </div>
-    </div>
-    <form class="ai-chat-form" id="aiChatForm">
-      <input type="text" class="ai-chat-input" id="aiChatInput"
-             placeholder="输入您的问题..." maxlength="500" autocomplete="off" />
-      <button type="submit" class="ai-chat-send" id="aiChatSend" aria-label="发送">
-        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M2 21l21-9L2 3v7l15 2-15 2z" fill="currentColor"/></svg>
-      </button>
-    </form>
-  `;
+  // Build HTML skeleton — content filled below
+  page.innerHTML = buildPageHTML();
 
-  // Cache DOM refs
-  const chatInput = panel.querySelector('#aiChatInput');
-  const chatMessages = panel.querySelector('#aiChatMessages');
-  const chatForm = panel.querySelector('#aiChatForm');
-  const chatSend = panel.querySelector('#aiChatSend');
-  const chatContext = panel.querySelector('#aiChatContext');
+  const chatMessages = page.querySelector('#aiFsMessages');
+  const chatForm = page.querySelector('#aiFsForm');
+  const chatInput = page.querySelector('#aiFsInput');
+  const chatSend = page.querySelector('#aiFsSend');
 
-  // 事件绑定
-  btn.addEventListener('click', () => toggle());
-  panel.querySelector('.ai-chat-close').addEventListener('click', () => toggle(false));
+  // Back button
+  page.querySelector('#aiFsBack').addEventListener('click', () => chatInstance.hide());
+
+  // Share button
+  page.querySelector('#aiFsShare').addEventListener('click', () => {
+    const url = window.location.origin + '/?tab=ai';
+    if (navigator.share) {
+      navigator.share({ title: 'AI 问法 — 净土法音', url }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(url).then(() => {
+        import('./utils.js').then(m => m.showToast(t('link_copied') || '链接已复制'));
+      }).catch(() => {});
+    }
+  });
+
   chatForm.addEventListener('submit', handleSubmit);
 
-  // 点击面板外关闭
-  function onDocClick(e) {
-    if (isOpen && !panel.contains(e.target) && !btn.contains(e.target)) {
-      toggle(false);
-    }
-  }
-  document.addEventListener('click', onDocClick);
-
-  // ESC 键关闭
-  function onDocKeydown(e) {
-    if (e.key === 'Escape' && isOpen) toggle(false);
-  }
-  document.addEventListener('keydown', onDocKeydown);
-
-  function toggle(force) {
-    isOpen = force !== undefined ? force : !isOpen;
-    panel.classList.toggle('hidden', !isOpen);
-    btn.classList.toggle('active', isOpen);
-    btn.setAttribute('aria-expanded', String(isOpen));
-    if (isOpen) {
-      // 不自动 focus 输入框避免移动端键盘弹出问题
-      // 用户可以主动点击输入框
-    }
+  function onKeydown(e) {
+    if (e.key === 'Escape' && chatInstance.isOpen) chatInstance.hide();
   }
 
   async function handleSubmit(e) {
@@ -108,12 +84,10 @@ export function initAiChat(container) {
 
     try {
       const result = await askQuestion(question, {
-        ...currentContext,
-        history: chatHistory.slice(-6), // 最近 3 轮对话
+        history: chatHistory.slice(-6),
       });
       removeTyping();
       const answer = result.answer?.trim() || '抱歉，AI 暂时无法生成回答。';
-      // 记录对话历史
       chatHistory.push({ role: 'user', content: question });
       chatHistory.push({ role: 'assistant', content: answer });
       if (chatHistory.length > 10) chatHistory.splice(0, chatHistory.length - 10);
@@ -128,10 +102,6 @@ export function initAiChat(container) {
     }
   }
 
-  /**
-   * 构建文库引用链接标签
-   * 有 doc_id 时链接到 wenku.foyue.org 对应文档
-   */
   function renderSourceTag(s) {
     const title = escapeHtml(s.title);
     if (s.doc_id) {
@@ -142,43 +112,30 @@ export function initAiChat(container) {
   }
 
   function addMessage(role, content, sources, disclaimer) {
-    // 限制消息数量（保留第一条欢迎消息）
     while (chatMessages.children.length > MAX_MESSAGES) {
       chatMessages.removeChild(chatMessages.children[1]);
     }
-
     const safeRole = ['user', 'bot', 'error'].includes(role) ? role : 'bot';
     const msg = document.createElement('div');
     msg.className = `ai-msg ai-msg-${safeRole}`;
-
     let html = '<div class="ai-msg-content">';
     html += `<p>${escapeHtml(content)}</p>`;
-
     if (role === 'bot' && sources && sources.length) {
-      html += '<div class="ai-sources">参考：';
-      html += sources.map(s => renderSourceTag(s)).join(' ');
-      html += '</div>';
+      html += '<div class="ai-sources">参考：' + sources.map(s => renderSourceTag(s)).join(' ') + '</div>';
     }
-
     if (role === 'bot' && disclaimer) {
       html += `<p class="ai-disclaimer">${escapeHtml(disclaimer)}</p>`;
     }
-
     html += '</div>';
     msg.innerHTML = html;
     chatMessages.appendChild(msg);
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 
-  /**
-   * 打字机效果展示 AI 回答
-   * 逐字显示文本，完成后追加参考来源和免责声明
-   */
   function typewriterMessage(content, sources, disclaimer) {
     while (chatMessages.children.length > MAX_MESSAGES) {
       chatMessages.removeChild(chatMessages.children[1]);
     }
-
     const msg = document.createElement('div');
     msg.className = 'ai-msg ai-msg-bot';
     const msgContent = document.createElement('div');
@@ -192,7 +149,6 @@ export function initAiChat(container) {
 
     const escaped = escapeHtml(content);
     let i = 0;
-
     return new Promise(resolve => {
       function tick() {
         if (i < escaped.length) {
@@ -201,25 +157,19 @@ export function initAiChat(container) {
           chatMessages.scrollTop = chatMessages.scrollHeight;
           requestAnimationFrame(() => setTimeout(tick, TYPEWRITER_SPEED));
         } else {
-          // 打字完成，移除光标
           textP.classList.remove('ai-typewriter');
-
-          // 追加参考来源
           if (sources && sources.length) {
             const srcDiv = document.createElement('div');
             srcDiv.className = 'ai-sources';
             srcDiv.innerHTML = '参考：' + sources.map(s => renderSourceTag(s)).join(' ');
             msgContent.appendChild(srcDiv);
           }
-
-          // 追加免责声明
           if (disclaimer) {
             const discP = document.createElement('p');
             discP.className = 'ai-disclaimer';
             discP.textContent = disclaimer;
             msgContent.appendChild(discP);
           }
-
           chatMessages.scrollTop = chatMessages.scrollHeight;
           resolve();
         }
@@ -238,50 +188,80 @@ export function initAiChat(container) {
   }
 
   function removeTyping() {
-    const el = panel.querySelector('.ai-typing');
+    const el = page.querySelector('.ai-typing');
     if (el) el.remove();
   }
 
-  function updateContextDisplay() {
-    if (!chatContext) return;
-    if (currentContext.series_id) {
-      chatContext.textContent = `· ${currentContext.series_id}`;
-      chatContext.style.display = '';
-    } else {
-      chatContext.textContent = '';
-      chatContext.style.display = 'none';
-    }
-  }
-
-  container.appendChild(btn);
-  container.appendChild(panel);
+  document.getElementById('app').appendChild(page);
 
   chatInstance = {
-    toggle,
-    setContext(ctx) {
-      currentContext = ctx;
-      updateContextDisplay();
+    isOpen: false,
+    show() {
+      page.classList.add('show');
+      this.isOpen = true;
+      document.addEventListener('keydown', onKeydown);
+      const url = new URL(window.location);
+      url.searchParams.set('tab', 'ai');
+      window.history.pushState({ aiChat: true }, '', url);
     },
-    destroy() {
-      document.removeEventListener('click', onDocClick);
-      document.removeEventListener('keydown', onDocKeydown);
-      btn.remove();
-      panel.remove();
-      chatInstance = null;
+    hide() {
+      page.classList.remove('show');
+      this.isOpen = false;
+      document.removeEventListener('keydown', onKeydown);
+      const url = new URL(window.location);
+      if (url.searchParams.get('tab') === 'ai') {
+        url.searchParams.delete('tab');
+        const cleanUrl = url.pathname + (url.search || '') + url.hash;
+        window.history.replaceState({}, '', cleanUrl || '/');
+      }
     },
   };
+}
 
-  return chatInstance;
+function buildPageHTML() {
+  return `
+    <div class="ai-fs-header">
+      <button class="ai-fs-back" id="aiFsBack" aria-label="返回">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div class="ai-fs-title">
+        <svg class="ai-fs-title-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2l1.09 3.26L16.36 6.36l-3.26 1.09L12 10.72l-1.09-3.27L7.64 6.36l3.27-1.1z"/>
+          <path d="M18 12l.73 2.18L20.91 14.91l-2.18.73L18 17.82l-.73-2.18-2.18-.73 2.18-.73z"/>
+        </svg>
+        <span>AI 问法</span>
+      </div>
+      <button class="ai-fs-share" id="aiFsShare" aria-label="分享">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+      </button>
+    </div>
+    <div class="ai-fs-messages" id="aiFsMessages" role="log" aria-live="polite">
+      <div class="ai-msg ai-msg-bot">
+        <div class="ai-msg-content">
+          <p>您好！我是净土法音 AI 问答助手。您可以向我提问有关净土法门、佛号念诵、讲经内容等任何问题。</p>
+          <p class="ai-disclaimer">AI 回答仅供参考，请以原始经典和法师开示为准。</p>
+        </div>
+      </div>
+    </div>
+    <form class="ai-fs-form" id="aiFsForm">
+      <input type="text" class="ai-fs-input" id="aiFsInput"
+             placeholder="输入您的问题..." maxlength="500" autocomplete="off" />
+      <button type="submit" class="ai-fs-send" id="aiFsSend" aria-label="发送">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M2 21l21-9L2 3v7l15 2-15 2z" fill="currentColor"/></svg>
+      </button>
+    </form>`;
 }
 
 /**
- * 更新 AI 聊天的上下文（当前播放的系列/集）
+ * 检查 URL 是否需要自动打开 AI 聊天
  */
-export function updateAiContext(seriesId, episodeId) {
-  if (chatInstance) {
-    chatInstance.setContext({
-      series_id: seriesId || undefined,
-      episode_id: episodeId || undefined,
-    });
+export function checkAiDeepLink() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('tab') === 'ai') {
+    openAiChat();
   }
 }
+
+// Legacy compat — no-op
+export function updateAiContext() {}
+export function initAiChat() {}

@@ -32,8 +32,6 @@ export function initDOM() {
     plItems: $('plItems'),
     plCount: $('plCount'),
     navTitle: $('navTitle'),
-    searchInput: $('searchInput'),
-    searchRow: $('searchRow'),
     centerPlayBtn: $('centerPlayBtn'),
     centerPlayIcon: $('centerPlayIcon'),
     centerRingFill: $('centerRingFill'),

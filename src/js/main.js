@@ -31,7 +31,7 @@ import { renderMyPage } from './pages-my.js';
 import { renderCategory, showEpisodes } from './pages-category.js';
 import { doSearch } from './search.js';
 import { initInstallPrompt, initBackGuard } from './pwa.js';
-import { initAiChat, updateAiContext } from './ai-chat.js';
+import { initAiChat, updateAiContext, openAiChat, closeAiChat, isAiChatOpen, checkAiDeepLink } from './ai-chat.js';
 import { appreciate } from './api.js';
 
 /* ===== INIT ===== */
@@ -52,17 +52,10 @@ import { appreciate } from './api.js';
     if (e.target === aboutOverlay) aboutOverlay.classList.remove('show');
   });
 
-  // Search
-  document.getElementById('btnSearch').addEventListener('click', () => {
-    const vis = dom.searchRow.classList.toggle('show');
-    if (vis) dom.searchInput.focus();
-    else { dom.searchInput.value = ''; renderCategory(state.tab); }
-    document.getElementById('btnSearch').classList.toggle('active', vis);
-  });
-  let st;
-  dom.searchInput.addEventListener('input', () => {
-    clearTimeout(st);
-    st = setTimeout(() => doSearch(dom.searchInput.value.trim(), showEpisodes, renderCategory, renderHomePage), 250);
+  // AI Chat button (header pill)
+  document.getElementById('btnAiChat').addEventListener('click', () => {
+    haptic();
+    openAiChat();
   });
 
   // Tabs
@@ -71,7 +64,9 @@ import { appreciate } from './api.js';
     btn.addEventListener('click', () => {
       document.querySelectorAll('.tab').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
       btn.classList.add('active'); btn.setAttribute('aria-selected', 'true');
-      state.tab = btn.dataset.tab; state.seriesId = null; dom.searchInput.value = '';
+      state.tab = btn.dataset.tab; state.seriesId = null;
+      const homeInput = document.getElementById('homeSearchInput');
+      if (homeInput) homeInput.value = '';
       dom.navTitle.textContent = t(TAB_I18N[state.tab] || 'tab_lectures');
       dom.navTitle.dataset.i18n = TAB_I18N[state.tab] || 'tab_lectures';
       if (state.tab === 'mypage') { renderMyPage(); }
@@ -318,10 +313,18 @@ import { appreciate } from './api.js';
   // PWA install
   initInstallPrompt();
 
-  // Back navigation guard
+  // Back navigation guard (extended to handle AI chat)
   initBackGuard(renderCategory, state, { closeFullScreen, getPlaylistVisible, closePlaylist });
 
-  initAiChat(document.getElementById('app'));
+  // Handle browser back button for AI fullscreen
+  window.addEventListener('popstate', (e) => {
+    if (isAiChatOpen()) {
+      closeAiChat();
+    }
+  });
+
+  // Check for ?tab=ai deep link after data loads
+  // (handled in loadData to ensure it runs after render)
 
   // #4: Unified buffering indicator — 'waiting' shows, 'playing' clears
   // playCurrent() handles initial buffering via setBuffering(); these handle mid-playback buffer stalls
@@ -389,6 +392,8 @@ async function loadData() {
       if (state.isFirstVisit && state.epIdx < 0) playDefaultTrack();
       // Refresh in background (non-blocking)
       fetchFreshData();
+      // Handle ?tab=ai deep link
+      checkAiDeepLink();
       return;
     }
     // No cache: fetch fresh
@@ -406,6 +411,8 @@ async function loadData() {
     if (state.isFirstVisit && state.epIdx < 0) playDefaultTrack();
     // Handle ?series= deep link from wenku
     handleSeriesDeepLink();
+    // Handle ?tab=ai deep link
+    checkAiDeepLink();
   } catch (e) {
     loadAttempts++;
     if (loadAttempts < 3) {
