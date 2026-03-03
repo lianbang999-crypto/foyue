@@ -31,3 +31,27 @@
   X-Robots-Tag: noindex
 
 # API responses are handled by the Worker (functions/api), not this file
+
+# Audio files optimization
+/*.mp3
+  Cache-Control: public, max-age=2592000, immutable
+  Accept-Ranges: bytes
+  Access-Control-Allow-Origin: *
+
+# Audio subdomain optimization
+audio.foyue.org/*
+  Cache-Control: public, max-age=2592000, immutable
+  Accept-Ranges: bytes
+  Access-Control-Allow-Origin: https://foyue.org
+  Timing-Allow-Origin: https://foyue.org
+
+# R2 audio files (if using custom domain)
+/audio/*
+  Cache-Control: public, max-age=2592000, immutable
+  Accept-Ranges: bytes
+
+# Preconnect hints for faster audio loading
+/*
+  Link: <https://pub-7be57e30faae4f81bbd76b61006ac8fc.r2.dev>; rel=preconnect
+  Link: <https://pub-8c99ae05414d4672b1ec08a569ab3299.r2.dev>; rel=preconnect
+  Link: <https://pub-7a334cb009c14e10bbcfee54bb593a2a.r2.dev>; rel=preconnect
