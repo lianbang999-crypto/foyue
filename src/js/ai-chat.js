@@ -5,6 +5,7 @@ import { escapeHtml } from './utils.js';
 
 let chatInstance = null;
 const MAX_MESSAGES = 50;
+const TYPEWRITER_SPEED = 30; // ms per character
 
 /**
  * 初始化 AI 聊天面板
@@ -107,7 +108,7 @@ export function initAiChat(container) {
       const result = await askQuestion(question, currentContext);
       removeTyping();
       const answer = result.answer?.trim() || '抱歉，AI 暂时无法生成回答。';
-      addMessage('bot', answer, result.sources, result.disclaimer);
+      await typewriterMessage(answer, result.sources, result.disclaimer);
     } catch (err) {
       removeTyping();
       addMessage('error', err.message || '请求失败，请稍后再试');
@@ -147,6 +148,66 @@ export function initAiChat(container) {
     msg.innerHTML = html;
     chatMessages.appendChild(msg);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  /**
+   * 打字机效果展示 AI 回答
+   * 逐字显示文本，完成后追加参考来源和免责声明
+   */
+  function typewriterMessage(content, sources, disclaimer) {
+    while (chatMessages.children.length > MAX_MESSAGES) {
+      chatMessages.removeChild(chatMessages.children[1]);
+    }
+
+    const msg = document.createElement('div');
+    msg.className = 'ai-msg ai-msg-bot';
+    const msgContent = document.createElement('div');
+    msgContent.className = 'ai-msg-content';
+    const textP = document.createElement('p');
+    textP.className = 'ai-typewriter';
+    msgContent.appendChild(textP);
+    msg.appendChild(msgContent);
+    chatMessages.appendChild(msg);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    const escaped = escapeHtml(content);
+    let i = 0;
+
+    return new Promise(resolve => {
+      function tick() {
+        if (i < escaped.length) {
+          textP.textContent += escaped[i];
+          i++;
+          chatMessages.scrollTop = chatMessages.scrollHeight;
+          requestAnimationFrame(() => setTimeout(tick, TYPEWRITER_SPEED));
+        } else {
+          // 打字完成，移除光标
+          textP.classList.remove('ai-typewriter');
+
+          // 追加参考来源
+          if (sources && sources.length) {
+            const srcDiv = document.createElement('div');
+            srcDiv.className = 'ai-sources';
+            srcDiv.innerHTML = '参考：' + sources.map(s =>
+              `<span class="ai-source-tag">${escapeHtml(s.title)}</span>`
+            ).join(' ');
+            msgContent.appendChild(srcDiv);
+          }
+
+          // 追加免责声明
+          if (disclaimer) {
+            const discP = document.createElement('p');
+            discP.className = 'ai-disclaimer';
+            discP.textContent = disclaimer;
+            msgContent.appendChild(discP);
+          }
+
+          chatMessages.scrollTop = chatMessages.scrollHeight;
+          resolve();
+        }
+      }
+      tick();
+    });
   }
 
   function showTyping() {
