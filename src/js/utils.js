@@ -56,6 +56,23 @@ export function seekAt(e, el, audio) {
   if (audio.duration && isFinite(audio.duration)) audio.currentTime = p * audio.duration;
 }
 
+/* Floating text animation — rises from an element and fades out */
+export function showFloatText(anchorEl, text) {
+  var el = document.createElement('span');
+  el.className = 'appreciate-float';
+  el.textContent = text;
+  anchorEl.appendChild(el);
+  el.addEventListener('animationend', function() { el.remove(); });
+}
+
+/* Format large numbers: 1234 -> 1.2k, 12345 -> 1.2万 */
+export function fmtCount(n) {
+  if (!n || n < 1) return '';
+  if (n < 1000) return String(n);
+  if (n < 10000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+  return (n / 10000).toFixed(1).replace(/\.0$/, '') + '\u4E07';
+}
+
 /* Haptic feedback — light vibration for button taps (Android) */
 export function haptic(ms = 50) {
   // ✅ 优化：增加震动时长，使其更明显

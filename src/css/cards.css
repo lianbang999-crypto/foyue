@@ -52,7 +52,7 @@
 
 /* === EPISODE ACTIONS (appreciate button) === */
 .ep-actions{display:flex;align-items:center;gap:8px;padding:4px 0 8px}
-.appreciate-btn{-webkit-appearance:none;appearance:none;display:flex;align-items:center;gap:5px;background:var(--accent-glow);border:1px solid var(--border);border-radius:20px;padding:6px 14px;font-family:var(--font-zh);font-size:.78rem;color:var(--text-secondary);cursor:pointer;transition:all .2s}
+.appreciate-btn{-webkit-appearance:none;appearance:none;display:flex;align-items:center;gap:5px;background:var(--accent-glow);border:1px solid var(--border);border-radius:20px;padding:6px 14px;font-family:var(--font-zh);font-size:.78rem;color:var(--text-secondary);cursor:pointer;transition:all .2s;position:relative}
 .appreciate-btn:hover{border-color:var(--border-active);color:var(--accent)}
 .appreciate-btn.appreciated{color:var(--accent);border-color:var(--accent)}
 .appreciate-btn svg{color:var(--text-muted);transition:color .2s}

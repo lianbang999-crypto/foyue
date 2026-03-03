@@ -3,11 +3,11 @@ import { state } from './state.js';
 import { t } from './i18n.js';
 import { getDOM } from './dom.js';
 import { CATEGORY_ICONS, ICON_PLAY_FILLED, ICON_PAUSE_FILLED } from './icons.js';
-import { playList, togglePlay, isCurrentTrack, getIsSwitching } from './player.js';
+import { playList, togglePlay, isCurrentTrack, getIsSwitching, markAppreciated, isAppreciated } from './player.js';
 import { renderHomePage } from './pages-home.js';
 import { getHistory } from './history.js';
 import { getPlayCount, appreciate } from './api.js';
-import { showToast, escapeHtml } from './utils.js';
+import { showToast, escapeHtml, showFloatText, fmtCount } from './utils.js';
 // [暂停] AI 功能待数据整理后重新启用
 // import { mountSummary } from './ai-summary.js';
 // [暂停] 文稿功能待数据整理后重新启用
@@ -121,35 +121,37 @@ export function showEpisodes(series, tabId) {
 
   // Add appreciation button
   const actionsDiv = view.querySelector('#epActions');
-  actionsDiv.innerHTML = `<button class="appreciate-btn" id="appreciateBtn">
+  const _alreadyAppreciated = isAppreciated(series.id);
+  actionsDiv.innerHTML = `<button class="appreciate-btn${_alreadyAppreciated ? ' appreciated' : ''}" id="appreciateBtn">
     <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="currentColor" stroke="none"/></svg>
     <span id="appreciateLabel">${t('appreciate') || '\u968F\u559C'}</span><span id="appreciateCount"></span>
   </button>`;
-  
+
   // 添加防抖和乐观更新
   let _lastAppreciateTime = 0;
   const APPRECIATE_COOLDOWN = 1000;
-  
+
   view.querySelector('#appreciateBtn').addEventListener('click', async () => {
     // 防抖检查
     const now = Date.now();
     if (now - _lastAppreciateTime < APPRECIATE_COOLDOWN) return;
     _lastAppreciateTime = now;
-    
+
     const btn = view.querySelector('#appreciateBtn');
     const countEl = view.querySelector('#appreciateCount');
-    
-    // ✅ 乐观UI更新 - 立即显示动画
+
+    // ✅ 乐观UI更新 - 立即显示浮动文字动画
     btn.classList.add('appreciated');
-    showToast(t('appreciate_thanks') || '\u968F\u559C\u529F\u5FB7');
-    
+    markAppreciated(series.id);
+    showFloatText(btn, t('appreciate_thanks') || '\u968F\u559C\u529F\u5FB7');
+
     // 后台发送请求
     try {
       const result = await appreciate(series.id);
       if (result && result.total != null) {
         // 更新计数（带动画）
         if (countEl) {
-          countEl.textContent = ' ' + result.total;
+          countEl.textContent = ' ' + fmtCount(result.total);
           countEl.classList.add('badge-bump');
           setTimeout(() => countEl.classList.remove('badge-bump'), 300);
         }
@@ -196,12 +198,4 @@ export function showEpisodes(series, tabId) {
   //     }
   //   });
   // }).catch(() => {}); // 静默失败，不影响主功能
-}
-
-/* Format large numbers: 1234 -> 1.2k, 12345 -> 1.2万 */
-function fmtCount(n) {
-  if (!n || n < 1) return '';
-  if (n < 1000) return String(n);
-  if (n < 10000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
-  return (n / 10000).toFixed(1).replace(/\.0$/, '') + '\u4E07';
 }

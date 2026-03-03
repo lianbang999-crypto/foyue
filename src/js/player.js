@@ -3,7 +3,7 @@ import { state } from './state.js';
 import { getDOM, RING_CIRCUMFERENCE } from './dom.js';
 import { SVG, ICON_PLAY, ICON_PAUSE, ICON_PLAY_FILLED, ICON_PAUSE_FILLED, ICON_APPRECIATE, ICON_APPRECIATE_FILLED } from './icons.js';
 import { t } from './i18n.js';
-import { fmt, showToast, seekAt, haptic } from './utils.js';
+import { fmt, showToast, seekAt, haptic, fmtCount } from './utils.js';
 import { addHistory, syncHistoryProgress, getHistory } from './history.js';
 import { recordPlay, getAppreciateCount } from './api.js';
 
@@ -244,27 +244,46 @@ function updateUI(tr) {
   dom.centerRingFill.style.strokeDashoffset = RING_CIRCUMFERENCE;
 }
 
-/* ===== Appreciate State (per-episode, no daily limit) ===== */
+/* ===== Appreciate State (per-series, persisted in localStorage) ===== */
 
-export function markAppreciated(seriesId, episodeNum) {
-  // No-op — appreciation is now fire-and-forget; badge shows server count
+function getAppreciatedSet() {
+  try {
+    const raw = localStorage.getItem('appreciated');
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch (e) { return new Set(); }
+}
+
+function saveAppreciated(seriesId) {
+  try {
+    const set = getAppreciatedSet();
+    set.add(seriesId);
+    localStorage.setItem('appreciated', JSON.stringify([...set]));
+  } catch (e) { /* ignore */ }
+}
+
+export function isAppreciated(seriesId) {
+  return getAppreciatedSet().has(seriesId);
+}
+
+export function markAppreciated(seriesId) {
+  saveAppreciated(seriesId);
 }
 
 export function updateAppreciateBtn(seriesId, total) {
   const btn = document.getElementById('expAppreciate');
   if (!btn) return;
-  // Reset state
-  btn.classList.remove('active');
+  const appreciated = isAppreciated(seriesId);
+  // Set icon based on localStorage state
+  btn.innerHTML = appreciated ? ICON_APPRECIATE_FILLED : ICON_APPRECIATE;
+  btn.classList.toggle('active', appreciated);
   btn.classList.remove('appreciate-pop');
-  // Update icon to outline
-  btn.innerHTML = ICON_APPRECIATE;
   // Show badge with total count if available
   const oldBadge = btn.querySelector('.appreciate-badge');
   if (oldBadge) oldBadge.remove();
   if (total && total > 0) {
     const badge = document.createElement('span');
     badge.className = 'appreciate-badge';
-    badge.textContent = total > 999 ? '999+' : total;
+    badge.textContent = fmtCount(total);
     btn.appendChild(badge);
   }
 }
@@ -276,14 +295,14 @@ export function appreciateSuccess(total) {
   btn.innerHTML = ICON_APPRECIATE_FILLED;
   btn.classList.add('active');
   btn.classList.add('appreciate-pop');
-  
+
   // ✅ 优化：如果有总数，更新badge
   if (total != null && total > 0) {
     const oldBadge = btn.querySelector('.appreciate-badge');
     if (oldBadge) oldBadge.remove();
     const badge = document.createElement('span');
     badge.className = 'appreciate-badge';
-    badge.textContent = total > 999 ? '999+' : total;
+    badge.textContent = fmtCount(total);
     btn.appendChild(badge);
   }
   
@@ -299,7 +318,7 @@ export function updateAppreciateCount(total) {
   if (oldBadge) {
     // ✅ 数字增加动画
     oldBadge.classList.add('badge-bump');
-    oldBadge.textContent = total > 999 ? '999+' : total;
+    oldBadge.textContent = fmtCount(total);
     setTimeout(() => {
       oldBadge.classList.remove('badge-bump');
     }, 300);
@@ -307,7 +326,7 @@ export function updateAppreciateCount(total) {
     // 创建新badge
     const badge = document.createElement('span');
     badge.className = 'appreciate-badge';
-    badge.textContent = total > 999 ? '999+' : total;
+    badge.textContent = fmtCount(total);
     btn.appendChild(badge);
   }
 }

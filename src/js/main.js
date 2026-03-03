@@ -16,7 +16,7 @@ import { state } from './state.js';
 import { initDOM, getDOM } from './dom.js';
 import { initLang, applyI18n, t } from './i18n.js';
 import { initTheme } from './theme.js';
-import { seekCalc, seekUI, seekCommit, showToast, haptic } from './utils.js';
+import { seekCalc, seekUI, seekCommit, showToast, showFloatText, haptic } from './utils.js';
 import {
   playList, togglePlay, prevTrack, nextTrack,
   cycleLoop, cycleSpeed, cycleSleepTimer,
@@ -24,7 +24,7 @@ import {
   setPlayState, highlightEp, preloadNextTrack, cleanupPreload,
   togglePlaylist, closePlaylist, getPlaylistVisible, saveState, restoreState,
   getIsSwitching, setDragging, initPlaylistTabs, closeFullScreen,
-  markAppreciated, updateAppreciateBtn, appreciateSuccess, updateAppreciateCount,
+  markAppreciated, updateAppreciateBtn, appreciateSuccess, updateAppreciateCount, isAppreciated,
 } from './player.js';
 import { renderHomePage } from './pages-home.js';
 import { renderMyPage } from './pages-my.js';
@@ -187,7 +187,8 @@ import { appreciate } from './api.js';
     
     // 立即显示成功状态和动画
     appreciateSuccess(null);  // 先显示动画，不更新数字
-    showToast(t('appreciate_thanks') || '随喜功德');
+    markAppreciated(seriesId);  // 持久化到localStorage
+    showFloatText(document.getElementById('expAppreciate'), t('appreciate_thanks') || '随喜功德');
     
     // 后台发送请求
     try {
