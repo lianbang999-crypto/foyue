@@ -9,8 +9,8 @@ import { getHistory } from './history.js';
 import { getPlayCount, appreciate } from './api.js';
 import { showToast, escapeHtml, showFloatText, fmtCount } from './utils.js';
 import { mountSummary } from './ai-summary.js';
-import { mountTranscript } from './transcript.js';
-import { getTranscriptAvailability } from './ai-client.js';
+// import { mountTranscript } from './transcript.js';
+// import { getTranscriptAvailability } from './ai-client.js';
 
 export function renderCategory(tabId) {
   const dom = getDOM();
@@ -183,16 +183,16 @@ export function showEpisodes(series, tabId) {
 
   mountSummary(actionsDiv, series.id);
 
-  // 讲义文稿功能 — 为有文稿的集数显示"查看文稿"按钮
-  getTranscriptAvailability(series.id).then(data => {
-    if (!data?.episodes?.length) return;
-    const availSet = new Set(data.episodes);
-    ul.querySelectorAll('.ep-item').forEach((li, idx) => {
-      const epNum = series.episodes[idx]?.id || idx + 1;
-      if (availSet.has(epNum)) {
-        const epText = li.querySelector('.ep-text');
-        if (epText) mountTranscript(epText, series.id, epNum);
-      }
-    });
-  }).catch(() => {}); // 静默失败，不影响主功能
+  // 讲义文稿功能 — 暂时隐藏
+  // getTranscriptAvailability(series.id).then(data => {
+  //   if (!data?.episodes?.length) return;
+  //   const availSet = new Set(data.episodes);
+  //   ul.querySelectorAll('.ep-item').forEach((li, idx) => {
+  //     const epNum = series.episodes[idx]?.id || idx + 1;
+  //     if (availSet.has(epNum)) {
+  //       const epText = li.querySelector('.ep-text');
+  //       if (epText) mountTranscript(epText, series.id, epNum);
+  //     }
+  //   });
+  // }).catch(() => {});
 }
