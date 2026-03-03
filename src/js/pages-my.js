@@ -2,7 +2,7 @@
 import { state } from './state.js';
 import { t, getLang, setLang } from './i18n.js';
 import { getDOM } from './dom.js';
-import { isDark, toggleTheme } from './theme.js';
+import { isDark, toggleTheme, getColorScheme, setColorScheme } from './theme.js';
 import { getHistory, clearHistory } from './history.js';
 import { playList } from './player.js';
 import { getDeferredPrompt, clearDeferredPrompt } from './pwa.js';
@@ -40,6 +40,7 @@ export function renderMyPage() {
   page.className = 'my-page active';
   const themeText = dark ? t('theme_dark') : t('theme_light');
   const langText = { zh: '中文', en: 'English', fr: 'Fran\u00E7ais' }[lang] || '中文';
+  const colorText = getColorScheme() === 'terracotta' ? t('color_terracotta') : t('color_default');
 
   // Build history section
   const hist = getHistory();
@@ -115,6 +116,12 @@ export function renderMyPage() {
           <svg class="my-item-icon" viewBox="0 0 24 24">${dark ? '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>' : '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'}</svg>
           <span class="my-item-label" data-i18n="my_theme">${t('my_theme')}</span>
           <span class="my-item-value" id="myThemeValue">${themeText}</span>
+          <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
+        </div>
+        <div class="my-item" id="myColorItem">
+          <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.7-.8 1.7-1.7 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.8-1.7 1.7-1.7H16c3.3 0 6-2.7 6-6 0-5.5-4.5-9.6-10-9.6z"/><circle cx="6.5" cy="11.5" r="1.5"/><circle cx="10" cy="7.5" r="1.5"/><circle cx="14" cy="7.5" r="1.5"/><circle cx="17.5" cy="11.5" r="1.5"/></svg>
+          <span class="my-item-label" data-i18n="my_color">${t('my_color')}</span>
+          <span class="my-item-value" id="myColorValue">${colorText}</span>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
       </div>
@@ -203,6 +210,12 @@ export function renderMyPage() {
   });
   page.querySelector('#myThemeItem').addEventListener('click', () => {
     toggleTheme();
+    renderMyPage();
+  });
+  page.querySelector('#myColorItem').addEventListener('click', () => {
+    const schemes = ['default', 'terracotta'];
+    const i = (schemes.indexOf(getColorScheme()) + 1) % schemes.length;
+    setColorScheme(schemes[i]);
     renderMyPage();
   });
   page.querySelector('#myAboutItem').addEventListener('click', () => {

@@ -107,5 +107,8 @@
   "time_just_now": "Just now",
   "time_min_ago": " min ago",
   "time_hour_ago": " hours ago",
-  "time_day_ago": " days ago"
+  "time_day_ago": " days ago",
+  "my_color": "Color",
+  "color_default": "Gold",
+  "color_terracotta": "Terracotta"
 }

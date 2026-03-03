@@ -107,5 +107,8 @@
   "time_just_now": "刚刚",
   "time_min_ago": "分钟前",
   "time_hour_ago": "小时前",
-  "time_day_ago": "天前"
+  "time_day_ago": "天前",
+  "my_color": "配色",
+  "color_default": "金棕",
+  "color_terracotta": "赤陶"
 }
