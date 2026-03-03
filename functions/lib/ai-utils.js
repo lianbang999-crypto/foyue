@@ -14,8 +14,8 @@ export const AI_CONFIG = {
   },
   models: {
     embedding: '@cf/baai/bge-m3',
-    chat: '@cf/zai-org/glm-4.7-flash',
-    chatFallback: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    chat: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    chatFallback: '@cf/zai-org/glm-4.7-flash',
     whisper: '@cf/openai/whisper-large-v3-turbo',
   },
   vectorize: {
@@ -174,6 +174,29 @@ export async function retrieveDocuments(env, vectorMatches) {
 }
 
 // ============================================================
+// 提取 AI 响应文本 — 兼容新旧两种格式
+// 旧格式: { response: "..." }
+// 新格式 (OpenAI 兼容): { choices: [{ message: { content: "..." } }] }
+// ============================================================
+function extractAIResponse(result) {
+  if (!result) return null;
+  // 旧格式
+  if (typeof result.response === 'string' && result.response) {
+    return result.response;
+  }
+  // 新格式 (choices)
+  if (result.choices && result.choices.length > 0) {
+    const msg = result.choices[0].message;
+    if (msg) {
+      // content 优先，reasoning 次之
+      if (typeof msg.content === 'string' && msg.content) return msg.content;
+      if (typeof msg.reasoning === 'string' && msg.reasoning) return msg.reasoning;
+    }
+  }
+  return null;
+}
+
+// ============================================================
 // RAG 问答 — 检索增强生成
 // ============================================================
 export async function ragAnswer(env, question, contextDocs, options = {}) {
@@ -235,7 +258,7 @@ ${context}
     );
   }
 
-  return response;
+  return { response: extractAIResponse(response) };
 }
 
 // ============================================================
@@ -273,7 +296,7 @@ export async function generateSummary(env, title, content) {
     );
   }
 
-  return response.response;
+  return extractAIResponse(response);
 }
 
 // ============================================================
