@@ -89,6 +89,7 @@
   "play_count_unit": " lectures",
   "appreciate": "Appr\u00E9cier",
   "appreciate_thanks": "Merci pour votre appr\u00E9ciation",
+  "appreciate_fail": "Erreur r\u00E9seau, veuillez r\u00E9essayer",
   "appreciate_done": "D\u00E9j\u00E0 appr\u00E9ci\u00E9 aujourd'hui",
   "view_transcript": "Voir la transcription",
   "transcript_loading": "Chargement de la transcription...",

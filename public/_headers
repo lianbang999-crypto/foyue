@@ -3,6 +3,8 @@
   X-Frame-Options: SAMEORIGIN
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  X-Permitted-Cross-Domain-Policies: none
 
 /api/*
   Cache-Control: no-store
@@ -22,5 +24,10 @@
 # Manifest and PWA files
 /manifest.json
   Cache-Control: public, max-age=86400
+
+# Admin page - no cache, no index
+/admin.html
+  Cache-Control: no-store
+  X-Robots-Tag: noindex
 
 # API responses are handled by the Worker (functions/api), not this file

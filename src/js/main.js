@@ -367,11 +367,9 @@ import { appreciate } from './api.js';
     }
   });
 
-  // One-time cleanup of old Service Worker and caches
-  if ('serviceWorker' in navigator && !localStorage.getItem('sw-cleaned')) {
-    navigator.serviceWorker.getRegistrations().then(regs => { regs.forEach(r => r.unregister()); });
-    caches.keys().then(keys => { keys.forEach(k => caches.delete(k)); });
-    localStorage.setItem('sw-cleaned', '1');
+  // Register Service Worker for offline caching
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
 })();
 
