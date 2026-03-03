@@ -568,7 +568,7 @@ async function handleTranscriptAvailability(db, seriesId, cors) {
   }
 
   const result = await db.prepare(
-    `SELECT audio_episode_num FROM documents
+    `SELECT DISTINCT audio_episode_num FROM documents
      WHERE audio_series_id = ? AND content IS NOT NULL AND content != ''
      ORDER BY audio_episode_num`
   ).bind(seriesId).all();
