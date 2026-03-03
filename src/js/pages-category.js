@@ -8,8 +8,7 @@ import { renderHomePage } from './pages-home.js';
 import { getHistory } from './history.js';
 import { getPlayCount, appreciate } from './api.js';
 import { showToast, escapeHtml, showFloatText, fmtCount } from './utils.js';
-// [暂停] AI 功能待数据整理后重新启用
-// import { mountSummary } from './ai-summary.js';
+import { mountSummary } from './ai-summary.js';
 // [暂停] 文稿功能待数据整理后重新启用
 // import { mountTranscript } from './transcript.js';
 // import { getTranscriptAvailability } from './ai-client.js';
@@ -183,8 +182,7 @@ export function showEpisodes(series, tabId) {
     actionsDiv.appendChild(wenkuBtn);
   }
 
-  // [暂停] AI 摘要功能待数据整理后重新启用
-  // mountSummary(actionsDiv, series.id);
+  mountSummary(actionsDiv, series.id);
 
   // [暂停] 讲义文稿功能待数据整理后重新启用
   // getTranscriptAvailability(series.id).then(data => {
