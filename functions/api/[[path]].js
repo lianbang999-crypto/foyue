@@ -909,13 +909,45 @@ async function handleAiAsk(env, request, cors) {
   if (series_id && typeof series_id === 'string') filter.series_id = series_id.slice(0, 100);
 
   // 语义搜索
-  const matches = await semanticSearch(env, question, {
-    topK: 5,
-    filter: Object.keys(filter).length > 0 ? filter : undefined,
-  });
+  let matches = [];
+  try {
+    matches = await semanticSearch(env, question, {
+      topK: 5,
+      filter: Object.keys(filter).length > 0 ? filter : undefined,
+    });
+  } catch (err) {
+    console.warn('Vectorize search failed, falling back to D1:', err.message);
+  }
 
   // 从 D1 检索源文档
-  const docs = await retrieveDocuments(env, matches);
+  let docs = await retrieveDocuments(env, matches);
+
+  // Fallback: 如果 Vectorize 没有结果，尝试 D1 关键词搜索
+  if (!docs.length) {
+    try {
+      const keywords = question.replace(/[？?！!，。、]/g, ' ').trim().slice(0, 50);
+      let fallbackQuery;
+      if (series_id) {
+        fallbackQuery = env.DB.prepare(
+          `SELECT id, title, content, category, series_name FROM documents
+           WHERE audio_series_id = ? AND content IS NOT NULL
+           ORDER BY episode_num ASC LIMIT 5`
+        ).bind(series_id);
+      } else {
+        fallbackQuery = env.DB.prepare(
+          `SELECT id, title, content, category, series_name FROM documents
+           WHERE content IS NOT NULL AND (title LIKE ? OR content LIKE ?)
+           LIMIT 5`
+        ).bind(`%${keywords.slice(0, 20)}%`, `%${keywords.slice(0, 20)}%`);
+      }
+      const fallback = await fallbackQuery.all();
+      if (fallback.results && fallback.results.length > 0) {
+        docs = fallback.results;
+      }
+    } catch (err) {
+      console.warn('D1 fallback search failed:', err.message);
+    }
+  }
 
   if (!docs.length) {
     return json({
@@ -984,13 +1016,29 @@ async function handleAiSummary(env, documentId, request, cors) {
     }, cors);
   }
 
-  // 查找对应文档
-  const doc = await env.DB.prepare(
+  // 查找对应文档：先按 id 查，再按 audio_series_id 聚合查询
+  let doc = await env.DB.prepare(
     'SELECT id, title, content FROM documents WHERE id = ?'
   ).bind(documentId).first();
 
   if (!doc || !doc.content) {
-    return json({ error: '未找到该文档或文档无文本内容' }, cors, 404);
+    // 尝试按 audio_series_id 查找（音频系列摘要场景）
+    const seriesDocs = await env.DB.prepare(
+      `SELECT id, title, content, series_name FROM documents
+       WHERE audio_series_id = ? AND content IS NOT NULL
+       ORDER BY audio_episode_num ASC LIMIT 10`
+    ).bind(documentId).all();
+
+    if (seriesDocs.results && seriesDocs.results.length > 0) {
+      // 聚合多个文档内容为单一摘要
+      const combinedTitle = seriesDocs.results[0].series_name || documentId;
+      const combinedContent = seriesDocs.results
+        .map(d => `【${d.title}】\n${(d.content || '').slice(0, 2000)}`)
+        .join('\n\n');
+      doc = { id: documentId, title: combinedTitle, content: combinedContent };
+    } else {
+      return json({ error: '未找到该文档或文档无文本内容' }, cors, 404);
+    }
   }
 
   // 生成摘要
