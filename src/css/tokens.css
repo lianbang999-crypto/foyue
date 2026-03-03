@@ -55,8 +55,9 @@
   --shadow-md: 0 4px 16px rgba(0,0,0,0.3);
 }
 
-/* === TERRACOTTA COLOR SCHEME === */
-[data-color="terracotta"] {
+/* === TERRACOTTA THEME === */
+[data-theme="terracotta"] {
+  --border: rgba(0,0,0,0.06);
   --border-active: rgba(196,101,58,0.35);
   --accent: #C4653A;
   --accent-dim: rgba(196,101,58,0.6);
@@ -76,26 +77,6 @@
   --text-secondary: rgba(61,43,31,0.55);
   --text-muted: rgba(61,43,31,0.30);
   --text-inverse: #F5EAD0;
-}
-
-[data-color="terracotta"][data-theme="dark"] {
-  --border-active: rgba(218,130,88,0.3);
-  --accent: #DA8258;
-  --accent-dim: rgba(218,130,88,0.5);
-  --accent-glow: rgba(218,130,88,0.1);
-  --accent-shadow: rgba(218,130,88,0.25);
-  --accent-gradient-top: rgba(218,130,88,0.08);
-  --accent-gradient-bottom: rgba(218,130,88,0.05);
-  --body-gradient: rgba(218,130,88,0.03);
-  --bg: #141010;
-  --bg-secondary: #1E1818;
-  --bg-card: rgba(255,255,255,0.05);
-  --bg-card-hover: rgba(255,255,255,0.09);
-  --bg-header: rgba(20,16,16,0.97);
-  --bg-player: #141010;
-  --bg-expanded: linear-gradient(170deg, #141010, #1E1818);
-  --text: #EEEBE8;
-  --text-secondary: rgba(238,235,232,0.5);
-  --text-muted: rgba(238,235,232,0.28);
-  --text-inverse: #141010;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.06);
 }

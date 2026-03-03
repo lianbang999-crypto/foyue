@@ -37,6 +37,7 @@
   "settings_theme": "Th\u00E8me",
   "theme_light": "Clair",
   "theme_dark": "Sombre",
+  "theme_terracotta": "Terre cuite",
   "about": "\u00C0 propos",
   "about_app_name": "Pureland Dharma Audio",
   "install_title": "Installer Pureland Audio",
@@ -107,8 +108,5 @@
   "time_just_now": "\u00C0 l'instant",
   "time_min_ago": " min",
   "time_hour_ago": " heures",
-  "time_day_ago": " jours",
-  "my_color": "Couleur",
-  "color_default": "Or",
-  "color_terracotta": "Terre cuite"
+  "time_day_ago": " jours"
 }
