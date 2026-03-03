@@ -15,6 +15,9 @@
 .my-item-label{flex:1;font-size:.86rem;color:var(--text)}
 .my-item-value{font-size:.78rem;color:var(--text-secondary)}
 .my-item-arrow{width:14px;height:14px;stroke:var(--text-muted);fill:none;stroke-width:2;flex-shrink:0}
+.my-item-body{flex:1;min-width:0}
+.my-item-body .my-item-label{display:block}
+.my-item-desc{display:block;font-size:.72rem;color:var(--text-muted);margin-top:1px}
 .my-namo{text-align:center;font-size:.82rem;color:var(--accent);font-weight:400;margin-top:24px;opacity:.6;letter-spacing:.08em}
 /* history list */
 .my-section-header{display:flex;align-items:center;justify-content:space-between;padding:0 4px 8px}

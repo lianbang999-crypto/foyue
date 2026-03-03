@@ -40,19 +40,11 @@ export function renderMyPage() {
   const themeText = { light: t('theme_light'), dark: t('theme_dark'), terracotta: t('theme_terracotta') }[getTheme()] || t('theme_light');
   const langText = { zh: '中文', en: 'English', fr: 'Fran\u00E7ais' }[lang] || '中文';
 
-  // Build history section
-  const hist = getHistory();
-  const HIST_PREVIEW = 3;
-  let histHTML = '';
-  if (hist.length) {
-    const showItems = hist.slice(0, HIST_PREVIEW);
-    histHTML = showItems.map((h, i) => buildHistItem(h, i)).join('');
-    if (hist.length > HIST_PREVIEW) {
-      histHTML += '<div class="my-history-more" id="myHistMore">' + t('my_history_more').replace('{n}', hist.length) + '</div>';
-    }
-  } else {
-    histHTML = '<div class="my-history-empty" data-i18n="my_no_history">' + t('my_no_history') + '</div>';
-  }
+  // Feature card subtitles
+  const histCount = getHistory().length;
+  const histDesc = histCount > 0
+    ? t('my_history_desc').replace('{n}', histCount)
+    : t('my_history_empty_desc');
 
   // Build install guide section
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
@@ -95,11 +87,32 @@ export function renderMyPage() {
       <div class="my-subtitle" data-i18n="my_subtitle">${t('my_subtitle')}</div>
     </div>
     <div class="my-section">
-      <div class="my-section-header">
-        <div class="my-section-title" data-i18n="my_history">${t('my_history')}</div>
-        ${hist.length ? '<button class="my-history-clear" id="myHistClear" data-i18n="my_clear_history">' + t('my_clear_history') + '</button>' : ''}
+      <div class="my-list">
+        <div class="my-item" id="myHistoryCard">
+          <svg class="my-item-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <div class="my-item-body">
+            <span class="my-item-label">${t('my_history')}</span>
+            <span class="my-item-desc">${histDesc}</span>
+          </div>
+          <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
+        </div>
+        <div class="my-item" id="myWenkuCard">
+          <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          <div class="my-item-body">
+            <span class="my-item-label">${t('my_wenku')}</span>
+            <span class="my-item-desc">${t('my_wenku_desc')}</span>
+          </div>
+          <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
+        </div>
+        <div class="my-item" id="myMessagesCard">
+          <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <div class="my-item-body">
+            <span class="my-item-label">${t('my_messages')}</span>
+            <span class="my-item-desc">${t('my_messages_desc')}</span>
+          </div>
+          <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
+        </div>
       </div>
-      <div class="my-list" id="myHistoryList">${histHTML}</div>
     </div>
     <div class="my-section">
       <div class="my-section-title" data-i18n="my_settings">${t('my_settings')}</div>
@@ -132,51 +145,12 @@ export function renderMyPage() {
   `;
   dom.contentArea.appendChild(page);
 
-  // Wire up history item clicks
-  page.querySelectorAll('.my-history-item').forEach(el => {
-    el.addEventListener('click', () => {
-      const idx = parseInt(el.dataset.hid);
-      const h = getHistory()[idx];
-      if (!h) return;
-      const cat = state.data.categories.find(c => c.id === h.catId);
-      if (cat) {
-        const sr = cat.series.find(s => s.id === h.seriesId);
-        if (sr) { playList(sr.episodes, h.epIdx, sr, h.time); dom.expPlayer.classList.add('show'); }
-      }
-    });
+  // Feature card clicks
+  page.querySelector('#myHistoryCard').addEventListener('click', () => showHistorySubview());
+  page.querySelector('#myWenkuCard').addEventListener('click', () => {
+    window.open('https://wenku-1je.pages.dev/', '_blank', 'noopener');
   });
-
-  // Wire up "show all" history
-  const histMoreBtn = page.querySelector('#myHistMore');
-  if (histMoreBtn) {
-    histMoreBtn.addEventListener('click', () => {
-      const list = page.querySelector('#myHistoryList');
-      const allHist = getHistory();
-      list.innerHTML = allHist.map((h, i) => buildHistItem(h, i)).join('');
-      // Re-wire clicks
-      list.querySelectorAll('.my-history-item').forEach(el => {
-        el.addEventListener('click', () => {
-          const idx = parseInt(el.dataset.hid);
-          const h = allHist[idx];
-          if (!h) return;
-          const cat = state.data.categories.find(c => c.id === h.catId);
-          if (cat) {
-            const sr = cat.series.find(s => s.id === h.seriesId);
-            if (sr) { playList(sr.episodes, h.epIdx, sr, h.time); dom.expPlayer.classList.add('show'); }
-          }
-        });
-      });
-    });
-  }
-
-  // Wire up "clear history"
-  const histClearBtn = page.querySelector('#myHistClear');
-  if (histClearBtn) {
-    histClearBtn.addEventListener('click', () => {
-      clearHistory();
-      renderMyPage();
-    });
-  }
+  page.querySelector('#myMessagesCard').addEventListener('click', () => showMessageWallSubview());
 
   // Wire up install button
   const installBtn = page.querySelector('#myInstallBtn');
@@ -194,7 +168,7 @@ export function renderMyPage() {
     });
   }
 
-  // Wire up My page items
+  // Wire up settings items
   page.querySelector('#myLangItem').addEventListener('click', () => {
     const langs = ['zh', 'en', 'fr'];
     const i = (langs.indexOf(getLang()) + 1) % langs.length;
@@ -207,7 +181,87 @@ export function renderMyPage() {
   page.querySelector('#myAboutItem').addEventListener('click', () => {
     document.getElementById('aboutOverlay').classList.add('show');
   });
+}
 
-  // Render message wall section
-  renderMessageWall(page);
+function showHistorySubview() {
+  const dom = getDOM();
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el => el.remove());
+
+  const view = document.createElement('div');
+  view.className = 'view active';
+  const hist = getHistory();
+  const subText = hist.length > 0
+    ? t('my_history_desc').replace('{n}', hist.length)
+    : '';
+
+  view.innerHTML = `<div class="ep-header">
+    <button class="btn-back" id="histBackBtn"><svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg></button>
+    <div class="ep-header-info">
+      <div class="ep-header-title">${t('my_history')}</div>
+      <div class="ep-header-sub">${subText}</div>
+    </div>
+    ${hist.length ? '<button class="my-history-clear" id="histClearBtn">' + t('my_clear_history') + '</button>' : ''}
+  </div>
+  <div id="histSubviewList"></div>`;
+
+  dom.contentArea.appendChild(view);
+
+  // Render history items
+  const listEl = view.querySelector('#histSubviewList');
+  if (hist.length === 0) {
+    listEl.innerHTML = '<div class="my-history-empty">' + t('my_no_history') + '</div>';
+  } else {
+    listEl.innerHTML = '<div class="my-list">' + hist.map((h, i) => buildHistItem(h, i)).join('') + '</div>';
+  }
+
+  // Wire up history item clicks
+  listEl.querySelectorAll('.my-history-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const idx = parseInt(el.dataset.hid);
+      const h = getHistory()[idx];
+      if (!h) return;
+      const cat = state.data.categories.find(c => c.id === h.catId);
+      if (cat) {
+        const sr = cat.series.find(s => s.id === h.seriesId);
+        if (sr) { playList(sr.episodes, h.epIdx, sr, h.time); dom.expPlayer.classList.add('show'); }
+      }
+    });
+  });
+
+  // Back button
+  view.querySelector('#histBackBtn').addEventListener('click', () => renderMyPage());
+
+  // Clear button
+  const clearBtn = view.querySelector('#histClearBtn');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      clearHistory();
+      showHistorySubview();
+    });
+  }
+}
+
+function showMessageWallSubview() {
+  const dom = getDOM();
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el => el.remove());
+
+  const view = document.createElement('div');
+  view.className = 'view active';
+
+  view.innerHTML = `<div class="ep-header">
+    <button class="btn-back" id="msgBackBtn"><svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg></button>
+    <div class="ep-header-info">
+      <div class="ep-header-title">${t('my_messages')}</div>
+      <div class="ep-header-sub">${t('my_messages_desc')}</div>
+    </div>
+  </div>
+  <div id="msgWallContainer"></div>`;
+
+  dom.contentArea.appendChild(view);
+
+  // Back button
+  view.querySelector('#msgBackBtn').addEventListener('click', () => renderMyPage());
+
+  // Render message wall into container
+  renderMessageWall(view.querySelector('#msgWallContainer'));
 }
