@@ -20,16 +20,16 @@ export function renderMessageWall(container) {
       <div class="msg-wall-count" id="msgWallCount"></div>
     </div>
     <div class="msg-compose" id="msgCompose">
-      <div class="msg-compose-row">
+      <textarea class="msg-input" id="msgInput" rows="3" maxlength="500"
+                placeholder="${escapeHtml(t('msg_input_placeholder') || '写下你的心得感悟...')}"></textarea>
+      <div class="msg-compose-footer">
         <input class="msg-nickname" id="msgNickname" type="text" maxlength="20"
                placeholder="${escapeHtml(t('msg_nickname_placeholder') || '昵称（选填）')}"
                value="${escapeHtml(getSavedNickname())}">
-        <textarea class="msg-input" id="msgInput" rows="1" maxlength="500"
-                  placeholder="${escapeHtml(t('msg_input_placeholder') || '写下你的心得感悟...')}"></textarea>
-      </div>
-      <div class="msg-compose-footer">
-        <span class="msg-char-count" id="msgCharCount">0/500</span>
-        <button class="msg-submit" id="msgSubmit" disabled>${escapeHtml(t('msg_submit') || '发布')}</button>
+        <div class="msg-compose-actions">
+          <span class="msg-char-count" id="msgCharCount">0/500</span>
+          <button class="msg-submit" id="msgSubmit" disabled>${escapeHtml(t('msg_submit') || '发布')}</button>
+        </div>
       </div>
     </div>
     <div class="msg-list" id="msgList">
@@ -48,9 +48,11 @@ export function renderMessageWall(container) {
     const len = input.value.trim().length;
     charCount.textContent = `${len}/500`;
     submitBtn.disabled = len === 0;
+    // Toggle active class on submit button
+    submitBtn.classList.toggle('active', len > 0);
     // Auto-resize textarea
     input.style.height = 'auto';
-    input.style.height = Math.min(input.scrollHeight, 100) + 'px';
+    input.style.height = Math.min(input.scrollHeight, 160) + 'px';
   });
 
   submitBtn.addEventListener('click', () => submitMessage(input, nicknameInput, submitBtn, section));
@@ -99,6 +101,11 @@ async function submitMessage(input, nicknameInput, submitBtn, section) {
 
     showToast(t('msg_posted') || '留言发布成功');
 
+    // Flash compose border green briefly
+    const compose = section.querySelector('#msgCompose');
+    compose.classList.add('msg-compose-success');
+    setTimeout(() => compose.classList.remove('msg-compose-success'), 1200);
+
     // Prepend new message to list
     const list = section.querySelector('#msgList');
     const emptyMsg = list.querySelector('.msg-empty');
@@ -111,6 +118,7 @@ async function submitMessage(input, nicknameInput, submitBtn, section) {
       created_at: new Date().toISOString(),
       pinned: 0,
     });
+    msgEl.classList.add('msg-card-enter');
     list.insertBefore(msgEl, list.firstChild);
 
     totalMessages++;
