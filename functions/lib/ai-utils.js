@@ -200,7 +200,7 @@ function extractAIResponse(result) {
 // RAG 问答 — 检索增强生成
 // ============================================================
 export async function ragAnswer(env, question, contextDocs, options = {}) {
-  const { maxContextLength = 8000 } = options;
+  const { maxContextLength = 8000, history = [] } = options;
 
   // 构建上下文
   let context = '';
@@ -228,15 +228,22 @@ export async function ragAnswer(env, question, contextDocs, options = {}) {
 ${context}
 ---`;
 
+  // 构建消息列表：system + 历史对话 + 当前问题
+  const messages = [{ role: 'system', content: systemPrompt }];
+  // 添加历史对话（最多 6 条，即 3 轮），截断长内容防止溢出
+  for (const h of history.slice(-6)) {
+    if (h.role === 'user' || h.role === 'assistant') {
+      messages.push({ role: h.role, content: String(h.content || '').slice(0, 500) });
+    }
+  }
+  messages.push({ role: 'user', content: question });
+
   let response;
   try {
     response = await env.AI.run(
       AI_CONFIG.models.chat,
       {
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: question },
-        ],
+        messages,
         max_tokens: 1024,
         temperature: 0.3,
       },
@@ -247,10 +254,7 @@ ${context}
     response = await env.AI.run(
       AI_CONFIG.models.chatFallback,
       {
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: question },
-        ],
+        messages,
         max_tokens: 1024,
         temperature: 0.3,
       },

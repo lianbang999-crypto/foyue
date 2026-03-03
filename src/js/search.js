@@ -9,6 +9,7 @@ import { escapeHtml } from './utils.js';
 let searchMode = 'keyword';
 let _showEpisodes, _renderCategory, _renderHomePage;
 let searchRequestId = 0;
+const WENKU_BASE = 'https://wenku.foyue.org';
 
 function highlight(text, query) {
   const safe = escapeHtml(text);
@@ -151,7 +152,29 @@ async function doSemanticSearch(q) {
       const li = document.createElement('li');
       li.className = 'ep-item';
       const scoreTag = `<small style="color:var(--accent);margin-left:4px">${Math.round(r.score * 100)}%</small>`;
-      li.innerHTML = `<span class="ep-num" style="color:var(--accent)">AI</span><span class="ep-title">${escapeHtml(r.title)} ${scoreTag}${r.snippet ? '<br><small style="color:var(--text-secondary)">' + escapeHtml(r.snippet.slice(0, 80)) + '...</small>' : ''}</span>`;
+      const seriesTag = r.series_name ? `<br><small style="color:var(--text-muted)">${escapeHtml(r.series_name)}</small>` : '';
+      li.innerHTML = `<span class="ep-num" style="color:var(--accent)">AI</span><div class="ep-text"><span class="ep-title">${escapeHtml(r.title)} ${scoreTag}</span>${r.snippet ? '<br><small style="color:var(--text-secondary)">' + escapeHtml(r.snippet.slice(0, 80)) + '...</small>' : ''}${seriesTag}</div>`;
+      // 点击跳转：有音频关联则跳转音频系列，否则打开文库原文
+      li.addEventListener('click', () => {
+        if (r.audio_series_id && state.data) {
+          // 在音频数据中查找对应系列
+          for (const cat of state.data.categories) {
+            const series = cat.series.find(s => s.id === r.audio_series_id);
+            if (series && _showEpisodes) {
+              const dom2 = getDOM();
+              dom2.searchInput.value = '';
+              dom2.searchRow.classList.remove('show');
+              document.getElementById('btnSearch').classList.remove('active');
+              _showEpisodes(series, cat.id);
+              return;
+            }
+          }
+        }
+        // Fallback: 打开文库原文
+        if (r.doc_id) {
+          window.open(`${WENKU_BASE}/#/read/${encodeURIComponent(r.doc_id)}`, '_blank', 'noopener');
+        }
+      });
       ul.appendChild(li);
     });
     wrap.appendChild(ul);

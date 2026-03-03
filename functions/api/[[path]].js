@@ -938,7 +938,7 @@ async function handleAiAsk(env, request, cors) {
 
   let body;
   try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
-  const { question, series_id } = body;
+  const { question, series_id, history } = body;
 
   if (!question || typeof question !== 'string' || question.length > 500) {
     return json({ error: '问题不能为空且不超过500字' }, cors, 400);
@@ -1000,7 +1000,9 @@ async function handleAiAsk(env, request, cors) {
   // RAG 生成回答
   let result;
   try {
-    result = await ragAnswer(env, question, docs);
+    result = await ragAnswer(env, question, docs, {
+      history: Array.isArray(history) ? history : [],
+    });
   } catch (err) {
     console.error('RAG answer failed:', err.message);
     return json({
@@ -1019,11 +1021,17 @@ async function handleAiAsk(env, request, cors) {
     }, cors, 200, 'no-store');
   }
 
-  const sources = matches.slice(0, 3).map(m => ({
-    title: m.metadata.title || '',
-    doc_id: m.metadata.doc_id || '',
-    score: Math.round(m.score * 100) / 100,
-  }));
+  // 构建引用来源，附带文库链接信息
+  const sources = matches.slice(0, 3).map(m => {
+    const doc = docs.find(d => d.id === m.metadata.doc_id);
+    return {
+      title: m.metadata.title || '',
+      doc_id: m.metadata.doc_id || '',
+      score: Math.round(m.score * 100) / 100,
+      category: doc?.category || m.metadata.category || '',
+      series_name: doc?.series_name || m.metadata.series_name || '',
+    };
+  });
 
   return json({
     answer,

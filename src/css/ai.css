@@ -173,6 +173,12 @@
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 12px;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+a.ai-source-tag:hover {
+  background: var(--accent);
+  color: var(--text-inverse);
 }
 
 /* 打字指示器 */

@@ -6,6 +6,7 @@ import { escapeHtml } from './utils.js';
 let chatInstance = null;
 const MAX_MESSAGES = 50;
 const TYPEWRITER_SPEED = 30; // ms per character
+const WENKU_BASE = 'https://wenku.foyue.org';
 
 /**
  * 初始化 AI 聊天面板
@@ -17,6 +18,7 @@ export function initAiChat(container) {
   let isOpen = false;
   let isLoading = false;
   let currentContext = {};
+  const chatHistory = []; // 多轮对话记忆
 
   // 悬浮按钮
   const btn = document.createElement('button');
@@ -105,9 +107,16 @@ export function initAiChat(container) {
     showTyping();
 
     try {
-      const result = await askQuestion(question, currentContext);
+      const result = await askQuestion(question, {
+        ...currentContext,
+        history: chatHistory.slice(-6), // 最近 3 轮对话
+      });
       removeTyping();
       const answer = result.answer?.trim() || '抱歉，AI 暂时无法生成回答。';
+      // 记录对话历史
+      chatHistory.push({ role: 'user', content: question });
+      chatHistory.push({ role: 'assistant', content: answer });
+      if (chatHistory.length > 10) chatHistory.splice(0, chatHistory.length - 10);
       await typewriterMessage(answer, result.sources, result.disclaimer);
     } catch (err) {
       removeTyping();
@@ -117,6 +126,19 @@ export function initAiChat(container) {
       chatSend.disabled = false;
       chatSend.style.opacity = '';
     }
+  }
+
+  /**
+   * 构建文库引用链接标签
+   * 有 doc_id 时链接到 wenku.foyue.org 对应文档
+   */
+  function renderSourceTag(s) {
+    const title = escapeHtml(s.title);
+    if (s.doc_id) {
+      const url = `${WENKU_BASE}/#/read/${encodeURIComponent(s.doc_id)}`;
+      return `<a class="ai-source-tag" href="${url}" target="_blank" rel="noopener">${title}</a>`;
+    }
+    return `<span class="ai-source-tag">${title}</span>`;
   }
 
   function addMessage(role, content, sources, disclaimer) {
@@ -134,9 +156,7 @@ export function initAiChat(container) {
 
     if (role === 'bot' && sources && sources.length) {
       html += '<div class="ai-sources">参考：';
-      html += sources.map(s =>
-        `<span class="ai-source-tag">${escapeHtml(s.title)}</span>`
-      ).join(' ');
+      html += sources.map(s => renderSourceTag(s)).join(' ');
       html += '</div>';
     }
 
@@ -188,9 +208,7 @@ export function initAiChat(container) {
           if (sources && sources.length) {
             const srcDiv = document.createElement('div');
             srcDiv.className = 'ai-sources';
-            srcDiv.innerHTML = '参考：' + sources.map(s =>
-              `<span class="ai-source-tag">${escapeHtml(s.title)}</span>`
-            ).join(' ');
+            srcDiv.innerHTML = '参考：' + sources.map(s => renderSourceTag(s)).join(' ');
             msgContent.appendChild(srcDiv);
           }
 
