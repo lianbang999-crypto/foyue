@@ -127,13 +127,15 @@ function playCurrent() {
   }
 
   // ✅ 优化：添加超时保护，防止isSwitching卡住（预加载时缩短到1.5秒）
-  const switchTimeout = usePreloaded ? 1500 : 3000;
+  // Note: this only resets the isSwitching flag, NOT playback — play() continues independently
+  const switchTimeout = usePreloaded ? 1500 : 8000;
   let switchingTimeout = setTimeout(() => {
     if (isSwitching && callId === _playCurrentId) {
       console.warn('[Player] isSwitching timeout, auto-reset');
       isSwitching = false;
       setBuffering(false);
-      setPlayState(false);
+      // Don't call setPlayState(false) here — audio.play() may still be pending
+      // and will resolve on its own. Let the play/pause events handle UI state.
     }
   }, switchTimeout);
 
@@ -146,19 +148,15 @@ function playCurrent() {
       clearTimeout(switchingTimeout);
       isSwitching = false;
       setPlayState(true);
-    }).catch(() => {
+    }).catch(err => {
       clearTimeout(switchingTimeout);
       isSwitching = false;
-      setPlayState(false);
-    });
-    // Safety: ensure isSwitching never stays stuck forever (30s backup)
-    setTimeout(() => {
-      if (isSwitching) {
-        console.warn('[Player] isSwitching stuck for 30s, emergency reset');
-        isSwitching = false;
-        setBuffering(false);
+      // Only reset play state if this is still the active track
+      // (AbortError means user already switched to another track)
+      if (callId === _playCurrentId && err.name !== 'AbortError') {
+        setPlayState(false);
       }
-    }, 30000);
+    });
   }
 
   // ✅ 如果音频已有足够数据（预加载命中或浏览器缓存），直接播放
@@ -176,9 +174,10 @@ function playCurrent() {
       isSwitching = false;
       setBuffering(false);
       setPlayState(true);
-    }).catch(() => {
-      // play() rejected (e.g. no user gesture, or NotSupportedError) —
-      // fall back to waiting for canplay/loadeddata events
+    }).catch(err => {
+      // play() rejected — if AbortError, user switched tracks, do nothing
+      if (err.name === 'AbortError') return;
+      // Otherwise fall back to waiting for canplay/loadeddata events
       function onReady() {
         if (callId !== _playCurrentId) return;
         cleanupReadyListeners(dom);
@@ -188,16 +187,16 @@ function playCurrent() {
       dom.audio.addEventListener('canplay', onReady);
       dom.audio.addEventListener('loadeddata', onReady);
 
-      // #18: Soft timeout at 8s — show "loading slow" hint but keep waiting
+      // #18: Soft timeout at 15s — show "loading slow" hint but keep waiting
       dom.audio._slowTimeout = setTimeout(() => {
         dom.audio._slowTimeout = null;
         if (callId !== _playCurrentId) return;
         if (dom.audio._onReady) {
           showToast(t('loading_slow') || '\u52A0\u8F7D\u8F83\u6162\uFF0C\u8BF7\u8010\u5FC3\u7B49\u5F85...');
         }
-      }, 8000);
+      }, 15000);
 
-      // #18: Hard timeout at 20s — give up if still not ready
+      // #18: Hard timeout at 45s — give up if still not ready (long audio files can be 80MB+)
       dom.audio._readyTimeout = setTimeout(() => {
         dom.audio._readyTimeout = null;
         if (callId !== _playCurrentId) return;
@@ -212,7 +211,7 @@ function playCurrent() {
             showToast(t('error_play') || '\u52A0\u8F7D\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u8BD5');
           }
         }
-      }, 20000);
+      }, 45000);
     });
   }
 
