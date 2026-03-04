@@ -19,20 +19,6 @@ function setBuffering(on) {
   dom.playerTrack.classList.toggle('buffering', on);
   dom.centerPlayBtn.classList.toggle('buffering', on);
   dom.expPlay.classList.toggle('buffering', on);
-  
-  // ✅ 添加第三层涟漪元素
-  if (on) {
-    // 检查是否已存在第三层涟漪
-    if (!dom.centerPlayBtn.querySelector('.ripple-extra')) {
-      const rippleExtra = document.createElement('div');
-      rippleExtra.className = 'ripple-extra';
-      dom.centerPlayBtn.appendChild(rippleExtra);
-    }
-  } else {
-    // 移除第三层涟漪
-    const rippleExtra = dom.centerPlayBtn.querySelector('.ripple-extra');
-    if (rippleExtra) rippleExtra.remove();
-  }
 }
 
 /* ===== Speed Control ===== */
