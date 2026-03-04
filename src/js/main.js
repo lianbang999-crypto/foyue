@@ -331,33 +331,57 @@ import { monitor } from './monitor.js';
 
   // #4: Unified buffering indicator — 'waiting' shows, 'playing' clears
   // playCurrent() handles initial buffering via setBuffering(); these handle mid-playback buffer stalls
-  dom.audio.addEventListener('waiting', () => { dom.playerTrack.classList.add('buffering'); dom.centerPlayBtn.classList.add('buffering'); dom.expPlay.classList.add('buffering'); });
-  dom.audio.addEventListener('playing', () => { dom.playerTrack.classList.remove('buffering'); dom.centerPlayBtn.classList.remove('buffering'); dom.expPlay.classList.remove('buffering'); });
+  function showBufferingUI() { dom.playerTrack.classList.add('buffering'); dom.centerPlayBtn.classList.add('buffering'); dom.expPlay.classList.add('buffering'); }
+  function hideBufferingUI() { dom.playerTrack.classList.remove('buffering'); dom.centerPlayBtn.classList.remove('buffering'); dom.expPlay.classList.remove('buffering'); }
+
+  dom.audio.addEventListener('waiting', showBufferingUI);
+  dom.audio.addEventListener('playing', hideBufferingUI);
   // canplay: only trigger preload, no buffering state changes (handled by playCurrent's onReady)
   dom.audio.addEventListener('canplay', () => { preloadNextTrack(); });
 
+  // Stalled: browser stopped fetching data mid-stream — attempt recovery
+  let stallRetries = 0;
+  dom.audio.addEventListener('stalled', () => {
+    if (!dom.audio.src || dom.audio.paused) return;
+    showBufferingUI();
+    // Give browser a few seconds to recover on its own, then force reload
+    setTimeout(() => {
+      if (dom.audio.paused || dom.audio.readyState >= 3) return; // recovered on its own
+      if (stallRetries >= 3) { stallRetries = 0; return; } // give up after 3 tries
+      stallRetries++;
+      const pos = dom.audio.currentTime;
+      dom.audio.load();
+      dom.audio.currentTime = pos;
+      dom.audio.play().catch(() => { hideBufferingUI(); });
+    }, 4000);
+  });
+  // Reset stall counter when playing normally
+  dom.audio.addEventListener('playing', () => { stallRetries = 0; });
+
   // Network-aware preload control + #23: retry stalled audio on network recovery
+  // Recovery triggers on: error state, paused-but-should-be-playing, or stuck buffering
+  function tryNetworkRecovery() {
+    if (!dom.audio.src) return;
+    const shouldBePlayingButStopped = dom.audio.paused && !dom.audio.ended;
+    const hasError = !!dom.audio.error;
+    if (shouldBePlayingButStopped || hasError) {
+      showBufferingUI();
+      const pos = dom.audio.currentTime;
+      dom.audio.load();
+      dom.audio.currentTime = pos;
+      dom.audio.play().catch(() => { hideBufferingUI(); });
+    }
+  }
   if (navigator.connection) {
     navigator.connection.addEventListener('change', () => {
       const c = navigator.connection;
       if (c.saveData || c.effectiveType === '2g') { cleanupPreload(); return; }
       if (dom.audio.src && !dom.audio.paused) preloadNextTrack();
-      // #23: If audio is stalled/errored and network improved, retry playback
-      if (dom.audio.src && dom.audio.paused && dom.audio.error && c.effectiveType !== '2g') {
-        dom.playerTrack.classList.add('buffering'); dom.centerPlayBtn.classList.add('buffering'); dom.expPlay.classList.add('buffering');
-        dom.audio.load();
-        dom.audio.play().catch(() => { dom.playerTrack.classList.remove('buffering'); dom.centerPlayBtn.classList.remove('buffering'); dom.expPlay.classList.remove('buffering'); });
-      }
+      if (c.effectiveType !== '2g') tryNetworkRecovery();
     });
   }
   // #23: Also retry on online event (works on all browsers)
-  window.addEventListener('online', () => {
-    if (dom.audio.src && dom.audio.paused && dom.audio.error) {
-      dom.playerTrack.classList.add('buffering'); dom.centerPlayBtn.classList.add('buffering'); dom.expPlay.classList.add('buffering');
-      dom.audio.load();
-      dom.audio.play().catch(() => { dom.playerTrack.classList.remove('buffering'); dom.centerPlayBtn.classList.remove('buffering'); dom.expPlay.classList.remove('buffering'); });
-    }
-  });
+  window.addEventListener('online', tryNetworkRecovery);
 
   applyI18n();
   loadData();

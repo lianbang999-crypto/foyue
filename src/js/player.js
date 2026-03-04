@@ -13,6 +13,50 @@ let isSwitching = false;
 let audioRetries = 0;
 let _dragging = false;
 
+/* ===== Playback Watchdog ===== */
+// Detects when audio is "playing" but currentTime hasn't advanced (stuck mid-stream)
+let watchdogTimer = null;
+let lastWatchdogTime = -1;
+let watchdogRetries = 0;
+const WATCHDOG_INTERVAL = 6000;  // check every 6s
+const WATCHDOG_MAX_RETRIES = 3;
+
+function startWatchdog() {
+  stopWatchdog();
+  const dom = getDOM();
+  lastWatchdogTime = dom.audio.currentTime;
+  watchdogRetries = 0;
+  watchdogTimer = setInterval(() => {
+    if (dom.audio.paused || dom.audio.ended || isSwitching) return;
+    const ct = dom.audio.currentTime;
+    // If currentTime hasn't moved at all, audio is stuck
+    if (ct === lastWatchdogTime && ct > 0 && dom.audio.readyState < 4) {
+      watchdogRetries++;
+      console.warn(`[Watchdog] Playback stuck at ${ct}s (attempt ${watchdogRetries}/${WATCHDOG_MAX_RETRIES})`);
+      if (watchdogRetries <= WATCHDOG_MAX_RETRIES) {
+        setBuffering(true);
+        const pos = ct;
+        dom.audio.load();
+        dom.audio.currentTime = pos;
+        dom.audio.play().catch(() => { setBuffering(false); });
+      } else {
+        // Give up after max retries — user can manually retry
+        stopWatchdog();
+        setBuffering(false);
+        showToast(t('error_play') || '播放中断，请检查网络后重试');
+      }
+    } else {
+      lastWatchdogTime = ct;
+      if (watchdogRetries > 0) watchdogRetries = 0; // recovered
+    }
+  }, WATCHDOG_INTERVAL);
+}
+
+function stopWatchdog() {
+  if (watchdogTimer) { clearInterval(watchdogTimer); watchdogTimer = null; }
+  watchdogRetries = 0;
+}
+
 /* ===== Buffering UI helper ===== */
 function setBuffering(on) {
   const dom = getDOM();
@@ -148,6 +192,7 @@ function playCurrent() {
       clearTimeout(switchingTimeout);
       isSwitching = false;
       setPlayState(true);
+      startWatchdog();
     }).catch(err => {
       clearTimeout(switchingTimeout);
       isSwitching = false;
@@ -174,6 +219,7 @@ function playCurrent() {
       isSwitching = false;
       setBuffering(false);
       setPlayState(true);
+      startWatchdog();
     }).catch(err => {
       // play() rejected — if AbortError, user switched tracks, do nothing
       if (err.name === 'AbortError') return;
@@ -419,6 +465,7 @@ export function onTimeUpdate() {
 }
 
 export function onEnded() {
+  stopWatchdog();
   const dom = getDOM();
   if (state.loopMode === 'one') { dom.audio.currentTime = 0; dom.audio.play(); }
   else if (state.loopMode === 'shuffle') { state.epIdx = Math.floor(Math.random() * state.playlist.length); playCurrent(); }
@@ -427,6 +474,7 @@ export function onEnded() {
 }
 
 export function onAudioError() {
+  stopWatchdog();
   const dom = getDOM();
   if (!dom.audio.error || dom.audio.error.code === MediaError.MEDIA_ERR_ABORTED) return;
   isSwitching = false;
@@ -496,7 +544,9 @@ export function togglePlay() {
   if (dom.audio.paused && dom.audio.src) {
     // ✅ 优化：立即更新UI为播放状态，提供即时视觉反馈
     setPlayState(true);
-    dom.audio.play().catch(() => {
+    dom.audio.play().then(() => {
+      startWatchdog();
+    }).catch(() => {
       // ✅ 如果播放失败，回滚UI状态
       setPlayState(false);
     });
@@ -508,6 +558,7 @@ export function togglePlay() {
       setBuffering(false);
     }
     dom.audio.pause();
+    stopWatchdog();
     setPlayState(false);
   }
 }
@@ -687,10 +738,27 @@ export function preloadNextTrack() {
   preloadAudio.preload = 'auto';
   preloadAudio.src = nurl;
   preloadedUrl = nurl;
+  // Error handler: silently discard failed preloads so they aren't reused
+  preloadAudio.addEventListener('error', () => {
+    console.warn('[Preload] Failed to preload:', nurl);
+    cleanupPreload();
+  });
+  // Timeout: if preload hasn't loaded enough data in 30s, discard it
+  preloadAudio._preloadTimeout = setTimeout(() => {
+    if (preloadAudio && preloadAudio.readyState < 2) {
+      console.warn('[Preload] Timeout, discarding stalled preload');
+      cleanupPreload();
+    }
+  }, 30000);
 }
 
 export function cleanupPreload() {
-  if (preloadAudio) { preloadAudio.src = ''; preloadAudio.load(); preloadAudio = null; }
+  if (preloadAudio) {
+    if (preloadAudio._preloadTimeout) clearTimeout(preloadAudio._preloadTimeout);
+    preloadAudio.src = '';
+    preloadAudio.load();
+    preloadAudio = null;
+  }
   preloadedUrl = '';
 }
 
