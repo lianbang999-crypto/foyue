@@ -155,16 +155,8 @@ export function renderHomePage() {
     </div>`;
   }).join('');
 
-  // Layout: continue/guide first, then chanting, then quote (compact), then recommended
+  // Layout: daily dharma → chanting → continue/guide → recommended
   page.innerHTML = `
-    ${continueHtml}
-    ${guideHtml}
-    <div class="home-section home-section-tight">
-      <div class="home-section-title">${t('home_chanting')}</div>
-      <div class="home-chanting-wrap">
-        <div class="home-chanting-scroll">${chantCards}</div>
-      </div>
-    </div>
     <div class="home-section home-section-tight">
       <div class="home-section-title">${t('home_daily_quote')}</div>
       <div class="home-quote home-quote-compact">
@@ -172,6 +164,14 @@ export function renderHomePage() {
         <div class="home-quote-author">— ${quote.author}</div>
       </div>
     </div>
+    <div class="home-section home-section-tight">
+      <div class="home-section-title">${t('home_chanting')}</div>
+      <div class="home-chanting-wrap">
+        <div class="home-chanting-scroll">${chantCards}</div>
+      </div>
+    </div>
+    ${continueHtml}
+    ${guideHtml}
     ${recHtml}
   `;
   dom.contentArea.appendChild(page);
