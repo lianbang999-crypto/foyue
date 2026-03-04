@@ -118,5 +118,12 @@
   "time_hour_ago": " heures",
   "time_day_ago": " jours",
   "home_guide_title": "Commencer à écouter",
-  "home_guide_desc": "Choisissez une série ci-dessous pour commencer"
+  "home_guide_desc": "Choisissez une série ci-dessous pour commencer",
+  "loading_slow": "Chargement lent, veuillez patienter...",
+  "error_network": "Erreur r\u00E9seau, v\u00E9rifiez la connexion",
+  "error_decode": "\u00C9chec du d\u00E9codage, nouvelle tentative...",
+  "error_format": "Format audio non pris en charge",
+  "error_tap_retry": "\u00C9chec du chargement, appuyez pour r\u00E9essayer",
+  "error_stall": "Lecture interrompue, reprise en cours...",
+  "error_stall_tap": "Lecture interrompue, appuyez pour reprendre"
 }

@@ -20,11 +20,13 @@ import { seekCalc, seekUI, seekCommit, showToast, showFloatText, haptic } from '
 import {
   playList, prepareList, togglePlay, prevTrack, nextTrack,
   cycleLoop, cycleSpeed, cycleSleepTimer,
+  shareTrack,
   onTimeUpdate, onEnded, onAudioError,
   setPlayState, highlightEp, preloadNextTrack, cleanupPreload,
   togglePlaylist, closePlaylist, getPlaylistVisible, saveState, restoreState,
   getIsSwitching, setDragging, initPlaylistTabs, closeFullScreen,
   markAppreciated, updateAppreciateBtn, appreciateSuccess, updateAppreciateCount, isAppreciated,
+  retryPlayback, startStallWatch, clearStallWatch,
 } from './player.js';
 import { renderHomePage } from './pages-home.js';
 import { renderMyPage } from './pages-my.js';
@@ -114,6 +116,13 @@ import { monitor } from './monitor.js';
   document.getElementById('expLoop').addEventListener('click', () => { haptic(); cycleLoop(); });
   document.getElementById('expSkipBack').addEventListener('click', () => { haptic(); if (dom.audio.duration) dom.audio.currentTime = Math.max(0, dom.audio.currentTime - 15); });
   document.getElementById('expSkipFwd').addEventListener('click', () => { haptic(); if (dom.audio.duration) dom.audio.currentTime = Math.min(dom.audio.duration, dom.audio.currentTime + 15); });
+  document.getElementById('expShare').addEventListener('click', () => {
+    haptic();
+    if (state.epIdx >= 0 && state.playlist[state.epIdx]) {
+      const tr = state.playlist[state.epIdx];
+      shareTrack(tr, { title: tr.seriesTitle, id: tr.seriesId });
+    }
+  });
 
   // Progress seek - expanded player (smooth drag: UI-only during drag, commit on release)
   let dragging = false;
@@ -333,28 +342,34 @@ import { monitor } from './monitor.js';
   function hideBufferingUI() { dom.playerTrack.classList.remove('buffering'); dom.centerPlayBtn.classList.remove('buffering'); dom.expPlay.classList.remove('buffering'); }
 
   dom.audio.addEventListener('waiting', showBufferingUI);
-  dom.audio.addEventListener('playing', hideBufferingUI);
+  dom.audio.addEventListener('playing', () => {
+    hideBufferingUI();
+    // Restart stall detection whenever playback resumes
+    startStallWatch();
+  });
+  dom.audio.addEventListener('pause', () => { clearStallWatch(); });
+  // 'stalled' event: browser stopped receiving data mid-download (common with large R2 files)
+  dom.audio.addEventListener('stalled', () => {
+    if (!dom.audio.paused && !dom.audio.ended && dom.audio.src) {
+      console.log('[Audio] Stalled event — browser stopped receiving data');
+      showBufferingUI();
+    }
+  });
   // canplay: only trigger preload, no buffering state changes (handled by playCurrent's onReady)
   dom.audio.addEventListener('canplay', () => { preloadNextTrack(); });
 
-  // Stalled: browser stopped fetching data mid-stream — attempt recovery
-  let stallRetries = 0;
-  dom.audio.addEventListener('stalled', () => {
-    if (!dom.audio.src || dom.audio.paused) return;
-    showBufferingUI();
-    // Give browser a few seconds to recover on its own, then force reload
-    setTimeout(() => {
-      if (dom.audio.paused || dom.audio.readyState >= 3) return; // recovered on its own
-      if (stallRetries >= 3) { stallRetries = 0; return; } // give up after 3 tries
-      stallRetries++;
-      const pos = dom.audio.currentTime;
-      dom.audio.load();
-      dom.audio.currentTime = pos;
-      dom.audio.play().catch(() => { hideBufferingUI(); });
-    }, 4000);
+  // Tap-to-retry on player track (when in error state)
+  dom.playerTrack.addEventListener('click', () => {
+    if (dom.playerTrack.classList.contains('error')) {
+      retryPlayback();
+    }
   });
-  // Reset stall counter when playing normally
-  dom.audio.addEventListener('playing', () => { stallRetries = 0; });
+  // Tap-to-retry on center play button (when in error state)
+  dom.centerPlayBtn.addEventListener('click', () => {
+    if (dom.centerPlayBtn.classList.contains('error')) {
+      retryPlayback();
+    }
+  });
 
   // Network-aware preload control + #23: retry stalled audio on network recovery
   // Recovery triggers on: error state, paused-but-should-be-playing, or stuck buffering

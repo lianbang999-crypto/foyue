@@ -13,49 +13,11 @@ let isSwitching = false;
 let audioRetries = 0;
 let _dragging = false;
 
-/* ===== Playback Watchdog ===== */
-// Detects when audio is "playing" but currentTime hasn't advanced (stuck mid-stream)
-let watchdogTimer = null;
-let lastWatchdogTime = -1;
-let watchdogRetries = 0;
-const WATCHDOG_INTERVAL = 6000;  // check every 6s
-const WATCHDOG_MAX_RETRIES = 3;
-
-function startWatchdog() {
-  stopWatchdog();
-  const dom = getDOM();
-  lastWatchdogTime = dom.audio.currentTime;
-  watchdogRetries = 0;
-  watchdogTimer = setInterval(() => {
-    if (dom.audio.paused || dom.audio.ended || isSwitching) return;
-    const ct = dom.audio.currentTime;
-    // If currentTime hasn't moved at all, audio is stuck
-    if (ct === lastWatchdogTime && ct > 0 && dom.audio.readyState < 4) {
-      watchdogRetries++;
-      console.warn(`[Watchdog] Playback stuck at ${ct}s (attempt ${watchdogRetries}/${WATCHDOG_MAX_RETRIES})`);
-      if (watchdogRetries <= WATCHDOG_MAX_RETRIES) {
-        setBuffering(true);
-        const pos = ct;
-        dom.audio.load();
-        dom.audio.currentTime = pos;
-        dom.audio.play().catch(() => { setBuffering(false); });
-      } else {
-        // Give up after max retries — user can manually retry
-        stopWatchdog();
-        setBuffering(false);
-        showToast(t('error_play') || '播放中断，请检查网络后重试');
-      }
-    } else {
-      lastWatchdogTime = ct;
-      if (watchdogRetries > 0) watchdogRetries = 0; // recovered
-    }
-  }, WATCHDOG_INTERVAL);
-}
-
-function stopWatchdog() {
-  if (watchdogTimer) { clearInterval(watchdogTimer); watchdogTimer = null; }
-  watchdogRetries = 0;
-}
+/* ===== Stall Detection State ===== */
+let stallTimer = null;       // Timer for detecting prolonged stall
+let stallRetries = 0;        // Auto-retry count for stalls
+const MAX_STALL_RETRIES = 3;
+const STALL_DETECT_MS = 12000; // 12s without progress → stalled
 
 /* ===== Buffering UI helper ===== */
 function setBuffering(on) {
@@ -63,6 +25,130 @@ function setBuffering(on) {
   dom.playerTrack.classList.toggle('buffering', on);
   dom.centerPlayBtn.classList.toggle('buffering', on);
   dom.expPlay.classList.toggle('buffering', on);
+  // Clear error state when buffering starts (means we're retrying)
+  if (on) clearErrorState();
+}
+
+/* ===== Error State UI ===== */
+// Shows a persistent "tap to retry" message on the player track area
+function setErrorState(msg) {
+  const dom = getDOM();
+  dom.playerTrack.classList.add('error');
+  dom.playerTrack.dataset.errorMsg = msg || t('error_tap_retry');
+  dom.centerPlayBtn.classList.add('error');
+}
+
+function clearErrorState() {
+  const dom = getDOM();
+  dom.playerTrack.classList.remove('error');
+  delete dom.playerTrack.dataset.errorMsg;
+  dom.centerPlayBtn.classList.remove('error');
+}
+
+/* ===== Stall Detection ===== */
+// Called when audio stalls mid-playback (large files on R2 CDN)
+function onStallDetected() {
+  const dom = getDOM();
+  if (!dom.audio.src || dom.audio.paused || dom.audio.ended) return;
+
+  stallRetries++;
+  console.warn(`[Player] Stall detected, auto-retry ${stallRetries}/${MAX_STALL_RETRIES}`);
+
+  if (stallRetries <= MAX_STALL_RETRIES) {
+    // Auto-recover: save position, reload, and resume
+    const currentTime = dom.audio.currentTime;
+    const src = dom.audio.src;
+    setBuffering(true);
+
+    if (stallRetries >= 2) {
+      showToast(t('error_stall'));
+    }
+
+    // Reload audio from current position
+    dom.audio.src = src;
+    dom.audio.load();
+    dom.audio.addEventListener('loadeddata', function onLoad() {
+      dom.audio.removeEventListener('loadeddata', onLoad);
+      if (currentTime > 0) dom.audio.currentTime = currentTime;
+      dom.audio.play().then(() => {
+        setBuffering(false);
+      }).catch(() => {
+        setBuffering(false);
+        setErrorState(t('error_stall_tap'));
+        setPlayState(false);
+      });
+    }, { once: true });
+
+    // Timeout for this recovery attempt
+    setTimeout(() => {
+      if (dom.audio.paused && !dom.audio.ended) {
+        setBuffering(false);
+        setErrorState(t('error_stall_tap'));
+        setPlayState(false);
+      }
+    }, 20000);
+  } else {
+    // Exhausted retries — show persistent error
+    setBuffering(false);
+    setErrorState(t('error_stall_tap'));
+    setPlayState(false);
+  }
+}
+
+export function startStallWatch() {
+  clearStallWatch();
+  const dom = getDOM();
+  let lastTime = dom.audio.currentTime;
+
+  stallTimer = setInterval(() => {
+    if (dom.audio.paused || dom.audio.ended || !dom.audio.src) {
+      clearStallWatch();
+      return;
+    }
+    const now = dom.audio.currentTime;
+    if (now === lastTime && !dom.audio.seeking) {
+      // No progress — audio might be stalled
+      clearStallWatch();
+      onStallDetected();
+    }
+    lastTime = now;
+  }, STALL_DETECT_MS);
+}
+
+export function clearStallWatch() {
+  if (stallTimer) { clearInterval(stallTimer); stallTimer = null; }
+}
+
+export function retryPlayback() {
+  const dom = getDOM();
+  if (!dom.audio.src) return;
+  clearErrorState();
+  audioRetries = 0;
+  stallRetries = 0;
+  setBuffering(true);
+  const currentTime = dom.audio.currentTime;
+  dom.audio.load();
+  dom.audio.play().then(() => {
+    setBuffering(false);
+    setPlayState(true);
+    if (currentTime > 0) dom.audio.currentTime = currentTime;
+  }).catch(() => {
+    // Fall back to waiting for canplay
+    dom.audio.addEventListener('canplay', function onReady() {
+      dom.audio.removeEventListener('canplay', onReady);
+      setBuffering(false);
+      if (currentTime > 0) dom.audio.currentTime = currentTime;
+      dom.audio.play().then(() => setPlayState(true)).catch(() => {
+        setBuffering(false);
+        setErrorState(t('error_tap_retry'));
+        setPlayState(false);
+      });
+    }, { once: true });
+    // Timeout
+    setTimeout(() => {
+      setBuffering(false);
+    }, 30000);
+  });
 }
 
 /* ===== Speed Control ===== */
@@ -137,6 +223,9 @@ function playCurrent() {
   if (state.epIdx < 0 || state.epIdx >= state.playlist.length) return;
   isSwitching = true;
   audioRetries = 0;
+  stallRetries = 0;
+  clearStallWatch();
+  clearErrorState();
   const tr = state.playlist[state.epIdx];
   const callId = ++_playCurrentId; // unique ID for this invocation
 
@@ -187,12 +276,11 @@ function playCurrent() {
     if (callId !== _playCurrentId) return; // stale callback from previous switch
     setBuffering(false);
     if (seekTime > 0) dom.audio.currentTime = seekTime;
-    // Keep isSwitching=true until play() promise resolves, to block stale pause events
     dom.audio.play().then(() => {
       clearTimeout(switchingTimeout);
       isSwitching = false;
       setPlayState(true);
-      startWatchdog();
+      startStallWatch();
     }).catch(err => {
       clearTimeout(switchingTimeout);
       isSwitching = false;
@@ -219,7 +307,7 @@ function playCurrent() {
       isSwitching = false;
       setBuffering(false);
       setPlayState(true);
-      startWatchdog();
+      startStallWatch();
     }).catch(err => {
       // play() rejected — if AbortError, user switched tracks, do nothing
       if (err.name === 'AbortError') return;
@@ -238,7 +326,7 @@ function playCurrent() {
         dom.audio._slowTimeout = null;
         if (callId !== _playCurrentId) return;
         if (dom.audio._onReady) {
-          showToast(t('loading_slow') || '\u52A0\u8F7D\u8F83\u6162\uFF0C\u8BF7\u8010\u5FC3\u7B49\u5F85...');
+          showToast(t('loading_slow'));
         }
       }, 15000);
 
@@ -254,7 +342,8 @@ function playCurrent() {
             isSwitching = false;
             setBuffering(false);
             setPlayState(false);
-            showToast(t('error_play') || '\u52A0\u8F7D\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u8BD5');
+            setErrorState(t('error_tap_retry'));
+            showToast(t('error_play'));
           }
         }
       }, 45000);
@@ -465,7 +554,7 @@ export function onTimeUpdate() {
 }
 
 export function onEnded() {
-  stopWatchdog();
+  clearStallWatch();
   const dom = getDOM();
   if (state.loopMode === 'one') { dom.audio.currentTime = 0; dom.audio.play(); }
   else if (state.loopMode === 'shuffle') { state.epIdx = Math.floor(Math.random() * state.playlist.length); playCurrent(); }
@@ -474,66 +563,67 @@ export function onEnded() {
 }
 
 export function onAudioError() {
-  stopWatchdog();
+  clearStallWatch();
   const dom = getDOM();
   if (!dom.audio.error || dom.audio.error.code === MediaError.MEDIA_ERR_ABORTED) return;
   isSwitching = false;
   setBuffering(false);
+  clearStallWatch();
 
   const errCode = dom.audio.error.code;
   const src = dom.audio.src;
 
   // #17: Distinguish error types; first retry is silent
-  // ✅ 优化：增强错误重试机制，增加到3次
   if (src && audioRetries < 3) {
     audioRetries++;
-    
-    // ✅ 优化：根据错误类型调整重试策略
-    const retryDelay = errCode === MediaError.MEDIA_ERR_NETWORK ? 
-      1000 * audioRetries :  // 网络错误：快速重试
-      2000 * audioRetries;   // 其他错误：慢速重试
-    
-    // Only show toast on second retry, first retry is silent
+
+    // Adjust retry delay based on error type
+    const retryDelay = errCode === MediaError.MEDIA_ERR_NETWORK ?
+      1000 * audioRetries :  // Network: fast retry
+      2000 * audioRetries;   // Other: slow retry
+
+    // Show toast on second retry, first is silent
     if (audioRetries === 2) {
       if (errCode === MediaError.MEDIA_ERR_NETWORK) {
-        showToast(t('error_retry') || '网络不稳定，重试中...');
+        showToast(t('error_retry'));
       } else if (errCode === MediaError.MEDIA_ERR_DECODE) {
-        showToast(t('error_decode') || '音频解码失败，重试中...');
+        showToast(t('error_decode'));
       } else {
-        showToast(t('error_retry') || '加载异常，重试中...');
+        showToast(t('error_retry'));
       }
     }
-    
+
     console.log(`[Audio Error] Retry ${audioRetries}/3 after ${retryDelay}ms`);
-    
+
     setTimeout(() => {
       if (dom.audio.src === src) {
         setBuffering(true);
-        // ✅ 优化：重试前清理缓存
         dom.audio.load();
-        dom.audio.play().catch(() => { 
+        dom.audio.play().catch(() => {
           setBuffering(false);
           console.log('[Audio Error] Retry failed');
         });
       }
     }, retryDelay);
   } else {
+    // All retries exhausted — show persistent error state with tap-to-retry
     setPlayState(false);
-    // ✅ 优化：提供更详细的错误信息
     let errorMsg = '';
     switch (errCode) {
       case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-        errorMsg = t('error_format') || '音频格式不支持';
+        errorMsg = t('error_format');
         break;
       case MediaError.MEDIA_ERR_NETWORK:
-        errorMsg = '网络连接失败，请检查网络后重试';
+        errorMsg = t('error_network');
         break;
       case MediaError.MEDIA_ERR_DECODE:
-        errorMsg = '音频文件损坏，请尝试其他音频';
+        errorMsg = t('error_decode');
         break;
       default:
-        errorMsg = t('error_play') || '播放失败，请检查网络';
+        errorMsg = t('error_play');
     }
+    // Show persistent error on player + toast
+    setErrorState(t('error_tap_retry'));
     showToast(errorMsg);
     console.error('[Audio Error] Final error:', errCode, errorMsg);
   }
@@ -545,7 +635,7 @@ export function togglePlay() {
     // ✅ 优化：立即更新UI为播放状态，提供即时视觉反馈
     setPlayState(true);
     dom.audio.play().then(() => {
-      startWatchdog();
+      startStallWatch();
     }).catch(() => {
       // ✅ 如果播放失败，回滚UI状态
       setPlayState(false);
@@ -558,7 +648,7 @@ export function togglePlay() {
       setBuffering(false);
     }
     dom.audio.pause();
-    stopWatchdog();
+    clearStallWatch();
     setPlayState(false);
   }
 }

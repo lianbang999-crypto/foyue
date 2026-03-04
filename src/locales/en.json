@@ -117,5 +117,12 @@
   "time_hour_ago": " hours ago",
   "time_day_ago": " days ago",
   "home_guide_title": "Start Listening",
-  "home_guide_desc": "Choose a series below to begin"
+  "home_guide_desc": "Choose a series below to begin",
+  "loading_slow": "Loading slowly, please wait...",
+  "error_network": "Network error, please check connection",
+  "error_decode": "Audio decode failed, retrying...",
+  "error_format": "Audio format not supported",
+  "error_tap_retry": "Load failed, tap to retry",
+  "error_stall": "Playback interrupted, recovering...",
+  "error_stall_tap": "Playback interrupted, tap to resume"
 }

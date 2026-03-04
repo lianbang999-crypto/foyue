@@ -112,6 +112,20 @@
 @keyframes arcSpin{to{transform:rotate(360deg)}}
 .exp-progress-buffer{position:absolute;height:100%;background:var(--accent);opacity:.15;border-radius:2px;width:0%;transition:width .3s linear}
 
+/* === ERROR STATE === */
+/* Player track shows error message with tap-to-retry hint */
+.player-track.error{color:var(--accent);cursor:pointer}
+.player-track.error::after{content:attr(data-error-msg);font-size:.72rem;color:var(--accent);margin-left:6px;animation:errorPulse 2s ease-in-out infinite}
+@keyframes errorPulse{0%,100%{opacity:1}50%{opacity:.5}}
+
+/* Center play button error state — shows warning ring */
+.center-play-btn.error{position:relative}
+.center-play-btn.error::after{content:'';position:absolute;inset:-3px;border-radius:50%;border:2.5px solid var(--accent);opacity:.6;animation:errorPulse 2s ease-in-out infinite}
+
+/* Expanded play button error state */
+.exp-ctrls .ctrl-play.error{position:relative}
+.exp-ctrls .ctrl-play.error::after{content:'';position:absolute;inset:-4px;border-radius:50%;border:2.5px solid var(--accent);opacity:.6;animation:errorPulse 2s ease-in-out infinite}
+
 /* ✅ 优化：增强按钮点击反馈 */
 .ctrl:active {
   transform: scale(0.92) !important;

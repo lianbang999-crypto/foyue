@@ -117,5 +117,12 @@
   "time_hour_ago": "小时前",
   "time_day_ago": "天前",
   "home_guide_title": "开始听经闻法",
-  "home_guide_desc": "选择下方系列，即刻开始聆听"
+  "home_guide_desc": "选择下方系列，即刻开始聆听",
+  "loading_slow": "加载较慢，请耐心等待...",
+  "error_network": "网络连接失败，请检查网络后重试",
+  "error_decode": "音频解码失败，重试中...",
+  "error_format": "音频格式不支持",
+  "error_tap_retry": "加载失败，点击重试",
+  "error_stall": "播放中断，正在恢复...",
+  "error_stall_tap": "播放中断，点击恢复"
 }
