@@ -49,13 +49,6 @@
 .ai-pill-btn:active{transform:scale(0.96)}
 .ai-pill-icon{width:16px;height:16px;stroke:currentColor;fill:none;flex-shrink:0}
 
-/* Home search box */
-.home-search-wrap{margin-bottom:20px}
-.home-search-box{position:relative}
-.home-search-box svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:15px;height:15px;stroke:var(--text-muted);fill:none;stroke-width:1.8;pointer-events:none}
-.home-search-input{width:100%;padding:11px 14px 11px 38px;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-card);font-family:var(--font-zh);font-size:.88rem;color:var(--text);outline:none;transition:border-color .2s,box-shadow .2s;cursor:pointer}
-.home-search-input:focus{border-color:var(--border-active);box-shadow:0 0 0 3px var(--accent-glow)}
-.home-search-input::placeholder{color:var(--text-muted)}
 
 /* === CONTENT === */
 .content{flex:1;padding:16px 18px calc(64px + var(--safe-bottom) + 16px);overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}

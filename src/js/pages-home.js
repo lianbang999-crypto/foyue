@@ -4,7 +4,6 @@ import { t, getLang } from './i18n.js';
 import { getDOM } from './dom.js';
 import { ICON_PLAY, ICON_PAUSE } from './icons.js';
 import { playList, togglePlay, getIsSwitching } from './player.js';
-import { openSearchOverlay } from './search.js';
 
 const DAILY_QUOTES = [
   { zh: '若人但念阿弥陀，是名无上深妙禅。', en: 'To recite Amitabha is the supreme and profound meditation.', author: '永明延寿大师' },
@@ -19,6 +18,17 @@ const DAILY_QUOTES = [
   { zh: '如来所以兴出世，唯说弥陀本愿海。', en: 'The Tathagata appeared in this world solely to teach the ocean of Amitabha\'s primal vow.', author: '善导大师' },
   { zh: '世间一切重苦，悉由自心所现。心若灭时，苦亦灭。', en: 'All heavy sufferings in the world arise from one\'s own mind. When the mind ceases, suffering ceases.', author: '大安法师' },
   { zh: '厌离娑婆，欣求极乐。', en: 'Renounce the Saha world; aspire to the Land of Ultimate Bliss.', author: '善导大师' },
+];
+
+// Unique SVG icons for each chanting card
+const CHANT_ICONS = [
+  '<svg viewBox="0 0 24 24"><path d="M12 3c0 0-5 7-5 13s5 5 5 5 5 1 5-5S12 3 12 3z"/></svg>',                   // drop (default)
+  '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 3"/></svg>',                         // clock
+  '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>', // music
+  '<svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14 2 9.27l6.91-1.01z"/></svg>', // star
+  '<svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z"/></svg>', // heart
+  '<svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>', // bell
+  '<svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 22 12 18.27 5.82 22 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>', // star alt
 ];
 
 export function renderHomePage() {
@@ -39,21 +49,23 @@ export function renderHomePage() {
   const fohaoEps = fohaoSeries ? fohaoSeries.episodes : [];
   const nowSid = state.epIdx >= 0 && state.playlist.length ? state.playlist[state.epIdx].seriesId : null;
 
-  // 3. Continue listening
+  // 3. Continue listening (or new user guide)
   let continueHtml = '';
+  let hasPlayHistory = false;
   try {
     const st = JSON.parse(localStorage.getItem('pl-state'));
     if (st && st.seriesId) {
       let cSeries = null, cCat = null;
       for (const c of state.data.categories) { const s = c.series.find(x => x.id === st.seriesId); if (s) { cSeries = s; cCat = c; break; } }
       if (cSeries) {
+        hasPlayHistory = true;
         const cIdx = st.idx || 0;
         const ep = cSeries.episodes[cIdx];
         const epTitle = ep ? (ep.title || ep.fileName) : '';
         const pct = st.duration > 0 ? Math.min(100, Math.round((st.time || 0) / st.duration * 100)) : 0;
         const isPlaying = nowSid === st.seriesId && state.epIdx === cIdx && !dom.audio.paused;
         const icon = isPlaying ? ICON_PAUSE : ICON_PLAY;
-        continueHtml = `<div class="home-section"><div class="home-section-title">${t('home_continue')}</div>
+        continueHtml = `<div class="home-section home-section-tight"><div class="home-section-title">${t('home_continue')}</div>
           <div class="home-continue-card${isPlaying ? ' playing' : ''}" data-sid="${cSeries.id}" data-cat="${cCat.id}" data-idx="${cIdx}" data-time="${st.time || 0}">
             <div class="home-continue-icon">${icon}</div>
             <div class="home-continue-body">
@@ -67,9 +79,30 @@ export function renderHomePage() {
     }
   } catch (e) { /* ignore */ }
 
-  // 4. Recommended series
+  // New user guide card (shown when no play history)
+  let guideHtml = '';
+  if (!hasPlayHistory) {
+    guideHtml = `<div class="home-section home-section-tight">
+      <div class="home-guide-card" id="homeGuide">
+        <div class="home-guide-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg></div>
+        <div class="home-guide-body">
+          <div class="home-guide-title">${t('home_guide_title')}</div>
+          <div class="home-guide-sub">${t('home_guide_desc')}</div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // 4. Recommended series — shuffle based on day to vary content
   const lectCat = state.data.categories.find(c => c.id === 'tingjingtai');
-  const recSeries = lectCat ? lectCat.series.slice(0, 3) : [];
+  let recSeries = [];
+  if (lectCat && lectCat.series.length > 0) {
+    const allSeries = [...lectCat.series];
+    // Simple day-based shuffle: rotate start index by day
+    const dayOffset = Math.floor(Date.now() / 86400000) % allSeries.length;
+    const rotated = [...allSeries.slice(dayOffset), ...allSeries.slice(0, dayOffset)];
+    recSeries = rotated.slice(0, 3);
+  }
   let recHtml = '';
   if (recSeries.length) {
     recHtml = `<div class="home-section">
@@ -92,7 +125,7 @@ export function renderHomePage() {
     </div>`;
   }
 
-  // Chanting cards — each gets a unique soft color tint for visual distinction
+  // Chanting cards — each gets a unique soft color tint + unique icon
   const CHANT_COLORS = [
     'rgba(131,106,50,0.12)',  // warm gold (default)
     'rgba(106,131,80,0.12)',  // sage green
@@ -115,44 +148,33 @@ export function renderHomePage() {
     const isPlaying = nowSid === 'donglin-fohao' && state.epIdx === idx;
     const bg = CHANT_COLORS[idx % CHANT_COLORS.length];
     const stroke = CHANT_STROKES[idx % CHANT_STROKES.length];
+    const icon = CHANT_ICONS[idx % CHANT_ICONS.length];
     return `<div class="home-chant-card${isPlaying ? ' playing' : ''}" data-fh-idx="${idx}">
-      <div class="home-chant-icon" style="background:${bg}"><svg viewBox="0 0 24 24" style="stroke:${stroke}"><path d="M12 3c0 0-5 7-5 13s5 5 5 5 5 1 5-5S12 3 12 3z"/></svg></div>
+      <div class="home-chant-icon" style="background:${bg}"><span style="stroke:${stroke}">${icon}</span></div>
       <div class="home-chant-name">${ep.title}</div>
     </div>`;
   }).join('');
 
+  // Layout: continue/guide first, then chanting, then quote (compact), then recommended
   page.innerHTML = `
-    <div class="home-search-wrap">
-      <div class="home-search-box">
-        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
-        <input class="home-search-input" id="homeSearchInput" type="text" placeholder="${t('search_placeholder')}" readonly>
-      </div>
-    </div>
-    <div class="home-section">
-      <div class="home-section-title">${t('home_daily_quote')}</div>
-      <div class="home-quote">
-        <div class="home-quote-text">${quoteText}</div>
-        <div class="home-quote-author">— ${quote.author}</div>
-      </div>
-    </div>
-    <div class="home-section">
+    ${continueHtml}
+    ${guideHtml}
+    <div class="home-section home-section-tight">
       <div class="home-section-title">${t('home_chanting')}</div>
       <div class="home-chanting-wrap">
         <div class="home-chanting-scroll">${chantCards}</div>
       </div>
     </div>
-    ${continueHtml}
+    <div class="home-section home-section-tight">
+      <div class="home-section-title">${t('home_daily_quote')}</div>
+      <div class="home-quote home-quote-compact">
+        <div class="home-quote-text">${quoteText}</div>
+        <div class="home-quote-author">— ${quote.author}</div>
+      </div>
+    </div>
     ${recHtml}
   `;
   dom.contentArea.appendChild(page);
-
-  // Wire up home search box — tap opens fullscreen search overlay
-  const homeSearchInput = page.querySelector('#homeSearchInput');
-  if (homeSearchInput) {
-    homeSearchInput.addEventListener('click', () => {
-      openSearchOverlay();
-    });
-  }
 
   // Wire up chanting cards
   page.querySelectorAll('.home-chant-card').forEach(card => {
