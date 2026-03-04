@@ -6,6 +6,17 @@ export function fmt(s) {
   return m + ':' + String(Math.floor(s % 60)).padStart(2, '0');
 }
 
+/* Format seconds to duration string: 45:30 or 1:23:45 */
+export function fmtDuration(s) {
+  if (!s || !isFinite(s) || s <= 0) return '';
+  s = Math.round(s);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+  return m + ':' + String(sec).padStart(2, '0');
+}
+
 let toastTimer;
 export function showToast(msg) {
   clearTimeout(toastTimer);

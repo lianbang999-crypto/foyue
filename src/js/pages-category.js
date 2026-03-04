@@ -7,8 +7,9 @@ import { playList, togglePlay, isCurrentTrack, getIsSwitching, markAppreciated, 
 import { renderHomePage } from './pages-home.js';
 import { getHistory } from './history.js';
 import { getPlayCount, appreciate } from './api.js';
-import { showToast, escapeHtml, showFloatText, fmtCount } from './utils.js';
+import { showToast, escapeHtml, showFloatText, fmtCount, fmtDuration } from './utils.js';
 import { mountSummary } from './ai-summary.js';
+import { probeDurations, getCachedDuration } from './duration-cache.js';
 // import { mountTranscript } from './transcript.js';
 // import { getTranscriptAvailability } from './ai-client.js';
 
@@ -77,8 +78,9 @@ export function showEpisodes(series, tabId) {
   updatePlayAllBtn();
   dom.audio.addEventListener('play', updatePlayAllBtn);
   dom.audio.addEventListener('pause', updatePlayAllBtn);
+  let cancelProbe = () => {};
   const obs = new MutationObserver(() => {
-    if (!view.parentNode) { dom.audio.removeEventListener('play', updatePlayAllBtn); dom.audio.removeEventListener('pause', updatePlayAllBtn); obs.disconnect(); }
+    if (!view.parentNode) { dom.audio.removeEventListener('play', updatePlayAllBtn); dom.audio.removeEventListener('pause', updatePlayAllBtn); cancelProbe(); obs.disconnect(); }
   });
   obs.observe(dom.contentArea, { childList: true });
 
@@ -110,9 +112,13 @@ export function showEpisodes(series, tabId) {
       const pct = Math.min(100, Math.round(hEntry.time / hEntry.duration * 100));
       progressHtml = `<div class="ep-progress"><div class="ep-progress-fill" style="width:${pct}%"></div></div>`;
     }
+    // Duration — show cached value immediately, or empty span to fill later
+    const cached = getCachedDuration(ep.url);
+    const durText = cached ? fmtDuration(cached) : '';
     li.innerHTML = `<span class="ep-num">${ep.id || idx + 1}</span>
       <div class="eq-bars"><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span></div>
       <div class="ep-text"><span class="ep-title">${escapeHtml(ep.title || ep.fileName)}</span>${introHtml}${progressHtml}</div>
+      <span class="ep-duration" data-idx="${idx}">${durText}</span>
       <button class="ep-share-btn" aria-label="Share"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>`;
     li.querySelector('.ep-share-btn').addEventListener('click', (e) => { e.stopPropagation(); shareTrack(ep, series); });
     li.addEventListener('click', () => {
@@ -122,6 +128,12 @@ export function showEpisodes(series, tabId) {
     frag.appendChild(li);
   });
   ul.appendChild(frag);
+
+  // Probe audio durations in background (non-blocking)
+  cancelProbe = probeDurations(series.episodes, (idx, seconds) => {
+    const el = ul.querySelector(`.ep-duration[data-idx="${idx}"]`);
+    if (el) el.textContent = fmtDuration(seconds);
+  });
 
   // Add appreciation button
   const actionsDiv = view.querySelector('#epActions');

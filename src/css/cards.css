@@ -58,6 +58,8 @@
 .ep-progress{height:2px;background:var(--border);border-radius:1px;margin-top:4px;overflow:hidden}
 .ep-progress-fill{height:100%;background:var(--accent);border-radius:1px;opacity:.6}
 .ep-share-btn{-webkit-appearance:none;appearance:none;background:none;border:none;width:30px;height:30px;min-width:30px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text-muted);border-radius:50%;transition:all .2s;flex-shrink:0;padding:0;opacity:0}
+.ep-duration{font-family:var(--font-en);font-size:.72rem;color:var(--text-muted);flex-shrink:0;white-space:nowrap;min-width:34px;text-align:right}
+.ep-item.playing .ep-duration{color:var(--accent)}
 .ep-item:hover .ep-share-btn,.ep-share-btn:focus{opacity:1}
 .ep-share-btn:hover{color:var(--accent);background:var(--accent-glow)}
 .ep-share-btn:active{transform:scale(0.9)}
