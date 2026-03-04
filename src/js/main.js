@@ -59,6 +59,12 @@ import { monitor } from './monitor.js';
     openAiChat();
   });
 
+  // Search button (header icon)
+  document.getElementById('btnSearch').addEventListener('click', () => {
+    haptic();
+    openSearchOverlay();
+  });
+
   // Tabs
   const TAB_I18N = { home: 'tab_home', tingjingtai: 'tab_lectures', youshengshu: 'tab_audiobooks', mypage: 'tab_my' };
   document.querySelectorAll('.tab').forEach(btn => {
