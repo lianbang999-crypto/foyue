@@ -38,6 +38,10 @@ export function applyI18n() {
     const k = el.dataset.i18n;
     if (k) el.textContent = t(k);
   });
+  document.querySelectorAll('[data-i18n-html]').forEach(el => {
+    const k = el.dataset.i18nHtml;
+    if (k) el.innerHTML = t(k);
+  });
   document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
     const k = el.dataset.i18nPlaceholder;
     if (k) el.placeholder = t(k);
