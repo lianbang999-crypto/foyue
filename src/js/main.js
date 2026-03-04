@@ -20,7 +20,7 @@ import { seekCalc, seekUI, seekCommit, showToast, showFloatText, haptic } from '
 import {
   playList, prepareList, togglePlay, prevTrack, nextTrack,
   cycleLoop, cycleSpeed, cycleSleepTimer,
-  shareTrack, shareSeries, onTimeUpdate, onEnded, onAudioError,
+  onTimeUpdate, onEnded, onAudioError,
   setPlayState, highlightEp, preloadNextTrack, cleanupPreload,
   togglePlaylist, closePlaylist, getPlaylistVisible, saveState, restoreState,
   getIsSwitching, setDragging, initPlaylistTabs, closeFullScreen,
@@ -109,13 +109,6 @@ import { appreciate } from './api.js';
   document.getElementById('expLoop').addEventListener('click', () => { haptic(); cycleLoop(); });
   document.getElementById('expSkipBack').addEventListener('click', () => { haptic(); if (dom.audio.duration) dom.audio.currentTime = Math.max(0, dom.audio.currentTime - 15); });
   document.getElementById('expSkipFwd').addEventListener('click', () => { haptic(); if (dom.audio.duration) dom.audio.currentTime = Math.min(dom.audio.duration, dom.audio.currentTime + 15); });
-  document.getElementById('expShare').addEventListener('click', () => {
-    haptic();
-    if (state.epIdx >= 0 && state.playlist[state.epIdx]) {
-      const tr = state.playlist[state.epIdx];
-      shareTrack(tr, { title: tr.seriesTitle, id: tr.seriesId });
-    }
-  });
 
   // Progress seek - expanded player (smooth drag: UI-only during drag, commit on release)
   let dragging = false;
