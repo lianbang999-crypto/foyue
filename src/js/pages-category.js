@@ -199,7 +199,7 @@ export function showEpisodes(series, tabId) {
     actionsDiv.appendChild(wenkuBtn);
   }
 
-  mountSummary(actionsDiv, series.id);
+  // mountSummary(actionsDiv, series.id); // 暂时隐藏
 
   // 讲义文稿功能 — 暂时隐藏
   // getTranscriptAvailability(series.id).then(data => {
