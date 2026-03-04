@@ -33,6 +33,7 @@ import { doSearch, openSearchOverlay, closeSearchOverlay, isSearchOverlayOpen } 
 import { initInstallPrompt, initBackGuard } from './pwa.js';
 import { initAiChat, updateAiContext, openAiChat, closeAiChat, isAiChatOpen, checkAiDeepLink } from './ai-chat.js';
 import { appreciate } from './api.js';
+import { monitor } from './monitor.js';
 
 /* ===== INIT ===== */
 (function init() {
@@ -367,6 +368,14 @@ import { appreciate } from './api.js';
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
+
+  // ✅ 监控：定期保存监控数据到 localStorage
+  setInterval(() => {
+    try {
+      const summary = monitor.getSummary();
+      localStorage.setItem('site-monitor', JSON.stringify(summary));
+    } catch (e) { /* ignore */ }
+  }, 30000); // 每30秒保存一次
 })();
 
 /* ===== DATA LOADING with cache + retry ===== */
