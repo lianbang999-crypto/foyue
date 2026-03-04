@@ -390,28 +390,45 @@ function json(data, cors, status = 200, cacheControl) {
 
 // ============================================================
 async function getCategories(db) {
-  const categories = await db.prepare(
-    'SELECT id, title, title_en, sort_order FROM categories ORDER BY sort_order'
-  ).all();
-  const result = [];
-  for (const cat of categories.results) {
-    const series = await db.prepare(
-      `SELECT id, title, title_en, speaker, speaker_en, bucket, folder,
-              total_episodes, intro, play_count, sort_order
-       FROM series WHERE category_id = ? ORDER BY sort_order`
-    ).bind(cat.id).all();
-    result.push({
-      id: cat.id, title: cat.title, titleEn: cat.title_en,
-      series: series.results.map(s => ({
-        id: s.id, title: s.title, titleEn: s.title_en,
-        speaker: s.speaker, speakerEn: s.speaker_en,
-        bucket: s.bucket, folder: s.folder,
-        totalEpisodes: s.total_episodes, intro: s.intro,
-        playCount: s.play_count,
-      })),
-    });
+  // ✅ 优化：使用 JOIN 一次性获取所有数据，避免 N+1 查询问题
+  const result = await db.prepare(`
+    SELECT
+      c.id as cat_id, c.title as cat_title, c.title_en as cat_title_en, c.sort_order as cat_sort,
+      s.id as series_id, s.title, s.title_en, s.speaker, s.speaker_en,
+      s.bucket, s.folder, s.total_episodes, s.intro, s.play_count, s.sort_order
+    FROM categories c
+    LEFT JOIN series s ON c.id = s.category_id
+    ORDER BY c.sort_order, s.sort_order
+  `).all();
+
+  // 在内存中组装结果
+  const categories = new Map();
+  for (const row of result.results) {
+    if (!categories.has(row.cat_id)) {
+      categories.set(row.cat_id, {
+        id: row.cat_id,
+        title: row.cat_title,
+        titleEn: row.cat_title_en,
+        series: []
+      });
+    }
+    if (row.series_id) {
+      categories.get(row.cat_id).series.push({
+        id: row.series_id,
+        title: row.title,
+        titleEn: row.title_en,
+        speaker: row.speaker,
+        speakerEn: row.speaker_en,
+        bucket: row.bucket,
+        folder: row.folder,
+        totalEpisodes: row.total_episodes,
+        intro: row.intro,
+        playCount: row.play_count,
+      });
+    }
   }
-  return { categories: result };
+
+  return { categories: [...categories.values()] };
 }
 
 async function getSeriesDetail(db, seriesId) {

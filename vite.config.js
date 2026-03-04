@@ -8,12 +8,48 @@ export default defineConfig({
     outDir: 'dist',
     target: ['es2015', 'chrome64', 'safari12'],
     minify: 'esbuild',
+    // ✅ 优化：添加代码分割策略
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
         admin: resolve(__dirname, 'admin.html'),
       },
+      output: {
+        manualChunks: {
+          // 将公共模块分离
+          'common': [
+            './src/js/state.js',
+            './src/js/dom.js',
+            './src/js/utils.js',
+            './src/js/i18n.js'
+          ],
+          // 将播放器模块分离
+          'player': [
+            './src/js/player.js',
+            './src/js/history.js',
+            './src/js/api.js'
+          ],
+          // 将页面模块分离
+          'pages': [
+            './src/js/pages-home.js',
+            './src/js/pages-category.js',
+            './src/js/pages-my.js'
+          ]
+        }
+      }
     },
+    // ✅ 优化：添加压缩配置
+    terserOptions: {
+      compress: {
+        drop_console: true, // 生产环境移除 console
+        drop_debugger: true
+      }
+    },
+    // ✅ 优化：添加构建分析
+    reportCompressedSize: true,
+    chunkSizeWarningLimit: 500,
+    // ✅ 优化：添加 CSS 代码分割
+    cssCodeSplit: true
   },
   server: {
     port: 8080,

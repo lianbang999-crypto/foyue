@@ -371,7 +371,8 @@ import { appreciate } from './api.js';
 
 /* ===== DATA LOADING with cache + retry ===== */
 let loadAttempts = 0;
-const DATA_CACHE_KEY = 'pl-data-cache';
+const DATA_CACHE_VERSION = 2; // ✅ 优化：添加版本号，避免数据结构变更后的兼容性问题
+const DATA_CACHE_KEY = 'pl-data-cache-v' + DATA_CACHE_VERSION;
 const DATA_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 
 async function loadData() {
@@ -435,16 +436,42 @@ async function loadData() {
 function loadCachedData() {
   try {
     const raw = localStorage.getItem(DATA_CACHE_KEY);
-    if (!raw) return null;
-    const { data, ts } = JSON.parse(raw);
+    if (!raw) {
+      // ✅ 优化：清理旧版本缓存
+      cleanupOldCacheVersions();
+      return null;
+    }
+    const { data, ts, version } = JSON.parse(raw);
+    // ✅ 优化：版本不匹配，清理缓存
+    if (version !== DATA_CACHE_VERSION) {
+      localStorage.removeItem(DATA_CACHE_KEY);
+      return null;
+    }
     if (Date.now() - ts > DATA_CACHE_TTL) return null;
     return data;
   } catch (e) { return null; }
 }
 
+// ✅ 优化：清理所有旧版本缓存
+function cleanupOldCacheVersions() {
+  try {
+    const keys = Object.keys(localStorage);
+    keys.forEach(key => {
+      if (key.startsWith('pl-data-cache-') && key !== DATA_CACHE_KEY) {
+        localStorage.removeItem(key);
+      }
+    });
+  } catch (e) { /* ignore */ }
+}
+
 function saveCachedData(data, hash) {
   try {
-    localStorage.setItem(DATA_CACHE_KEY, JSON.stringify({ data, ts: Date.now(), _hash: hash }));
+    localStorage.setItem(DATA_CACHE_KEY, JSON.stringify({
+      data,
+      ts: Date.now(),
+      _hash: hash,
+      version: DATA_CACHE_VERSION // ✅ 优化：添加版本号
+    }));
   } catch (e) { /* storage full or unavailable */ }
 }
 
