@@ -20,7 +20,7 @@ import { seekCalc, seekUI, seekCommit, showToast, showFloatText, haptic } from '
 import {
   playList, prepareList, togglePlay, prevTrack, nextTrack,
   cycleLoop, cycleSpeed, cycleSleepTimer,
-  shareTrack, onTimeUpdate, onEnded, onAudioError,
+  shareTrack, shareSeries, onTimeUpdate, onEnded, onAudioError,
   setPlayState, highlightEp, preloadNextTrack, cleanupPreload,
   togglePlaylist, closePlaylist, getPlaylistVisible, saveState, restoreState,
   getIsSwitching, setDragging, initPlaylistTabs, closeFullScreen,
@@ -391,8 +391,10 @@ async function loadData() {
       dom.loader.style.display = 'none';
       if (state.tab === 'home') renderHomePage();
       else renderCategory(state.tab);
-      restoreState(renderCategory, renderHomePage, renderMyPage);
-      if (state.isFirstVisit && state.epIdx < 0) playDefaultTrack();
+      if (!handleShareHash()) {
+        restoreState(renderCategory, renderHomePage, renderMyPage);
+        if (state.isFirstVisit && state.epIdx < 0) playDefaultTrack();
+      }
       // Refresh in background (non-blocking)
       fetchFreshData();
       // Handle ?tab=ai deep link
@@ -409,9 +411,11 @@ async function loadData() {
     dom.loader.style.display = 'none';
     if (state.tab === 'home') renderHomePage();
     else renderCategory(state.tab);
-    restoreState(renderCategory, renderHomePage, renderMyPage);
-    // Default play on first visit
-    if (state.isFirstVisit && state.epIdx < 0) playDefaultTrack();
+    if (!handleShareHash()) {
+      restoreState(renderCategory, renderHomePage, renderMyPage);
+      // Default play on first visit
+      if (state.isFirstVisit && state.epIdx < 0) playDefaultTrack();
+    }
     // Handle ?series= deep link from wenku
     handleSeriesDeepLink();
     // Handle ?tab=ai deep link
@@ -469,6 +473,48 @@ async function fetchFreshData() {
       saveCachedData(fresh, freshHash);
     }
   } catch (e) { /* silent */ }
+}
+
+/* ===== SHARE LINK HANDLING ===== */
+// Parse URL hash: #seriesId/epId → play that episode, #seriesId → show series
+function handleShareHash() {
+  if (!state.data || !location.hash) return false;
+  const raw = decodeURIComponent(location.hash.slice(1));
+  if (!raw) return false;
+  const parts = raw.split('/');
+  const seriesId = parts[0];
+  const epId = parts[1] != null ? parseInt(parts[1], 10) : null;
+  // Find series across all categories
+  let foundSeries = null, foundCatId = null;
+  for (const cat of state.data.categories) {
+    const sr = cat.series.find(s => s.id === seriesId);
+    if (sr) { foundSeries = sr; foundCatId = cat.id; break; }
+  }
+  if (!foundSeries) return false;
+  // Clear hash so it doesn't re-trigger on refresh
+  history.replaceState(null, '', location.pathname + location.search);
+  // Switch to the correct tab
+  const tabId = foundCatId === 'fohao' ? 'home' : foundCatId;
+  state.tab = tabId;
+  const TAB_I18N = { home: 'tab_home', tingjingtai: 'tab_lectures', youshengshu: 'tab_audiobooks', mypage: 'tab_my' };
+  const dom = getDOM();
+  document.querySelectorAll('.tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tabId);
+    b.setAttribute('aria-selected', b.dataset.tab === tabId ? 'true' : 'false');
+  });
+  dom.navTitle.textContent = t(TAB_I18N[tabId] || 'tab_lectures');
+  dom.navTitle.dataset.i18n = TAB_I18N[tabId] || 'tab_lectures';
+  if (epId != null && !isNaN(epId)) {
+    // Find episode index by id
+    const epIdx = foundSeries.episodes.findIndex(ep => ep.id === epId);
+    const idx = epIdx >= 0 ? epIdx : 0;
+    showEpisodes(foundSeries, foundCatId);
+    playList(foundSeries.episodes, idx, foundSeries);
+  } else {
+    // Just show the series episode list
+    showEpisodes(foundSeries, foundCatId);
+  }
+  return true;
 }
 
 function playDefaultTrack() {

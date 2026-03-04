@@ -14,6 +14,10 @@
 .card.now-playing .card-icon{background:var(--accent);opacity:.85}
 .card.now-playing .card-icon svg{stroke:var(--text-inverse)}
 .card-playing-tag{font-size:.66rem;color:var(--accent);margin-left:6px;font-weight:500;white-space:nowrap}
+.card-share-btn{-webkit-appearance:none;appearance:none;background:none;border:none;width:32px;height:32px;min-width:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text-muted);border-radius:50%;transition:all .2s;flex-shrink:0;padding:0}
+.card-share-btn:hover{color:var(--accent);background:var(--accent-glow)}
+.card-share-btn:active{transform:scale(0.9)}
+.card-share-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8}
 
 /* === EPISODE LIST === */
 .ep-header{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)}
@@ -28,6 +32,10 @@
 .btn-play-all:hover{opacity:.88;transform:scale(1.05)}
 .btn-play-all:active{transform:scale(0.95)}
 .btn-play-all svg{width:16px;height:16px;fill:var(--text-inverse);stroke:none}
+.btn-share-series{-webkit-appearance:none;appearance:none;background:var(--accent-glow);border:none;border-radius:50%;width:34px;height:34px;min-width:34px;cursor:pointer;transition:all .2s;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--text-muted);padding:0}
+.btn-share-series:hover{color:var(--accent);background:var(--border-active)}
+.btn-share-series:active{transform:scale(0.9)}
+.btn-share-series svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8}
 
 .ep-list{list-style:none}
 .ep-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius-sm);cursor:pointer;transition:background .15s;min-height:44px}
@@ -47,8 +55,14 @@
 .ep-title{font-size:.86rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ep-intro{display:block;font-size:.74rem;color:var(--text-secondary);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ep-item.playing .ep-title{color:var(--accent);font-weight:500}
-.ep-progress{height:3px;background:var(--border);border-radius:1.5px;margin-top:4px;overflow:hidden}
-.ep-progress-fill{height:100%;background:var(--accent);border-radius:1.5px;opacity:.6}
+.ep-progress{height:2px;background:var(--border);border-radius:1px;margin-top:4px;overflow:hidden}
+.ep-progress-fill{height:100%;background:var(--accent);border-radius:1px;opacity:.6}
+.ep-share-btn{-webkit-appearance:none;appearance:none;background:none;border:none;width:30px;height:30px;min-width:30px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text-muted);border-radius:50%;transition:all .2s;flex-shrink:0;padding:0;opacity:0}
+.ep-item:hover .ep-share-btn,.ep-share-btn:focus{opacity:1}
+.ep-share-btn:hover{color:var(--accent);background:var(--accent-glow)}
+.ep-share-btn:active{transform:scale(0.9)}
+.ep-share-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8}
+@media(hover:none){.ep-share-btn{opacity:.5}}
 
 /* === EPISODE ACTIONS (appreciate button) === */
 .ep-actions{display:flex;align-items:center;gap:8px;padding:4px 0 8px}

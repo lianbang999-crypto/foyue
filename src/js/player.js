@@ -575,15 +575,26 @@ export function cycleLoop() {
 
 /* ===== Share ===== */
 export function shareTrack(ep, series) {
-  const title = (ep.title || ep.fileName) + ' - ' + (series.title || '');
-  const text = title + '\n' + t('share_from');
-  const base = window.location.origin + window.location.pathname;
-  const hash = '#' + encodeURIComponent(series.id + '/' + ep.id);
+  const title = '\u300A' + (series.title || '') + '\u300B' + (ep.title || ep.fileName);
+  const shareUrl = window.location.origin + '/share/' + encodeURIComponent(series.id) + '/' + ep.id;
   if (navigator.share) {
-    navigator.share({ title, text, url: base + hash }).catch(() => {});
+    navigator.share({ title, text: title, url: shareUrl }).catch(() => {});
   } else {
-    const full = base + hash;
-    navigator.clipboard.writeText(text + '\n' + full).then(() => {
+    navigator.clipboard.writeText(title + '\n' + shareUrl).then(() => {
+      showToast(t('link_copied'));
+    }).catch(() => {});
+  }
+}
+
+export function shareSeries(series) {
+  const epCount = series.totalEpisodes || series.episodes?.length || 0;
+  const unit = t('episodes') || '\u96C6';
+  const title = '\u300A' + (series.title || '') + '\u300B' + (epCount ? '\u5171' + epCount + unit : '');
+  const shareUrl = window.location.origin + '/share/' + encodeURIComponent(series.id);
+  if (navigator.share) {
+    navigator.share({ title, text: title, url: shareUrl }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(title + '\n' + shareUrl).then(() => {
       showToast(t('link_copied'));
     }).catch(() => {});
   }
