@@ -51,6 +51,25 @@ export function playList(episodes, idx, series, restoreTime) {
   playCurrent();
 }
 
+// Prepare playlist + UI without calling play() — for autoplay-blocked contexts
+// (first visit default track, restore from saved state without user gesture)
+export function prepareList(episodes, idx, series, restoreTime) {
+  cleanupPreload();
+  state.playlist = episodes.map(ep => ({ ...ep, seriesId: series.id, seriesTitle: series.title, speaker: series.speaker }));
+  state.epIdx = idx;
+  pendingSeek = restoreTime || 0;
+  const tr = state.playlist[state.epIdx];
+  if (!tr) return;
+  const dom = getDOM();
+  dom.audio.src = tr.url;
+  dom.audio.load();
+  updateUI(tr);
+  highlightEp();
+  updateMediaSession(tr);
+  updateAppreciateBtn(tr.seriesId);
+  setPlayState(false);
+}
+
 let _playCurrentId = 0; // monotonic ID to detect stale callbacks
 
 function cleanupReadyListeners(dom) {

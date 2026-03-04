@@ -18,7 +18,7 @@ import { initLang, applyI18n, t } from './i18n.js';
 import { initTheme } from './theme.js';
 import { seekCalc, seekUI, seekCommit, showToast, showFloatText, haptic } from './utils.js';
 import {
-  playList, togglePlay, prevTrack, nextTrack,
+  playList, prepareList, togglePlay, prevTrack, nextTrack,
   cycleLoop, cycleSpeed, cycleSleepTimer,
   shareTrack, onTimeUpdate, onEnded, onAudioError,
   setPlayState, highlightEp, preloadNextTrack, cleanupPreload,
@@ -477,7 +477,10 @@ function playDefaultTrack() {
   if (!cat) return;
   const sr = cat.series.find(s => s.id === 'donglin-fohao');
   if (!sr || !sr.episodes || sr.episodes.length < 4) return;
-  playList(sr.episodes, 3, sr);
+  // Use prepareList (not playList) — no user gesture context here,
+  // so play() would be rejected by mobile autoplay policies.
+  // The player UI will be ready; user taps play to start.
+  prepareList(sr.episodes, 3, sr);
 }
 
 function handleSeriesDeepLink() {
