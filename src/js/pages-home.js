@@ -73,7 +73,10 @@ export function renderHomePage() {
   let recHtml = '';
   if (recSeries.length) {
     recHtml = `<div class="home-section">
-      <div class="home-section-title">${t('home_recommended')}</div>
+      <div class="home-section-header">
+        <div class="home-section-title">${t('home_recommended')}</div>
+        <div class="home-section-more" id="homeRecMore">${t('home_view_more') || '查看更多'} ›</div>
+      </div>
       <div class="home-rec-list">${recSeries.map(s => {
         const introHtml = s.intro ? `<div class="home-rec-intro">${s.intro}</div>` : '';
         return `
@@ -134,7 +137,9 @@ export function renderHomePage() {
     </div>
     <div class="home-section">
       <div class="home-section-title">${t('home_chanting')}</div>
-      <div class="home-chanting-scroll">${chantCards}</div>
+      <div class="home-chanting-wrap">
+        <div class="home-chanting-scroll">${chantCards}</div>
+      </div>
     </div>
     ${continueHtml}
     ${recHtml}
@@ -159,6 +164,25 @@ export function renderHomePage() {
       playList(fohaoSeries.episodes, idx, fohaoSeries);
     });
   });
+
+  // Chanting scroll — hide fade hint when scrolled to end
+  const chantWrap = page.querySelector('.home-chanting-wrap');
+  const chantScroll = page.querySelector('.home-chanting-scroll');
+  if (chantWrap && chantScroll) {
+    chantScroll.addEventListener('scroll', () => {
+      const atEnd = chantScroll.scrollLeft + chantScroll.clientWidth >= chantScroll.scrollWidth - 8;
+      chantWrap.classList.toggle('scrolled-end', atEnd);
+    }, { passive: true });
+  }
+
+  // Wire up "view more" in recommended section
+  const recMore = page.querySelector('#homeRecMore');
+  if (recMore) {
+    recMore.addEventListener('click', () => {
+      const tab = document.querySelector('.tab[data-tab="tingjingtai"]');
+      if (tab) tab.click();
+    });
+  }
 
   // Wire up continue card
   const contCard = page.querySelector('.home-continue-card');

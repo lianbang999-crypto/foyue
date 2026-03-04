@@ -56,10 +56,16 @@
 .home-page.active{display:block}
 .home-section{margin-bottom:28px}
 .home-section-title{font-size:.84rem;color:var(--text-secondary);letter-spacing:.04em;padding:0 4px 10px;font-weight:500}
+.home-section-header{display:flex;align-items:baseline;justify-content:space-between;padding:0 4px 10px}
+.home-section-header .home-section-title{padding:0}
+.home-section-more{font-size:.76rem;color:var(--accent);cursor:pointer;white-space:nowrap;font-weight:500}
 .home-quote{background:var(--bg-card);border-radius:var(--radius);padding:24px 22px;position:relative;border:1px solid var(--border)}
 .home-quote::before{content:'\201C';position:absolute;top:8px;left:12px;font-size:2.4rem;color:var(--accent);opacity:.35;font-family:Georgia,serif;line-height:1}
 .home-quote-text{font-size:.88rem;line-height:1.8;color:var(--text);padding-left:8px;font-weight:400}
 .home-quote-author{font-size:.76rem;color:var(--text-secondary);margin-top:8px;text-align:right;padding-right:4px}
+.home-chanting-wrap{position:relative}
+.home-chanting-wrap::after{content:'';position:absolute;top:0;right:0;bottom:8px;width:32px;background:linear-gradient(to right,transparent,var(--bg));pointer-events:none;border-radius:0 var(--radius-sm) var(--radius-sm) 0;transition:opacity .3s}
+.home-chanting-wrap.scrolled-end::after{opacity:0}
 .home-chanting-scroll{display:flex;gap:10px;overflow-x:auto;padding:0 0 8px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .home-chanting-scroll::-webkit-scrollbar{display:none}
 .home-chant-card{flex-shrink:0;width:130px;background:var(--bg-card);border-radius:var(--radius-sm);padding:14px 12px;text-align:center;border:1px solid var(--border);cursor:pointer;transition:background .15s,border-color .15s}
