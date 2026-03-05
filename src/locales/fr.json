@@ -131,5 +131,7 @@
   "search_wenku_hint": "Rechercher dans les textes du Dharma",
   "search_wenku_loading": "Recherche en cours...",
   "search_wenku_read": "Lire le texte",
-  "search_wenku_error": "\u00C9chec de la recherche, r\u00E9essayez"
+  "search_wenku_error": "\u00C9chec de la recherche, r\u00E9essayez",
+  "downloading": "T\u00E9l\u00E9chargement...",
+  "download_cellular_warn": "Vous utilisez les donn\u00E9es mobiles. T\u00E9l\u00E9charger quand m\u00EAme ?"
 }

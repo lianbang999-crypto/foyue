@@ -27,6 +27,7 @@ import {
   getIsSwitching, setDragging, initPlaylistTabs, closeFullScreen,
   markAppreciated, updateAppreciateBtn, appreciateSuccess, updateAppreciateCount, isAppreciated,
   retryPlayback, startStallWatch, clearStallWatch,
+  downloadCurrentTrack, onVisibilityResume, setNetworkWeak,
 } from './player.js';
 import { renderHomePage } from './pages-home.js';
 import { renderMyPage } from './pages-my.js';
@@ -317,6 +318,9 @@ import { monitor } from './monitor.js';
   // Sleep timer
   document.getElementById('expTimer').addEventListener('click', () => { haptic(); cycleSleepTimer(); });
 
+  // Download button
+  document.getElementById('expDownload').addEventListener('click', () => { haptic(); downloadCurrentTrack(); });
+
   // PWA install
   initInstallPrompt();
 
@@ -355,8 +359,9 @@ import { monitor } from './monitor.js';
       showBufferingUI();
     }
   });
-  // canplay: only trigger preload, no buffering state changes (handled by playCurrent's onReady)
-  dom.audio.addEventListener('canplay', () => { preloadNextTrack(); });
+  // canplay: no longer triggers preload — preload is only triggered by onTimeUpdate at 80% progress.
+  // This prevents preload from competing with current track during initial buffering or stall recovery.
+  // dom.audio.addEventListener('canplay', () => { preloadNextTrack(); });
 
   // Tap-to-retry on player track (when in error state)
   dom.playerTrack.addEventListener('click', () => {
@@ -371,8 +376,7 @@ import { monitor } from './monitor.js';
     }
   });
 
-  // Network-aware preload control + #23: retry stalled audio on network recovery
-  // Recovery triggers on: error state, paused-but-should-be-playing, or stuck buffering
+  // Network-aware preload control + recovery on connection change
   function tryNetworkRecovery() {
     if (!dom.audio.src) return;
     const shouldBePlayingButStopped = dom.audio.paused && !dom.audio.ended;
@@ -388,9 +392,18 @@ import { monitor } from './monitor.js';
   if (navigator.connection) {
     navigator.connection.addEventListener('change', () => {
       const c = navigator.connection;
-      if (c.saveData || c.effectiveType === '2g') { cleanupPreload(); return; }
+      // Update network quality state
+      if (c.saveData || c.effectiveType === '2g' || c.effectiveType === 'slow-2g') {
+        setNetworkWeak(true);
+        cleanupPreload();
+        return;
+      }
+      // If connection improved to 4g, clear weak flag
+      if (c.effectiveType === '4g') {
+        setNetworkWeak(false);
+      }
       if (dom.audio.src && !dom.audio.paused) preloadNextTrack();
-      if (c.effectiveType !== '2g') tryNetworkRecovery();
+      tryNetworkRecovery();
     });
   }
   // #23: Also retry on online event (works on all browsers)
@@ -400,10 +413,13 @@ import { monitor } from './monitor.js';
   loadData();
   setInterval(saveState, 15000);
 
-  // #22: Save state when user leaves/returns to avoid progress loss from background throttling
+  // #22: Save state when user leaves, check buffer when returning
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
       saveState();
+    } else if (document.visibilityState === 'visible') {
+      // Returning from background — check if buffer needs recovery
+      onVisibilityResume();
     }
   });
 

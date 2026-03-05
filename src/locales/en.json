@@ -130,5 +130,7 @@
   "search_wenku_hint": "Search dharma texts by question",
   "search_wenku_loading": "Searching library...",
   "search_wenku_read": "Read full text",
-  "search_wenku_error": "Search failed, please try again"
+  "search_wenku_error": "Search failed, please try again",
+  "downloading": "Downloading...",
+  "download_cellular_warn": "You are on cellular data. Download anyway?"
 }

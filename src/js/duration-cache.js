@@ -1,8 +1,12 @@
 /* ===== Audio Duration Cache ===== */
 /* Lazily probes audio URLs for duration via Audio API and caches in localStorage */
+import { state } from './state.js';
+import { getConnType } from './player.js';
 
 const STORAGE_KEY = 'foyue_duration_cache';
-const MAX_CONCURRENT = 3;
+// Reduce concurrency when audio is playing to avoid bandwidth competition
+const MAX_CONCURRENT_IDLE = 3;
+const MAX_CONCURRENT_PLAYING = 1;
 
 let cache = null;
 
@@ -73,6 +77,16 @@ export function probeDurations(episodes, onDuration) {
   let aborted = false;
   let saveTimer = null;
 
+  // Skip probing entirely when network is weak
+  if (state.networkWeak) {
+    // Still report cached durations
+    episodes.forEach((ep, idx) => {
+      const d = c[ep.url];
+      if (d) onDuration(idx, d);
+    });
+    return () => {};
+  }
+
   // Immediately report cached durations
   episodes.forEach((ep, idx) => {
     const d = c[ep.url];
@@ -89,6 +103,15 @@ export function probeDurations(episodes, onDuration) {
   let running = 0;
   let qi = 0;
 
+  function getMaxConcurrent() {
+    // On cellular, always limit to 1 probe to save data
+    if (getConnType() === 'cellular') return MAX_CONCURRENT_PLAYING;
+    // If audio is playing, use lower concurrency to preserve bandwidth
+    const audioEl = document.querySelector('#audioEl');
+    if (audioEl && !audioEl.paused && audioEl.src) return MAX_CONCURRENT_PLAYING;
+    return MAX_CONCURRENT_IDLE;
+  }
+
   function schedSave() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveCache, 2000);
@@ -96,7 +119,10 @@ export function probeDurations(episodes, onDuration) {
 
   function next() {
     if (aborted) return;
-    while (running < MAX_CONCURRENT && qi < queue.length) {
+    // Re-check network state each iteration
+    if (state.networkWeak) return;
+    const maxC = getMaxConcurrent();
+    while (running < maxC && qi < queue.length) {
       const idx = queue[qi++];
       running++;
       probeOne(episodes[idx].url).then(d => {

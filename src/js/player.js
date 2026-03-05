@@ -13,6 +13,34 @@ let isSwitching = false;
 let audioRetries = 0;
 let _dragging = false;
 
+/* ===== Background Full-Load State ===== */
+// After playback starts, fetch the full audio file in the background.
+// Once downloaded, switch <audio> to a Blob URL so all subsequent playback is local.
+let bgFetchController = null;
+let bgFetchUrl = '';
+let bgBlobUrl = '';
+
+/* ===== Network Quality State ===== */
+let _networkWeak = false;  // set true on stall or slow connection detection
+
+export function isNetworkWeak() { return _networkWeak; }
+export function setNetworkWeak(v) { _networkWeak = v; state.networkWeak = v; }
+
+/**
+ * Detect connection type: 'wifi' | 'cellular' | 'unknown'
+ * Uses navigator.connection.type (supported in Chrome/Android/Samsung).
+ * Falls back to 'unknown' on iOS Safari and other browsers without the API.
+ */
+export function getConnType() {
+  const conn = navigator.connection || navigator.mozConnection;
+  if (!conn) return 'unknown';
+  // conn.type: 'wifi', 'cellular', 'bluetooth', 'ethernet', 'none', 'other', 'unknown'
+  if (conn.type === 'wifi' || conn.type === 'ethernet') return 'wifi';
+  if (conn.type === 'cellular') return 'cellular';
+  // Fallback: if type is missing but API exists, we can't determine — treat as unknown
+  return 'unknown';
+}
+
 /* ===== Stall Detection State ===== */
 let stallTimer = null;       // Timer for detecting prolonged stall
 let stallRetries = 0;        // Auto-retry count for stalls
@@ -53,6 +81,10 @@ function onStallDetected() {
 
   stallRetries++;
   console.warn(`[Player] Stall detected, auto-retry ${stallRetries}/${MAX_STALL_RETRIES}`);
+
+  // Mark network as weak — this pauses preloading and reduces duration probe concurrency
+  setNetworkWeak(true);
+  cleanupPreload();
 
   if (stallRetries <= MAX_STALL_RETRIES) {
     // Auto-recover: save position, reload, and resume
@@ -226,6 +258,7 @@ function playCurrent() {
   stallRetries = 0;
   clearStallWatch();
   clearErrorState();
+  cleanupBgFetch(); // Cancel any in-progress background fetch for previous track
   const tr = state.playlist[state.epIdx];
   const callId = ++_playCurrentId; // unique ID for this invocation
 
@@ -281,26 +314,20 @@ function playCurrent() {
       isSwitching = false;
       setPlayState(true);
       startStallWatch();
+      // Start background full-load after playback begins
+      startBgFullLoad(tr.url);
     }).catch(err => {
       clearTimeout(switchingTimeout);
       isSwitching = false;
-      // Only reset play state if this is still the active track
-      // (AbortError means user already switched to another track)
       if (callId === _playCurrentId && err.name !== 'AbortError') {
         setPlayState(false);
       }
     });
   }
 
-  // ✅ 如果音频已有足够数据（预加载命中或浏览器缓存），直接播放
-  // On mobile, play() must be called within user gesture context — calling it
-  // immediately allows the browser to start loading and auto-play once data arrives.
-  // Waiting for canplay/loadeddata loses the gesture context on iOS/Android.
   if (dom.audio.readyState >= 2) {
     tryPlay();
   } else {
-    // Try play() immediately to preserve user gesture context (critical for mobile).
-    // The browser will buffer and start playing once enough data arrives.
     if (seekTime > 0) dom.audio.currentTime = seekTime;
     dom.audio.play().then(() => {
       clearTimeout(switchingTimeout);
@@ -308,8 +335,9 @@ function playCurrent() {
       setBuffering(false);
       setPlayState(true);
       startStallWatch();
+      // Start background full-load after playback begins
+      startBgFullLoad(tr.url);
     }).catch(err => {
-      // play() rejected — if AbortError, user switched tracks, do nothing
       if (err.name === 'AbortError') return;
       // Otherwise fall back to waiting for canplay/loadeddata events
       function onReady() {
@@ -815,11 +843,11 @@ export function preloadNextTrack() {
   const nurl = state.playlist[ni] && state.playlist[ni].url;
   if (!nurl || nurl === preloadedUrl) return;
 
-  // 省流模式：不预加载
+  // Skip preload when network is weak, save-data is on, or connection is 2G/3G
+  if (_networkWeak) return;
   var conn = navigator.connection || navigator.mozConnection;
   if (conn && conn.saveData) return;
-  // 2G网络：不预加载
-  if (conn && conn.effectiveType === '2g') return;
+  if (conn && (conn.effectiveType === '2g' || conn.effectiveType === 'slow-2g')) return;
 
   cleanupPreload();
   preloadAudio = new Audio();
@@ -850,6 +878,157 @@ export function cleanupPreload() {
     preloadAudio = null;
   }
   preloadedUrl = '';
+}
+
+/* ===== Background Full-Load ===== */
+// Silently fetches the entire audio file via fetch(), then swaps <audio>.src
+// to a local Blob URL so the rest of playback is fully local — zero network dependency.
+const BG_LOAD_MAX_SIZE = 150 * 1024 * 1024; // Skip files > 150 MB
+
+function cleanupBgFetch() {
+  if (bgFetchController) { bgFetchController.abort(); bgFetchController = null; }
+  if (bgBlobUrl) { URL.revokeObjectURL(bgBlobUrl); bgBlobUrl = ''; }
+  bgFetchUrl = '';
+}
+
+function startBgFullLoad(url) {
+  // Don't re-fetch if already loading this URL or already blobbed
+  if (bgFetchUrl === url) return;
+  cleanupBgFetch();
+
+  // Skip on save-data or 2g
+  const conn = navigator.connection || navigator.mozConnection;
+  if (conn && (conn.saveData || conn.effectiveType === '2g')) return;
+
+  // On cellular: skip background full-load entirely to save user's data
+  // The CDN cache fix already makes streaming reliable, so full-load is a luxury here.
+  const connType = getConnType();
+  if (connType === 'cellular') {
+    console.log('[BgLoad] On cellular network, skipping background full-load to save data');
+    return;
+  }
+
+  bgFetchUrl = url;
+  bgFetchController = new AbortController();
+
+  fetch(url, { signal: bgFetchController.signal })
+    .then(resp => {
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      // Check Content-Length — skip very large files
+      const cl = parseInt(resp.headers.get('content-length') || '0', 10);
+      if (cl > BG_LOAD_MAX_SIZE) {
+        console.log('[BgLoad] File too large (' + Math.round(cl / 1024 / 1024) + 'MB), skipping full load');
+        cleanupBgFetch();
+        return null;
+      }
+      return resp.blob();
+    })
+    .then(blob => {
+      if (!blob) return;
+      const dom = getDOM();
+      // Only swap if still playing the same URL
+      if (dom.audio.src !== url && !dom.audio.src.startsWith('blob:')) {
+        cleanupBgFetch();
+        return;
+      }
+      // Also check the original URL stored on the audio element
+      const currentTrack = state.playlist[state.epIdx];
+      if (!currentTrack || currentTrack.url !== bgFetchUrl) {
+        cleanupBgFetch();
+        return;
+      }
+
+      bgBlobUrl = URL.createObjectURL(blob);
+      const pos = dom.audio.currentTime;
+      const wasPlaying = !dom.audio.paused;
+      const rate = dom.audio.playbackRate;
+
+      dom.audio.src = bgBlobUrl;
+      dom.audio.playbackRate = rate;
+      dom.audio.addEventListener('loadedmetadata', function onMeta() {
+        dom.audio.removeEventListener('loadedmetadata', onMeta);
+        dom.audio.currentTime = pos;
+        if (wasPlaying) dom.audio.play().catch(() => {});
+      }, { once: true });
+      dom.audio.load();
+
+      console.log('[BgLoad] Switched to local Blob URL');
+      bgFetchController = null;
+      bgFetchUrl = '';
+      // Mark network as strong since full download succeeded
+      setNetworkWeak(false);
+    })
+    .catch(err => {
+      if (err.name !== 'AbortError') {
+        console.warn('[BgLoad] Failed:', err.message);
+      }
+      bgFetchController = null;
+      bgFetchUrl = '';
+    });
+}
+
+/* ===== Download Current Track ===== */
+let _dlCellularConfirmed = false; // Tracks if user already confirmed cellular download this session
+
+export function downloadCurrentTrack() {
+  const tr = state.playlist[state.epIdx];
+  if (!tr || !tr.url) { showToast(t('error_play')); return; }
+
+  const fileName = (tr.title || tr.fileName || 'audio') + '.mp3';
+
+  // Warn once per session if on cellular
+  if (!_dlCellularConfirmed && getConnType() === 'cellular') {
+    if (!confirm(t('download_cellular_warn'))) return;
+    _dlCellularConfirmed = true;
+  }
+
+  // If we already have a Blob URL, use it directly
+  if (bgBlobUrl && bgFetchUrl === '') {
+    const a = document.createElement('a');
+    a.href = bgBlobUrl;
+    a.download = fileName;
+    a.click();
+    return;
+  }
+
+  // Otherwise fetch and download
+  showToast(t('downloading') || '\u4E0B\u8F7D\u4E2D...');
+  fetch(tr.url)
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); })
+    .then(blob => {
+      const burl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = burl;
+      a.download = fileName;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(burl), 60000);
+    })
+    .catch(() => { showToast(t('error_network') || '\u4E0B\u8F7D\u5931\u8D25'); });
+}
+
+/* ===== Visibility Change — Resume Buffer on Foreground ===== */
+export function onVisibilityResume() {
+  const dom = getDOM();
+  if (!dom.audio.src || dom.audio.paused || dom.audio.ended) return;
+
+  // Check if buffer is running low
+  const ct = dom.audio.currentTime;
+  const buffered = dom.audio.buffered;
+  let bufEnd = 0;
+  for (let i = 0; i < buffered.length; i++) {
+    if (buffered.start(i) <= ct && buffered.end(i) >= ct) {
+      bufEnd = buffered.end(i);
+      break;
+    }
+  }
+  const bufAhead = bufEnd - ct;
+
+  // If less than 5s buffered ahead, nudge the audio to re-trigger buffering
+  if (bufAhead < 5) {
+    console.log('[Player] Low buffer on resume (' + bufAhead.toFixed(1) + 's), nudging playback');
+    dom.audio.currentTime = ct; // Triggers a new Range request
+    startStallWatch();
+  }
 }
 
 /* ===== Playlist Panel ===== */
