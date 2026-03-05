@@ -52,6 +52,4 @@ audio.foyue.org/*
 
 # Preconnect hints for faster audio loading
 /*
-  Link: <https://pub-7be57e30faae4f81bbd76b61006ac8fc.r2.dev>; rel=preconnect
-  Link: <https://pub-8c99ae05414d4672b1ec08a569ab3299.r2.dev>; rel=preconnect
-  Link: <https://pub-7a334cb009c14e10bbcfee54bb593a2a.r2.dev>; rel=preconnect
+  Link: <https://audio.foyue.org>; rel=preconnect
