@@ -12,8 +12,7 @@
 
 ### 操作步骤
 1. 登录 https://dash.cloudflare.com/login
-   - 邮箱：2569331267@qq.com
-   - 密码：yichan360@
+   - 使用您的 Cloudflare 账户凭据登录
 
 2. 选择域名：**foyue.org**
 
