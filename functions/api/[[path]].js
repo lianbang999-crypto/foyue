@@ -1019,6 +1019,7 @@ async function handleAiAsk(env, request, cors) {
   try {
     result = await ragAnswer(env, question, docs, {
       history: Array.isArray(history) ? history : [],
+      vectorMatches: matches,
     });
   } catch (err) {
     console.error('RAG answer failed:', err.message);
@@ -1038,17 +1039,23 @@ async function handleAiAsk(env, request, cors) {
     }, cors, 200, 'no-store');
   }
 
-  // 构建引用来源，附带文库链接信息
-  const sources = matches.slice(0, 3).map(m => {
-    const doc = docs.find(d => d.id === m.metadata.doc_id);
-    return {
+  // 构建引用来源，按 doc_id 去重
+  const seenDocIds = new Set();
+  const sources = [];
+  for (const m of matches) {
+    const docId = m.metadata?.doc_id || '';
+    if (!docId || seenDocIds.has(docId)) continue;
+    seenDocIds.add(docId);
+    const doc = docs.find(d => d.id === docId);
+    sources.push({
       title: m.metadata.title || '',
-      doc_id: m.metadata.doc_id || '',
+      doc_id: docId,
       score: Math.round(m.score * 100) / 100,
       category: doc?.category || m.metadata.category || '',
       series_name: doc?.series_name || m.metadata.series_name || '',
-    };
-  });
+    });
+    if (sources.length >= 3) break;
+  }
 
   return json({
     answer,

@@ -134,6 +134,55 @@
   margin-top: 6px;
 }
 
+/* AI 回复引用块 */
+.ai-msg-content .ai-quote {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-glow);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.ai-msg-content .ai-quote p {
+  margin: 0 0 4px;
+}
+.ai-msg-content .ai-quote p:last-child,
+.ai-msg-content .ai-quote cite { margin: 0; }
+.ai-msg-content .ai-quote cite {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-style: normal;
+  margin-top: 4px;
+}
+
+/* 建议问题 */
+.ai-suggest-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 4px;
+}
+.ai-suggest-chip {
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-family: var(--font-zh);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.ai-suggest-chip:hover {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+
 .ai-sources {
   font-size: 13px;
   color: var(--text-secondary);

@@ -6,8 +6,11 @@ import { getDOM } from './dom.js';
 
 let chatInstance = null;
 const MAX_MESSAGES = 50;
-const TYPEWRITER_SPEED = 30;
+const TYPEWRITER_SPEED = 25;
 const WENKU_BASE = 'https://wenku.foyue.org';
+
+// 当前问题（用于给 source 链接添加 ?q= 高亮参数）
+let _lastQuestion = '';
 
 /**
  * 打开全屏 AI 聊天页
@@ -64,6 +67,15 @@ function createChatPage() {
     }
   });
 
+  // Suggested question chips
+  page.querySelectorAll('.ai-suggest-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const q = chip.textContent.trim();
+      chatInput.value = q;
+      chatForm.dispatchEvent(new Event('submit', { cancelable: true }));
+    });
+  });
+
   chatForm.addEventListener('submit', handleSubmit);
 
   function onKeydown(e) {
@@ -75,6 +87,11 @@ function createChatPage() {
     const question = chatInput.value.trim();
     if (!question || isLoading) return;
 
+    // 隐藏建议问题
+    const suggestWrap = page.querySelector('.ai-suggest-wrap');
+    if (suggestWrap) suggestWrap.remove();
+
+    _lastQuestion = question;
     addMessage('user', question);
     chatInput.value = '';
     isLoading = true;
@@ -105,10 +122,46 @@ function createChatPage() {
   function renderSourceTag(s) {
     const title = escapeHtml(s.title);
     if (s.doc_id) {
-      const url = `${WENKU_BASE}/#/read/${encodeURIComponent(s.doc_id)}`;
+      const qParam = _lastQuestion ? `?q=${encodeURIComponent(_lastQuestion)}` : '';
+      const url = `${WENKU_BASE}/#/read/${encodeURIComponent(s.doc_id)}${qParam}`;
       return `<a class="ai-source-tag" href="${url}" target="_blank" rel="noopener">${title}</a>`;
     }
     return `<span class="ai-source-tag">${title}</span>`;
+  }
+
+  /**
+   * 将 AI 回复文本格式化为 HTML
+   * 引号开头的行渲染为 blockquote，"——" 开头渲染为出处
+   */
+  function formatAnswer(text) {
+    const lines = text.split('\n');
+    let html = '';
+    let inQuote = false;
+
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line) {
+        if (inQuote) { html += '</blockquote>'; inQuote = false; }
+        continue;
+      }
+      // 检测引文行：以中英文引号开头
+      const isQuoteLine = /^[\u201C\u201D"\u300A""]/.test(line);
+      // 检测出处行：以 —— 或 ── 或 ── 开头
+      const isSourceLine = /^[\u2014\u2500\-]{1,3}/.test(line);
+
+      if (isQuoteLine) {
+        if (!inQuote) { html += '<blockquote class="ai-quote">'; inQuote = true; }
+        html += `<p>${escapeHtml(line)}</p>`;
+      } else if (isSourceLine && inQuote) {
+        html += `<cite>${escapeHtml(line)}</cite></blockquote>`;
+        inQuote = false;
+      } else {
+        if (inQuote) { html += '</blockquote>'; inQuote = false; }
+        html += `<p>${escapeHtml(line)}</p>`;
+      }
+    }
+    if (inQuote) html += '</blockquote>';
+    return html;
   }
 
   function addMessage(role, content, sources, disclaimer) {
@@ -119,9 +172,13 @@ function createChatPage() {
     const msg = document.createElement('div');
     msg.className = `ai-msg ai-msg-${safeRole}`;
     let html = '<div class="ai-msg-content">';
-    html += `<p>${escapeHtml(content)}</p>`;
+    if (role === 'bot') {
+      html += formatAnswer(content);
+    } else {
+      html += `<p>${escapeHtml(content)}</p>`;
+    }
     if (role === 'bot' && sources && sources.length) {
-      html += '<div class="ai-sources">参考：' + sources.map(s => renderSourceTag(s)).join(' ') + '</div>';
+      html += '<div class="ai-sources">' + sources.map(s => renderSourceTag(s)).join(' ') + '</div>';
     }
     if (role === 'bot' && disclaimer) {
       html += `<p class="ai-disclaimer">${escapeHtml(disclaimer)}</p>`;
@@ -140,28 +197,32 @@ function createChatPage() {
     msg.className = 'ai-msg ai-msg-bot';
     const msgContent = document.createElement('div');
     msgContent.className = 'ai-msg-content';
-    const textP = document.createElement('p');
-    textP.className = 'ai-typewriter';
-    msgContent.appendChild(textP);
+    const textEl = document.createElement('div');
+    textEl.className = 'ai-typewriter';
+    msgContent.appendChild(textEl);
     msg.appendChild(msgContent);
     chatMessages.appendChild(msg);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 
-    const escaped = escapeHtml(content);
+    // 按可见字符渲染（textContent 避免 entity 逐字符问题）
+    const chars = [...content];
     let i = 0;
     return new Promise(resolve => {
       function tick() {
-        if (i < escaped.length) {
-          textP.textContent += escaped[i];
+        // 每帧渲染 1 个字符
+        if (i < chars.length) {
+          textEl.textContent += chars[i];
           i++;
           chatMessages.scrollTop = chatMessages.scrollHeight;
           requestAnimationFrame(() => setTimeout(tick, TYPEWRITER_SPEED));
         } else {
-          textP.classList.remove('ai-typewriter');
+          // 打字完成，替换为格式化内容
+          textEl.classList.remove('ai-typewriter');
+          textEl.innerHTML = formatAnswer(content);
           if (sources && sources.length) {
             const srcDiv = document.createElement('div');
             srcDiv.className = 'ai-sources';
-            srcDiv.innerHTML = '参考：' + sources.map(s => renderSourceTag(s)).join(' ');
+            srcDiv.innerHTML = sources.map(s => renderSourceTag(s)).join(' ');
             msgContent.appendChild(srcDiv);
           }
           if (disclaimer) {
@@ -241,6 +302,11 @@ function buildPageHTML() {
           <p>您好！我是净土法音 AI 问答助手。您可以向我提问有关净土法门、佛号念诵、讲经内容等任何问题。</p>
           <p class="ai-disclaimer">AI 回答仅供参考，请以原始经典和法师开示为准。</p>
         </div>
+      </div>
+      <div class="ai-suggest-wrap">
+        <button class="ai-suggest-chip">什么是念佛法门</button>
+        <button class="ai-suggest-chip">如何往生净土</button>
+        <button class="ai-suggest-chip">信愿行是什么</button>
       </div>
     </div>
     <form class="ai-fs-form" id="aiFsForm">
