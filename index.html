@@ -9,6 +9,11 @@
 <meta name="theme-color" content="#F7F2EA">
 <meta name="description" content="净土法音 - Pure Land Buddhist Dharma Audio Player. 南无阿弥陀佛 Namo Amitabha">
 <link rel="canonical" href="https://foyue.org/">
+<!-- Hreflang: multi-language support -->
+<link rel="alternate" hreflang="zh" href="https://foyue.org/">
+<link rel="alternate" hreflang="en" href="https://foyue.org/">
+<link rel="alternate" hreflang="fr" href="https://foyue.org/">
+<link rel="alternate" hreflang="x-default" href="https://foyue.org/">
 <!-- Open Graph -->
 <meta property="og:type" content="website">
 <meta property="og:title" content="净土法音 - Pure Land Dharma Audio">
@@ -41,11 +46,58 @@
   "description": "佛教净土宗音频播放器，提供佛号念诵、法师讲经等音频在线收听服务。",
   "applicationCategory": "MultimediaApplication",
   "operatingSystem": "All",
+  "inLanguage": ["zh-CN", "en", "fr"],
   "offers": {
     "@type": "Offer",
     "price": "0",
     "priceCurrency": "CNY"
+  },
+  "author": {
+    "@type": "Organization",
+    "name": "净土法音",
+    "url": "https://foyue.org"
   }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "PodcastSeries",
+  "name": "净土法音 - 听经台",
+  "description": "大安法师净土宗讲经系列音频，包含净土资粮信愿行、观经四帖疏、阿弥陀佛四十八大愿等系列。",
+  "url": "https://foyue.org/?tab=tingjingtai",
+  "inLanguage": "zh-CN",
+  "author": {
+    "@type": "Person",
+    "name": "大安法师",
+    "description": "庐山东林寺方丈，净土宗当代高僧"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "净土法音",
+    "url": "https://foyue.org"
+  },
+  "genre": "Buddhism",
+  "accessMode": "auditory",
+  "isAccessibleForFree": true
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "PodcastSeries",
+  "name": "净土法音 - 有声书",
+  "description": "印光大师永怀录、净土圣贤录、大安法师讲故事等佛教有声书系列。",
+  "url": "https://foyue.org/?tab=youshengshu",
+  "inLanguage": "zh-CN",
+  "publisher": {
+    "@type": "Organization",
+    "name": "净土法音",
+    "url": "https://foyue.org"
+  },
+  "genre": "Buddhism",
+  "accessMode": "auditory",
+  "isAccessibleForFree": true
 }
 </script>
 </head>
@@ -302,8 +354,7 @@
 <audio id="audioEl" preload="auto"></audio>
 
 <script type="module" src="/src/js/main.js"></script>
-<!-- Cloudflare Web Analytics -->
-<script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "f38885f2d3d74708bea94eb8c9c8531f"}'></script>
-<!-- End Cloudflare Web Analytics -->
+<!-- Cloudflare Web Analytics: auto-injected by Cloudflare proxy (dashboard setting: "启用 - JS 片段会自动注入") -->
+<!-- Manual beacon removed to avoid duplicate tracking with auto-inject -->
 </body>
 </html>

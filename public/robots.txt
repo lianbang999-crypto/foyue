@@ -2,5 +2,7 @@ User-agent: *
 Allow: /
 Disallow: /admin.html
 Disallow: /api/admin/
+Disallow: /api/
 
+# Sitemap
 Sitemap: https://foyue.org/sitemap.xml

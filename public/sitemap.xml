@@ -1,18 +1,137 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+
+  <!-- ===== Homepage ===== -->
   <url>
     <loc>https://foyue.org/</loc>
+    <xhtml:link rel="alternate" hreflang="zh" href="https://foyue.org/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://foyue.org/"/>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://foyue.org/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://foyue.org/"/>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
+
+  <!-- ===== Category: 听经台 (Dharma Lectures) ===== -->
   <url>
     <loc>https://foyue.org/?tab=tingjingtai</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
+
+  <!-- Series: 净土资粮信愿行（正编）— 大安法师 · 6集 -->
+  <url>
+    <loc>https://foyue.org/?series=xingyuanxing-zhengbian</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- Series: 净土资粮信愿行（续编）— 大安法师 · 6集 -->
+  <url>
+    <loc>https://foyue.org/?series=xingyuanxing-xubian</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- Series: 大势至菩萨念佛圆通章 — 大安法师 · 6集 -->
+  <url>
+    <loc>https://foyue.org/?series=dashizhi-yuantongzhang</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- Series: 观经四帖疏 — 大安法师 · 43集 -->
+  <url>
+    <loc>https://foyue.org/?series=guanjing-sitieshu</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- Series: 专题讲座 — 大安法师 · 8集 -->
+  <url>
+    <loc>https://foyue.org/?series=zhuanti-jiangzuo</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+
+  <!-- Series: 净土宗教程 — 大安法师 · 6集 -->
+  <url>
+    <loc>https://foyue.org/?series=jingtu-zongjiaocheng</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- Series: 淫业决疑论 — 大安法师 · 2集 -->
+  <url>
+    <loc>https://foyue.org/?series=yinye-jueyilun</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+
+  <!-- Series: 阿弥陀佛摄生三愿 — 大安法师 · 2集 -->
+  <url>
+    <loc>https://foyue.org/?series=amituo-shesheng-sanyuan</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+
+  <!-- Series: 阿弥陀佛四十八大愿 — 大安法师 · 15集 -->
+  <url>
+    <loc>https://foyue.org/?series=amituo-sishiba-dayuan</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- Series: 一函遍复 — 大安法师 · 4集 -->
+  <url>
+    <loc>https://foyue.org/?series=yihanbianfu</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+
+  <!-- ===== Category: 佛号 (Buddha's Name Chanting) ===== -->
+  <!-- Series: 东林佛号 — 东林寺 · 7集 -->
+  <url>
+    <loc>https://foyue.org/?series=donglin-fohao</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- ===== Category: 有声书 (Audiobooks) ===== -->
   <url>
     <loc>https://foyue.org/?tab=youshengshu</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
+
+  <!-- Series: 印光大师永怀录 — 东林寺 · 196集 -->
+  <url>
+    <loc>https://foyue.org/?series=yinguang-yonghuailu</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- Series: 净土圣贤录 — 东林寺 · 20集 -->
+  <url>
+    <loc>https://foyue.org/?series=jingtushengxian-lu</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- Series: 大安法师讲故事 — 大安法师 · 80集 -->
+  <url>
+    <loc>https://foyue.org/?series=daanfashi-jiangushi</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- ===== Category: 经典读诵 (Classic Recitations) ===== -->
+  <!-- Series: 经典读诵 · 3集 -->
+  <url>
+    <loc>https://foyue.org/?series=jingdian-dusong</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+
 </urlset>
