@@ -124,5 +124,11 @@
   "error_format": "音频格式不支持",
   "error_tap_retry": "加载失败，点击重试",
   "error_stall": "播放中断，正在恢复...",
-  "error_stall_tap": "播放中断，点击恢复"
+  "error_stall_tap": "播放中断，点击恢复",
+  "search_tab_audio": "音频",
+  "search_tab_wenku": "文库",
+  "search_wenku_hint": "输入问题搜索文库讲义",
+  "search_wenku_loading": "正在搜索文库...",
+  "search_wenku_read": "阅读原文",
+  "search_wenku_error": "搜索失败，请稍后重试"
 }

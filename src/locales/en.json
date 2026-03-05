@@ -124,5 +124,11 @@
   "error_format": "Audio format not supported",
   "error_tap_retry": "Load failed, tap to retry",
   "error_stall": "Playback interrupted, recovering...",
-  "error_stall_tap": "Playback interrupted, tap to resume"
+  "error_stall_tap": "Playback interrupted, tap to resume",
+  "search_tab_audio": "Audio",
+  "search_tab_wenku": "Library",
+  "search_wenku_hint": "Search dharma texts by question",
+  "search_wenku_loading": "Searching library...",
+  "search_wenku_read": "Read full text",
+  "search_wenku_error": "Search failed, please try again"
 }

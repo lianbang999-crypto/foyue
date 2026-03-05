@@ -125,5 +125,11 @@
   "error_format": "Format audio non pris en charge",
   "error_tap_retry": "\u00C9chec du chargement, appuyez pour r\u00E9essayer",
   "error_stall": "Lecture interrompue, reprise en cours...",
-  "error_stall_tap": "Lecture interrompue, appuyez pour reprendre"
+  "error_stall_tap": "Lecture interrompue, appuyez pour reprendre",
+  "search_tab_audio": "Audio",
+  "search_tab_wenku": "Biblioth\u00E8que",
+  "search_wenku_hint": "Rechercher dans les textes du Dharma",
+  "search_wenku_loading": "Recherche en cours...",
+  "search_wenku_read": "Lire le texte",
+  "search_wenku_error": "\u00C9chec de la recherche, r\u00E9essayez"
 }

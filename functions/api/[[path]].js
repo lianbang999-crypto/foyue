@@ -1152,16 +1152,19 @@ async function handleAiSearch(env, request, query, cors) {
   // 构建搜索结果，包含片段
   const results = matches.map(m => {
     const doc = docs.find(d => d.id === m.metadata.doc_id);
-    // 提取匹配片段
+    // 提取匹配片段 — 优先用向量块原文，回退到关键词上下文
     let snippet = '';
     if (doc && doc.content) {
-      const idx = doc.content.toLowerCase().indexOf(query.toLowerCase());
+      // 尝试在原文中找关键词上下文
+      const ql = query.toLowerCase();
+      const idx = doc.content.toLowerCase().indexOf(ql);
       if (idx >= 0) {
-        const start = Math.max(0, idx - 50);
-        const end = Math.min(doc.content.length, idx + query.length + 100);
-        snippet = (start > 0 ? '...' : '') + doc.content.slice(start, end) + (end < doc.content.length ? '...' : '');
+        const start = Math.max(0, idx - 60);
+        const end = Math.min(doc.content.length, idx + ql.length + 140);
+        snippet = (start > 0 ? '...' : '') + doc.content.slice(start, end).trim() + (end < doc.content.length ? '...' : '');
       } else {
-        snippet = doc.content.slice(0, 150) + '...';
+        // 关键词没精确匹配，取文档开头作为摘要
+        snippet = doc.content.slice(0, 200).trim() + (doc.content.length > 200 ? '...' : '');
       }
     }
     return {
@@ -1170,6 +1173,7 @@ async function handleAiSearch(env, request, query, cors) {
       snippet,
       score: Math.round(m.score * 100) / 100,
       series_name: doc ? doc.series_name : '',
+      category: doc ? doc.category : m.metadata.category || '',
       audio_series_id: doc ? doc.audio_series_id : '',
     };
   });
