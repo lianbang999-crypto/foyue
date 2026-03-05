@@ -119,10 +119,22 @@ function createChatPage() {
     }
   }
 
+  /**
+   * 从用户问题中提取关键词，用于文库高亮
+   * 去掉疑问词和虚词，保留有意义的内容词
+   */
+  function extractHighlightQuery(question) {
+    if (!question) return '';
+    const stopWords = /什么|怎么|怎样|如何|为什么|哪些|哪个|可以|能够|应该|是不是|有没有|到底|究竟|请问|的|了|吗|呢|吧|啊|在|是|有|和|与|或|也|都|就|把|被|对|又|要|让|给|从|用|以|而|但|却|不|很|最|更|还|这|那|它|你|我|他|她|们|个|着/g;
+    const cleaned = question.replace(stopWords, ' ').replace(/\s+/g, ' ').trim();
+    return cleaned || question;
+  }
+
   function renderSourceTag(s) {
     const title = escapeHtml(s.title);
     if (s.doc_id) {
-      const qParam = _lastQuestion ? `?q=${encodeURIComponent(_lastQuestion)}` : '';
+      const hlQuery = extractHighlightQuery(_lastQuestion);
+      const qParam = hlQuery ? `?q=${encodeURIComponent(hlQuery)}` : '';
       const url = `${WENKU_BASE}/#/read/${encodeURIComponent(s.doc_id)}${qParam}`;
       return `<a class="ai-source-tag" href="${url}" target="_blank" rel="noopener">${title}</a>`;
     }
