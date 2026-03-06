@@ -401,6 +401,20 @@ export async function onRequest(context) {
       return json(await handleWenkuReadCount(db, body.documentId), cors, 200, 'no-store');
     }
 
+    // POST /api/admin/wenku-sync — R2-to-D1 同步（需管理员权限）
+    if (path === '/api/admin/wenku-sync' && method === 'POST') {
+      const authErr = requireAdmin();
+      if (authErr) return authErr;
+      return await handleWenkuSync(env, cors);
+    }
+
+    // GET /api/admin/wenku-sync-status — 查看同步状态
+    if (path === '/api/admin/wenku-sync-status' && method === 'GET') {
+      const authErr = requireAdmin();
+      if (authErr) return authErr;
+      return await handleWenkuSyncStatus(db, cors);
+    }
+
     return json({ error: 'Not Found' }, cors, 404);
 
   } catch (err) {
@@ -1740,4 +1754,207 @@ async function handleWenkuReadCount(db, documentId) {
     'UPDATE documents SET read_count = read_count + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
   ).bind(documentId).run();
   return { success: true };
+}
+
+// ============================================================
+// 文库 R2-to-D1 同步
+// ============================================================
+
+const SYNC_R2_BASE = '\u5927\u5B89\u6CD5\u5E08/\u5927\u5B89\u6CD5\u5E08\uFF08\u8BB2\u6CD5\u96C6\uFF09TXT/';
+const SYNC_YIYONG = '\u5DF2\u7528/';
+const SYNC_YIYONG_DUPS = new Set(['\u4E00\u51FD\u904D\u590D', '\u9F99\u8212\u51C0\u571F\u6587\uFF08\u9A6C\u6765\u897F\u4E9A\uFF09']);
+const SYNC_FOLDER22 = [
+  { prefix: '\u51C0\u571F\u5341\u7591\u8BBA', expected: 6 },
+  { prefix: '\u51C0\u571F\u51B3\u7591\u8BBA', expected: 8 },
+];
+const SYNC_GARBAGE = [/\.netdisk\.p\.downloading$/, /~\$/, /\.docx?$/i];
+
+function syncNormalizeName(name) {
+  let n = name;
+  n = n.replace(/\uFF08[^\uFF09]*\uFF09/g, '');
+  n = n.replace(/\([^)]*\)/g, '');
+  n = n.replace(/[\u300A\u300B\u3001\u00B7\u300C\u300D\u300E\u300F\u3010\u3011\u201C\u201D\u2018\u2019\uFF01\uFF1F\u3002\uFF0C\uFF1B\uFF1A]/g, '');
+  n = n.replace(/\s+/g, '-');
+  n = n.replace(/[^\u4e00-\u9fff\u3400-\u4dbfa-zA-Z0-9-]/g, '');
+  n = n.replace(/-{2,}/g, '-');
+  n = n.replace(/^-+|-+$/g, '');
+  return n;
+}
+
+function syncGenId(seriesName, epNum) {
+  return `daafs-${syncNormalizeName(seriesName)}-${String(epNum).padStart(2, '0')}`;
+}
+
+function syncIsGarbage(key) {
+  const fn = key.split('/').pop();
+  return SYNC_GARBAGE.some(p => p.test(fn));
+}
+
+function syncParseFolder(name) {
+  const m = name.match(/^(\d+)\s+(.+?)\s+(\d+)[\u8BB2\u8F91]$/);
+  if (m) return { num: m[1], series: m[2].trim(), total: parseInt(m[3]) };
+  const s = name.match(/^(\d+)\s+(.+)$/);
+  if (s) return { num: s[1], series: s[2].trim(), total: null };
+  return null;
+}
+
+function syncParseEpNum(fileName) {
+  const m = fileName.match(/\u7B2C(\d+)[\u8BB2\u8F91]/);
+  return m ? parseInt(m[1]) : null;
+}
+
+function syncResolveFolder22(fileName) {
+  for (const s of SYNC_FOLDER22) {
+    if (fileName.includes(s.prefix)) return s.prefix;
+  }
+  return null;
+}
+
+function syncIsYiyongDup(name) {
+  for (const d of SYNC_YIYONG_DUPS) {
+    if (name.includes(d) || d.includes(name)) return true;
+  }
+  return false;
+}
+
+async function syncListAll(bucket, prefix) {
+  const objects = [];
+  let cursor;
+  let hasMore = true;
+  while (hasMore) {
+    const opts = { prefix, limit: 1000 };
+    if (cursor) opts.cursor = cursor;
+    const r = await bucket.list(opts);
+    objects.push(...r.objects);
+    hasMore = r.truncated;
+    cursor = r.truncated ? r.cursor : undefined;
+  }
+  return objects;
+}
+
+async function handleWenkuSync(env, cors) {
+  const db = env.DB;
+  const bucket = env.R2_WENKU;
+
+  if (!bucket) {
+    return json({ error: 'R2_WENKU binding not available' }, cors, 500);
+  }
+
+  const stats = { scanned: 0, inserted: 0, skipped: 0, errors: 0, series: {} };
+
+  // Ensure table
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS documents (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL,
+      type TEXT DEFAULT 'transcript', category TEXT DEFAULT '\u5927\u5B89\u6CD5\u5E08',
+      series_name TEXT, episode_num INTEGER,
+      format TEXT DEFAULT 'txt', r2_bucket TEXT DEFAULT 'jingdianwendang',
+      r2_key TEXT, content TEXT, file_size INTEGER,
+      audio_series_id TEXT, audio_episode_num INTEGER,
+      read_count INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // Existing IDs
+  const existingResult = await db.prepare('SELECT id FROM documents').all();
+  const existing = new Set(existingResult.results.map(r => r.id));
+
+  // List all objects
+  const allObjects = await syncListAll(bucket, SYNC_R2_BASE);
+  const mainFiles = [];
+  const yiyongFiles = [];
+
+  for (const obj of allObjects) {
+    if (obj.key.endsWith('/')) continue;
+    const rel = obj.key.slice(SYNC_R2_BASE.length);
+    if (rel.startsWith(SYNC_YIYONG)) yiyongFiles.push(obj);
+    else mainFiles.push(obj);
+  }
+
+  // Process helper
+  async function processObj(obj, isYiyong) {
+    const fn = obj.key.split('/').pop();
+    if (!fn.endsWith('.txt')) { stats.skipped++; return; }
+    if (syncIsGarbage(obj.key)) { stats.skipped++; return; }
+    stats.scanned++;
+
+    const base = isYiyong ? SYNC_R2_BASE + SYNC_YIYONG : SYNC_R2_BASE;
+    const rel = obj.key.slice(base.length);
+    const segs = rel.split('/');
+    if (segs.length < 2) { stats.skipped++; return; }
+
+    const folderName = segs[0];
+    const parsed = syncParseFolder(folderName);
+    if (!parsed) { stats.skipped++; return; }
+
+    let seriesName = parsed.num === '22' ? syncResolveFolder22(fn) : parsed.series;
+    if (!seriesName) { stats.skipped++; return; }
+    if (isYiyong && syncIsYiyongDup(seriesName)) { stats.skipped++; return; }
+
+    const epNum = syncParseEpNum(fn);
+    if (!epNum) { stats.skipped++; return; }
+
+    const id = syncGenId(seriesName, epNum);
+    if (existing.has(id)) { stats.skipped++; return; }
+
+    let content = '';
+    try {
+      const r2Obj = await bucket.get(obj.key);
+      if (r2Obj) content = await r2Obj.text();
+    } catch { content = ''; }
+
+    if (!content || !content.trim()) { stats.skipped++; return; }
+
+    const title = `${seriesName} \u7B2C${String(epNum).padStart(2, '0')}\u8BB2`;
+
+    try {
+      await db.prepare(
+        `INSERT INTO documents (id, title, type, category, series_name, episode_num,
+          format, r2_bucket, r2_key, content, file_size, created_at, updated_at)
+         VALUES (?, ?, 'transcript', '\u5927\u5B89\u6CD5\u5E08', ?, ?, 'txt', 'jingdianwendang', ?, ?, ?,
+                 datetime('now'), datetime('now'))`
+      ).bind(id, title, seriesName, epNum, obj.key, content, obj.size || 0).run();
+
+      existing.add(id);
+      stats.inserted++;
+      if (!stats.series[seriesName]) stats.series[seriesName] = 0;
+      stats.series[seriesName]++;
+    } catch (e) {
+      stats.errors++;
+    }
+  }
+
+  // Process main files
+  for (const obj of mainFiles) await processObj(obj, false);
+  // Process 已用 files
+  for (const obj of yiyongFiles) await processObj(obj, true);
+
+  return json({
+    success: true,
+    scanned: stats.scanned,
+    inserted: stats.inserted,
+    skipped: stats.skipped,
+    errors: stats.errors,
+    series: stats.series,
+    totalInDb: existing.size,
+  }, cors, 200, 'no-store');
+}
+
+async function handleWenkuSyncStatus(db, cors) {
+  try {
+    const total = await db.prepare('SELECT COUNT(*) as c FROM documents').first();
+    const series = await db.prepare(
+      `SELECT series_name, COUNT(*) as count FROM documents
+       WHERE type = 'transcript' AND content IS NOT NULL AND content != ''
+       GROUP BY series_name ORDER BY series_name`
+    ).all();
+    return json({
+      totalDocuments: total?.c || 0,
+      series: series.results || [],
+    }, cors, 200, 'no-store');
+  } catch (e) {
+    return json({ error: e.message }, cors, 500);
+  }
 }

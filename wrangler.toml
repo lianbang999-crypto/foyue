@@ -18,3 +18,8 @@ binding = "AI"
 [[vectorize]]
 binding = "VECTORIZE"
 index_name = "dharma-content"
+
+# R2 存储桶绑定 — 文库文档来源
+[[r2_buckets]]
+binding = "R2_WENKU"
+bucket_name = "jingdianwendang"
