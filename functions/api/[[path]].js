@@ -7,6 +7,7 @@ import {
   AI_CONFIG, chunkText, generateEmbeddings, semanticSearch,
   retrieveDocuments, ragAnswer, generateSummary,
   checkRateLimit, cleanupRateLimits, timingSafeCompare,
+  extractAIResponse,
 } from '../lib/ai-utils.js';
 
 export async function onRequest(context) {
@@ -130,6 +131,11 @@ export async function onRequest(context) {
     if (path === '/api/ai/search' && method === 'GET') {
       const q = url.searchParams.get('q');
       return await handleAiSearch(env, request, q, cors);
+    }
+
+    // GET /api/ai/daily-recommend — AI 每日推荐
+    if (path === '/api/ai/daily-recommend' && method === 'GET') {
+      return await handleDailyRecommend(env, cors);
     }
 
     // ==================== 留言墙路由 ====================
@@ -1363,6 +1369,256 @@ async function handleBuildEmbeddings(env, request, cors) {
   }, cors);
 }
 
+// ============================================================
+// AI 每日推荐
+// ============================================================
+
+/**
+ * 确定性种子哈希 — 用日期字符串生成稳定的整数种子
+ */
+function dateSeed(dateKey) {
+  let h = 0;
+  for (let i = 0; i < dateKey.length; i++) {
+    h = ((h << 5) - h + dateKey.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+/**
+ * 从所有系列中选 3 集音频（跨系列、跨分类）
+ */
+async function selectDailyEpisodes(db, dateKey) {
+  const seed = dateSeed(dateKey);
+
+  // 获取所有有集数的系列（排除佛号类 — 不适合推荐单集）
+  const { results: allSeries } = await db.prepare(
+    `SELECT s.id, s.title, s.title_en, s.speaker, s.speaker_en,
+            s.category_id, s.total_episodes, s.intro
+     FROM series s
+     WHERE s.total_episodes > 0 AND s.category_id != 'fohao'
+     ORDER BY s.sort_order`
+  ).all();
+
+  if (!allSeries.length) return [];
+
+  // 确定性 shuffle
+  const shuffled = [...allSeries].sort((a, b) => {
+    const ha = ((seed * 31 + a.id.charCodeAt(0) * 17) >>> 0) % 10000;
+    const hb = ((seed * 31 + b.id.charCodeAt(0) * 17) >>> 0) % 10000;
+    return ha - hb;
+  });
+
+  // 优先从不同 category 各选一集
+  const picks = [];
+  const usedCats = new Set();
+  const usedSeries = new Set();
+
+  for (const s of shuffled) {
+    if (picks.length >= 3) break;
+    if (usedCats.has(s.category_id)) continue;
+    const epNum = (seed + s.id.charCodeAt(0) * 7) % s.total_episodes + 1;
+    picks.push({ series: s, episodeNum: epNum });
+    usedCats.add(s.category_id);
+    usedSeries.add(s.id);
+  }
+
+  // 不够 3 个则从未用的系列填充
+  for (const s of shuffled) {
+    if (picks.length >= 3) break;
+    if (usedSeries.has(s.id)) continue;
+    const ci = Math.min(s.id.length - 1, 2);
+    const epNum = (seed + s.id.charCodeAt(ci) * 13) % s.total_episodes + 1;
+    picks.push({ series: s, episodeNum: epNum });
+    usedSeries.add(s.id);
+  }
+
+  // 查出每集的完整数据
+  const results = [];
+  for (const pick of picks) {
+    const ep = await db.prepare(
+      `SELECT episode_num, title, file_name, url
+       FROM episodes WHERE series_id = ? AND episode_num = ?`
+    ).bind(pick.series.id, pick.episodeNum).first();
+
+    if (ep) {
+      results.push({
+        series_id: pick.series.id,
+        episode_num: ep.episode_num,
+        episode_title: ep.title,
+        series_title: pick.series.title,
+        series_title_en: pick.series.title_en || '',
+        series_intro: pick.series.intro || '',
+        category_id: pick.series.category_id,
+        speaker: pick.series.speaker,
+        speaker_en: pick.series.speaker_en || '',
+        play_url: ep.url,
+        total_episodes: pick.series.total_episodes,
+      });
+    }
+  }
+  return results;
+}
+
+/**
+ * 从 documents 表获取某集的文稿片段作为 AI 上下文
+ */
+async function getEpisodeContext(db, seriesId, episodeNum) {
+  const doc = await db.prepare(
+    `SELECT content FROM documents
+     WHERE audio_series_id = ? AND audio_episode_num = ?
+       AND content IS NOT NULL AND content != ''
+     LIMIT 1`
+  ).bind(seriesId, episodeNum).first();
+  return doc && doc.content ? doc.content.slice(0, 800) : null;
+}
+
+/**
+ * 一次 AI 调用为 3 集音频生成推荐语
+ */
+async function generateRecommendIntros(env, episodes, contexts) {
+  const epDesc = episodes.map((ep, i) => {
+    let d = `${i + 1}. 系列：${ep.series_title}\n`;
+    d += `   系列简介：${ep.series_intro}\n`;
+    d += `   讲者：${ep.speaker}\n`;
+    d += `   本集标题：${ep.episode_title}（第${ep.episode_num}讲，共${ep.total_episodes}讲）\n`;
+    if (contexts[i]) d += `   本集开头内容：${contexts[i].slice(0, 500)}\n`;
+    return d;
+  }).join('\n');
+
+  const messages = [
+    {
+      role: 'system',
+      content: `你是净土法音平台的内容编辑，负责每日为用户撰写简短的收听推荐语。
+要求：
+1. 为每集音频写一段50-80字的推荐语，引导用户想去收听
+2. 推荐语应点明该集的核心内容或亮点，用亲切自然的语气
+3. 如果有本集内容，应基于实际内容来写；如果没有，则根据系列简介和集数位置推测
+4. 不要使用"本集"两字开头，用更自然的表达
+5. 严格按JSON数组格式输出，不要输出其他内容
+6. 使用简体中文`,
+    },
+    {
+      role: 'user',
+      content: `请为以下${episodes.length}集音频各写一段推荐语：
+
+${epDesc}
+
+请按以下JSON格式输出（只输出JSON数组，不要其他文字）：
+[{"index":1,"intro":"推荐语..."}${episodes.length >= 2 ? `,{"index":2,"intro":"..."}` : ''}${episodes.length >= 3 ? `,{"index":3,"intro":"..."}` : ''}]`,
+    },
+  ];
+
+  let response;
+  try {
+    response = await env.AI.run(AI_CONFIG.models.chat, {
+      messages, max_tokens: 500, temperature: 0.6,
+    }, { gateway: AI_CONFIG.gateway });
+  } catch (err) {
+    console.warn('[DailyRec] Primary model failed, trying fallback:', err.message);
+    response = await env.AI.run(AI_CONFIG.models.chatFallback, {
+      messages, max_tokens: 500, temperature: 0.6,
+    }, { gateway: AI_CONFIG.gateway });
+  }
+
+  const text = extractAIResponse(response);
+  if (!text) return null;
+
+  // 清除可能的 markdown code fence
+  const cleaned = text.replace(/```json?\s*/g, '').replace(/```/g, '').trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch (e) {
+    console.warn('[DailyRec] Failed to parse AI JSON:', cleaned.slice(0, 200));
+    return null;
+  }
+}
+
+/**
+ * GET /api/ai/daily-recommend — 每日 AI 推荐
+ */
+async function handleDailyRecommend(env, cors) {
+  const db = env.DB;
+  const dateKey = new Date().toISOString().slice(0, 10);
+  const startMs = Date.now();
+
+  // 1. 查缓存
+  const cached = await db.prepare(
+    `SELECT recommendations, status FROM ai_daily_recommendations WHERE date_key = ?`
+  ).bind(dateKey).first();
+
+  if (cached && cached.status === 'ready') {
+    return json({
+      date: dateKey,
+      recommendations: JSON.parse(cached.recommendations),
+      cached: true,
+    }, cors, 200, 'public, max-age=300');
+  }
+
+  if (cached && cached.status === 'generating') {
+    return json({ date: dateKey, recommendations: null, generating: true }, cors, 200, 'no-store');
+  }
+
+  // 2. 插入锁行
+  try {
+    await db.prepare(
+      `INSERT INTO ai_daily_recommendations (date_key, recommendations, model, status)
+       VALUES (?, '[]', 'pending', 'generating')`
+    ).bind(dateKey).run();
+  } catch (e) {
+    // UNIQUE 冲突 — 另一个请求正在生成
+    return json({ date: dateKey, recommendations: null, generating: true }, cors, 200, 'no-store');
+  }
+
+  // 3. 生成推荐
+  try {
+    const episodes = await selectDailyEpisodes(db, dateKey);
+    if (!episodes.length) throw new Error('No episodes selected');
+
+    // 取文稿上下文
+    const contexts = await Promise.all(
+      episodes.map(ep => getEpisodeContext(db, ep.series_id, ep.episode_num))
+    );
+
+    // AI 生成推荐语
+    const intros = await generateRecommendIntros(env, episodes, contexts);
+
+    // 合并推荐语
+    const recommendations = episodes.map((ep, i) => {
+      const aiIntro = intros && intros[i] ? intros[i].intro : ep.series_intro;
+      return { ...ep, ai_intro: aiIntro };
+    });
+
+    const genMs = Date.now() - startMs;
+
+    // 写入缓存
+    await db.prepare(
+      `UPDATE ai_daily_recommendations
+       SET recommendations = ?, model = ?, generation_ms = ?, status = 'ready'
+       WHERE date_key = ?`
+    ).bind(JSON.stringify(recommendations), AI_CONFIG.models.chat, genMs, dateKey).run();
+
+    return json({
+      date: dateKey,
+      recommendations,
+      cached: false,
+      generation_ms: genMs,
+    }, cors, 200, 'public, max-age=300');
+  } catch (err) {
+    console.error('[DailyRec] Generation failed:', err);
+
+    await db.prepare(
+      `UPDATE ai_daily_recommendations SET status = 'failed', error = ? WHERE date_key = ?`
+    ).bind(err.message || 'unknown', dateKey).run();
+
+    return json({
+      date: dateKey,
+      recommendations: null,
+      error: 'generation_failed',
+      fallback: true,
+    }, cors, 200, 'no-store');
+  }
+}
+
 /**
  * POST /api/admin/cleanup — 清理过期数据
  */
@@ -1373,7 +1629,19 @@ async function handleAdminCleanup(env, request, cors) {
   }
 
   await cleanupRateLimits(env);
-  return json({ success: true, message: '过期限流记录已清理' }, cors);
+
+  // 清理 7 天前的推荐缓存
+  await env.DB.prepare(
+    `DELETE FROM ai_daily_recommendations WHERE date_key < date('now', '-7 days')`
+  ).run();
+
+  // 重置超时的 generating 锁（超过 5 分钟）
+  await env.DB.prepare(
+    `UPDATE ai_daily_recommendations SET status = 'failed', error = 'generation timeout'
+     WHERE status = 'generating' AND created_at < datetime('now', '-5 minutes')`
+  ).run();
+
+  return json({ success: true, message: '过期限流记录及推荐缓存已清理' }, cors);
 }
 
 // ============================================================

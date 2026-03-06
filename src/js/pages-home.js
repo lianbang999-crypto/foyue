@@ -4,6 +4,8 @@ import { t, getLang } from './i18n.js';
 import { getDOM } from './dom.js';
 import { ICON_PLAY, ICON_PAUSE } from './icons.js';
 import { playList, togglePlay, getIsSwitching } from './player.js';
+import { getDailyRecommendation } from './ai-client.js';
+import { getHistory } from './history.js';
 
 const DAILY_QUOTES = [
   { zh: '若人但念阿弥陀，是名无上深妙禅。', en: 'To recite Amitabha is the supreme and profound meditation.', author: '永明延寿大师' },
@@ -20,6 +22,172 @@ const DAILY_QUOTES = [
   { zh: '厌离娑婆，欣求极乐。', en: 'Renounce the Saha world; aspire to the Land of Ultimate Bliss.', author: '善导大师' },
 ];
 
+// Category icons for recommendation cards
+const CAT_ICONS = {
+  tingjingtai: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 3"/></svg>',
+  youshengshu: '<svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M4 19.5V5a2 2 0 012-2h14v14H6.5"/></svg>',
+  jingdiandusong: '<svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>',
+};
+
+/* ---------- Skeleton placeholder ---------- */
+function renderRecSkeletons(count) {
+  return Array.from({ length: count }, () => `
+    <div class="home-rec-card home-rec-skeleton">
+      <div class="home-rec-icon skeleton-pulse"></div>
+      <div class="home-rec-body">
+        <div class="skeleton-line skeleton-pulse" style="width:60%"></div>
+        <div class="skeleton-line skeleton-pulse" style="width:90%;margin-top:6px"></div>
+        <div class="skeleton-line skeleton-pulse" style="width:40%;margin-top:4px"></div>
+      </div>
+    </div>
+  `).join('');
+}
+
+/* ---------- Render a single AI recommendation card ---------- */
+function renderAiRecCard(rec) {
+  const icon = CAT_ICONS[rec.category_id] || CAT_ICONS.tingjingtai;
+  return `
+    <div class="home-rec-card" data-sid="${rec.series_id}" data-cat="${rec.category_id}"
+         data-epnum="${rec.episode_num}" data-url="${rec.play_url || ''}">
+      <div class="home-rec-icon">${icon}</div>
+      <div class="home-rec-body">
+        <div class="home-rec-title">${rec.series_title} · ${rec.episode_title}</div>
+        <div class="home-rec-ai-intro">${rec.ai_intro}</div>
+        <div class="home-rec-sub">${rec.speaker || ''} · ${rec.episode_num}/${rec.total_episodes} ${t('episodes')}</div>
+      </div>
+    </div>`;
+}
+
+/* ---------- Personalize order using listening history ---------- */
+function personalizeOrder(recs) {
+  const history = getHistory();
+  if (!history.length) return recs;
+
+  const recentSeriesIds = new Set(history.map(h => h.seriesId));
+  const categoryCounts = {};
+  for (const h of history) {
+    if (h.catId) categoryCounts[h.catId] = (categoryCounts[h.catId] || 0) + 1;
+  }
+
+  const scored = recs.map(rec => {
+    let score = 0;
+    // Boost if user listens to this category
+    if (categoryCounts[rec.category_id]) score += Math.min(categoryCounts[rec.category_id], 5) * 2;
+    // Demote if user recently listened to this exact series (encourage discovery)
+    if (recentSeriesIds.has(rec.series_id)) score -= 3;
+    return { ...rec, _score: score };
+  });
+
+  scored.sort((a, b) => b._score - a._score);
+  return scored.map(({ _score, ...rest }) => rest);
+}
+
+/* ---------- Wire click handlers on AI rec cards ---------- */
+function wireAiRecClicks(container) {
+  container.querySelectorAll('.home-rec-card[data-epnum]').forEach(card => {
+    card.addEventListener('click', () => {
+      const sid = card.dataset.sid;
+      const catId = card.dataset.cat;
+      const epNum = parseInt(card.dataset.epnum);
+
+      for (const cat of state.data.categories) {
+        const sr = cat.series.find(s => s.id === sid);
+        if (sr) {
+          const epIdx = sr.episodes.findIndex(ep => ep.id === epNum);
+          const idx = epIdx >= 0 ? epIdx : Math.max(0, epNum - 1);
+          import('./pages-category.js').then(mod => {
+            mod.showEpisodes(sr, catId);
+            playList(sr.episodes, idx, sr);
+          });
+          return;
+        }
+      }
+    });
+  });
+}
+
+/* ---------- Fallback: day-rotated series (original logic, all categories) ---------- */
+function renderFallbackRecs(recList) {
+  const allSeries = [];
+  for (const cat of state.data.categories) {
+    if (cat.id === 'fohao') continue;
+    for (const s of cat.series) allSeries.push({ ...s, catId: cat.id });
+  }
+  if (!allSeries.length) { recList.innerHTML = ''; return; }
+
+  const dayOffset = Math.floor(Date.now() / 86400000) % allSeries.length;
+  const rotated = [...allSeries.slice(dayOffset), ...allSeries.slice(0, dayOffset)];
+  const picks = rotated.slice(0, 3);
+
+  recList.innerHTML = picks.map(s => {
+    const introHtml = s.intro ? `<div class="home-rec-intro">${s.intro}</div>` : '';
+    return `
+    <div class="home-rec-card" data-sid="${s.id}" data-cat="${s.catId}">
+      <div class="home-rec-icon">${CAT_ICONS[s.catId] || CAT_ICONS.tingjingtai}</div>
+      <div class="home-rec-body">
+        <div class="home-rec-title">${s.title}</div>${introHtml}
+        <div class="home-rec-sub">${s.speaker || ''} · ${s.totalEpisodes} ${t('episodes')}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Wire series-level clicks
+  recList.querySelectorAll('.home-rec-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const sid = card.dataset.sid;
+      const catId = card.dataset.cat;
+      const cat = state.data.categories.find(c => c.id === catId);
+      if (cat) {
+        const sr = cat.series.find(s => s.id === sid);
+        if (sr) import('./pages-category.js').then(mod => mod.showEpisodes(sr, catId));
+      }
+    });
+  });
+}
+
+/* ---------- Async loader for AI daily recommendations ---------- */
+async function loadDailyRecommendations(page) {
+  const recList = page.querySelector('#homeRecList');
+  if (!recList) return;
+
+  let attempts = 0;
+  const maxAttempts = 3;
+
+  async function tryLoad() {
+    try {
+      const result = await getDailyRecommendation();
+
+      // Still generating — retry
+      if (result.generating && attempts < maxAttempts) {
+        attempts++;
+        setTimeout(tryLoad, 3000);
+        return;
+      }
+
+      let recs = result.recommendations;
+
+      // No AI recs — fallback
+      if (!recs || !recs.length) {
+        renderFallbackRecs(recList);
+        return;
+      }
+
+      // Personalize order
+      recs = personalizeOrder(recs);
+
+      // Render
+      recList.innerHTML = recs.map(renderAiRecCard).join('');
+      wireAiRecClicks(recList);
+    } catch (err) {
+      console.warn('[Home] AI recommendation fetch failed:', err);
+      renderFallbackRecs(recList);
+    }
+  }
+
+  tryLoad();
+}
+
+/* ========== MAIN RENDER ========== */
 export function renderHomePage() {
   const dom = getDOM();
   const lang = getLang();
@@ -82,37 +250,16 @@ export function renderHomePage() {
     </div>`;
   }
 
-  // 4. Recommended series — shuffle based on day to vary content
-  const lectCat = state.data.categories.find(c => c.id === 'tingjingtai');
-  let recSeries = [];
-  if (lectCat && lectCat.series.length > 0) {
-    const allSeries = [...lectCat.series];
-    // Simple day-based shuffle: rotate start index by day
-    const dayOffset = Math.floor(Date.now() / 86400000) % allSeries.length;
-    const rotated = [...allSeries.slice(dayOffset), ...allSeries.slice(0, dayOffset)];
-    recSeries = rotated.slice(0, 3);
-  }
-  let recHtml = '';
-  if (recSeries.length) {
-    recHtml = `<div class="home-section">
-      <div class="home-section-header">
-        <div class="home-section-title">${t('home_recommended')}</div>
-        <div class="home-section-more" id="homeRecMore">${t('home_view_more') || '查看更多'} ›</div>
-      </div>
-      <div class="home-rec-list">${recSeries.map(s => {
-        const introHtml = s.intro ? `<div class="home-rec-intro">${s.intro}</div>` : '';
-        return `
-        <div class="home-rec-card" data-sid="${s.id}" data-cat="tingjingtai">
-          <div class="home-rec-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 3"/></svg></div>
-          <div class="home-rec-body">
-            <div class="home-rec-title">${s.title}</div>${introHtml}
-            <div class="home-rec-sub">${s.speaker || ''} · ${s.totalEpisodes} ${t('episodes')}</div>
-          </div>
-        </div>`;
-      }).join('')}
-      </div>
-    </div>`;
-  }
+  // 4. AI Daily Recommendation — skeleton placeholder, loaded async
+  const recHtml = `<div class="home-section" id="homeAiRec">
+    <div class="home-section-header">
+      <div class="home-section-title">${t('home_recommended')}</div>
+      <div class="home-ai-badge">AI</div>
+    </div>
+    <div class="home-rec-list" id="homeRecList">
+      ${renderRecSkeletons(3)}
+    </div>
+  </div>`;
 
   // Chanting cards — play button + text design
   const chantCards = fohaoEps.map((ep, idx) => {
@@ -165,15 +312,6 @@ export function renderHomePage() {
     }, { passive: true });
   }
 
-  // Wire up "view more" in recommended section
-  const recMore = page.querySelector('#homeRecMore');
-  if (recMore) {
-    recMore.addEventListener('click', () => {
-      const tab = document.querySelector('.tab[data-tab="tingjingtai"]');
-      if (tab) tab.click();
-    });
-  }
-
   // Wire up continue card
   const contCard = page.querySelector('.home-continue-card');
   if (contCard) {
@@ -223,19 +361,6 @@ export function renderHomePage() {
   });
   homeObs.observe(dom.contentArea, { childList: true });
 
-  // Wire up recommended cards
-  page.querySelectorAll('.home-rec-card').forEach(card => {
-    card.addEventListener('click', () => {
-      const sid = card.dataset.sid;
-      const catId = card.dataset.cat;
-      const cat = state.data.categories.find(c => c.id === catId);
-      if (cat) {
-        const sr = cat.series.find(s => s.id === sid);
-        if (sr) {
-          import('./pages-category.js').then(mod => mod.showEpisodes(sr, catId));
-        }
-      }
-    });
-  });
-
+  // Load AI recommendations asynchronously
+  loadDailyRecommendations(page);
 }

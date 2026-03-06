@@ -69,3 +69,11 @@ export async function getTranscript(seriesId, episodeNum) {
 export async function getTranscriptAvailability(seriesId) {
   return aiFetch(`/api/transcript/available/${encodeURIComponent(seriesId)}`);
 }
+
+/**
+ * 获取每日 AI 推荐
+ * Returns: { date, recommendations: [...], cached, generating? }
+ */
+export async function getDailyRecommendation() {
+  return aiFetch(`${AI_BASE}/daily-recommend`);
+}

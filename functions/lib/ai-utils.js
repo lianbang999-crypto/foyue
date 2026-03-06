@@ -178,7 +178,7 @@ export async function retrieveDocuments(env, vectorMatches) {
 // 旧格式: { response: "..." }
 // 新格式 (OpenAI 兼容): { choices: [{ message: { content: "..." } }] }
 // ============================================================
-function extractAIResponse(result) {
+export function extractAIResponse(result) {
   if (!result) return null;
   // 旧格式
   if (typeof result.response === 'string' && result.response) {
