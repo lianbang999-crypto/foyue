@@ -40,6 +40,9 @@ export async function openReader(docId, highlightQuery) {
   // Prevent body scroll
   document.body.style.overflow = 'hidden';
 
+  // Update URL state for deep linking & sharing
+  window.history.pushState({ doc: docId }, '', `/?doc=${encodeURIComponent(docId)}`);
+
   // Show loading
   const scrollArea = readerEl.querySelector('#readerScroll');
   scrollArea.innerHTML = '<div class="wenku-loading" style="padding-top:40vh">加载中...</div>';
@@ -137,6 +140,10 @@ export function closeReader() {
   }
   document.body.style.overflow = '';
   currentDocId = null;
+  // Clean URL state — only if current URL has ?doc=
+  if (new URLSearchParams(window.location.search).has('doc')) {
+    window.history.replaceState({}, '', window.location.pathname);
+  }
 }
 
 /* ===== Build Reader Shell ===== */
@@ -147,6 +154,9 @@ function buildReaderShell() {
         <svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg>
       </button>
       <div class="reader-topbar-title"></div>
+      <button class="reader-topbar-btn" id="readerShare" aria-label="分享">
+        <svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+      </button>
       <button class="reader-topbar-btn" id="readerSettingsBtn" aria-label="阅读设置">
         <svg viewBox="0 0 24 24"><text x="12" y="16" font-size="14" font-weight="600" fill="currentColor" stroke="none" text-anchor="middle" font-family="serif">Aa</text></svg>
       </button>
@@ -224,6 +234,25 @@ function wireEvents(prevId, nextId) {
   // Settings button
   readerEl.querySelector('#readerSettingsBtn').addEventListener('click', () => {
     toggleSettings();
+  });
+
+  // Share button
+  readerEl.querySelector('#readerShare').addEventListener('click', async () => {
+    const title = readerEl.querySelector('.reader-topbar-title')?.textContent || '净土法音文库';
+    const url = `${window.location.origin}/?doc=${encodeURIComponent(currentDocId)}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title, text: title + ' — 净土法音', url });
+      } catch { /* cancelled */ }
+    } else {
+      try {
+        await navigator.clipboard.writeText(url);
+        // Simple visual feedback — flash the share button
+        const btn = readerEl.querySelector('#readerShare');
+        btn.style.background = 'rgba(212,175,55,.3)';
+        setTimeout(() => { btn.style.background = ''; }, 600);
+      } catch { /* fallback */ }
+    }
   });
 
   // Settings panel interactions

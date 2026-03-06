@@ -492,6 +492,8 @@ async function loadData() {
     }
     // Handle ?series= deep link from wenku
     handleSeriesDeepLink();
+    // Handle ?wenku= and ?doc= deep links
+    handleWenkuDeepLink();
     // Handle ?tab=ai deep link
     checkAiDeepLink();
   } catch (e) {
@@ -648,5 +650,32 @@ function handleSeriesDeepLink() {
       window.history.replaceState({}, '', window.location.pathname);
       return;
     }
+  }
+}
+
+function handleWenkuDeepLink() {
+  const params = new URLSearchParams(window.location.search);
+  const docId = params.get('doc');
+  const wenkuSeries = params.get('wenku');
+  const tab = params.get('tab');
+  if (!docId && !wenkuSeries && tab !== 'wenku') return;
+
+  if (docId) {
+    // Open reader directly for a specific document
+    import('./wenku-reader.js').then(mod => mod.openReader(docId));
+  } else if (wenkuSeries) {
+    // Open wenku series view
+    import('./wenku.js').then(mod => {
+      mod.renderWenkuSeries(wenkuSeries, () => {
+        import('./pages-my.js').then(m => m.renderMyPage());
+      });
+    });
+  } else if (tab === 'wenku') {
+    // Open wenku home
+    import('./wenku.js').then(mod => {
+      mod.renderWenkuHome(() => {
+        import('./pages-my.js').then(m => m.renderMyPage());
+      });
+    });
   }
 }

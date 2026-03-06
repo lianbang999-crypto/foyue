@@ -44,6 +44,9 @@ export async function renderWenkuHome(backFn) {
   const dom = getDOM();
   dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
 
+  // Update URL state
+  window.history.pushState({ wenku: 'home' }, '', '/?tab=wenku');
+
   const page = document.createElement('div');
   page.className = 'wenku-page active';
   page.innerHTML = `
@@ -136,9 +139,12 @@ export async function renderWenkuHome(backFn) {
 }
 
 /* ===== Render Wenku Series Detail ===== */
-async function renderWenkuSeries(seriesName, backFn) {
+export async function renderWenkuSeries(seriesName, backFn) {
   const dom = getDOM();
   dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
+
+  // Update URL state
+  window.history.pushState({ wenku: seriesName }, '', `/?wenku=${encodeURIComponent(seriesName)}`);
 
   const page = document.createElement('div');
   page.className = 'wenku-page active';

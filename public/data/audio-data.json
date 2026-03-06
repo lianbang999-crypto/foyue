@@ -15,7 +15,7 @@
           "folder": "净土资粮信愿行（正编）",
           "totalEpisodes": 6,
           "intro": "阐述往生净土三资粮：信、愿、行的核心要义",
-          "wenkuUrl": "https://wenku.foyue.org/#/series/大安法师/净土资粮 信愿行（新加坡）",
+          "wenkuSeries": "净土资粮 信愿行（新加坡）",
           "episodes": [
             {
               "id": 1,
@@ -114,7 +114,7 @@
           "folder": "大势至菩萨念佛圆通章",
           "totalEpisodes": 6,
           "intro": "讲解《楞严经》大势至菩萨以念佛证圆通之法要",
-          "wenkuUrl": "https://wenku.foyue.org/#/series/大安法师/大势至菩萨念佛圆通章（新加坡）",
+          "wenkuSeries": "大势至菩萨念佛圆通章（新加坡）",
           "episodes": [
             {
               "id": 1,
@@ -164,7 +164,7 @@
           "folder": "观经四帖疏",
           "totalEpisodes": 43,
           "intro": "详解善导大师《观经四帖疏》的净土思想与修观方法",
-          "wenkuUrl": "https://wenku.foyue.org/#/series/大安法师/观经四帖疏 九品往生章（新加坡）",
+          "wenkuSeries": "观经四帖疏 九品往生章（新加坡）",
           "episodes": [
             {
               "id": 1,
@@ -505,7 +505,7 @@
           "folder": "专题讲座/净土宗教程",
           "totalEpisodes": 6,
           "intro": "系统讲授净土宗的教理体系与修行方法",
-          "wenkuUrl": "https://wenku.foyue.org/#/series/大安法师/净土宗教程",
+          "wenkuSeries": "净土宗教程",
           "episodes": [
             {
               "id": 1,
@@ -605,7 +605,7 @@
           "folder": "阿弥陀佛四十八大愿",
           "totalEpisodes": 15,
           "intro": "详解阿弥陀佛四十八大愿的深广内涵",
-          "wenkuUrl": "https://wenku.foyue.org/#/series/大安法师/阿弥陀佛四十八大愿 （新加坡）",
+          "wenkuSeries": "阿弥陀佛四十八大愿 （新加坡）",
           "episodes": [
             {
               "id": 1,
