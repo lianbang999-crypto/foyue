@@ -110,9 +110,9 @@ export function showEpisodes(series, tabId) {
       const pct = Math.min(100, Math.round(hEntry.time / hEntry.duration * 100));
       progressHtml = `<div class="ep-progress"><div class="ep-progress-fill" style="width:${pct}%"></div></div>`;
     }
-    // Duration — show cached value immediately, or empty span to fill later
-    const cached = getCachedDuration(ep.url);
-    const durText = cached ? fmtDuration(cached) : '';
+    // Duration — prefer JSON duration, then localStorage cache, else empty (filled by probe)
+    const dur = ep.duration || getCachedDuration(ep.url);
+    const durText = dur ? fmtDuration(dur) : '';
     li.innerHTML = `<span class="ep-num">${ep.id || idx + 1}</span>
       <div class="eq-bars"><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span></div>
       <div class="ep-text"><span class="ep-title">${escapeHtml(ep.title || ep.fileName)}</span>${introHtml}${progressHtml}</div>
@@ -125,7 +125,7 @@ export function showEpisodes(series, tabId) {
   });
   ul.appendChild(frag);
 
-  // Probe audio durations in background (non-blocking)
+  // Probe audio durations in background — only for episodes missing JSON duration (non-blocking)
   cancelProbe = probeDurations(series.episodes, (idx, seconds) => {
     const el = ul.querySelector(`.ep-duration[data-idx="${idx}"]`);
     if (el) el.textContent = fmtDuration(seconds);

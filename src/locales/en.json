@@ -132,5 +132,6 @@
   "search_wenku_read": "Read full text",
   "search_wenku_error": "Search failed, please try again",
   "downloading": "Downloading...",
-  "download_cellular_warn": "You are on cellular data. Download anyway?"
+  "download_cellular_warn": "You are on cellular data. Download anyway?",
+  "download_done": "Download complete"
 }

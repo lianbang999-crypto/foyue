@@ -79,16 +79,18 @@ export function probeDurations(episodes, onDuration) {
 
   // Skip probing entirely when network is weak
   if (state.networkWeak) {
-    // Still report cached durations
+    // Still report cached durations (for episodes without JSON duration)
     episodes.forEach((ep, idx) => {
+      if (ep.duration) return; // already in JSON — no need to probe
       const d = c[ep.url];
       if (d) onDuration(idx, d);
     });
     return () => {};
   }
 
-  // Immediately report cached durations
+  // Immediately report cached durations; queue uncached episodes for probing
   episodes.forEach((ep, idx) => {
+    if (ep.duration) return; // already in JSON — caller already has this value
     const d = c[ep.url];
     if (d) {
       onDuration(idx, d);

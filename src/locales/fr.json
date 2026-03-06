@@ -133,5 +133,6 @@
   "search_wenku_read": "Lire le texte",
   "search_wenku_error": "\u00C9chec de la recherche, r\u00E9essayez",
   "downloading": "T\u00E9l\u00E9chargement...",
-  "download_cellular_warn": "Vous utilisez les donn\u00E9es mobiles. T\u00E9l\u00E9charger quand m\u00EAme ?"
+  "download_cellular_warn": "Vous utilisez les donn\u00E9es mobiles. T\u00E9l\u00E9charger quand m\u00EAme ?",
+  "download_done": "T\u00E9l\u00E9chargement termin\u00E9"
 }

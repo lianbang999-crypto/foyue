@@ -991,10 +991,39 @@ export function downloadCurrentTrack() {
     return;
   }
 
-  // Otherwise fetch and download
+  // Otherwise fetch with progress tracking
   showToast(t('downloading') || '\u4E0B\u8F7D\u4E2D...');
   fetch(tr.url)
-    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); })
+    .then(r => {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const total = parseInt(r.headers.get('content-length') || '0', 10);
+      // If no content-length or ReadableStream unavailable, fall back to simple blob()
+      if (!total || !r.body) return r.blob();
+      // Stream download with progress
+      const reader = r.body.getReader();
+      let received = 0;
+      const chunks = [];
+      let lastPct = -1;
+      function read() {
+        return reader.read().then(({ done, value }) => {
+          if (done) {
+            showToast(t('download_done') || '\u4E0B\u8F7D\u5B8C\u6210');
+            return new Blob(chunks);
+          }
+          chunks.push(value);
+          received += value.length;
+          const pct = Math.floor(received / total * 100);
+          if (pct !== lastPct) {
+            lastPct = pct;
+            const mb = (received / 1048576).toFixed(1);
+            const totalMb = (total / 1048576).toFixed(1);
+            showToast(pct + '%  ' + mb + ' / ' + totalMb + 'MB');
+          }
+          return read();
+        });
+      }
+      return read();
+    })
     .then(blob => {
       const burl = URL.createObjectURL(blob);
       const a = document.createElement('a');

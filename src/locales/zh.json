@@ -132,5 +132,6 @@
   "search_wenku_read": "阅读原文",
   "search_wenku_error": "搜索失败，请稍后重试",
   "downloading": "下载中...",
-  "download_cellular_warn": "当前使用流量，确定下载吗？"
+  "download_cellular_warn": "当前使用流量，确定下载吗？",
+  "download_done": "下载完成"
 }
