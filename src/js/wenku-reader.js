@@ -324,17 +324,21 @@ function wireEvents(prevId, nextId, doc) {
 
   // Share button — use toast instead of flash
   readerEl.querySelector('#readerShare').addEventListener('click', async () => {
-    const title = readerEl.querySelector('.reader-topbar-title')?.textContent || '净土法音文库';
+    const docTitle = readerEl.querySelector('.reader-topbar-title')?.textContent || '';
+    const seriesName = readerEl.querySelector('.reader-scroll-meta')?.textContent || '';
+    const title = docTitle ? `《${docTitle}》` : '净土法音文库';
+    const shareText = seriesName ? `${title} — ${seriesName}` : title;
     const url = `${window.location.origin}/?doc=${encodeURIComponent(currentDocId)}`;
     if (navigator.share) {
-      try { await navigator.share({ title, text: title + ' — 净土法音', url }); } catch { /* cancelled */ }
+      try { await navigator.share({ title: docTitle || '净土法音文库', text: shareText, url }); } catch { /* cancelled */ }
     } else {
+      const copyText = shareText + '\n' + url;
       try {
-        await navigator.clipboard.writeText(url);
+        await navigator.clipboard.writeText(copyText);
         showToast(t('link_copied') || '链接已复制');
       } catch {
         const inp = document.createElement('input');
-        inp.value = url; document.body.appendChild(inp);
+        inp.value = copyText; document.body.appendChild(inp);
         inp.select(); document.execCommand('copy'); inp.remove();
         showToast(t('link_copied') || '链接已复制');
       }
