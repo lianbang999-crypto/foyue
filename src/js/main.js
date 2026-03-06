@@ -547,7 +547,7 @@ async function loadData() {
     dom.loader.innerHTML = `<div class="error-msg">${t('loading_fail')}<br><button id="retryLoadBtn">${t('retry')}</button></div>`;
     document.getElementById('retryLoadBtn').addEventListener('click', () => {
       loadAttempts = 0;
-      dom.loader.innerHTML = '<img src="/icons/logo.png" style="width:60px;height:auto;opacity:.4;animation:breathe 2.5s ease-in-out infinite" alt=""><div class="loader-text">Loading...</div>';
+      dom.loader.innerHTML = '<img src="/icons/logo.png" style="width:120px;height:auto;opacity:.4;animation:breathe 2.5s ease-in-out infinite" alt=""><div class="loader-text">Loading...</div>';
       loadData();
     });
   }
