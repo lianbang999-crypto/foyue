@@ -495,7 +495,7 @@
           "speakerEn": "Master Da'an",
           "bucket": "daanfashi",
           "folder": "专题讲座",
-          "totalEpisodes": 8,
+          "totalEpisodes": 15,
           "intro": "大安法师关于净土修学各类主题的专题开示",
           "episodes": [
             {
@@ -561,6 +561,48 @@
               "fileName": "至简易至圆顿的净土法门.mp3",
               "url": "https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E4%B8%93%E9%A2%98%E8%AE%B2%E5%BA%A7/%E8%87%B3%E7%AE%80%E6%98%93%E8%87%B3%E5%9C%86%E9%A1%BF%E7%9A%84%E5%87%80%E5%9C%9F%E6%B3%95%E9%97%A8.mp3",
               "duration": 4551
+            },
+            {
+              "id": 9,
+              "title": "2018年三月昼夜念佛开示",
+              "fileName": "2018年三月昼夜念佛开示.mp3",
+              "url": "https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E4%B8%93%E9%A2%98%E8%AE%B2%E5%BA%A7/2018%E5%B9%B4%E4%B8%89%E6%9C%88%E6%98%BC%E5%A4%9C%E5%BF%B5%E4%BD%9B%E5%BC%80%E7%A4%BA.mp3"
+            },
+            {
+              "id": 10,
+              "title": "2021年五月昼夜念佛开示",
+              "fileName": "2021年五月昼夜念佛开示.mp3",
+              "url": "https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E4%B8%93%E9%A2%98%E8%AE%B2%E5%BA%A7/2021%E5%B9%B4%E4%BA%94%E6%9C%88%E6%98%BC%E5%A4%9C%E5%BF%B5%E4%BD%9B%E5%BC%80%E7%A4%BA.mp3"
+            },
+            {
+              "id": 11,
+              "title": "中阴念佛救度",
+              "fileName": "中阴念佛救度.mp3",
+              "url": "https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E4%B8%93%E9%A2%98%E8%AE%B2%E5%BA%A7/%E4%B8%AD%E9%98%B4%E5%BF%B5%E4%BD%9B%E6%95%91%E5%BA%A6.mp3"
+            },
+            {
+              "id": 12,
+              "title": "临终接引愿的内蕴",
+              "fileName": "临终接引愿的内蕴.mp3",
+              "url": "https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E4%B8%93%E9%A2%98%E8%AE%B2%E5%BA%A7/%E4%B8%B4%E7%BB%88%E6%8E%A5%E5%BC%95%E6%84%BF%E7%9A%84%E5%86%85%E8%95%B4.mp3"
+            },
+            {
+              "id": 13,
+              "title": "华严十玄门与净土法门",
+              "fileName": "华严十玄门与净土法门.mp3",
+              "url": "https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E4%B8%93%E9%A2%98%E8%AE%B2%E5%BA%A7/%E5%8D%8E%E4%B8%A5%E5%8D%81%E7%8E%84%E9%97%A8%E4%B8%8E%E5%87%80%E5%9C%9F%E6%B3%95%E9%97%A8.mp3"
+            },
+            {
+              "id": 14,
+              "title": "念佛法门的原理和方法",
+              "fileName": "念佛法门的原理和方法.mp3",
+              "url": "https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E4%B8%93%E9%A2%98%E8%AE%B2%E5%BA%A7/%E5%BF%B5%E4%BD%9B%E6%B3%95%E9%97%A8%E7%9A%84%E5%8E%9F%E7%90%86%E5%92%8C%E6%96%B9%E6%B3%95.mp3"
+            },
+            {
+              "id": 15,
+              "title": "远离恶处与亲近善友",
+              "fileName": "远离恶处与亲近善友.mp3",
+              "url": "https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E4%B8%93%E9%A2%98%E8%AE%B2%E5%BA%A7/%E8%BF%9C%E7%A6%BB%E6%81%B6%E5%A4%84%E4%B8%8E%E4%BA%B2%E8%BF%91%E5%96%84%E5%8F%8B.mp3"
             }
           ]
         },
@@ -955,6 +997,142 @@
               "fileName": "普贤行愿品 第7讲.mp3",
               "url": "https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E6%99%AE%E8%B4%A4%E8%A1%8C%E6%84%BF%E5%93%81/%E6%99%AE%E8%B4%A4%E8%A1%8C%E6%84%BF%E5%93%81%20%E7%AC%AC7%E8%AE%B2.mp3",
               "duration": 5634
+            }
+          ]
+        },
+        {
+          "id": "linzhong-sandayao",
+          "title": "临终三大要",
+          "titleEn": "Three Essentials at Life's End",
+          "speaker": "大安法师",
+          "speakerEn": "Master Da'an",
+          "bucket": "daanfashi",
+          "folder": "临终三大要",
+          "totalEpisodes": 2,
+          "intro": "印光大师临终三大要的详细讲解",
+          "episodes": [
+            {
+              "id": 1,
+              "title": "第1讲",
+              "fileName": "临终三大要  第1讲.mp3",
+              "url": "https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E4%B8%B4%E7%BB%88%E4%B8%89%E5%A4%A7%E8%A6%81/%E4%B8%B4%E7%BB%88%E4%B8%89%E5%A4%A7%E8%A6%81%20%20%E7%AC%AC1%E8%AE%B2.mp3"
+            },
+            {
+              "id": 2,
+              "title": "第2讲",
+              "fileName": "临终三大要  第2讲.mp3",
+              "url": "https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E4%B8%B4%E7%BB%88%E4%B8%89%E5%A4%A7%E8%A6%81/%E4%B8%B4%E7%BB%88%E4%B8%89%E5%A4%A7%E8%A6%81%20%20%E7%AC%AC2%E8%AE%B2.mp3"
+            }
+          ]
+        },
+        {
+          "id": "linzhong-zhunian-dayi",
+          "title": "临终助念答疑合辑",
+          "titleEn": "End-of-Life Chanting Q&A Collection",
+          "speaker": "大安法师",
+          "speakerEn": "Master Da'an",
+          "bucket": "daanfashi",
+          "folder": "临终助念答疑合辑",
+          "totalEpisodes": 5,
+          "intro": "关于临终助念的常见问题详细解答",
+          "episodes": [
+            {
+              "id": 1,
+              "title": "第01集",
+              "fileName": "临终助念答疑合辑 第01集.mp3",
+              "url": "https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E4%B8%B4%E7%BB%88%E5%8A%A9%E5%BF%B5%E7%AD%94%E7%96%91%E5%90%88%E8%BE%91/%E4%B8%B4%E7%BB%88%E5%8A%A9%E5%BF%B5%E7%AD%94%E7%96%91%E5%90%88%E8%BE%91%20%E7%AC%AC01%E9%9B%86.mp3"
+            },
+            {
+              "id": 2,
+              "title": "第02集",
+              "fileName": "临终助念答疑合辑 第02集.mp3",
+              "url": "https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E4%B8%B4%E7%BB%88%E5%8A%A9%E5%BF%B5%E7%AD%94%E7%96%91%E5%90%88%E8%BE%91/%E4%B8%B4%E7%BB%88%E5%8A%A9%E5%BF%B5%E7%AD%94%E7%96%91%E5%90%88%E8%BE%91%20%E7%AC%AC02%E9%9B%86.mp3"
+            },
+            {
+              "id": 3,
+              "title": "第03集",
+              "fileName": "临终助念答疑合辑 第03集.mp3",
+              "url": "https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E4%B8%B4%E7%BB%88%E5%8A%A9%E5%BF%B5%E7%AD%94%E7%96%91%E5%90%88%E8%BE%91/%E4%B8%B4%E7%BB%88%E5%8A%A9%E5%BF%B5%E7%AD%94%E7%96%91%E5%90%88%E8%BE%91%20%E7%AC%AC03%E9%9B%86.mp3"
+            },
+            {
+              "id": 4,
+              "title": "第04集",
+              "fileName": "临终助念答疑合辑 第04集.mp3",
+              "url": "https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E4%B8%B4%E7%BB%88%E5%8A%A9%E5%BF%B5%E7%AD%94%E7%96%91%E5%90%88%E8%BE%91/%E4%B8%B4%E7%BB%88%E5%8A%A9%E5%BF%B5%E7%AD%94%E7%96%91%E5%90%88%E8%BE%91%20%E7%AC%AC04%E9%9B%86.mp3"
+            },
+            {
+              "id": 5,
+              "title": "第05集",
+              "fileName": "临终助念答疑合辑 第05集.mp3",
+              "url": "https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E4%B8%B4%E7%BB%88%E5%8A%A9%E5%BF%B5%E7%AD%94%E7%96%91%E5%90%88%E8%BE%91/%E4%B8%B4%E7%BB%88%E5%8A%A9%E5%BF%B5%E7%AD%94%E7%96%91%E5%90%88%E8%BE%91%20%E7%AC%AC05%E9%9B%86.mp3"
+            }
+          ]
+        },
+        {
+          "id": "xigui-zhizhi",
+          "title": "西归直指",
+          "titleEn": "Direct Pointer to the Western Paradise",
+          "speaker": "大安法师",
+          "speakerEn": "Master Da'an",
+          "bucket": "daanfashi",
+          "folder": "西归直指",
+          "totalEpisodes": 4,
+          "intro": "周安士居士《西归直指》的逐讲解读",
+          "episodes": [
+            {
+              "id": 1,
+              "title": "第1讲",
+              "fileName": "西归直指 第1讲.mp3",
+              "url": "https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E8%A5%BF%E5%BD%92%E7%9B%B4%E6%8C%87/%E8%A5%BF%E5%BD%92%E7%9B%B4%E6%8C%87%20%E7%AC%AC1%E8%AE%B2.mp3"
+            },
+            {
+              "id": 2,
+              "title": "第2讲",
+              "fileName": "西归直指 第2讲.mp3",
+              "url": "https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E8%A5%BF%E5%BD%92%E7%9B%B4%E6%8C%87/%E8%A5%BF%E5%BD%92%E7%9B%B4%E6%8C%87%20%E7%AC%AC2%E8%AE%B2.mp3"
+            },
+            {
+              "id": 3,
+              "title": "第3讲",
+              "fileName": "西归直指 第3讲.mp3",
+              "url": "https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E8%A5%BF%E5%BD%92%E7%9B%B4%E6%8C%87/%E8%A5%BF%E5%BD%92%E7%9B%B4%E6%8C%87%20%E7%AC%AC3%E8%AE%B2.mp3"
+            },
+            {
+              "id": 4,
+              "title": "第4讲",
+              "fileName": "西归直指 第4讲.mp3",
+              "url": "https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E8%A5%BF%E5%BD%92%E7%9B%B4%E6%8C%87/%E8%A5%BF%E5%BD%92%E7%9B%B4%E6%8C%87%20%E7%AC%AC4%E8%AE%B2.mp3"
+            }
+          ]
+        },
+        {
+          "id": "quanren-jiyindewen",
+          "title": "劝人积阴德文",
+          "titleEn": "Exhortation to Accumulate Hidden Virtue",
+          "speaker": "大安法师",
+          "speakerEn": "Master Da'an",
+          "bucket": "daanfashi",
+          "folder": "专题讲座/劝人积阴德文",
+          "totalEpisodes": 3,
+          "intro": "劝世人行善积德、培植阴功的开示",
+          "episodes": [
+            {
+              "id": 1,
+              "title": "第1讲",
+              "fileName": "劝人积阴德文 第1讲.mp3",
+              "url": "https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E4%B8%93%E9%A2%98%E8%AE%B2%E5%BA%A7/%E5%8A%9D%E4%BA%BA%E7%A7%AF%E9%98%B4%E5%BE%B7%E6%96%87/%E5%8A%9D%E4%BA%BA%E7%A7%AF%E9%98%B4%E5%BE%B7%E6%96%87%20%E7%AC%AC1%E8%AE%B2.mp3"
+            },
+            {
+              "id": 2,
+              "title": "第2讲",
+              "fileName": "劝人积阴德文 第2讲.mp3",
+              "url": "https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E4%B8%93%E9%A2%98%E8%AE%B2%E5%BA%A7/%E5%8A%9D%E4%BA%BA%E7%A7%AF%E9%98%B4%E5%BE%B7%E6%96%87/%E5%8A%9D%E4%BA%BA%E7%A7%AF%E9%98%B4%E5%BE%B7%E6%96%87%20%E7%AC%AC2%E8%AE%B2.mp3"
+            },
+            {
+              "id": 3,
+              "title": "第3讲",
+              "fileName": "劝人积阴德文 第3讲.mp3",
+              "url": "https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E4%B8%93%E9%A2%98%E8%AE%B2%E5%BA%A7/%E5%8A%9D%E4%BA%BA%E7%A7%AF%E9%98%B4%E5%BE%B7%E6%96%87/%E5%8A%9D%E4%BA%BA%E7%A7%AF%E9%98%B4%E5%BE%B7%E6%96%87%20%E7%AC%AC3%E8%AE%B2.mp3"
             }
           ]
         }
