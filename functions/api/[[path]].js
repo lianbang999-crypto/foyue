@@ -401,25 +401,17 @@ export async function onRequest(context) {
       return json(await handleWenkuReadCount(db, body.documentId), cors, 200, 'no-store');
     }
 
-    // POST /api/admin/wenku-sync — R2-to-D1 同步（需管理员权限或同步密钥）
+    // POST /api/admin/wenku-sync — R2-to-D1 同步（需管理员权限）
     if (path === '/api/admin/wenku-sync' && method === 'POST') {
-      const syncKey = url.searchParams.get('key');
-      const validSyncKey = 'foyue-wenku-sync-2026';
-      if (syncKey !== validSyncKey) {
-        const authErr = requireAdmin();
-        if (authErr) return authErr;
-      }
+      const authErr = requireAdmin();
+      if (authErr) return authErr;
       return await handleWenkuSync(env, cors);
     }
 
     // GET /api/admin/wenku-sync-status — 查看同步状态
     if (path === '/api/admin/wenku-sync-status' && method === 'GET') {
-      const syncKey = url.searchParams.get('key');
-      const validSyncKey = 'foyue-wenku-sync-2026';
-      if (syncKey !== validSyncKey) {
-        const authErr = requireAdmin();
-        if (authErr) return authErr;
-      }
+      const authErr = requireAdmin();
+      if (authErr) return authErr;
       return await handleWenkuSyncStatus(db, cors);
     }
 
