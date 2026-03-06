@@ -61,6 +61,15 @@ export function escapeHtml(str) {
   return div.innerHTML;
 }
 
+/* Debounce — delays fn execution until after wait ms of inactivity */
+export function debounce(fn, wait) {
+  let timer;
+  return function(...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), wait);
+  };
+}
+
 /* Legacy — kept for any other callers */
 export function seekAt(e, el, audio) {
   const p = seekCalc(e, el);

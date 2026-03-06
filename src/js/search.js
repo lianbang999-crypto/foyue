@@ -6,8 +6,6 @@ import { playList } from './player.js';
 import { escapeHtml } from './utils.js';
 import { aiSearch } from './ai-client.js';
 
-const WENKU_BASE = 'https://wenku.foyue.org';
-
 let _showEpisodes, _renderCategory, _renderHomePage;
 
 function highlight(text, query) {
@@ -326,13 +324,9 @@ async function renderWenkuResults(q, container) {
     list.className = 'wenku-results';
 
     data.results.forEach(r => {
-      const card = document.createElement('a');
-      // Link to wenku with highlight query param
-      const highlightQ = encodeURIComponent(q);
-      card.href = `${WENKU_BASE}/#/read/${encodeURIComponent(r.doc_id)}?q=${highlightQ}`;
-      card.target = '_blank';
-      card.rel = 'noopener';
+      const card = document.createElement('div');
       card.className = 'wenku-result-card';
+      card.style.cursor = 'pointer';
 
       const titleHtml = escapeHtml(r.title);
       const seriesHtml = r.series_name ? `<span class="wenku-result-series">${escapeHtml(r.series_name)}</span>` : '';
@@ -348,6 +342,13 @@ async function renderWenkuResults(q, container) {
         ${snippetHtml}
         <div class="wenku-result-action">${t('search_wenku_read') || '\u9605\u8BFB\u539F\u6587'} \u2192</div>
       `;
+
+      // Open internal reader with highlight
+      card.addEventListener('click', () => {
+        closeSearchOverlay();
+        import('./wenku-reader.js').then(mod => mod.openReader(r.doc_id, q));
+      });
+
       list.appendChild(card);
     });
     container.appendChild(list);

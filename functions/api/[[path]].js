@@ -368,6 +368,39 @@ export async function onRequest(context) {
       return await handleAdminDeleteEpisode(db, parseInt(admEpDel[1]), cors);
     }
 
+    // ==================== 文库路由 ====================
+
+    // GET /api/wenku/series — 获取文库系列列表
+    if (path === '/api/wenku/series' && method === 'GET') {
+      return json(await handleWenkuSeries(db), cors);
+    }
+
+    // GET /api/wenku/documents?series= — 获取系列文档列表
+    if (path === '/api/wenku/documents' && method === 'GET') {
+      const series = url.searchParams.get('series');
+      if (!series) return json({ error: 'Missing series parameter' }, cors, 400);
+      return json(await handleWenkuDocuments(db, series), cors);
+    }
+
+    // GET /api/wenku/documents/:id — 获取单个文档（含内容）
+    const wenkuDocMatch = path.match(/^\/api\/wenku\/documents\/(.+)$/);
+    if (wenkuDocMatch && method === 'GET') {
+      return json(await handleWenkuDocument(db, decodeURIComponent(wenkuDocMatch[1])), cors);
+    }
+
+    // GET /api/wenku/search?q= — 搜索文库
+    if (path === '/api/wenku/search' && method === 'GET') {
+      const q = url.searchParams.get('q');
+      if (!q) return json({ documents: [] }, cors);
+      return json(await handleWenkuSearch(db, q), cors);
+    }
+
+    // POST /api/wenku/read-count — 记录阅读
+    if (path === '/api/wenku/read-count' && method === 'POST') {
+      let body; try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
+      return json(await handleWenkuReadCount(db, body.documentId), cors, 200, 'no-store');
+    }
+
     return json({ error: 'Not Found' }, cors, 404);
 
   } catch (err) {
@@ -1618,4 +1651,93 @@ async function handleAdminUpdateEpisode(db, id, body, cors) {
 async function handleAdminDeleteEpisode(db, id, cors) {
   await db.prepare('DELETE FROM episodes WHERE id=?').bind(id).run();
   return json({ success: true }, cors, 200, 'no-store');
+}
+
+// ============================================================
+// 文库路由处理器
+// ============================================================
+
+async function handleWenkuSeries(db) {
+  const result = await db.prepare(
+    `SELECT series_name, COUNT(*) as count
+     FROM documents
+     WHERE type = 'transcript' AND content IS NOT NULL AND content != ''
+       AND series_name IS NOT NULL
+     GROUP BY series_name
+     ORDER BY series_name`
+  ).all();
+  return { series: result.results };
+}
+
+async function handleWenkuDocuments(db, seriesName) {
+  const result = await db.prepare(
+    `SELECT id, title, type, category, series_name, episode_num, format,
+            file_size, audio_series_id, read_count
+     FROM documents
+     WHERE series_name = ? AND type = 'transcript'
+       AND content IS NOT NULL AND content != ''
+     ORDER BY episode_num`
+  ).bind(seriesName).all();
+  return { documents: result.results };
+}
+
+async function handleWenkuDocument(db, id) {
+  const doc = await db.prepare(
+    'SELECT * FROM documents WHERE id = ?'
+  ).bind(id).first();
+
+  if (!doc) return { document: null };
+
+  // 获取上一篇/下一篇
+  let prevId = null;
+  let nextId = null;
+  let totalEpisodes = 0;
+
+  if (doc.series_name && doc.episode_num) {
+    const prev = await db.prepare(
+      `SELECT id FROM documents
+       WHERE series_name = ? AND episode_num < ? AND type = 'transcript'
+         AND content IS NOT NULL AND content != ''
+       ORDER BY episode_num DESC LIMIT 1`
+    ).bind(doc.series_name, doc.episode_num).first();
+
+    const next = await db.prepare(
+      `SELECT id FROM documents
+       WHERE series_name = ? AND episode_num > ? AND type = 'transcript'
+         AND content IS NOT NULL AND content != ''
+       ORDER BY episode_num ASC LIMIT 1`
+    ).bind(doc.series_name, doc.episode_num).first();
+
+    const total = await db.prepare(
+      `SELECT COUNT(*) as count FROM documents
+       WHERE series_name = ? AND type = 'transcript'
+         AND content IS NOT NULL AND content != ''`
+    ).bind(doc.series_name).first();
+
+    prevId = prev?.id || null;
+    nextId = next?.id || null;
+    totalEpisodes = total?.count || 0;
+  }
+
+  return { document: doc, prevId, nextId, totalEpisodes };
+}
+
+async function handleWenkuSearch(db, query) {
+  const pattern = `%${query}%`;
+  const result = await db.prepare(
+    `SELECT id, title, type, category, series_name, episode_num, format, read_count
+     FROM documents
+     WHERE type = 'transcript' AND content IS NOT NULL AND content != ''
+       AND (title LIKE ? OR content LIKE ? OR series_name LIKE ?)
+     ORDER BY read_count DESC LIMIT 30`
+  ).bind(pattern, pattern, pattern).all();
+  return { documents: result.results };
+}
+
+async function handleWenkuReadCount(db, documentId) {
+  if (!documentId) return { error: 'Missing documentId' };
+  await db.prepare(
+    'UPDATE documents SET read_count = read_count + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+  ).bind(documentId).run();
+  return { success: true };
 }

@@ -148,7 +148,7 @@ export function renderMyPage() {
   // Feature card clicks
   page.querySelector('#myHistoryCard').addEventListener('click', () => showHistorySubview());
   page.querySelector('#myWenkuCard').addEventListener('click', () => {
-    window.open('https://wenku-1je.pages.dev/', '_blank', 'noopener');
+    import('./wenku.js').then(mod => mod.renderWenkuHome(() => renderMyPage()));
   });
   page.querySelector('#myMessagesCard').addEventListener('click', () => showMessageWallSubview());
 

@@ -34,6 +34,12 @@ export default defineConfig({
             './src/js/pages-home.js',
             './src/js/pages-category.js',
             './src/js/pages-my.js'
+          ],
+          // 文库模块分离（按需加载）
+          'wenku': [
+            './src/js/wenku.js',
+            './src/js/wenku-api.js',
+            './src/js/wenku-reader.js'
           ]
         }
       }

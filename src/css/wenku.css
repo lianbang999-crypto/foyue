@@ -1,0 +1,254 @@
+/* ===== Wenku Module Styles ===== */
+
+/* --- Wenku Home & Series List --- */
+.wenku-page { display: none; animation: viewIn .3s ease-out; }
+.wenku-page.active { display: block; }
+
+.wenku-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 0 16px; margin-bottom: 4px;
+}
+.wenku-back {
+  -webkit-appearance: none; appearance: none; background: none; border: none;
+  width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--text); transition: background .15s;
+}
+.wenku-back:hover { background: var(--bg-card); }
+.wenku-back svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.wenku-header-info { flex: 1; min-width: 0; }
+.wenku-header-title { font-size: 1rem; font-weight: 600; color: var(--text); }
+.wenku-header-sub { font-size: .74rem; color: var(--text-secondary); margin-top: 1px; }
+
+/* Continue reading card */
+.wenku-continue {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--bg-card); border-radius: var(--radius); padding: 14px 16px;
+  border: 1px solid var(--border); cursor: pointer; transition: background .15s;
+  position: relative; overflow: hidden; margin-bottom: 18px;
+}
+.wenku-continue:hover { background: var(--bg-card-hover); }
+.wenku-continue-icon {
+  width: 40px; height: 40px; border-radius: var(--radius-sm);
+  background: var(--accent-glow); display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.wenku-continue-icon svg { width: 18px; height: 18px; stroke: var(--accent); fill: none; stroke-width: 1.8; }
+.wenku-continue-body { flex: 1; min-width: 0; }
+.wenku-continue-title { font-size: .86rem; color: var(--text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wenku-continue-sub { font-size: .74rem; color: var(--text-secondary); margin-top: 2px; }
+.wenku-continue-progress { position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: var(--border); }
+.wenku-continue-progress-fill { height: 100%; background: var(--accent); transition: width .3s; }
+
+/* Series list */
+.wenku-series-list { display: flex; flex-direction: column; gap: 8px; }
+.wenku-series-card {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--bg-card); border-radius: var(--radius); padding: 14px 16px;
+  border: 1px solid var(--border); cursor: pointer; transition: background .15s;
+}
+.wenku-series-card:hover { background: var(--bg-card-hover); }
+.wenku-series-icon {
+  width: 44px; height: 44px; border-radius: var(--radius-sm);
+  background: var(--accent-glow); display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.wenku-series-icon svg { width: 20px; height: 20px; stroke: var(--accent); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.wenku-series-body { flex: 1; min-width: 0; }
+.wenku-series-name { font-size: .86rem; color: var(--text); font-weight: 500; }
+.wenku-series-meta { font-size: .74rem; color: var(--text-secondary); margin-top: 3px; }
+.wenku-series-arrow { width: 14px; height: 14px; stroke: var(--text-muted); fill: none; stroke-width: 2; flex-shrink: 0; }
+
+/* Episode list in series view */
+.wenku-ep-list { display: flex; flex-direction: column; gap: 1px; background: var(--border); border-radius: var(--radius); overflow: hidden; }
+.wenku-ep-item {
+  display: flex; align-items: center; gap: 12px; padding: 13px 16px;
+  background: var(--bg-card); cursor: pointer; transition: background .15s;
+}
+.wenku-ep-item:hover { background: var(--bg-card-hover); }
+.wenku-ep-num { width: 28px; font-size: .78rem; color: var(--text-muted); text-align: center; flex-shrink: 0; }
+.wenku-ep-title { flex: 1; font-size: .84rem; color: var(--text); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wenku-ep-badge { font-size: .68rem; color: var(--accent); background: var(--accent-glow); padding: 2px 6px; border-radius: 10px; flex-shrink: 0; }
+
+/* Donglin link */
+.wenku-donglin {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  margin-top: 20px; padding: 12px; border-radius: var(--radius);
+  background: var(--bg-card); border: 1px solid var(--border);
+  color: var(--text-secondary); font-size: .78rem; cursor: pointer; transition: background .15s;
+  text-decoration: none;
+}
+.wenku-donglin:hover { background: var(--bg-card-hover); color: var(--accent); }
+.wenku-donglin svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; }
+
+/* Section title */
+.wenku-section-title {
+  font-size: .82rem; color: var(--text-secondary); letter-spacing: .04em;
+  padding: 0 4px 10px; font-weight: 500;
+}
+
+/* --- Immersive Reader --- */
+.wenku-reader {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 200; display: flex; flex-direction: column;
+  background: var(--reader-bg, #FFFFFF); color: var(--reader-text, #333);
+  transition: background .3s, color .3s;
+}
+
+/* Reader top bar - hidden by default, shown on tap */
+.reader-topbar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 10;
+  display: flex; align-items: center; gap: 8px; padding: 12px 16px;
+  padding-top: calc(12px + env(safe-area-inset-top, 0px));
+  background: linear-gradient(to bottom, rgba(0,0,0,.15), transparent);
+  opacity: 0; pointer-events: none; transition: opacity .25s;
+}
+.reader-topbar.visible { opacity: 1; pointer-events: auto; }
+.reader-topbar-btn {
+  -webkit-appearance: none; appearance: none; background: rgba(0,0,0,.2); border: none;
+  width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: #fff; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.reader-topbar-btn svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.reader-topbar-title { flex: 1; font-size: .82rem; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Reader content */
+.reader-scroll {
+  flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: 60px 24px 100px; max-width: 720px; margin: 0 auto; width: 100%;
+  box-sizing: border-box;
+}
+.reader-scroll-title { font-size: 1.2rem; font-weight: 600; color: var(--reader-text); margin-bottom: 6px; line-height: 1.5; }
+.reader-scroll-meta { font-size: .76rem; color: var(--reader-text-secondary, #999); margin-bottom: 28px; }
+.reader-scroll-body {
+  font-family: var(--reader-font, 'Noto Sans SC', sans-serif);
+  font-size: var(--reader-size, 17px);
+  line-height: var(--reader-line-height, 1.9);
+  color: var(--reader-text);
+  transition: font-size .2s, line-height .2s;
+}
+.reader-scroll-body p { text-indent: 2em; margin: 0 0 .8em; }
+.reader-scroll-body mark.search-highlight { background: rgba(212,175,55,.35); color: inherit; border-radius: 2px; padding: 1px 0; }
+
+/* Audio link in reader */
+.reader-audio-link {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: .78rem; color: var(--accent); margin-top: 4px; cursor: pointer;
+  text-decoration: none; opacity: .8; transition: opacity .15s;
+}
+.reader-audio-link:hover { opacity: 1; }
+.reader-audio-link svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; }
+
+/* Reader bottom bar - hidden by default */
+.reader-bottombar {
+  position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
+  padding: 0 16px 16px; padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to top, rgba(0,0,0,.15), transparent);
+  opacity: 0; pointer-events: none; transition: opacity .25s;
+}
+.reader-bottombar.visible { opacity: 1; pointer-events: auto; }
+
+/* Progress indicator */
+.reader-progress-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.reader-progress-bar { flex: 1; height: 3px; background: rgba(128,128,128,.3); border-radius: 2px; overflow: hidden; }
+.reader-progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width .1s; }
+.reader-progress-text { font-size: .7rem; color: rgba(255,255,255,.8); text-shadow: 0 1px 2px rgba(0,0,0,.3); min-width: 32px; text-align: right; }
+
+/* Nav buttons */
+.reader-nav-row { display: flex; gap: 10px; }
+.reader-nav-btn {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px; border-radius: var(--radius-sm);
+  background: rgba(0,0,0,.2); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border: none; color: #fff; font-size: .8rem; cursor: pointer; transition: background .15s;
+}
+.reader-nav-btn:hover { background: rgba(0,0,0,.35); }
+.reader-nav-btn:disabled { opacity: .3; pointer-events: none; }
+.reader-nav-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Settings panel */
+.reader-settings {
+  position: absolute; bottom: 0; left: 0; right: 0; z-index: 20;
+  background: var(--reader-bg); border-top: 1px solid var(--border);
+  padding: 20px 20px 24px; padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  transform: translateY(100%); transition: transform .3s cubic-bezier(.22,1,.36,1);
+  border-radius: var(--radius) var(--radius) 0 0; box-shadow: 0 -4px 20px rgba(0,0,0,.1);
+}
+.reader-settings.visible { transform: translateY(0); }
+.reader-settings-title { font-size: .78rem; color: var(--reader-text-secondary, #999); margin-bottom: 12px; font-weight: 500; }
+
+/* Font size slider */
+.reader-fontsize { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.reader-fontsize-label { font-size: .74rem; color: var(--reader-text-secondary, #999); flex-shrink: 0; }
+.reader-fontsize-sm { font-size: 13px; }
+.reader-fontsize-lg { font-size: 20px; }
+.reader-fontsize-slider {
+  flex: 1; height: 3px; -webkit-appearance: none; appearance: none;
+  background: var(--border); border-radius: 2px; outline: none;
+}
+.reader-fontsize-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--accent); cursor: pointer; border: 2px solid var(--reader-bg);
+  box-shadow: 0 1px 4px rgba(0,0,0,.2);
+}
+
+/* Reading mode buttons */
+.reader-modes { display: flex; gap: 8px; margin-bottom: 18px; }
+.reader-mode-btn {
+  flex: 1; padding: 8px; border-radius: var(--radius-sm); border: 1.5px solid var(--border);
+  font-size: .74rem; cursor: pointer; text-align: center; transition: all .15s;
+  -webkit-appearance: none; appearance: none;
+}
+.reader-mode-btn.active { border-color: var(--accent); color: var(--accent); font-weight: 500; }
+.reader-mode-light { background: #fff; color: #333; }
+.reader-mode-sepia { background: #F5EDDC; color: #3B3228; }
+.reader-mode-dark { background: #1A1A1A; color: #C8C8C8; }
+.reader-mode-eink { background: #FAFAF5; color: #1A1A1A; font-family: serif; }
+
+/* Font family buttons */
+.reader-fonts { display: flex; gap: 8px; }
+.reader-font-btn {
+  flex: 1; padding: 8px; border-radius: var(--radius-sm); border: 1.5px solid var(--border);
+  font-size: .76rem; cursor: pointer; text-align: center; transition: all .15s;
+  background: var(--reader-bg); color: var(--reader-text);
+  -webkit-appearance: none; appearance: none;
+}
+.reader-font-btn.active { border-color: var(--accent); color: var(--accent); font-weight: 500; }
+.reader-font-sans { font-family: 'Noto Sans SC', sans-serif; }
+.reader-font-serif { font-family: 'Noto Serif SC', 'Songti SC', SimSun, serif; }
+.reader-font-kai { font-family: 'Kaiti', 'KaiTi', 'STKaiti', serif; }
+
+/* --- Reading Mode CSS Variables --- */
+.wenku-reader[data-mode="light"] {
+  --reader-bg: #FFFFFF; --reader-text: #333333; --reader-text-secondary: #999;
+}
+.wenku-reader[data-mode="sepia"] {
+  --reader-bg: #F5EDDC; --reader-text: #3B3228; --reader-text-secondary: #7A6E5D;
+}
+.wenku-reader[data-mode="dark"] {
+  --reader-bg: #1A1A1A; --reader-text: #C8C8C8; --reader-text-secondary: #666;
+}
+.wenku-reader[data-mode="eink"] {
+  --reader-bg: #FAFAF5; --reader-text: #1A1A1A; --reader-text-secondary: #666;
+  --reader-font: 'Noto Serif SC', 'Songti SC', SimSun, serif;
+  --reader-line-height: 2.0;
+}
+.wenku-reader[data-mode="eink"] * { text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+
+/* --- Loading & Empty States --- */
+.wenku-loading { text-align: center; padding: 40px 16px; color: var(--text-muted); font-size: .82rem; }
+.wenku-empty { text-align: center; padding: 40px 16px; color: var(--text-muted); font-size: .82rem; }
+
+/* --- Homepage Wenku Entry Card --- */
+.home-wenku-card {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--bg-card); border-radius: var(--radius); padding: 14px 16px;
+  border: 1px solid var(--border); cursor: pointer; transition: background .15s;
+}
+.home-wenku-card:hover { background: var(--bg-card-hover); }
+.home-wenku-icon {
+  width: 44px; height: 44px; border-radius: var(--radius-sm);
+  background: var(--accent-glow); display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.home-wenku-icon svg { width: 20px; height: 20px; stroke: var(--accent); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.home-wenku-body { flex: 1; min-width: 0; }
+.home-wenku-title { font-size: .86rem; color: var(--text); font-weight: 500; }
+.home-wenku-sub { font-size: .74rem; color: var(--text-secondary); margin-top: 2px; }
+.home-wenku-arrow { width: 14px; height: 14px; stroke: var(--text-muted); fill: none; stroke-width: 2; flex-shrink: 0; }
