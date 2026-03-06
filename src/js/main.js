@@ -338,9 +338,47 @@ function closeWenkuReader() {
   // Back navigation guard (extended to handle AI chat)
   initBackGuard(renderCategory, state, { closeFullScreen, getPlaylistVisible, closePlaylist });
 
-  // Handle browser back button for AI fullscreen, search overlay, and reader
+  // Handle browser back button for wenku, search overlay, and AI chat
   window.addEventListener('popstate', (e) => {
-    closeWenkuReader();
+    const st = e.state;
+    const readerOpen = !!document.querySelector('.wenku-reader');
+
+    // Wenku reader is open — close it and route to correct wenku view
+    if (readerOpen) {
+      closeWenkuReader();
+      if (st && st.wenku) {
+        if (st.wenku === 'home') {
+          import('./wenku.js').then(mod => mod.renderWenkuHome(() => {
+            import('./pages-my.js').then(m => m.renderMyPage());
+          }));
+        } else {
+          import('./wenku.js').then(mod => mod.renderWenkuSeries(st.wenku, () => {
+            mod.renderWenkuHome(() => {
+              import('./pages-my.js').then(m => m.renderMyPage());
+            });
+          }));
+        }
+        return;
+      }
+    }
+
+    // Wenku page is showing (home or series view) — navigate back
+    const wenkuPage = document.querySelector('.wenku-page');
+    if (wenkuPage && !readerOpen) {
+      wenkuPage.remove();
+      const params = new URLSearchParams(window.location.search);
+      if (params.has('wenku') || (st && st.wenku && st.wenku !== 'home')) {
+        // Going back from series → home
+        import('./wenku.js').then(mod => mod.renderWenkuHome(() => {
+          import('./pages-my.js').then(m => m.renderMyPage());
+        }));
+      } else {
+        // Going back from wenku home → My page
+        import('./pages-my.js').then(m => m.renderMyPage());
+      }
+      return;
+    }
+
     if (isSearchOverlayOpen()) {
       closeSearchOverlay();
     }

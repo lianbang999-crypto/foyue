@@ -1,7 +1,8 @@
 /* ===== Wenku Immersive Reader ===== */
-import { escapeHtml, debounce } from './utils.js';
+import { escapeHtml, debounce, showToast } from './utils.js';
 import { getWenkuDocument, recordWenkuRead } from './wenku-api.js';
 import { saveBookmark, getBookmark } from './wenku.js';
+import { t } from './i18n.js';
 
 /* Settings persistence */
 const SETTINGS_KEY = 'wenku-reader-settings';
@@ -22,12 +23,23 @@ let settings = loadSettings();
 let menuVisible = false;
 let settingsVisible = false;
 
+/* Pagination state */
+let pages = [];
+let currentPage = 0;
+const CHARS_PER_PAGE = 2000;
+
+/* Throttle read-count API */
+let _lastReadId = null;
+let _lastReadTs = 0;
+
 /* ===== Open Reader ===== */
 export async function openReader(docId, highlightQuery) {
   currentDocId = docId;
   settings = loadSettings();
   menuVisible = false;
   settingsVisible = false;
+  pages = [];
+  currentPage = 0;
 
   // Create reader container
   if (readerEl) readerEl.remove();
@@ -45,43 +57,70 @@ export async function openReader(docId, highlightQuery) {
 
   // Show loading
   const scrollArea = readerEl.querySelector('#readerScroll');
-  scrollArea.innerHTML = '<div class="wenku-loading" style="padding-top:40vh">加载中...</div>';
+  scrollArea.innerHTML = '<div class="wenku-loading" style="padding-top:40vh">' + (t('search_wenku_loading') || '加载中...') + '</div>';
 
   // Fetch document
   const data = await getWenkuDocument(docId);
   if (!data || !data.document) {
     scrollArea.innerHTML = `<div class="wenku-empty" style="padding-top:30vh">
-      <div style="margin-bottom:16px">文档加载失败</div>
-      <button class="reader-retry-btn" id="readerRetry" style="padding:8px 24px;border-radius:8px;border:1px solid var(--reader-text-secondary,#999);background:transparent;color:var(--reader-text,#333);font-size:.82rem;cursor:pointer;margin-right:8px">重试</button>
-      <button class="reader-retry-btn" id="readerRetryClose" style="padding:8px 24px;border-radius:8px;border:1px solid var(--reader-text-secondary,#999);background:transparent;color:var(--reader-text,#333);font-size:.82rem;cursor:pointer">返回</button>
+      <div style="margin-bottom:16px">${t('loading_fail') || '加载失败'}</div>
+      <button class="reader-retry-btn" id="readerRetry" style="padding:8px 24px;border-radius:8px;border:1px solid var(--reader-text-secondary,#999);background:transparent;color:var(--reader-text,#333);font-size:.82rem;cursor:pointer;margin-right:8px">${t('retry') || '重试'}</button>
+      <button class="reader-retry-btn" id="readerRetryClose" style="padding:8px 24px;border-radius:8px;border:1px solid var(--reader-text-secondary,#999);background:transparent;color:var(--reader-text,#333);font-size:.82rem;cursor:pointer">${t('wenku_back') || '返回'}</button>
     </div>`;
     const retryBtn = scrollArea.querySelector('#readerRetry');
     const closeBtn = scrollArea.querySelector('#readerRetryClose');
     if (retryBtn) retryBtn.addEventListener('click', () => openReader(docId, highlightQuery));
-    if (closeBtn) closeBtn.addEventListener('click', () => closeReader());
+    if (closeBtn) closeBtn.addEventListener('click', () => history.back());
     return;
   }
 
   const doc = data.document;
 
-  // Record read
-  recordWenkuRead(docId);
+  // Record read (throttled — skip if same doc within 60s)
+  if (docId !== _lastReadId || Date.now() - _lastReadTs > 60000) {
+    recordWenkuRead(docId);
+    _lastReadId = docId;
+    _lastReadTs = Date.now();
+  }
 
-  // Render content
+  // Build header HTML
   const titleHtml = `<div class="reader-scroll-title">${escapeHtml(doc.title)}</div>`;
-  const metaHtml = `<div class="reader-scroll-meta">${escapeHtml(doc.series_name || '大安法师')}</div>`;
-  const bodyHtml = textToHtml(doc.content || '');
+  const metaHtml = `<div class="reader-scroll-meta">${escapeHtml(doc.series_name || t('wenku_da_an') || '大安法师')}</div>`;
 
   // Audio link (if mapped)
   let audioLinkHtml = '';
   if (doc.audio_series_id) {
     audioLinkHtml = `<a class="reader-audio-link" id="readerAudioLink" data-series="${escapeHtml(doc.audio_series_id)}">
       <svg viewBox="0 0 24 24"><polygon points="8,4 20,12 8,20"/></svg>
-      收听音频
+      ${t('wenku_listen_audio') || '收听音频'}
     </a>`;
   }
 
-  scrollArea.innerHTML = titleHtml + metaHtml + audioLinkHtml + `<div class="reader-scroll-body" id="readerBody">${bodyHtml}</div>`;
+  // Paginate content
+  pages = paginateContent(doc.content || '');
+
+  // Restore page from bookmark
+  if (!highlightQuery) {
+    const bm = getBookmark(docId);
+    if (bm && bm.percent > 0 && pages.length > 1) {
+      currentPage = Math.min(Math.floor((bm.percent / 100) * pages.length), pages.length - 1);
+    }
+  }
+
+  // If searching, find the page containing the match
+  if (highlightQuery && pages.length > 1) {
+    const stops = new Set(['的', '了', '是', '在', '有', '和', '就', '不', '人', '都', '一', '这', '中', '大', '为', '上', '个', '到', '说', '也']);
+    const kw = [...highlightQuery].filter(c => !stops.has(c) && c.trim()).join('');
+    if (kw.length >= 2) {
+      const idx = pages.findIndex(p => p.includes(escapeHtml(kw)));
+      if (idx >= 0) currentPage = idx;
+    }
+  }
+
+  const bodyHtml = pages[currentPage] || '';
+  scrollArea.innerHTML = titleHtml + metaHtml + audioLinkHtml
+    + `<div class="reader-scroll-body" id="readerBody">${bodyHtml}</div>`
+    + buildPageNav();
 
   // Update topbar title
   const topTitle = readerEl.querySelector('.reader-topbar-title');
@@ -90,19 +129,11 @@ export async function openReader(docId, highlightQuery) {
   // Apply settings
   applySettings();
 
-  // Prev/Next buttons
+  // Prev/Next lecture buttons
   updateNavButtons(data.prevId, data.nextId, data.totalEpisodes, doc.episode_num);
 
-  // Restore scroll position
-  if (!highlightQuery) {
-    const bm = getBookmark(docId);
-    if (bm && bm.percent > 0) {
-      requestAnimationFrame(() => {
-        const target = (scrollArea.scrollHeight - scrollArea.clientHeight) * (bm.percent / 100);
-        scrollArea.scrollTo(0, target);
-      });
-    }
-  }
+  // Update progress bar to current page
+  updateProgress();
 
   // Search highlight
   if (highlightQuery) {
@@ -110,28 +141,17 @@ export async function openReader(docId, highlightQuery) {
   }
 
   // Wire up events
-  wireEvents(data.prevId, data.nextId);
+  wireEvents(data.prevId, data.nextId, doc);
 
-  // Scroll tracking
-  const onScroll = debounce(() => {
-    const sh = scrollArea.scrollHeight - scrollArea.clientHeight;
-    if (sh > 0) {
-      const pct = Math.min(100, (scrollArea.scrollTop / sh) * 100);
-      saveBookmark(currentDocId, pct, doc.title, doc.series_name);
-      // Update progress bar
-      const fill = readerEl.querySelector('.reader-progress-fill');
-      const text = readerEl.querySelector('.reader-progress-text');
-      if (fill) fill.style.width = pct + '%';
-      if (text) text.textContent = Math.round(pct) + '%';
-    }
-  }, 400);
-  scrollArea.addEventListener('scroll', onScroll, { passive: true });
+  // Preload next document into cache (fire-and-forget)
+  if (data.nextId) {
+    getWenkuDocument(data.nextId);
+  }
 }
 
 /* ===== Close Reader ===== */
 export function closeReader() {
   if (readerEl) {
-    // Clean up keydown listener
     if (readerEl._onKeydown) {
       document.removeEventListener('keydown', readerEl._onKeydown);
     }
@@ -140,24 +160,94 @@ export function closeReader() {
   }
   document.body.style.overflow = '';
   currentDocId = null;
-  // Clean URL state — only if current URL has ?doc=
-  if (new URLSearchParams(window.location.search).has('doc')) {
-    window.history.replaceState({}, '', window.location.pathname);
+  pages = [];
+  currentPage = 0;
+}
+
+/* ===== Pagination ===== */
+function paginateContent(text) {
+  if (!text) return ['<p></p>'];
+  // Split on double newlines (paragraph breaks)
+  const blocks = text.split(/\n\n+/).filter(b => b.trim());
+  const result = [];
+  let curParas = [];
+  let curLen = 0;
+
+  for (const block of blocks) {
+    const paraHtml = `<p>${escapeHtml(block.trim()).replace(/\n/g, '<br>')}</p>`;
+    const rawLen = block.length;
+    if (curLen + rawLen > CHARS_PER_PAGE && curParas.length > 0) {
+      result.push(curParas.join(''));
+      curParas = [];
+      curLen = 0;
+    }
+    curParas.push(paraHtml);
+    curLen += rawLen;
   }
+  if (curParas.length > 0) result.push(curParas.join(''));
+  return result.length ? result : ['<p></p>'];
+}
+
+function buildPageNav() {
+  if (pages.length <= 1) return '';
+  return `
+    <div class="reader-page-nav" id="readerPageNav">
+      <button class="reader-page-btn" id="readerPagePrev" ${currentPage === 0 ? 'disabled' : ''} aria-label="上一页">
+        <svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg>
+      </button>
+      <span class="reader-page-indicator" id="readerPageIndicator">${currentPage + 1} / ${pages.length}</span>
+      <button class="reader-page-btn" id="readerPageNext" ${currentPage >= pages.length - 1 ? 'disabled' : ''} aria-label="下一页">
+        <svg viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
+      </button>
+    </div>`;
+}
+
+function goToPage(idx) {
+  if (idx < 0 || idx >= pages.length || !readerEl) return;
+  currentPage = idx;
+
+  const body = readerEl.querySelector('#readerBody');
+  const navEl = readerEl.querySelector('#readerPageNav');
+  const scrollArea = readerEl.querySelector('#readerScroll');
+
+  if (body) body.innerHTML = pages[currentPage];
+  if (navEl) navEl.outerHTML = buildPageNav();
+
+  wirePageNav();
+  if (scrollArea) scrollArea.scrollTo(0, 0);
+  applySettings();
+  updateProgress();
+}
+
+function wirePageNav() {
+  if (!readerEl) return;
+  const prev = readerEl.querySelector('#readerPagePrev');
+  const next = readerEl.querySelector('#readerPageNext');
+  if (prev) prev.addEventListener('click', () => goToPage(currentPage - 1));
+  if (next) next.addEventListener('click', () => goToPage(currentPage + 1));
+}
+
+function updateProgress() {
+  if (!readerEl) return;
+  const pct = pages.length > 1 ? (currentPage / (pages.length - 1)) * 100 : 0;
+  const fill = readerEl.querySelector('.reader-progress-fill');
+  const text = readerEl.querySelector('.reader-progress-text');
+  if (fill) fill.style.width = pct + '%';
+  if (text) text.textContent = Math.round(pct) + '%';
 }
 
 /* ===== Build Reader Shell ===== */
 function buildReaderShell() {
   return `
     <div class="reader-topbar" id="readerTopbar">
-      <button class="reader-topbar-btn" id="readerClose" aria-label="关闭阅读器">
+      <button class="reader-topbar-btn" id="readerClose" aria-label="${t('wenku_reader_close') || '关闭阅读器'}">
         <svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg>
       </button>
       <div class="reader-topbar-title"></div>
-      <button class="reader-topbar-btn" id="readerShare" aria-label="分享">
+      <button class="reader-topbar-btn" id="readerShare" aria-label="${t('wenku_reader_share') || '分享'}">
         <svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
       </button>
-      <button class="reader-topbar-btn" id="readerSettingsBtn" aria-label="阅读设置">
+      <button class="reader-topbar-btn" id="readerSettingsBtn" aria-label="${t('wenku_reader_settings') || '阅读设置'}">
         <svg viewBox="0 0 24 24"><text x="12" y="16" font-size="14" font-weight="600" fill="currentColor" stroke="none" text-anchor="middle" font-family="serif">Aa</text></svg>
       </button>
     </div>
@@ -168,11 +258,11 @@ function buildReaderShell() {
         <div class="reader-progress-text">0%</div>
       </div>
       <div class="reader-nav-row">
-        <button class="reader-nav-btn" id="readerPrev" disabled aria-label="上一讲">
-          <svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg> 上一讲
+        <button class="reader-nav-btn" id="readerPrev" disabled aria-label="${t('wenku_prev_lecture') || '上一讲'}">
+          <svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg> ${t('wenku_prev_lecture') || '上一讲'}
         </button>
-        <button class="reader-nav-btn" id="readerNext" disabled aria-label="下一讲">
-          下一讲 <svg viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
+        <button class="reader-nav-btn" id="readerNext" disabled aria-label="${t('wenku_next_lecture') || '下一讲'}">
+          ${t('wenku_next_lecture') || '下一讲'} <svg viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </button>
       </div>
     </div>
@@ -186,11 +276,11 @@ function buildSettingsPanel() {
   const fontActive = (f) => f === s.fontFamily ? ' active' : '';
 
   return `
-    <div class="reader-settings" id="readerSettings" role="dialog" aria-label="阅读设置">
+    <div class="reader-settings" id="readerSettings" role="dialog" aria-label="${t('wenku_reader_settings') || '阅读设置'}">
       <div class="reader-settings-title" id="readerFontSizeLabel">字号</div>
       <div class="reader-fontsize">
         <span class="reader-fontsize-label reader-fontsize-sm">A</span>
-        <input class="reader-fontsize-slider" id="readerFontSlider" type="range" min="14" max="24" step="1" value="${s.fontSize}" aria-labelledby="readerFontSizeLabel">
+        <input class="reader-fontsize-slider" id="readerFontSlider" type="range" min="14" max="28" step="1" value="${s.fontSize}" aria-labelledby="readerFontSizeLabel">
         <span class="reader-fontsize-label reader-fontsize-lg">A</span>
       </div>
       <div class="reader-settings-title">背景</div>
@@ -211,47 +301,43 @@ function buildSettingsPanel() {
 }
 
 /* ===== Wire Events ===== */
-function wireEvents(prevId, nextId) {
+function wireEvents(prevId, nextId, doc) {
   if (!readerEl) return;
 
-  // Close
-  readerEl.querySelector('#readerClose').addEventListener('click', closeReader);
+  // Close — trigger history.back() so popstate handler manages routing
+  readerEl.querySelector('#readerClose').addEventListener('click', () => history.back());
 
   // Tap to toggle menu — middle 1/3 of screen
   const scrollArea = readerEl.querySelector('#readerScroll');
   scrollArea.addEventListener('click', (e) => {
-    // Don't toggle if clicking a link
-    if (e.target.closest('a')) return;
+    if (e.target.closest('a') || e.target.closest('button')) return;
     const rect = scrollArea.getBoundingClientRect();
     const y = e.clientY - rect.top;
     const h = rect.height;
-    // Middle third toggles menu
     if (y > h * 0.33 && y < h * 0.67) {
       toggleMenu();
     }
   });
 
   // Settings button
-  readerEl.querySelector('#readerSettingsBtn').addEventListener('click', () => {
-    toggleSettings();
-  });
+  readerEl.querySelector('#readerSettingsBtn').addEventListener('click', () => toggleSettings());
 
-  // Share button
+  // Share button — use toast instead of flash
   readerEl.querySelector('#readerShare').addEventListener('click', async () => {
     const title = readerEl.querySelector('.reader-topbar-title')?.textContent || '净土法音文库';
     const url = `${window.location.origin}/?doc=${encodeURIComponent(currentDocId)}`;
     if (navigator.share) {
-      try {
-        await navigator.share({ title, text: title + ' — 净土法音', url });
-      } catch { /* cancelled */ }
+      try { await navigator.share({ title, text: title + ' — 净土法音', url }); } catch { /* cancelled */ }
     } else {
       try {
         await navigator.clipboard.writeText(url);
-        // Simple visual feedback — flash the share button
-        const btn = readerEl.querySelector('#readerShare');
-        btn.style.background = 'rgba(212,175,55,.3)';
-        setTimeout(() => { btn.style.background = ''; }, 600);
-      } catch { /* fallback */ }
+        showToast(t('link_copied') || '链接已复制');
+      } catch {
+        const inp = document.createElement('input');
+        inp.value = url; document.body.appendChild(inp);
+        inp.select(); document.execCommand('copy'); inp.remove();
+        showToast(t('link_copied') || '链接已复制');
+      }
     }
   });
 
@@ -283,24 +369,35 @@ function wireEvents(prevId, nextId) {
     });
   });
 
-  // Prev/Next with debounce to prevent rapid clicks
+  // Prev/Next lecture with debounce to prevent rapid clicks
   let navLocked = false;
   function navTo(id) {
     if (navLocked) return;
     navLocked = true;
     openReader(id);
-    // Lock released when new reader finishes loading (openReader recreates readerEl)
   }
   const prevBtn = readerEl.querySelector('#readerPrev');
   const nextBtn = readerEl.querySelector('#readerNext');
-  if (prevId) {
-    prevBtn.disabled = false;
-    prevBtn.addEventListener('click', () => navTo(prevId));
-  }
-  if (nextId) {
-    nextBtn.disabled = false;
-    nextBtn.addEventListener('click', () => navTo(nextId));
-  }
+  if (prevId) { prevBtn.disabled = false; prevBtn.addEventListener('click', () => navTo(prevId)); }
+  if (nextId) { nextBtn.disabled = false; nextBtn.addEventListener('click', () => navTo(nextId)); }
+
+  // Wire page navigation buttons
+  wirePageNav();
+
+  // Touch swipe for page navigation
+  let touchStartX = 0, touchStartY = 0;
+  scrollArea.addEventListener('touchstart', (e) => {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+  scrollArea.addEventListener('touchend', (e) => {
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      if (dx < 0) goToPage(currentPage + 1);
+      else goToPage(currentPage - 1);
+    }
+  }, { passive: true });
 
   // Audio link
   const audioLink = readerEl.querySelector('#readerAudioLink');
@@ -309,21 +406,34 @@ function wireEvents(prevId, nextId) {
       e.preventDefault();
       const seriesId = audioLink.dataset.series;
       closeReader();
-      // Navigate to audio series via deep link
       window.location.href = `/?series=${encodeURIComponent(seriesId)}`;
     });
   }
 
-  // ESC to close
+  // ESC to close, arrow keys for pages
   function onKeydown(e) {
     if (e.key === 'Escape') {
       if (settingsVisible) toggleSettings();
-      else closeReader();
+      else history.back();
+    } else if (e.key === 'ArrowLeft') {
+      goToPage(currentPage - 1);
+    } else if (e.key === 'ArrowRight') {
+      goToPage(currentPage + 1);
     }
   }
   document.addEventListener('keydown', onKeydown);
-  // Store ref for cleanup
   readerEl._onKeydown = onKeydown;
+
+  // Scroll tracking — save bookmark with page-based progress
+  const onScroll = debounce(() => {
+    if (!readerEl || !currentDocId) return;
+    const pct = pages.length > 1
+      ? (currentPage / (pages.length - 1)) * 100
+      : (() => { const sh = scrollArea.scrollHeight - scrollArea.clientHeight; return sh > 0 ? Math.min(100, (scrollArea.scrollTop / sh) * 100) : 0; })();
+    saveBookmark(currentDocId, pct, doc.title, doc.series_name);
+    updateProgress();
+  }, 400);
+  scrollArea.addEventListener('scroll', onScroll, { passive: true });
 }
 
 /* ===== Toggle Menu ===== */
@@ -340,7 +450,6 @@ function toggleSettings() {
   settingsVisible = !settingsVisible;
   const panel = readerEl.querySelector('#readerSettings');
   panel.classList.toggle('visible', settingsVisible);
-  // Also show topbar when settings visible
   if (settingsVisible) {
     readerEl.querySelector('#readerTopbar').classList.add('visible');
     readerEl.querySelector('#readerBottombar').classList.remove('visible');
@@ -356,7 +465,6 @@ function applySettings() {
   const body = readerEl.querySelector('.reader-scroll-body');
   if (body) {
     body.style.fontSize = settings.fontSize + 'px';
-
     const fontMap = {
       sans: "'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif",
       serif: "'Noto Serif SC', 'Songti SC', SimSun, serif",
@@ -367,7 +475,7 @@ function applySettings() {
 }
 
 /* ===== Update Nav Buttons ===== */
-function updateNavButtons(prevId, nextId, total, current) {
+function updateNavButtons(prevId, nextId) {
   if (!readerEl) return;
   const prevBtn = readerEl.querySelector('#readerPrev');
   const nextBtn = readerEl.querySelector('#readerNext');
@@ -375,13 +483,13 @@ function updateNavButtons(prevId, nextId, total, current) {
   if (nextBtn && nextId) nextBtn.disabled = false;
 }
 
-/* ===== Text to HTML ===== */
+/* ===== Text to HTML (kept for highlight fallback) ===== */
 function textToHtml(text) {
   if (!text) return '<p></p>';
   return text
-    .split(/\n\n|\n/)
+    .split(/\n\n+/)
     .filter(p => p.trim())
-    .map(p => `<p>${escapeHtml(p.trim())}</p>`)
+    .map(p => `<p>${escapeHtml(p.trim()).replace(/\n/g, '<br>')}</p>`)
     .join('');
 }
 
@@ -391,27 +499,25 @@ function highlightText(query) {
   const body = readerEl.querySelector('#readerBody');
   if (!body) return;
 
-  // Extract meaningful keywords (basic Chinese stop-word filter)
   const stops = new Set(['的', '了', '是', '在', '有', '和', '就', '不', '人', '都', '一', '这', '中', '大', '为', '上', '个', '到', '说', '也']);
   const keywords = [...query].filter(c => !stops.has(c) && c.trim()).join('');
   if (keywords.length < 2) return;
 
   const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
-  const matches = [];
   let node;
   while ((node = walker.nextNode())) {
     const idx = node.textContent.indexOf(keywords);
-    if (idx >= 0) matches.push({ node, idx });
-  }
-
-  if (matches.length > 0) {
-    const first = matches[0];
-    const range = document.createRange();
-    range.setStart(first.node, first.idx);
-    range.setEnd(first.node, first.idx + keywords.length);
-    const mark = document.createElement('mark');
-    mark.className = 'search-highlight';
-    range.surroundContents(mark);
-    mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (idx >= 0) {
+      try {
+        const range = document.createRange();
+        range.setStart(node, idx);
+        range.setEnd(node, idx + keywords.length);
+        const mark = document.createElement('mark');
+        mark.className = 'search-highlight';
+        range.surroundContents(mark);
+        mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch { /* cross-node boundary, skip */ }
+      return;
+    }
   }
 }

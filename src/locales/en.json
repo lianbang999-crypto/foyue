@@ -133,5 +133,22 @@
   "search_wenku_error": "Search failed, please try again",
   "downloading": "Downloading...",
   "download_cellular_warn": "You are on cellular data. Download anyway?",
-  "download_done": "Download complete"
+  "download_done": "Download complete",
+  "wenku_recent_reads": "Recent Reads",
+  "wenku_da_an": "Master Da'an",
+  "wenku_search_placeholder": "Search transcripts...",
+  "wenku_searching": "Searching...",
+  "wenku_listen_audio": "Listen to audio",
+  "wenku_prev_lecture": "Previous",
+  "wenku_next_lecture": "Next",
+  "wenku_read_pct": "Read {n}%",
+  "wenku_donglin_library": "Donglin Temple Library",
+  "wenku_lectures_suffix": "lectures",
+  "wenku_da_an_series": "Master Da'an Transcripts",
+  "wenku_series_count": "{n} series",
+  "wenku_no_search_results": "No transcripts found",
+  "wenku_reader_close": "Close reader",
+  "wenku_reader_share": "Share",
+  "wenku_reader_settings": "Reading settings",
+  "wenku_back": "Back"
 }

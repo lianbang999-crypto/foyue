@@ -133,5 +133,22 @@
   "search_wenku_error": "搜索失败，请稍后重试",
   "downloading": "下载中...",
   "download_cellular_warn": "当前使用流量，确定下载吗？",
-  "download_done": "下载完成"
+  "download_done": "下载完成",
+  "wenku_recent_reads": "最近阅读",
+  "wenku_da_an": "大安法师",
+  "wenku_search_placeholder": "搜索讲义...",
+  "wenku_searching": "搜索中...",
+  "wenku_listen_audio": "收听音频",
+  "wenku_prev_lecture": "上一讲",
+  "wenku_next_lecture": "下一讲",
+  "wenku_read_pct": "已读 {n}%",
+  "wenku_donglin_library": "东林寺文库",
+  "wenku_lectures_suffix": "讲",
+  "wenku_da_an_series": "大安法师讲记",
+  "wenku_series_count": "{n} 部",
+  "wenku_no_search_results": "未找到相关讲义",
+  "wenku_reader_close": "关闭阅读器",
+  "wenku_reader_share": "分享",
+  "wenku_reader_settings": "阅读设置",
+  "wenku_back": "返回"
 }

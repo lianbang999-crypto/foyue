@@ -10,7 +10,7 @@
 }
 .wenku-back {
   -webkit-appearance: none; appearance: none; background: none; border: none;
-  width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
   cursor: pointer; color: var(--text); transition: background .15s;
 }
 .wenku-back:hover { background: var(--bg-card); }
@@ -248,13 +248,78 @@
 }
 .wenku-reader[data-mode="eink"] * { text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
 
+/* --- Page Navigation --- */
+.reader-page-nav {
+  display: flex; align-items: center; justify-content: center; gap: 16px;
+  padding: 24px 0 8px; margin-top: 16px;
+  border-top: 1px solid rgba(128,128,128,.15);
+}
+.reader-page-btn {
+  -webkit-appearance: none; appearance: none; background: rgba(128,128,128,.1);
+  border: none; width: 44px; height: 44px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--reader-text); transition: background .15s;
+}
+.reader-page-btn:hover { background: rgba(128,128,128,.2); }
+.reader-page-btn:disabled { opacity: .25; pointer-events: none; }
+.reader-page-btn svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.reader-page-indicator { font-size: .82rem; color: var(--reader-text-secondary, #999); min-width: 60px; text-align: center; }
+
 /* --- Loading & Empty States --- */
 .wenku-loading { text-align: center; padding: 40px 16px; color: var(--text-muted); font-size: .82rem; }
 .wenku-empty { text-align: center; padding: 40px 16px; color: var(--text-muted); font-size: .82rem; }
+
+/* Skeleton shimmer */
+@keyframes wenkuShimmer { 0%{background-position:-200px 0} 100%{background-position:200px 0} }
+.wenku-skeleton {
+  background: linear-gradient(90deg, var(--bg-card) 25%, var(--border) 50%, var(--bg-card) 75%);
+  background-size: 400px 100%; animation: wenkuShimmer 1.4s infinite; border-radius: var(--radius);
+}
+.wenku-skeleton-card { height: 72px; margin-bottom: 8px; }
+.wenku-skeleton-title { height: 14px; width: 120px; margin-bottom: 12px; border-radius: 4px; }
 
 /* --- Reader Scrollbar (dark mode visibility) --- */
 .reader-scroll::-webkit-scrollbar { width: 4px; }
 .reader-scroll::-webkit-scrollbar-track { background: transparent; }
 .reader-scroll::-webkit-scrollbar-thumb { background: rgba(128,128,128,.3); border-radius: 2px; }
 .wenku-reader[data-mode="dark"] .reader-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); }
+
+/* --- Search --- */
+.wenku-search-btn {
+  -webkit-appearance: none; appearance: none; background: none; border: none;
+  width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--text); transition: background .15s; flex-shrink: 0;
+}
+.wenku-search-btn:hover { background: var(--bg-card); }
+.wenku-search-btn svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.wenku-search-box { padding: 0 0 12px; }
+.wenku-search-input {
+  width: 100%; box-sizing: border-box; padding: 10px 14px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--text);
+  font-size: .84rem; outline: none; transition: border-color .15s;
+  font-family: var(--font-zh, sans-serif);
+}
+.wenku-search-input:focus { border-color: var(--accent); }
+.wenku-search-results { margin-bottom: 16px; }
+
+/* --- Recent Reads --- */
+.wenku-recent-list { display: flex; flex-direction: column; gap: 1px; background: var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 18px; }
+.wenku-recent-item {
+  display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+  background: var(--bg-card); cursor: pointer; transition: background .15s;
+}
+.wenku-recent-item:hover { background: var(--bg-card-hover); }
+.wenku-recent-body { flex: 1; min-width: 0; }
+.wenku-recent-title { font-size: .82rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wenku-recent-sub { font-size: .7rem; color: var(--text-secondary); margin-top: 2px; }
+.wenku-recent-pct { font-size: .72rem; color: var(--accent); font-weight: 500; flex-shrink: 0; }
+
+/* --- Retry Button --- */
+.wenku-retry-btn {
+  -webkit-appearance: none; appearance: none; padding: 8px 24px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--text);
+  font-size: .82rem; cursor: pointer; transition: background .15s;
+}
+.wenku-retry-btn:hover { background: var(--bg-card-hover); }
+.wenku-retry-btn:disabled { opacity: .4; pointer-events: none; }
 
