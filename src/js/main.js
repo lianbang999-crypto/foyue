@@ -39,6 +39,14 @@ import { initAiChat, updateAiContext, openAiChat, closeAiChat, isAiChatOpen, che
 import { appreciate } from './api.js';
 import { monitor } from './monitor.js';
 
+// Close wenku reader if open — uses DOM check to avoid pulling wenku chunk into main bundle
+function closeWenkuReader() {
+  const el = document.querySelector('.wenku-reader');
+  if (el) {
+    import('./wenku-reader.js').then(mod => mod.closeReader());
+  }
+}
+
 /* ===== INIT ===== */
 (function init() {
   // Language & Theme
@@ -73,6 +81,8 @@ import { monitor } from './monitor.js';
   const TAB_I18N = { home: 'tab_home', tingjingtai: 'tab_lectures', youshengshu: 'tab_audiobooks', mypage: 'tab_my' };
   document.querySelectorAll('.tab').forEach(btn => {
     btn.addEventListener('click', () => {
+      // Close any open reader overlay before switching tabs
+      closeWenkuReader();
       document.querySelectorAll('.tab').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
       btn.classList.add('active'); btn.setAttribute('aria-selected', 'true');
       state.tab = btn.dataset.tab; state.seriesId = null;
@@ -328,8 +338,9 @@ import { monitor } from './monitor.js';
   // Back navigation guard (extended to handle AI chat)
   initBackGuard(renderCategory, state, { closeFullScreen, getPlaylistVisible, closePlaylist });
 
-  // Handle browser back button for AI fullscreen and search overlay
+  // Handle browser back button for AI fullscreen, search overlay, and reader
   window.addEventListener('popstate', (e) => {
+    closeWenkuReader();
     if (isSearchOverlayOpen()) {
       closeSearchOverlay();
     }

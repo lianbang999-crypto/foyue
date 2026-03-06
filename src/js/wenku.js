@@ -5,8 +5,9 @@ import { getDOM } from './dom.js';
 import { escapeHtml } from './utils.js';
 import { getWenkuSeries, getWenkuDocuments } from './wenku-api.js';
 
-/* Bookmark helpers — localStorage based */
+/* Bookmark helpers — localStorage based, capped at 100 entries */
 const BM_KEY = 'wenku-bookmarks';
+const BM_MAX = 100;
 
 function getBookmarks() {
   try { return JSON.parse(localStorage.getItem(BM_KEY) || '{}'); } catch { return {}; }
@@ -15,6 +16,13 @@ function getBookmarks() {
 export function saveBookmark(docId, percent, title, seriesName) {
   const bm = getBookmarks();
   bm[docId] = { percent, title, seriesName, ts: Date.now() };
+  // Evict oldest entries if over limit
+  const keys = Object.keys(bm);
+  if (keys.length > BM_MAX) {
+    const sorted = keys.sort((a, b) => (bm[a].ts || 0) - (bm[b].ts || 0));
+    const toRemove = sorted.slice(0, keys.length - BM_MAX);
+    toRemove.forEach(k => delete bm[k]);
+  }
   try { localStorage.setItem(BM_KEY, JSON.stringify(bm)); } catch { /* full */ }
 }
 

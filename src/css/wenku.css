@@ -97,17 +97,17 @@
   position: absolute; top: 0; left: 0; right: 0; z-index: 10;
   display: flex; align-items: center; gap: 8px; padding: 12px 16px;
   padding-top: calc(12px + env(safe-area-inset-top, 0px));
-  background: linear-gradient(to bottom, rgba(0,0,0,.15), transparent);
+  background: var(--reader-bar-bg, linear-gradient(to bottom, rgba(0,0,0,.35), transparent));
   opacity: 0; pointer-events: none; transition: opacity .25s;
 }
 .reader-topbar.visible { opacity: 1; pointer-events: auto; }
 .reader-topbar-btn {
-  -webkit-appearance: none; appearance: none; background: rgba(0,0,0,.2); border: none;
-  width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-  cursor: pointer; color: #fff; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  -webkit-appearance: none; appearance: none; background: var(--reader-btn-bg, rgba(0,0,0,.25)); border: none;
+  width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--reader-bar-text, #fff); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
 }
 .reader-topbar-btn svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.reader-topbar-title { flex: 1; font-size: .82rem; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.reader-topbar-title { flex: 1; font-size: .82rem; color: var(--reader-bar-text, #fff); text-shadow: var(--reader-bar-shadow, 0 1px 3px rgba(0,0,0,.3)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Reader content */
 .reader-scroll {
@@ -140,7 +140,7 @@
 .reader-bottombar {
   position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
   padding: 0 16px 16px; padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-  background: linear-gradient(to top, rgba(0,0,0,.15), transparent);
+  background: var(--reader-bar-bg-bottom, linear-gradient(to top, rgba(0,0,0,.35), transparent));
   opacity: 0; pointer-events: none; transition: opacity .25s;
 }
 .reader-bottombar.visible { opacity: 1; pointer-events: auto; }
@@ -149,17 +149,17 @@
 .reader-progress-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .reader-progress-bar { flex: 1; height: 3px; background: rgba(128,128,128,.3); border-radius: 2px; overflow: hidden; }
 .reader-progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width .1s; }
-.reader-progress-text { font-size: .7rem; color: rgba(255,255,255,.8); text-shadow: 0 1px 2px rgba(0,0,0,.3); min-width: 32px; text-align: right; }
+.reader-progress-text { font-size: .7rem; color: var(--reader-bar-text, rgba(255,255,255,.8)); text-shadow: var(--reader-bar-shadow, 0 1px 2px rgba(0,0,0,.3)); min-width: 32px; text-align: right; }
 
 /* Nav buttons */
 .reader-nav-row { display: flex; gap: 10px; }
 .reader-nav-btn {
   flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 10px; border-radius: var(--radius-sm);
-  background: rgba(0,0,0,.2); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-  border: none; color: #fff; font-size: .8rem; cursor: pointer; transition: background .15s;
+  padding: 12px; border-radius: var(--radius-sm);
+  background: var(--reader-btn-bg, rgba(0,0,0,.25)); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border: none; color: var(--reader-bar-text, #fff); font-size: .8rem; cursor: pointer; transition: background .15s;
 }
-.reader-nav-btn:hover { background: rgba(0,0,0,.35); }
+.reader-nav-btn:hover { background: var(--reader-btn-bg-hover, rgba(0,0,0,.4)); }
 .reader-nav-btn:disabled { opacity: .3; pointer-events: none; }
 .reader-nav-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
@@ -218,21 +218,43 @@
 /* --- Reading Mode CSS Variables --- */
 .wenku-reader[data-mode="light"] {
   --reader-bg: #FFFFFF; --reader-text: #333333; --reader-text-secondary: #999;
+  --reader-bar-bg: linear-gradient(to bottom, rgba(0,0,0,.35), transparent);
+  --reader-bar-bg-bottom: linear-gradient(to top, rgba(0,0,0,.35), transparent);
+  --reader-bar-text: #fff; --reader-btn-bg: rgba(0,0,0,.25); --reader-btn-bg-hover: rgba(0,0,0,.4);
+  --reader-bar-shadow: 0 1px 3px rgba(0,0,0,.3);
 }
 .wenku-reader[data-mode="sepia"] {
   --reader-bg: #F5EDDC; --reader-text: #3B3228; --reader-text-secondary: #7A6E5D;
+  --reader-bar-bg: linear-gradient(to bottom, rgba(59,50,40,.4), transparent);
+  --reader-bar-bg-bottom: linear-gradient(to top, rgba(59,50,40,.4), transparent);
+  --reader-bar-text: #fff; --reader-btn-bg: rgba(59,50,40,.3); --reader-btn-bg-hover: rgba(59,50,40,.5);
+  --reader-bar-shadow: 0 1px 3px rgba(0,0,0,.3);
 }
 .wenku-reader[data-mode="dark"] {
   --reader-bg: #1A1A1A; --reader-text: #C8C8C8; --reader-text-secondary: #666;
+  --reader-bar-bg: linear-gradient(to bottom, rgba(255,255,255,.08), transparent);
+  --reader-bar-bg-bottom: linear-gradient(to top, rgba(255,255,255,.08), transparent);
+  --reader-bar-text: #ddd; --reader-btn-bg: rgba(255,255,255,.12); --reader-btn-bg-hover: rgba(255,255,255,.2);
+  --reader-bar-shadow: none;
 }
 .wenku-reader[data-mode="eink"] {
   --reader-bg: #FAFAF5; --reader-text: #1A1A1A; --reader-text-secondary: #666;
   --reader-font: 'Noto Serif SC', 'Songti SC', SimSun, serif;
   --reader-line-height: 2.0;
+  --reader-bar-bg: linear-gradient(to bottom, rgba(0,0,0,.3), transparent);
+  --reader-bar-bg-bottom: linear-gradient(to top, rgba(0,0,0,.3), transparent);
+  --reader-bar-text: #fff; --reader-btn-bg: rgba(0,0,0,.2); --reader-btn-bg-hover: rgba(0,0,0,.35);
+  --reader-bar-shadow: 0 1px 3px rgba(0,0,0,.3);
 }
 .wenku-reader[data-mode="eink"] * { text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
 
 /* --- Loading & Empty States --- */
 .wenku-loading { text-align: center; padding: 40px 16px; color: var(--text-muted); font-size: .82rem; }
 .wenku-empty { text-align: center; padding: 40px 16px; color: var(--text-muted); font-size: .82rem; }
+
+/* --- Reader Scrollbar (dark mode visibility) --- */
+.reader-scroll::-webkit-scrollbar { width: 4px; }
+.reader-scroll::-webkit-scrollbar-track { background: transparent; }
+.reader-scroll::-webkit-scrollbar-thumb { background: rgba(128,128,128,.3); border-radius: 2px; }
+.wenku-reader[data-mode="dark"] .reader-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); }
 

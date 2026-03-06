@@ -47,7 +47,15 @@ export async function openReader(docId, highlightQuery) {
   // Fetch document
   const data = await getWenkuDocument(docId);
   if (!data || !data.document) {
-    scrollArea.innerHTML = '<div class="wenku-empty" style="padding-top:40vh">文档加载失败</div>';
+    scrollArea.innerHTML = `<div class="wenku-empty" style="padding-top:30vh">
+      <div style="margin-bottom:16px">文档加载失败</div>
+      <button class="reader-retry-btn" id="readerRetry" style="padding:8px 24px;border-radius:8px;border:1px solid var(--reader-text-secondary,#999);background:transparent;color:var(--reader-text,#333);font-size:.82rem;cursor:pointer;margin-right:8px">重试</button>
+      <button class="reader-retry-btn" id="readerRetryClose" style="padding:8px 24px;border-radius:8px;border:1px solid var(--reader-text-secondary,#999);background:transparent;color:var(--reader-text,#333);font-size:.82rem;cursor:pointer">返回</button>
+    </div>`;
+    const retryBtn = scrollArea.querySelector('#readerRetry');
+    const closeBtn = scrollArea.querySelector('#readerRetryClose');
+    if (retryBtn) retryBtn.addEventListener('click', () => openReader(docId, highlightQuery));
+    if (closeBtn) closeBtn.addEventListener('click', () => closeReader());
     return;
   }
 
@@ -135,25 +143,25 @@ export function closeReader() {
 function buildReaderShell() {
   return `
     <div class="reader-topbar" id="readerTopbar">
-      <button class="reader-topbar-btn" id="readerClose">
+      <button class="reader-topbar-btn" id="readerClose" aria-label="关闭阅读器">
         <svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg>
       </button>
       <div class="reader-topbar-title"></div>
-      <button class="reader-topbar-btn" id="readerSettingsBtn">
+      <button class="reader-topbar-btn" id="readerSettingsBtn" aria-label="阅读设置">
         <svg viewBox="0 0 24 24"><text x="12" y="16" font-size="14" font-weight="600" fill="currentColor" stroke="none" text-anchor="middle" font-family="serif">Aa</text></svg>
       </button>
     </div>
     <div class="reader-scroll" id="readerScroll"></div>
     <div class="reader-bottombar" id="readerBottombar">
       <div class="reader-progress-row">
-        <div class="reader-progress-bar"><div class="reader-progress-fill"></div></div>
+        <div class="reader-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"><div class="reader-progress-fill"></div></div>
         <div class="reader-progress-text">0%</div>
       </div>
       <div class="reader-nav-row">
-        <button class="reader-nav-btn" id="readerPrev" disabled>
+        <button class="reader-nav-btn" id="readerPrev" disabled aria-label="上一讲">
           <svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg> 上一讲
         </button>
-        <button class="reader-nav-btn" id="readerNext" disabled>
+        <button class="reader-nav-btn" id="readerNext" disabled aria-label="下一讲">
           下一讲 <svg viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </button>
       </div>
@@ -168,11 +176,11 @@ function buildSettingsPanel() {
   const fontActive = (f) => f === s.fontFamily ? ' active' : '';
 
   return `
-    <div class="reader-settings" id="readerSettings">
-      <div class="reader-settings-title">字号</div>
+    <div class="reader-settings" id="readerSettings" role="dialog" aria-label="阅读设置">
+      <div class="reader-settings-title" id="readerFontSizeLabel">字号</div>
       <div class="reader-fontsize">
         <span class="reader-fontsize-label reader-fontsize-sm">A</span>
-        <input class="reader-fontsize-slider" id="readerFontSlider" type="range" min="14" max="24" step="1" value="${s.fontSize}">
+        <input class="reader-fontsize-slider" id="readerFontSlider" type="range" min="14" max="24" step="1" value="${s.fontSize}" aria-labelledby="readerFontSizeLabel">
         <span class="reader-fontsize-label reader-fontsize-lg">A</span>
       </div>
       <div class="reader-settings-title">背景</div>
@@ -246,16 +254,23 @@ function wireEvents(prevId, nextId) {
     });
   });
 
-  // Prev/Next
+  // Prev/Next with debounce to prevent rapid clicks
+  let navLocked = false;
+  function navTo(id) {
+    if (navLocked) return;
+    navLocked = true;
+    openReader(id);
+    // Lock released when new reader finishes loading (openReader recreates readerEl)
+  }
   const prevBtn = readerEl.querySelector('#readerPrev');
   const nextBtn = readerEl.querySelector('#readerNext');
   if (prevId) {
     prevBtn.disabled = false;
-    prevBtn.addEventListener('click', () => openReader(prevId));
+    prevBtn.addEventListener('click', () => navTo(prevId));
   }
   if (nextId) {
     nextBtn.disabled = false;
-    nextBtn.addEventListener('click', () => openReader(nextId));
+    nextBtn.addEventListener('click', () => navTo(nextId));
   }
 
   // Audio link
@@ -280,8 +295,6 @@ function wireEvents(prevId, nextId) {
   document.addEventListener('keydown', onKeydown);
   // Store ref for cleanup
   readerEl._onKeydown = onKeydown;
-  const origClose = closeReader;
-  // Note: cleanup happens on readerEl.remove()
 }
 
 /* ===== Toggle Menu ===== */
