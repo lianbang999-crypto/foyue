@@ -30,7 +30,7 @@ function doKeywordSearch(q, showEpisodes, renderCategory, renderHomePage) {
     else if (renderCategory) renderCategory(state.tab);
     return;
   }
-  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el => el.remove());
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
   const ql = q.toLowerCase();
   const seriesResults = [];
   const epResults = [];

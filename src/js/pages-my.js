@@ -34,7 +34,7 @@ function buildHistItem(h, i) {
 export function renderMyPage() {
   const dom = getDOM();
   const lang = getLang();
-  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el => el.remove());
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
   const page = document.createElement('div');
   page.className = 'my-page active';
   const themeText = { light: t('theme_light'), dark: t('theme_dark'), terracotta: t('theme_terracotta') }[getTheme()] || t('theme_light');
@@ -185,7 +185,7 @@ export function renderMyPage() {
 
 function showHistorySubview() {
   const dom = getDOM();
-  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el => el.remove());
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
 
   const view = document.createElement('div');
   view.className = 'view active';
@@ -243,7 +243,7 @@ function showHistorySubview() {
 
 function showMessageWallSubview() {
   const dom = getDOM();
-  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el => el.remove());
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
 
   const view = document.createElement('div');
   view.className = 'view active';

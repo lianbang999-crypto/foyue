@@ -8,7 +8,10 @@ export default defineConfig({
     outDir: 'dist',
     target: ['es2015', 'chrome64', 'safari12'],
     minify: 'esbuild',
-    // ✅ 优化：添加代码分割策略
+    // esbuild drop options (replaces terserOptions which only work with minify: 'terser')
+    esbuild: {
+      drop: ['console', 'debugger'],
+    },
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
@@ -42,13 +45,6 @@ export default defineConfig({
             './src/js/wenku-reader.js'
           ]
         }
-      }
-    },
-    // ✅ 优化：添加压缩配置
-    terserOptions: {
-      compress: {
-        drop_console: true, // 生产环境移除 console
-        drop_debugger: true
       }
     },
     // ✅ 优化：添加构建分析

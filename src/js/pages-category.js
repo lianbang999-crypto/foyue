@@ -16,7 +16,7 @@ import { probeDurations, getCachedDuration } from './duration-cache.js';
 export function renderCategory(tabId) {
   const dom = getDOM();
   if (!state.data) return;
-  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el => el.remove());
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
   const cat = state.data.categories.find(c => c.id === tabId);
   if (!cat) { dom.contentArea.innerHTML = `<div class="loader-text">${t('no_content')}</div>`; return; }
   const wrap = document.createElement('div');
@@ -45,7 +45,7 @@ export function renderCategory(tabId) {
 
 export function showEpisodes(series, tabId) {
   const dom = getDOM();
-  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el => el.remove());
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
   state.seriesId = series.id;
   const unit = tabId === 'fohao' ? t('tracks') : t('episodes');
   const introHdr = series.intro ? `<div class="ep-header-intro">${escapeHtml(series.intro)}</div>` : '';

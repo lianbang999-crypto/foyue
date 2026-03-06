@@ -23,7 +23,7 @@ const DAILY_QUOTES = [
 export function renderHomePage() {
   const dom = getDOM();
   const lang = getLang();
-  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el => el.remove());
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
   const page = document.createElement('div');
   page.className = 'home-page active';
 
@@ -140,18 +140,6 @@ export function renderHomePage() {
     </div>
     ${continueHtml}
     ${guideHtml}
-    <div class="home-section home-section-tight">
-      <div class="home-wenku-card" id="homeWenkuCard">
-        <div class="home-wenku-icon">
-          <svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-        </div>
-        <div class="home-wenku-body">
-          <div class="home-wenku-title">${t('my_wenku')}</div>
-          <div class="home-wenku-sub">${t('my_wenku_desc')}</div>
-        </div>
-        <svg class="home-wenku-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
-      </div>
-    </div>
     ${recHtml}
   `;
   dom.contentArea.appendChild(page);
@@ -250,11 +238,4 @@ export function renderHomePage() {
     });
   });
 
-  // Wire up wenku card
-  const wenkuCard = page.querySelector('#homeWenkuCard');
-  if (wenkuCard) {
-    wenkuCard.addEventListener('click', () => {
-      import('./wenku.js').then(mod => mod.renderWenkuHome(() => renderHomePage()));
-    });
-  }
 }

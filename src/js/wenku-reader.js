@@ -120,6 +120,10 @@ export async function openReader(docId, highlightQuery) {
 /* ===== Close Reader ===== */
 export function closeReader() {
   if (readerEl) {
+    // Clean up keydown listener
+    if (readerEl._onKeydown) {
+      document.removeEventListener('keydown', readerEl._onKeydown);
+    }
     readerEl.remove();
     readerEl = null;
   }
