@@ -150,5 +150,15 @@
   "wenku_reader_close": "关闭阅读器",
   "wenku_reader_share": "分享",
   "wenku_reader_settings": "阅读设置",
-  "wenku_back": "返回"
+  "wenku_back": "返回",
+  "reader_font_size": "字号",
+  "reader_background": "背景",
+  "reader_font_family": "字体",
+  "reader_mode_light": "白",
+  "reader_mode_sepia": "护眼",
+  "reader_mode_dark": "暗黑",
+  "reader_mode_eink": "墨水",
+  "reader_font_sans": "黑体",
+  "reader_font_serif": "宋体",
+  "reader_font_kai": "楷体"
 }

@@ -246,7 +246,7 @@
   --reader-bar-text: #fff; --reader-btn-bg: rgba(0,0,0,.2); --reader-btn-bg-hover: rgba(0,0,0,.35);
   --reader-bar-shadow: 0 1px 3px rgba(0,0,0,.3);
 }
-.wenku-reader[data-mode="eink"] * { text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+.wenku-reader[data-mode="eink"] .reader-scroll-body { text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
 
 /* --- Page Navigation --- */
 .reader-page-nav {
@@ -322,4 +322,38 @@
 }
 .wenku-retry-btn:hover { background: var(--bg-card-hover); }
 .wenku-retry-btn:disabled { opacity: .4; pointer-events: none; }
+
+/* --- Settings Backdrop --- */
+.reader-settings-backdrop {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 19; background: rgba(0,0,0,.3);
+  opacity: 0; pointer-events: none; transition: opacity .25s;
+}
+.reader-settings-backdrop.visible { opacity: 1; pointer-events: auto; }
+
+/* --- Page Transition Animations --- */
+@keyframes pageExitLeft { from { opacity:1; transform:translateX(0) } to { opacity:0; transform:translateX(-30px) } }
+@keyframes pageEnterLeft { from { opacity:0; transform:translateX(30px) } to { opacity:1; transform:translateX(0) } }
+@keyframes pageExitRight { from { opacity:1; transform:translateX(0) } to { opacity:0; transform:translateX(30px) } }
+@keyframes pageEnterRight { from { opacity:0; transform:translateX(-30px) } to { opacity:1; transform:translateX(0) } }
+.reader-scroll-body.page-exit-left { animation: pageExitLeft .15s ease-out forwards; }
+.reader-scroll-body.page-enter-left { animation: pageEnterLeft .15s ease-out forwards; }
+.reader-scroll-body.page-exit-right { animation: pageExitRight .15s ease-out forwards; }
+.reader-scroll-body.page-enter-right { animation: pageEnterRight .15s ease-out forwards; }
+
+/* --- Focus Visible (keyboard accessibility) --- */
+.wenku-series-card:focus-visible,
+.wenku-ep-item:focus-visible,
+.wenku-continue:focus-visible,
+.wenku-recent-item:focus-visible,
+.wenku-search-result-item:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: -2px;
+}
+.reader-topbar-btn:focus-visible,
+.reader-nav-btn:focus-visible,
+.reader-page-btn:focus-visible,
+.reader-mode-btn:focus-visible,
+.reader-font-btn:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
 

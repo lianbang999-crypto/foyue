@@ -4,6 +4,7 @@ const API_BASE = '/api/wenku';
 
 const _cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000;
+const CACHE_MAX = 50;
 
 function cacheGet(key) {
   const entry = _cache.get(key);
@@ -13,6 +14,14 @@ function cacheGet(key) {
 }
 
 function cacheSet(key, data) {
+  // Evict oldest entries if cache exceeds max size
+  if (_cache.size >= CACHE_MAX) {
+    let oldestKey = null, oldestTs = Infinity;
+    for (const [k, v] of _cache) {
+      if (v.ts < oldestTs) { oldestTs = v.ts; oldestKey = k; }
+    }
+    if (oldestKey) _cache.delete(oldestKey);
+  }
   _cache.set(key, { data, ts: Date.now() });
 }
 
@@ -24,6 +33,14 @@ function dedupFetch(key, fetcher) {
   return p;
 }
 
+/** Fetch with timeout (default 15s) */
+function fetchWithTimeout(url, options, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal })
+    .finally(() => clearTimeout(timer));
+}
+
 /** Get all series with document counts */
 export async function getWenkuSeries() {
   const key = 'wenku:series';
@@ -32,7 +49,7 @@ export async function getWenkuSeries() {
 
   return dedupFetch(key, async () => {
     try {
-      const r = await fetch(`${API_BASE}/series`);
+      const r = await fetchWithTimeout(`${API_BASE}/series`);
       if (!r.ok) return null;
       const data = await r.json();
       if (data) cacheSet(key, data);
@@ -49,7 +66,7 @@ export async function getWenkuDocuments(seriesName) {
 
   return dedupFetch(key, async () => {
     try {
-      const r = await fetch(`${API_BASE}/documents?series=${encodeURIComponent(seriesName)}`);
+      const r = await fetchWithTimeout(`${API_BASE}/documents?series=${encodeURIComponent(seriesName)}`);
       if (!r.ok) return null;
       const data = await r.json();
       if (data) cacheSet(key, data);
@@ -66,7 +83,7 @@ export async function getWenkuDocument(id) {
 
   return dedupFetch(key, async () => {
     try {
-      const r = await fetch(`${API_BASE}/documents/${encodeURIComponent(id)}`);
+      const r = await fetchWithTimeout(`${API_BASE}/documents/${encodeURIComponent(id)}`);
       if (!r.ok) return null;
       const data = await r.json();
       if (data) cacheSet(key, data);
@@ -78,7 +95,7 @@ export async function getWenkuDocument(id) {
 /** Search wenku documents */
 export async function searchWenku(q) {
   try {
-    const r = await fetch(`${API_BASE}/search?q=${encodeURIComponent(q)}`);
+    const r = await fetchWithTimeout(`${API_BASE}/search?q=${encodeURIComponent(q)}`, {}, 10000);
     if (!r.ok) return null;
     return await r.json();
   } catch (e) { return null; }
@@ -87,10 +104,10 @@ export async function searchWenku(q) {
 /** Record a read event */
 export async function recordWenkuRead(documentId) {
   try {
-    await fetch(`${API_BASE}/read-count`, {
+    await fetchWithTimeout(`${API_BASE}/read-count`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ documentId }),
-    });
+    }, 10000);
   } catch (e) { /* silent */ }
 }

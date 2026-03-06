@@ -2,7 +2,7 @@
 import { state } from './state.js';
 import { t } from './i18n.js';
 import { getDOM } from './dom.js';
-import { escapeHtml, debounce } from './utils.js';
+import { escapeHtml, debounce, showToast } from './utils.js';
 import { getWenkuSeries, getWenkuDocuments, searchWenku } from './wenku-api.js';
 
 /* Bookmark helpers — localStorage based, capped at 100 entries */
@@ -170,10 +170,12 @@ export async function renderWenkuSeries(seriesName, backFn) {
   content.innerHTML = html;
 
   content.querySelectorAll('.wenku-ep-item').forEach(item => {
+    item.setAttribute('role', 'button');
+    item.setAttribute('tabindex', '0');
     item.addEventListener('click', () => {
       const docId = item.dataset.docId;
       _seriesScrollTop = dom.contentArea.scrollTop;
-      import('./wenku-reader.js').then(mod => mod.openReader(docId));
+      import('./wenku-reader.js').then(mod => mod.openReader(docId)).catch(() => showToast(t('loading_fail') || '加载失败'));
     });
   });
 
@@ -305,25 +307,32 @@ function wireHomeEvents(content, backFn) {
   // Continue reading card
   const continueCard = content.querySelector('#wenkuContinue');
   if (continueCard) {
+    continueCard.setAttribute('role', 'button');
+    continueCard.setAttribute('tabindex', '0');
     continueCard.addEventListener('click', () => {
       const docId = continueCard.dataset.docId;
-      import('./wenku-reader.js').then(mod => mod.openReader(docId));
+      import('./wenku-reader.js').then(mod => mod.openReader(docId)).catch(() => showToast(t('loading_fail') || '加载失败'));
     });
   }
 
   // Recent read items
   content.querySelectorAll('.wenku-recent-item').forEach(item => {
+    item.setAttribute('role', 'button');
+    item.setAttribute('tabindex', '0');
     item.addEventListener('click', () => {
       const docId = item.dataset.docId;
-      import('./wenku-reader.js').then(mod => mod.openReader(docId));
+      import('./wenku-reader.js').then(mod => mod.openReader(docId)).catch(() => showToast(t('loading_fail') || '加载失败'));
     });
   });
 
-  // Series cards — with debounce lock
+  // Series cards — with debounce lock and visual feedback
   content.querySelectorAll('.wenku-series-card').forEach(card => {
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
     card.addEventListener('click', () => {
       if (_navLock) return;
       _navLock = true;
+      card.style.opacity = '0.6';
       setTimeout(() => { _navLock = false; }, 600);
       const seriesName = card.dataset.series;
       renderWenkuSeries(seriesName, () => renderWenkuHome(backFn));
@@ -364,9 +373,15 @@ function wireSearch(page) {
     }
     searchResultsEl.innerHTML = `<div class="wenku-loading">${t('wenku_searching') || '搜索中...'}</div>`;
 
-    const results = await searchWenku(q);
+    let results;
+    try {
+      results = await searchWenku(q);
+    } catch {
+      results = null;
+    }
     if (!results || !results.documents || !results.documents.length) {
-      searchResultsEl.innerHTML = `<div class="wenku-empty">${t('wenku_no_search_results') || '未找到相关讲义'}</div>`;
+      const msg = results === null ? (t('search_wenku_error') || '搜索失败，请稍后重试') : (t('wenku_no_search_results') || '未找到相关讲义');
+      searchResultsEl.innerHTML = `<div class="wenku-empty">${msg}</div>`;
       return;
     }
 
@@ -382,10 +397,12 @@ function wireSearch(page) {
     searchResultsEl.innerHTML = html;
 
     searchResultsEl.querySelectorAll('.wenku-search-result-item').forEach(item => {
+      item.setAttribute('role', 'button');
+      item.setAttribute('tabindex', '0');
       item.addEventListener('click', () => {
         const docId = item.dataset.docId;
         const query = item.dataset.query;
-        import('./wenku-reader.js').then(mod => mod.openReader(docId, query));
+        import('./wenku-reader.js').then(mod => mod.openReader(docId, query)).catch(() => showToast(t('loading_fail') || '加载失败'));
       });
     });
   }, 500);

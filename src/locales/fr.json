@@ -151,5 +151,15 @@
   "wenku_reader_close": "Fermer le lecteur",
   "wenku_reader_share": "Partager",
   "wenku_reader_settings": "Param\u00E8tres de lecture",
-  "wenku_back": "Retour"
+  "wenku_back": "Retour",
+  "reader_font_size": "Taille",
+  "reader_background": "Fond",
+  "reader_font_family": "Police",
+  "reader_mode_light": "Clair",
+  "reader_mode_sepia": "S\u00E9pia",
+  "reader_mode_dark": "Sombre",
+  "reader_mode_eink": "E-Ink",
+  "reader_font_sans": "Sans",
+  "reader_font_serif": "Serif",
+  "reader_font_kai": "Kai"
 }

@@ -7,10 +7,17 @@ import { t } from './i18n.js';
 /* Settings persistence */
 const SETTINGS_KEY = 'wenku-reader-settings';
 
+/** Resolve initial mode: follow app theme on first use, then persist user choice */
+function defaultMode() {
+  const appTheme = document.documentElement.getAttribute('data-theme');
+  if (appTheme === 'dark') return 'dark';
+  return 'light';
+}
+
 function loadSettings() {
   try {
-    return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || { mode: 'light', fontSize: 17, fontFamily: 'sans' };
-  } catch { return { mode: 'light', fontSize: 17, fontFamily: 'sans' }; }
+    return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || { mode: defaultMode(), fontSize: 17, fontFamily: 'sans' };
+  } catch { return { mode: defaultMode(), fontSize: 17, fontFamily: 'sans' }; }
 }
 
 function persistSettings(s) {
@@ -34,6 +41,9 @@ let _lastReadTs = 0;
 
 /* ===== Open Reader ===== */
 export async function openReader(docId, highlightQuery) {
+  // Properly close existing reader (cleans up keydown listeners, restores body scroll)
+  if (readerEl) closeReader(/* skipHistory */ true);
+
   currentDocId = docId;
   settings = loadSettings();
   menuVisible = false;
@@ -42,7 +52,6 @@ export async function openReader(docId, highlightQuery) {
   currentPage = 0;
 
   // Create reader container
-  if (readerEl) readerEl.remove();
   readerEl = document.createElement('div');
   readerEl.className = 'wenku-reader';
   readerEl.setAttribute('data-mode', settings.mode);
@@ -59,8 +68,11 @@ export async function openReader(docId, highlightQuery) {
   const scrollArea = readerEl.querySelector('#readerScroll');
   scrollArea.innerHTML = '<div class="wenku-loading" style="padding-top:40vh">' + (t('search_wenku_loading') || '加载中...') + '</div>';
 
-  // Fetch document
-  const data = await getWenkuDocument(docId);
+  // Fetch document (with error boundary)
+  let data;
+  try {
+    data = await getWenkuDocument(docId);
+  } catch { data = null; }
   if (!data || !data.document) {
     scrollArea.innerHTML = `<div class="wenku-empty" style="padding-top:30vh">
       <div style="margin-bottom:16px">${t('loading_fail') || '加载失败'}</div>
@@ -150,8 +162,15 @@ export async function openReader(docId, highlightQuery) {
 }
 
 /* ===== Close Reader ===== */
-export function closeReader() {
+export function closeReader(skipHistory) {
   if (readerEl) {
+    // Save final bookmark immediately (avoid debounce loss)
+    if (currentDocId && pages.length > 0) {
+      const pct = pages.length > 1 ? (currentPage / (pages.length - 1)) * 100 : 0;
+      const titleEl = readerEl.querySelector('.reader-topbar-title');
+      const metaEl = readerEl.querySelector('.reader-scroll-meta');
+      saveBookmark(currentDocId, pct, titleEl?.textContent || '', metaEl?.textContent || '');
+    }
     if (readerEl._onKeydown) {
       document.removeEventListener('keydown', readerEl._onKeydown);
     }
@@ -159,6 +178,10 @@ export function closeReader() {
     readerEl = null;
   }
   document.body.style.overflow = '';
+  // Clean up URL if still on ?doc= page
+  if (!skipHistory && new URLSearchParams(window.location.search).has('doc')) {
+    window.history.replaceState({}, '', window.location.pathname);
+  }
   currentDocId = null;
   pages = [];
   currentPage = 0;
@@ -202,21 +225,43 @@ function buildPageNav() {
     </div>`;
 }
 
-function goToPage(idx) {
+function goToPage(idx, direction) {
   if (idx < 0 || idx >= pages.length || !readerEl) return;
+  const oldPage = currentPage;
   currentPage = idx;
 
   const body = readerEl.querySelector('#readerBody');
   const navEl = readerEl.querySelector('#readerPageNav');
   const scrollArea = readerEl.querySelector('#readerScroll');
 
-  if (body) body.innerHTML = pages[currentPage];
+  // Animate page transition
+  if (body && direction !== undefined) {
+    const dir = direction || (idx > oldPage ? 'left' : 'right');
+    body.classList.add('page-exit-' + dir);
+    requestAnimationFrame(() => {
+      body.innerHTML = pages[currentPage];
+      body.classList.remove('page-exit-' + dir);
+      body.classList.add('page-enter-' + dir);
+      requestAnimationFrame(() => body.classList.remove('page-enter-' + dir));
+    });
+  } else if (body) {
+    body.innerHTML = pages[currentPage];
+  }
+
   if (navEl) navEl.outerHTML = buildPageNav();
 
   wirePageNav();
   if (scrollArea) scrollArea.scrollTo(0, 0);
   applySettings();
   updateProgress();
+
+  // Immediately save bookmark on page turn
+  if (currentDocId) {
+    const pct = pages.length > 1 ? (currentPage / (pages.length - 1)) * 100 : 0;
+    const titleEl = readerEl.querySelector('.reader-topbar-title');
+    const metaEl = readerEl.querySelector('.reader-scroll-meta');
+    saveBookmark(currentDocId, pct, titleEl?.textContent || '', metaEl?.textContent || '');
+  }
 }
 
 function wirePageNav() {
@@ -276,25 +321,26 @@ function buildSettingsPanel() {
   const fontActive = (f) => f === s.fontFamily ? ' active' : '';
 
   return `
+    <div class="reader-settings-backdrop" id="readerSettingsBackdrop"></div>
     <div class="reader-settings" id="readerSettings" role="dialog" aria-label="${t('wenku_reader_settings') || '阅读设置'}">
-      <div class="reader-settings-title" id="readerFontSizeLabel">字号</div>
+      <div class="reader-settings-title" id="readerFontSizeLabel">${t('reader_font_size') || '字号'}</div>
       <div class="reader-fontsize">
         <span class="reader-fontsize-label reader-fontsize-sm">A</span>
         <input class="reader-fontsize-slider" id="readerFontSlider" type="range" min="14" max="28" step="1" value="${s.fontSize}" aria-labelledby="readerFontSizeLabel">
         <span class="reader-fontsize-label reader-fontsize-lg">A</span>
       </div>
-      <div class="reader-settings-title">背景</div>
+      <div class="reader-settings-title">${t('reader_background') || '背景'}</div>
       <div class="reader-modes">
-        <button class="reader-mode-btn reader-mode-light${modeActive('light')}" data-mode="light">白</button>
-        <button class="reader-mode-btn reader-mode-sepia${modeActive('sepia')}" data-mode="sepia">护眼</button>
-        <button class="reader-mode-btn reader-mode-dark${modeActive('dark')}" data-mode="dark">暗黑</button>
-        <button class="reader-mode-btn reader-mode-eink${modeActive('eink')}" data-mode="eink">墨水</button>
+        <button class="reader-mode-btn reader-mode-light${modeActive('light')}" data-mode="light">${t('reader_mode_light') || '白'}</button>
+        <button class="reader-mode-btn reader-mode-sepia${modeActive('sepia')}" data-mode="sepia">${t('reader_mode_sepia') || '护眼'}</button>
+        <button class="reader-mode-btn reader-mode-dark${modeActive('dark')}" data-mode="dark">${t('reader_mode_dark') || '暗黑'}</button>
+        <button class="reader-mode-btn reader-mode-eink${modeActive('eink')}" data-mode="eink">${t('reader_mode_eink') || '墨水'}</button>
       </div>
-      <div class="reader-settings-title">字体</div>
+      <div class="reader-settings-title">${t('reader_font_family') || '字体'}</div>
       <div class="reader-fonts">
-        <button class="reader-font-btn reader-font-sans${fontActive('sans')}" data-font="sans">黑体</button>
-        <button class="reader-font-btn reader-font-serif${fontActive('serif')}" data-font="serif">宋体</button>
-        <button class="reader-font-btn reader-font-kai${fontActive('kai')}" data-font="kai">楷体</button>
+        <button class="reader-font-btn reader-font-sans${fontActive('sans')}" data-font="sans">${t('reader_font_sans') || '黑体'}</button>
+        <button class="reader-font-btn reader-font-serif${fontActive('serif')}" data-font="serif">${t('reader_font_serif') || '宋体'}</button>
+        <button class="reader-font-btn reader-font-kai${fontActive('kai')}" data-font="kai">${t('reader_font_kai') || '楷体'}</button>
       </div>
     </div>
   `;
@@ -321,6 +367,10 @@ function wireEvents(prevId, nextId, doc) {
 
   // Settings button
   readerEl.querySelector('#readerSettingsBtn').addEventListener('click', () => toggleSettings());
+
+  // Settings backdrop — click to dismiss
+  const settingsBackdrop = readerEl.querySelector('#readerSettingsBackdrop');
+  if (settingsBackdrop) settingsBackdrop.addEventListener('click', () => { if (settingsVisible) toggleSettings(); });
 
   // Share button — use toast instead of flash
   readerEl.querySelector('#readerShare').addEventListener('click', async () => {
@@ -373,17 +423,23 @@ function wireEvents(prevId, nextId, doc) {
     });
   });
 
-  // Prev/Next lecture with debounce to prevent rapid clicks
+  // Prev/Next lecture with loading state
   let navLocked = false;
-  function navTo(id) {
+  async function navTo(id, btn) {
     if (navLocked) return;
     navLocked = true;
-    openReader(id);
+    if (btn) { btn.disabled = true; btn.textContent = t('search_wenku_loading') || '加载中...'; }
+    try {
+      await openReader(id);
+    } catch {
+      navLocked = false;
+      if (btn) { btn.disabled = false; }
+    }
   }
   const prevBtn = readerEl.querySelector('#readerPrev');
   const nextBtn = readerEl.querySelector('#readerNext');
-  if (prevId) { prevBtn.disabled = false; prevBtn.addEventListener('click', () => navTo(prevId)); }
-  if (nextId) { nextBtn.disabled = false; nextBtn.addEventListener('click', () => navTo(nextId)); }
+  if (prevId) { prevBtn.disabled = false; prevBtn.addEventListener('click', () => navTo(prevId, prevBtn)); }
+  if (nextId) { nextBtn.disabled = false; nextBtn.addEventListener('click', () => navTo(nextId, nextBtn)); }
 
   // Wire page navigation buttons
   wirePageNav();
@@ -398,8 +454,8 @@ function wireEvents(prevId, nextId, doc) {
     const dx = e.changedTouches[0].clientX - touchStartX;
     const dy = e.changedTouches[0].clientY - touchStartY;
     if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-      if (dx < 0) goToPage(currentPage + 1);
-      else goToPage(currentPage - 1);
+      if (dx < 0) goToPage(currentPage + 1, 'left');
+      else goToPage(currentPage - 1, 'right');
     }
   }, { passive: true });
 
@@ -453,7 +509,9 @@ function toggleMenu() {
 function toggleSettings() {
   settingsVisible = !settingsVisible;
   const panel = readerEl.querySelector('#readerSettings');
+  const backdrop = readerEl.querySelector('#readerSettingsBackdrop');
   panel.classList.toggle('visible', settingsVisible);
+  if (backdrop) backdrop.classList.toggle('visible', settingsVisible);
   if (settingsVisible) {
     readerEl.querySelector('#readerTopbar').classList.add('visible');
     readerEl.querySelector('#readerBottombar').classList.remove('visible');
