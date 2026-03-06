@@ -20,17 +20,6 @@ const DAILY_QUOTES = [
   { zh: '厌离娑婆，欣求极乐。', en: 'Renounce the Saha world; aspire to the Land of Ultimate Bliss.', author: '善导大师' },
 ];
 
-// Unique SVG icons for each chanting card
-const CHANT_ICONS = [
-  '<svg viewBox="0 0 24 24"><path d="M12 3c0 0-5 7-5 13s5 5 5 5 5 1 5-5S12 3 12 3z"/></svg>',                   // drop (default)
-  '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 3"/></svg>',                         // clock
-  '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>', // music
-  '<svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14 2 9.27l6.91-1.01z"/></svg>', // star
-  '<svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z"/></svg>', // heart
-  '<svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>', // bell
-  '<svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 22 12 18.27 5.82 22 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>', // star alt
-];
-
 export function renderHomePage() {
   const dom = getDOM();
   const lang = getLang();
@@ -125,32 +114,11 @@ export function renderHomePage() {
     </div>`;
   }
 
-  // Chanting cards — each gets a unique soft color tint + unique icon
-  const CHANT_COLORS = [
-    'rgba(131,106,50,0.12)',  // warm gold (default)
-    'rgba(106,131,80,0.12)',  // sage green
-    'rgba(80,106,131,0.12)',  // muted blue
-    'rgba(131,80,106,0.12)',  // soft rose
-    'rgba(131,116,80,0.12)',  // warm amber
-    'rgba(106,80,131,0.12)',  // soft purple
-    'rgba(80,131,116,0.12)',  // teal
-  ];
-  const CHANT_STROKES = [
-    'rgba(131,106,50,0.7)',
-    'rgba(106,131,80,0.7)',
-    'rgba(80,106,131,0.7)',
-    'rgba(131,80,106,0.7)',
-    'rgba(131,116,80,0.7)',
-    'rgba(106,80,131,0.7)',
-    'rgba(80,131,116,0.7)',
-  ];
+  // Chanting cards — play button + text design
   const chantCards = fohaoEps.map((ep, idx) => {
     const isPlaying = nowSid === 'donglin-fohao' && state.epIdx === idx;
-    const bg = CHANT_COLORS[idx % CHANT_COLORS.length];
-    const stroke = CHANT_STROKES[idx % CHANT_STROKES.length];
-    const icon = CHANT_ICONS[idx % CHANT_ICONS.length];
     return `<div class="home-chant-card${isPlaying ? ' playing' : ''}" data-fh-idx="${idx}">
-      <div class="home-chant-icon" style="background:${bg}"><span style="stroke:${stroke}">${icon}</span></div>
+      <div class="home-chant-play"><svg viewBox="0 0 24 24"><polygon points="8,4 20,12 8,20"/></svg></div>
       <div class="home-chant-name">${ep.title}</div>
     </div>`;
   }).join('');

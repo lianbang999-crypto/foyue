@@ -3,7 +3,7 @@ import { state } from './state.js';
 import { t } from './i18n.js';
 import { getDOM } from './dom.js';
 import { CATEGORY_ICONS, ICON_PLAY_FILLED, ICON_PAUSE_FILLED } from './icons.js';
-import { playList, togglePlay, isCurrentTrack, getIsSwitching, markAppreciated, isAppreciated } from './player.js';
+import { playList, togglePlay, isCurrentTrack, getIsSwitching, markAppreciated, isAppreciated, shareSeries } from './player.js';
 import { renderHomePage } from './pages-home.js';
 import { getHistory } from './history.js';
 import { getPlayCount, appreciate } from './api.js';
@@ -55,6 +55,7 @@ export function showEpisodes(series, tabId) {
     <button class="btn-back" id="backBtn"><svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg></button>
     <div class="ep-header-info"><div class="ep-header-title">${escapeHtml(series.title)}</div><div class="ep-header-sub">${escapeHtml(series.speaker || '')} \u00B7 ${series.totalEpisodes} ${unit}<span id="epPlayCount"></span></div>${introHdr}</div>
     <button class="btn-play-all" id="playAllBtn" aria-label="${t('play_all')}"><svg viewBox="0 0 24 24"><polygon points="8,4 20,12 8,20"/></svg></button>
+    <button class="btn-share-series" id="shareSeriesBtn" aria-label="Share"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
   </div><div class="ep-actions" id="epActions"></div><ul class="ep-list" id="epList"></ul>`;
   dom.contentArea.appendChild(view);
 
@@ -63,6 +64,7 @@ export function showEpisodes(series, tabId) {
     if (state.tab === 'home') renderHomePage();
     else renderCategory(state.tab);
   });
+  view.querySelector('#shareSeriesBtn').addEventListener('click', () => shareSeries(series));
 
   const playAllBtn = view.querySelector('#playAllBtn');
   function updatePlayAllBtn() {

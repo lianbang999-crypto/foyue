@@ -73,12 +73,10 @@
 .home-chant-card{flex-shrink:0;width:130px;background:var(--bg-card);border-radius:var(--radius-sm);padding:14px 12px;text-align:center;border:1px solid var(--border);cursor:pointer;transition:background .15s,border-color .15s}
 .home-chant-card:hover{background:var(--bg-card-hover);border-color:var(--border-active)}
 .home-chant-card.playing{border-color:var(--accent);background:var(--accent-glow)}
-.home-chant-icon{width:32px;height:32px;margin:0 auto 8px;border-radius:50%;background:var(--accent-glow);display:flex;align-items:center;justify-content:center}
-.home-chant-icon svg{width:16px;height:16px;fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.home-chant-icon span{display:flex;align-items:center;justify-content:center}
-.home-chant-icon span svg{width:16px;height:16px;fill:none;stroke:inherit;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.home-chant-card.playing .home-chant-icon{background:var(--accent)}
-.home-chant-card.playing .home-chant-icon svg{stroke:var(--text-inverse)}
+.home-chant-play{width:36px;height:36px;margin:0 auto 8px;border-radius:50%;background:var(--accent-glow);display:flex;align-items:center;justify-content:center}
+.home-chant-play svg{width:16px;height:16px;fill:var(--accent);stroke:none;margin-left:2px}
+.home-chant-card.playing .home-chant-play{background:var(--accent)}
+.home-chant-card.playing .home-chant-play svg{fill:var(--text-inverse)}
 .home-chant-name{font-size:.8rem;color:var(--text);line-height:1.3;font-weight:400}
 .home-continue-card{display:flex;align-items:center;gap:12px;background:var(--bg-card);border-radius:var(--radius);padding:14px 16px;border:1px solid var(--border);cursor:pointer;transition:background .15s;position:relative;overflow:hidden}
 .home-continue-card:hover{background:var(--bg-card-hover)}
