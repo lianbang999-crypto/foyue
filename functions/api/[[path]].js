@@ -722,6 +722,20 @@ async function handlePopulateTranscriptMapping(env, request, cors) {
     }
 
     try {
+      // 先尝试从标题补全缺失的 episode_num
+      await env.DB.prepare(
+        `UPDATE documents
+         SET episode_num = CAST(
+           SUBSTR(title,
+             INSTR(title, '第') + 1,
+             INSTR(SUBSTR(title, INSTR(title, '第') + 1), '讲') - 1
+           ) AS INTEGER
+         ), updated_at = CURRENT_TIMESTAMP
+         WHERE series_name = ? AND episode_num IS NULL
+           AND title LIKE '%第%讲%'
+           AND type = 'transcript'`
+      ).bind(seriesName).run();
+
       const result = await env.DB.prepare(
         `UPDATE documents
          SET audio_series_id = ?, audio_episode_num = episode_num,
@@ -784,11 +798,11 @@ async function handleAutoMatchTranscripts(env, request, cors) {
   }
 
   // 3. 标准化名称用于匹配
+  //    保留"正编""续编"等区分性后缀，避免不同系列碰撞
   function normalize(str) {
     return str
       .replace(/[（）()《》【】\[\]""''「」『』]/g, '')
       .replace(/[：:，,。.、；;！!？?\s]/g, '')
-      .replace(/正编|续编|上册|下册|卷上|卷下|全卷/g, '')
       .toLowerCase();
   }
 
@@ -814,12 +828,16 @@ async function handleAutoMatchTranscripts(env, request, cors) {
       bestMatch = audioMap.get(normWenku);
     }
 
-    // 子串匹配：文库名包含音频名，或反之
+    // 子串匹配：文库名包含音频名，或反之（取最长匹配，避免短名误命中）
     if (!bestMatch) {
+      let bestLen = 0;
       for (const [normAudio, audioId] of audioMap) {
         if (normWenku.includes(normAudio) || normAudio.includes(normWenku)) {
-          bestMatch = audioId;
-          break;
+          const overlap = Math.min(normWenku.length, normAudio.length);
+          if (overlap > bestLen) {
+            bestLen = overlap;
+            bestMatch = audioId;
+          }
         }
       }
     }
@@ -829,6 +847,22 @@ async function handleAutoMatchTranscripts(env, request, cors) {
       matches.push({ wenkuSeries: ws.series_name, audioSeriesId: bestMatch });
 
       // 批量更新该系列的所有文档
+      // 先尝试从标题补全缺失的 episode_num（"第X讲" 格式）
+      try {
+        await db.prepare(
+          `UPDATE documents
+           SET episode_num = CAST(
+             SUBSTR(title,
+               INSTR(title, '第') + 1,
+               INSTR(SUBSTR(title, INSTR(title, '第') + 1), '讲') - 1
+             ) AS INTEGER
+           ), updated_at = CURRENT_TIMESTAMP
+           WHERE series_name = ? AND episode_num IS NULL
+             AND title LIKE '%第%讲%'
+             AND type = 'transcript'`
+        ).bind(ws.series_name).run();
+      } catch { /* best-effort */ }
+
       try {
         const result = await db.prepare(
           `UPDATE documents
