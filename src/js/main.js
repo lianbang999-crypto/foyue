@@ -28,7 +28,7 @@ import {
   getIsSwitching, setDragging, initPlaylistTabs, closeFullScreen,
   markAppreciated, updateAppreciateBtn, appreciateSuccess, updateAppreciateCount, isAppreciated,
   retryPlayback, startStallWatch, clearStallWatch,
-  downloadCurrentTrack, onVisibilityResume, setNetworkWeak,
+  onVisibilityResume, setNetworkWeak,
 } from './player.js';
 import { renderHomePage } from './pages-home.js';
 import { renderMyPage } from './pages-my.js';
@@ -328,9 +328,6 @@ function closeWenkuReader() {
 
   // Sleep timer
   document.getElementById('expTimer').addEventListener('click', () => { haptic(); cycleSleepTimer(); });
-
-  // Download button
-  document.getElementById('expDownload').addEventListener('click', () => { haptic(); downloadCurrentTrack(); });
 
   // PWA install
   initInstallPrompt();

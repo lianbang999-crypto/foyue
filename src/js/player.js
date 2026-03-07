@@ -933,17 +933,9 @@ function _doBgFullLoad(url) {
   if (bgFetchUrl === url) return;
   cleanupBgFetch();
 
-  // Skip on save-data or 2g
+  // Skip on save-data or 2g (extremely slow connections)
   const conn = navigator.connection || navigator.mozConnection;
   if (conn && (conn.saveData || conn.effectiveType === '2g')) return;
-
-  // On cellular: skip background full-load entirely to save user's data
-  // The CDN cache fix already makes streaming reliable, so full-load is a luxury here.
-  const connType = getConnType();
-  if (connType === 'cellular') {
-    console.log('[BgLoad] On cellular network, skipping background full-load to save data');
-    return;
-  }
 
   bgFetchUrl = url;
   bgFetchController = new AbortController();
