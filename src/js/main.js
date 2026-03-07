@@ -384,15 +384,24 @@ function closeWenkuReader() {
     const wenkuPage = document.querySelector('.wenku-page');
     if (wenkuPage) {
       wenkuPage.remove();
-      const params = new URLSearchParams(window.location.search);
-      if (params.has('wenku') || (st && st.wenku && st.wenku !== 'home')) {
-        // Going back from series → home
+      // Route based on the state we're navigating TO
+      if (st && st.wenku) {
         activateMyTab();
-        import('./wenku.js').then(mod => mod.renderWenkuHome(() => {
-          import('./pages-my.js').then(m => m.renderMyPage());
-        }, { skipPush: true }));
+        if (st.wenku === 'home') {
+          // Going back TO wenku home (e.g. from series → home)
+          import('./wenku.js').then(mod => mod.renderWenkuHome(() => {
+            import('./pages-my.js').then(m => m.renderMyPage());
+          }, { skipPush: true }));
+        } else {
+          // Going back TO a specific series
+          import('./wenku.js').then(mod => mod.renderWenkuSeries(st.wenku, () => {
+            mod.renderWenkuHome(() => {
+              import('./pages-my.js').then(m => m.renderMyPage());
+            });
+          }, { skipPush: true }));
+        }
       } else {
-        // Going back from wenku home → My page
+        // Going back from wenku home → My page (no wenku state = pre-wenku page)
         activateMyTab();
         import('./pages-my.js').then(m => m.renderMyPage());
         rePushGuard();
