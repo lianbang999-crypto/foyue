@@ -87,12 +87,13 @@ function createChatPage() {
     });
   });
 
-  // Source tags → open internal wenku reader
+  // Source tags → close AI chat, then open internal wenku reader
   chatMessages.addEventListener('click', (e) => {
     const tag = e.target.closest('.ai-source-tag[data-doc-id]');
     if (!tag) return;
     const docId = tag.dataset.docId;
     const query = tag.dataset.query || '';
+    chatInstance.hide();
     import('./wenku-reader.js').then(mod => mod.openReader(docId, query)).catch(() => {
       import('./utils.js').then(m => m.showToast('文稿打开失败'));
     });
