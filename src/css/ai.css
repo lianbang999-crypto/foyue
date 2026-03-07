@@ -227,7 +227,8 @@ a.ai-source-tag:hover {
 }
 
 /* Typewriter cursor */
-.ai-typewriter::after {
+.ai-typewriter::after,
+.ai-streaming::after {
   content: '';
   display: inline-block;
   width: 2px;
@@ -237,6 +238,7 @@ a.ai-source-tag:hover {
   vertical-align: text-bottom;
   animation: ai-cursor-blink 0.6s step-end infinite;
 }
+.ai-streaming{white-space:pre-wrap;word-break:break-word}
 @keyframes ai-cursor-blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }

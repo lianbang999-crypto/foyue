@@ -1,50 +1,56 @@
 /* ===== AI 全屏聊天页 ===== */
-import { askQuestion } from './ai-client.js';
+import { askQuestionStream } from './ai-client.js';
 import { t } from './i18n.js';
 import { escapeHtml } from './utils.js';
 import { getDOM } from './dom.js';
 
 let chatInstance = null;
 const MAX_MESSAGES = 50;
-const TYPEWRITER_SPEED = 25;
+const MAX_PERSIST = 20; // max messages to persist
+const LS_KEY = 'ai-chat-history';
 const WENKU_BASE = 'https://wenku.foyue.org';
 
-// 当前问题（用于给 source 链接添加 ?q= 高亮参数）
 let _lastQuestion = '';
 
-/**
- * 打开全屏 AI 聊天页
- */
+/* ===== localStorage persistence ===== */
+function loadPersistedHistory() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.slice(-MAX_PERSIST) : [];
+  } catch { return []; }
+}
+
+function persistHistory(chatHistory) {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(chatHistory.slice(-MAX_PERSIST)));
+  } catch { /* quota exceeded */ }
+}
+
+/* ===== Public API ===== */
 export function openAiChat() {
   if (chatInstance && chatInstance.isOpen) return;
   if (!chatInstance) createChatPage();
   chatInstance.show();
 }
 
-/**
- * 关闭全屏 AI 聊天页
- */
 export function closeAiChat() {
   if (chatInstance) chatInstance.hide();
 }
 
-/**
- * AI 聊天是否打开
- */
 export function isAiChatOpen() {
   return chatInstance ? chatInstance.isOpen : false;
 }
 
+/* ===== Core ===== */
 function createChatPage() {
   let isLoading = false;
-  const chatHistory = [];
+  const chatHistory = loadPersistedHistory();
 
-  // 全屏聊天容器
   const page = document.createElement('div');
   page.className = 'ai-fullscreen';
   page.id = 'aiFullscreen';
-
-  // Build HTML skeleton — content filled below
   page.innerHTML = buildPageHTML();
 
   const chatMessages = page.querySelector('#aiFsMessages');
@@ -52,10 +58,18 @@ function createChatPage() {
   const chatInput = page.querySelector('#aiFsInput');
   const chatSend = page.querySelector('#aiFsSend');
 
-  // Back button
+  // Restore persisted messages into DOM
+  if (chatHistory.length > 0) {
+    // Remove default welcome + suggestions
+    const suggestWrap = page.querySelector('.ai-suggest-wrap');
+    if (suggestWrap) suggestWrap.remove();
+    for (const msg of chatHistory) {
+      addMessage(msg.role === 'user' ? 'user' : 'bot', msg.content, msg.sources, msg.disclaimer, true);
+    }
+  }
+
   page.querySelector('#aiFsBack').addEventListener('click', () => chatInstance.hide());
 
-  // Share button
   page.querySelector('#aiFsShare').addEventListener('click', () => {
     const url = window.location.origin + '/?tab=ai';
     if (navigator.share) {
@@ -67,11 +81,9 @@ function createChatPage() {
     }
   });
 
-  // Suggested question chips
   page.querySelectorAll('.ai-suggest-chip').forEach(chip => {
     chip.addEventListener('click', () => {
-      const q = chip.textContent.trim();
-      chatInput.value = q;
+      chatInput.value = chip.textContent.trim();
       chatForm.dispatchEvent(new Event('submit', { cancelable: true }));
     });
   });
@@ -87,12 +99,12 @@ function createChatPage() {
     const question = chatInput.value.trim();
     if (!question || isLoading) return;
 
-    // 隐藏建议问题
     const suggestWrap = page.querySelector('.ai-suggest-wrap');
     if (suggestWrap) suggestWrap.remove();
 
     _lastQuestion = question;
     addMessage('user', question);
+    chatHistory.push({ role: 'user', content: question });
     chatInput.value = '';
     isLoading = true;
     chatSend.disabled = true;
@@ -100,17 +112,48 @@ function createChatPage() {
     showTyping();
 
     try {
-      const result = await askQuestion(question, {
-        history: chatHistory.slice(-6),
-      });
+      // Create streaming message container
       removeTyping();
-      const answer = result.answer?.trim() || '抱歉，AI 暂时无法生成回答。';
-      chatHistory.push({ role: 'user', content: question });
-      chatHistory.push({ role: 'assistant', content: answer });
-      if (chatHistory.length > 10) chatHistory.splice(0, chatHistory.length - 10);
-      await typewriterMessage(answer, result.sources, result.disclaimer);
+      const { msgContent, textEl } = createStreamingMessage();
+      let fullText = '';
+
+      const finalData = await askQuestionStream(
+        question,
+        { history: chatHistory.slice(-6) },
+        (token) => {
+          fullText += token;
+          textEl.textContent = fullText;
+          chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+      );
+
+      // Finalize: replace plain text with formatted HTML
+      textEl.innerHTML = formatAnswer(fullText);
+      if (finalData.sources?.length) {
+        const srcDiv = document.createElement('div');
+        srcDiv.className = 'ai-sources';
+        srcDiv.innerHTML = finalData.sources.map(s => renderSourceTag(s)).join(' ');
+        msgContent.appendChild(srcDiv);
+      }
+      if (finalData.disclaimer) {
+        const discP = document.createElement('p');
+        discP.className = 'ai-disclaimer';
+        discP.textContent = finalData.disclaimer;
+        msgContent.appendChild(discP);
+      }
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+
+      // Persist
+      const answer = fullText.trim() || '抱歉，AI 暂时无法生成回答。';
+      chatHistory.push({ role: 'assistant', content: answer, sources: finalData.sources, disclaimer: finalData.disclaimer });
+      if (chatHistory.length > MAX_PERSIST) chatHistory.splice(0, chatHistory.length - MAX_PERSIST);
+      persistHistory(chatHistory);
+
     } catch (err) {
       removeTyping();
+      // Remove any empty streaming message
+      const emptyStream = chatMessages.querySelector('.ai-msg-bot:last-child .ai-streaming');
+      if (emptyStream && !emptyStream.textContent) emptyStream.closest('.ai-msg').remove();
       addMessage('error', err.message || '请求失败，请稍后再试');
     } finally {
       isLoading = false;
@@ -119,10 +162,6 @@ function createChatPage() {
     }
   }
 
-  /**
-   * 从用户问题中提取关键词，用于文库高亮
-   * 去掉疑问词和虚词，保留有意义的内容词
-   */
   function extractHighlightQuery(question) {
     if (!question) return '';
     const stopWords = /什么|怎么|怎样|如何|为什么|哪些|哪个|可以|能够|应该|是不是|有没有|到底|究竟|请问|的|了|吗|呢|吧|啊|在|是|有|和|与|或|也|都|就|把|被|对|又|要|让|给|从|用|以|而|但|却|不|很|最|更|还|这|那|它|你|我|他|她|们|个|着/g;
@@ -141,26 +180,15 @@ function createChatPage() {
     return `<span class="ai-source-tag">${title}</span>`;
   }
 
-  /**
-   * 将 AI 回复文本格式化为 HTML
-   * 引号开头的行渲染为 blockquote，"——" 开头渲染为出处
-   */
   function formatAnswer(text) {
     const lines = text.split('\n');
     let html = '';
     let inQuote = false;
-
     for (const raw of lines) {
       const line = raw.trim();
-      if (!line) {
-        if (inQuote) { html += '</blockquote>'; inQuote = false; }
-        continue;
-      }
-      // 检测引文行：以中英文引号开头
+      if (!line) { if (inQuote) { html += '</blockquote>'; inQuote = false; } continue; }
       const isQuoteLine = /^[\u201C\u201D"\u300A""]/.test(line);
-      // 检测出处行：以 —— 或 ── 或 ── 开头
       const isSourceLine = /^[\u2014\u2500\-]{1,3}/.test(line);
-
       if (isQuoteLine) {
         if (!inQuote) { html += '<blockquote class="ai-quote">'; inQuote = true; }
         html += `<p>${escapeHtml(line)}</p>`;
@@ -176,7 +204,7 @@ function createChatPage() {
     return html;
   }
 
-  function addMessage(role, content, sources, disclaimer) {
+  function addMessage(role, content, sources, disclaimer, silent) {
     while (chatMessages.children.length > MAX_MESSAGES) {
       chatMessages.removeChild(chatMessages.children[1]);
     }
@@ -189,7 +217,7 @@ function createChatPage() {
     } else {
       html += `<p>${escapeHtml(content)}</p>`;
     }
-    if (role === 'bot' && sources && sources.length) {
+    if (role === 'bot' && sources?.length) {
       html += '<div class="ai-sources">' + sources.map(s => renderSourceTag(s)).join(' ') + '</div>';
     }
     if (role === 'bot' && disclaimer) {
@@ -198,10 +226,10 @@ function createChatPage() {
     html += '</div>';
     msg.innerHTML = html;
     chatMessages.appendChild(msg);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    if (!silent) chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 
-  function typewriterMessage(content, sources, disclaimer) {
+  function createStreamingMessage() {
     while (chatMessages.children.length > MAX_MESSAGES) {
       chatMessages.removeChild(chatMessages.children[1]);
     }
@@ -210,45 +238,12 @@ function createChatPage() {
     const msgContent = document.createElement('div');
     msgContent.className = 'ai-msg-content';
     const textEl = document.createElement('div');
-    textEl.className = 'ai-typewriter';
+    textEl.className = 'ai-streaming';
     msgContent.appendChild(textEl);
     msg.appendChild(msgContent);
     chatMessages.appendChild(msg);
     chatMessages.scrollTop = chatMessages.scrollHeight;
-
-    // 按可见字符渲染（textContent 避免 entity 逐字符问题）
-    const chars = [...content];
-    let i = 0;
-    return new Promise(resolve => {
-      function tick() {
-        // 每帧渲染 1 个字符
-        if (i < chars.length) {
-          textEl.textContent += chars[i];
-          i++;
-          chatMessages.scrollTop = chatMessages.scrollHeight;
-          requestAnimationFrame(() => setTimeout(tick, TYPEWRITER_SPEED));
-        } else {
-          // 打字完成，替换为格式化内容
-          textEl.classList.remove('ai-typewriter');
-          textEl.innerHTML = formatAnswer(content);
-          if (sources && sources.length) {
-            const srcDiv = document.createElement('div');
-            srcDiv.className = 'ai-sources';
-            srcDiv.innerHTML = sources.map(s => renderSourceTag(s)).join(' ');
-            msgContent.appendChild(srcDiv);
-          }
-          if (disclaimer) {
-            const discP = document.createElement('p');
-            discP.className = 'ai-disclaimer';
-            discP.textContent = disclaimer;
-            msgContent.appendChild(discP);
-          }
-          chatMessages.scrollTop = chatMessages.scrollHeight;
-          resolve();
-        }
-      }
-      tick();
-    });
+    return { msgContent, textEl };
   }
 
   function showTyping() {
@@ -273,6 +268,7 @@ function createChatPage() {
       page.classList.add('show');
       this.isOpen = true;
       document.addEventListener('keydown', onKeydown);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
       const url = new URL(window.location);
       url.searchParams.set('tab', 'ai');
       window.history.pushState({ aiChat: true }, '', url);
@@ -330,14 +326,9 @@ function buildPageHTML() {
     </form>`;
 }
 
-/**
- * 检查 URL 是否需要自动打开 AI 聊天
- */
 export function checkAiDeepLink() {
   const params = new URLSearchParams(window.location.search);
-  if (params.get('tab') === 'ai') {
-    openAiChat();
-  }
+  if (params.get('tab') === 'ai') openAiChat();
 }
 
 // Legacy compat — no-op

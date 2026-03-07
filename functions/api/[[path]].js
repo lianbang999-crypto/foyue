@@ -5,7 +5,7 @@
 
 import {
   AI_CONFIG, chunkText, generateEmbeddings, semanticSearch,
-  retrieveDocuments, ragAnswer, generateSummary,
+  retrieveDocuments, ragAnswer, buildRAGMessages, generateSummary,
   checkRateLimit, cleanupRateLimits, timingSafeCompare,
   extractAIResponse,
 } from '../lib/ai-utils.js';
@@ -119,6 +119,11 @@ export async function onRequest(context) {
     // POST /api/ai/ask — RAG 问答
     if (path === '/api/ai/ask' && method === 'POST') {
       return await handleAiAsk(env, request, cors);
+    }
+
+    // POST /api/ai/ask-stream — RAG 问答（SSE 流式）
+    if (path === '/api/ai/ask-stream' && method === 'POST') {
+      return await handleAiAskStream(env, request, cors);
     }
 
     // GET /api/ai/summary/:id — 获取/生成集摘要
@@ -1115,6 +1120,179 @@ async function handleAiAsk(env, request, cors) {
     sources,
     disclaimer: '以上回答由AI生成，仅供参考，请以原始经典为准。',
   }, cors, 200, 'no-store');
+}
+
+/**
+ * POST /api/ai/ask-stream — RAG 问答（SSE 流式输出）
+ * 与 handleAiAsk 共享检索逻辑，AI 生成阶段使用 stream: true
+ * 协议：SSE text/event-stream
+ *   data: {"token":"..."}        — 逐 token 输出
+ *   event: done\ndata: {"sources":[...],"disclaimer":"..."}  — 结束事件
+ *   event: error\ndata: {"error":"..."}  — 错误事件
+ */
+async function handleAiAskStream(env, request, cors) {
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const limit = await checkRateLimit(env, ip, 'ai_ask');
+  if (!limit.allowed) {
+    return json({ error: limit.reason }, cors, 429);
+  }
+
+  let body;
+  try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
+  const { question, series_id, history } = body;
+
+  if (!question || typeof question !== 'string' || question.length > 500) {
+    return json({ error: '问题不能为空且不超过500字' }, cors, 400);
+  }
+
+  // --- Retrieval phase (same as handleAiAsk) ---
+  const filter = {};
+  if (series_id && typeof series_id === 'string') filter.series_id = series_id.slice(0, 100);
+
+  let matches = [];
+  try {
+    matches = await semanticSearch(env, question, {
+      topK: 5,
+      filter: Object.keys(filter).length > 0 ? filter : undefined,
+    });
+  } catch (err) {
+    console.warn('Vectorize search failed, falling back to D1:', err.message);
+  }
+
+  let docs = await retrieveDocuments(env, matches);
+
+  if (!docs.length) {
+    try {
+      const keywords = question.replace(/[？?！!，。、]/g, ' ').trim().slice(0, 50);
+      let fallbackQuery;
+      if (series_id) {
+        fallbackQuery = env.DB.prepare(
+          `SELECT id, title, content, category, series_name FROM documents
+           WHERE audio_series_id = ? AND content IS NOT NULL
+           ORDER BY episode_num ASC LIMIT 5`
+        ).bind(series_id);
+      } else {
+        fallbackQuery = env.DB.prepare(
+          `SELECT id, title, content, category, series_name FROM documents
+           WHERE content IS NOT NULL AND (title LIKE ? OR content LIKE ?)
+           LIMIT 5`
+        ).bind(`%${keywords.slice(0, 20)}%`, `%${keywords.slice(0, 20)}%`);
+      }
+      const fallback = await fallbackQuery.all();
+      if (fallback.results?.length > 0) docs = fallback.results;
+    } catch (err) {
+      console.warn('D1 fallback search failed:', err.message);
+    }
+  }
+
+  if (!docs.length) {
+    return json({
+      answer: '抱歉，暂未找到与您问题相关的内容。请尝试换一种方式提问。',
+      sources: [],
+      disclaimer: '以上回答由AI生成，仅供参考，请以原始经典为准。',
+    }, cors);
+  }
+
+  // Build sources list (before streaming starts)
+  const seenDocIds = new Set();
+  const sources = [];
+  for (const m of matches) {
+    const docId = m.metadata?.doc_id || '';
+    if (!docId || seenDocIds.has(docId)) continue;
+    seenDocIds.add(docId);
+    const doc = docs.find(d => d.id === docId);
+    sources.push({
+      title: m.metadata.title || '',
+      doc_id: docId,
+      score: Math.round(m.score * 100) / 100,
+      category: doc?.category || m.metadata.category || '',
+      series_name: doc?.series_name || m.metadata.series_name || '',
+    });
+    if (sources.length >= 3) break;
+  }
+
+  // --- Streaming phase ---
+  const messages = buildRAGMessages(question, docs, {
+    history: Array.isArray(history) ? history : [],
+    vectorMatches: matches,
+  });
+
+  let aiStream;
+  try {
+    aiStream = await env.AI.run(
+      AI_CONFIG.models.chat,
+      { messages, max_tokens: 800, temperature: 0.3, stream: true },
+      { gateway: { ...AI_CONFIG.gateway, skipCache: true } }
+    );
+  } catch (err) {
+    console.warn('Primary chat model failed, using fallback:', err.message);
+    try {
+      aiStream = await env.AI.run(
+        AI_CONFIG.models.chatFallback,
+        { messages, max_tokens: 800, temperature: 0.3, stream: true },
+        { gateway: { ...AI_CONFIG.gateway, skipCache: true } }
+      );
+    } catch (err2) {
+      return json({
+        answer: '抱歉，AI 服务暂时不可用，请稍后再试。',
+        sources: [],
+        disclaimer: '以上回答由AI生成，仅供参考，请以原始经典为准。',
+      }, cors, 503, 'no-store');
+    }
+  }
+
+  // Transform AI stream → SSE format
+  const encoder = new TextEncoder();
+  const disclaimer = '以上回答由AI生成，仅供参考，请以原始经典为准。';
+
+  const sseStream = new ReadableStream({
+    async start(controller) {
+      try {
+        const reader = aiStream.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          // Workers AI stream returns SSE-formatted text chunks:
+          // "data: {\"response\":\"token\"}\n\n" or "data: [DONE]\n\n"
+          const text = typeof value === 'string' ? value : decoder.decode(value, { stream: true });
+          // Parse each SSE line from Workers AI
+          const lines = text.split('\n');
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const payload = line.slice(6);
+            if (payload === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(payload);
+              const token = parsed.response || '';
+              if (token) {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token })}\n\n`));
+              }
+            } catch { /* skip malformed lines */ }
+          }
+        }
+        // Send final event with sources
+        controller.enqueue(encoder.encode(
+          `event: done\ndata: ${JSON.stringify({ sources, disclaimer })}\n\n`
+        ));
+      } catch (err) {
+        controller.enqueue(encoder.encode(
+          `event: error\ndata: ${JSON.stringify({ error: err.message || 'Stream failed' })}\n\n`
+        ));
+      } finally {
+        controller.close();
+      }
+    }
+  });
+
+  return new Response(sseStream, {
+    headers: {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-store',
+      'Connection': 'keep-alive',
+      ...cors,
+    },
+  });
 }
 
 /**
