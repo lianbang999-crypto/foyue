@@ -158,20 +158,24 @@ export function renderMyPage() {
   });
   page.querySelector('#myMessagesCard').addEventListener('click', () => showMessageWallSubview());
 
-  // Cache cleanup item — show size, click to clear
+  // Cache cleanup item — show size, click to clear; hidden when empty
+  const cacheItemEl = page.querySelector('#myCacheItem');
   const cacheSizeEl = page.querySelector('#myCacheSize');
   function fmtSize(bytes) {
     if (bytes === 0) return '0 MB';
     if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / 1048576).toFixed(1) + ' MB';
   }
-  getCachedSize().then(bytes => { cacheSizeEl.textContent = fmtSize(bytes); });
-  page.querySelector('#myCacheItem').addEventListener('click', async () => {
+  cacheItemEl.style.display = 'none';
+  getCachedSize().then(bytes => {
+    if (bytes > 0) { cacheSizeEl.textContent = fmtSize(bytes); cacheItemEl.style.display = ''; }
+  });
+  cacheItemEl.addEventListener('click', async () => {
     const bytes = await getCachedSize();
     if (bytes === 0) { showToast(t('my_cache_cleared')); return; }
     if (!confirm(t('my_clear_cache') + '? (' + fmtSize(bytes) + ')')) return;
     await clearAudioCache();
-    cacheSizeEl.textContent = fmtSize(0);
+    cacheItemEl.style.display = 'none';
     showToast(t('my_cache_cleared'));
   });
 

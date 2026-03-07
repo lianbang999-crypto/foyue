@@ -2,6 +2,7 @@
 'use strict';
 
 const AUDIO_CACHE = 'audio-v1';
+const MAX_CACHE_BYTES = 500 * 1024 * 1024; // 500 MB cap
 
 /**
  * Store a fetched blob as a proper Response in Cache API.
@@ -17,8 +18,33 @@ export async function cacheAudio(url, blob) {
     });
     const response = new Response(blob, { status: 200, headers });
     await cache.put(url, response);
+    // LRU eviction: if total exceeds cap, remove oldest entries
+    _evictIfNeeded(cache).catch(() => {});
   } catch (e) {
     // Silently fail — quota exceeded or other cache error
+  }
+}
+
+/**
+ * Evict oldest cache entries until total size is under MAX_CACHE_BYTES.
+ * Cache API keys() returns entries in insertion order (FIFO).
+ */
+async function _evictIfNeeded(cache) {
+  const keys = await cache.keys();
+  let total = 0;
+  const sizes = [];
+  for (const req of keys) {
+    const resp = await cache.match(req);
+    const cl = resp ? parseInt(resp.headers.get('Content-Length') || '0', 10) : 0;
+    sizes.push(cl);
+    total += cl;
+  }
+  // Delete oldest entries until under the cap
+  let i = 0;
+  while (total > MAX_CACHE_BYTES && i < keys.length) {
+    await cache.delete(keys[i]);
+    total -= sizes[i];
+    i++;
   }
 }
 
