@@ -197,8 +197,8 @@ function createChatPage() {
   function renderSourceTag(s) {
     const title = escapeHtml(s.title);
     if (s.doc_id) {
-      const hlQuery = extractHighlightQuery(_lastQuestion);
-      return `<button class="ai-source-tag" data-doc-id="${escapeHtml(s.doc_id)}" data-query="${escapeHtml(hlQuery)}">${title}</button>`;
+      const hlQuery = escapeHtml(s.snippet || extractHighlightQuery(_lastQuestion));
+      return `<button class="ai-source-tag" data-doc-id="${escapeHtml(s.doc_id)}" data-query="${hlQuery}">${title}</button>`;
     }
     return `<span class="ai-source-tag">${title}</span>`;
   }
