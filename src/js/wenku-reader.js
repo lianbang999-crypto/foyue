@@ -139,9 +139,8 @@ export async function openReader(docId, highlightQuery) {
     + `<div class="reader-scroll-body" id="readerBody">${bodyHtml}</div>`
     + nextCardHtml;
 
-  // Update topbar title
-  const topTitle = readerEl.querySelector('.reader-topbar-title');
-  if (topTitle) topTitle.textContent = doc.title;
+  // Store title for bookmark/share (no topbar title element in v2)
+  readerEl._docTitle = doc.title;
 
   // Update topbar series name
   const topSeries = readerEl.querySelector('.reader-topbar-series');
@@ -189,9 +188,9 @@ export function closeReader(skipHistory) {
         const sh = scrollArea.scrollHeight - scrollArea.clientHeight;
         const pct = sh > 0 ? Math.min(100, (scrollArea.scrollTop / sh) * 100) : 0;
         saveScrollProgress(currentDocId, pct);
-        const titleEl = readerEl.querySelector('.reader-topbar-title');
+        const docTitle = readerEl._docTitle || '';
         const metaEl = readerEl.querySelector('.reader-scroll-meta');
-        saveBookmark(currentDocId, pct, titleEl?.textContent || '', metaEl?.textContent || '');
+        saveBookmark(currentDocId, pct, docTitle, metaEl?.textContent || '');
       }
     }
     if (readerEl._onKeydown) {
@@ -332,7 +331,7 @@ function wireEvents(prevId, nextId, doc) {
   // Share action
   readerEl.querySelector('#readerActionShare').addEventListener('click', async () => {
     toggleActionSheet(false);
-    const docTitle = readerEl.querySelector('.reader-topbar-title')?.textContent || doc.title || '';
+    const docTitle = readerEl._docTitle || doc.title || '';
     const seriesName = doc.series_name || '';
     const title = docTitle ? `《${docTitle}》` : '净土法音文库';
     const shareText = seriesName ? `${title} — ${seriesName}` : title;
