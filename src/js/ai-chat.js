@@ -137,7 +137,8 @@ function createChatPage() {
         }
       );
 
-      // Finalize: replace plain text with formatted HTML
+      // Finalize: remove cursor, replace plain text with formatted HTML
+      textEl.classList.remove('ai-streaming');
       textEl.innerHTML = formatAnswer(fullText);
       if (finalData.sources?.length) {
         const srcDiv = document.createElement('div');
