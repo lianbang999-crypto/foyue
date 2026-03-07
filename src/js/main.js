@@ -343,37 +343,50 @@ function closeWenkuReader() {
     const st = e.state;
     const readerOpen = !!document.querySelector('.wenku-reader');
 
+    // Helper: ensure Me tab is visually active (wenku lives under Me)
+    function activateMyTab() {
+      document.querySelectorAll('.tab').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
+      const myTab = document.querySelector('.tab[data-tab="mypage"]');
+      if (myTab) { myTab.classList.add('active'); myTab.setAttribute('aria-selected', 'true'); }
+    }
+
     // Wenku reader is open — close it and route to correct wenku view
     if (readerOpen) {
       closeWenkuReader();
+      activateMyTab();
       if (st && st.wenku) {
         if (st.wenku === 'home') {
           import('./wenku.js').then(mod => mod.renderWenkuHome(() => {
             import('./pages-my.js').then(m => m.renderMyPage());
-          }));
+          }, { skipPush: true }));
         } else {
           import('./wenku.js').then(mod => mod.renderWenkuSeries(st.wenku, () => {
             mod.renderWenkuHome(() => {
               import('./pages-my.js').then(m => m.renderMyPage());
             });
-          }));
+          }, { skipPush: true }));
         }
         return;
       }
+      // Reader was opened without wenku context (or state lost) — return to My page
+      import('./pages-my.js').then(m => m.renderMyPage());
+      return;
     }
 
     // Wenku page is showing (home or series view) — navigate back
     const wenkuPage = document.querySelector('.wenku-page');
-    if (wenkuPage && !readerOpen) {
+    if (wenkuPage) {
       wenkuPage.remove();
       const params = new URLSearchParams(window.location.search);
       if (params.has('wenku') || (st && st.wenku && st.wenku !== 'home')) {
         // Going back from series → home
+        activateMyTab();
         import('./wenku.js').then(mod => mod.renderWenkuHome(() => {
           import('./pages-my.js').then(m => m.renderMyPage());
-        }));
+        }, { skipPush: true }));
       } else {
         // Going back from wenku home → My page
+        activateMyTab();
         import('./pages-my.js').then(m => m.renderMyPage());
       }
       return;
@@ -702,18 +715,18 @@ function handleWenkuDeepLink() {
     // Open reader directly for a specific document
     import('./wenku-reader.js').then(mod => mod.openReader(docId));
   } else if (wenkuSeries) {
-    // Open wenku series view
+    // Open wenku series view — URL already correct, skip pushState
     import('./wenku.js').then(mod => {
       mod.renderWenkuSeries(wenkuSeries, () => {
         import('./pages-my.js').then(m => m.renderMyPage());
-      });
+      }, { skipPush: true });
     });
   } else if (tab === 'wenku') {
-    // Open wenku home
+    // Open wenku home — URL already correct, skip pushState
     import('./wenku.js').then(mod => {
       mod.renderWenkuHome(() => {
         import('./pages-my.js').then(m => m.renderMyPage());
-      });
+      }, { skipPush: true });
     });
   }
 }

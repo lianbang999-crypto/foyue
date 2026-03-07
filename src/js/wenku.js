@@ -75,11 +75,13 @@ let _homeScrollTop = 0;
 let _seriesScrollTop = 0;
 
 /* ===== Render Wenku Home ===== */
-export async function renderWenkuHome(backFn) {
+export async function renderWenkuHome(backFn, { skipPush } = {}) {
   const dom = getDOM();
   dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
 
-  window.history.pushState({ wenku: 'home' }, '', '/?tab=wenku');
+  if (!skipPush) {
+    window.history.pushState({ wenku: 'home' }, '', '/?tab=wenku');
+  }
 
   const page = document.createElement('div');
   page.className = 'wenku-page active';
@@ -88,7 +90,10 @@ export async function renderWenkuHome(backFn) {
     '<div id="wenkuHomeContent">' + skeletonCards(4) + '</div>';
   dom.contentArea.appendChild(page);
 
-  page.querySelector('#wenkuBackHome').addEventListener('click', () => history.back());
+  page.querySelector('#wenkuBackHome').addEventListener('click', () => {
+    if (backFn) { backFn(); window.history.replaceState({}, '', '/'); }
+    else history.back();
+  });
 
   // Search toggle
   wireSearch(page);
@@ -115,14 +120,16 @@ export async function renderWenkuHome(backFn) {
 }
 
 /* ===== Render Wenku Series Detail ===== */
-export async function renderWenkuSeries(seriesName, backFn) {
+export async function renderWenkuSeries(seriesName, backFn, { skipPush } = {}) {
   const dom = getDOM();
   // Save home scroll position
   _homeScrollTop = dom.contentArea.scrollTop;
 
   dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
 
-  window.history.pushState({ wenku: seriesName }, '', `/?wenku=${encodeURIComponent(seriesName)}`);
+  if (!skipPush) {
+    window.history.pushState({ wenku: seriesName }, '', `/?wenku=${encodeURIComponent(seriesName)}`);
+  }
 
   const page = document.createElement('div');
   page.className = 'wenku-page active';
