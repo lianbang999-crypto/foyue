@@ -349,6 +349,12 @@ function closeWenkuReader() {
       const myTab = document.querySelector('.tab[data-tab="mypage"]');
       if (myTab) { myTab.classList.add('active'); myTab.setAttribute('aria-selected', 'true'); }
     }
+    // Helper: re-push back guard after wenku exits (keeps guard intact for non-PWA)
+    function rePushGuard() {
+      if (!window.matchMedia('(display-mode: standalone)').matches) {
+        history.pushState({ page: 'guard' }, '');
+      }
+    }
 
     // Wenku reader is open — close it and route to correct wenku view
     if (readerOpen) {
@@ -370,6 +376,7 @@ function closeWenkuReader() {
       }
       // Reader was opened without wenku context (or state lost) — return to My page
       import('./pages-my.js').then(m => m.renderMyPage());
+      rePushGuard();
       return;
     }
 
@@ -388,6 +395,7 @@ function closeWenkuReader() {
         // Going back from wenku home → My page
         activateMyTab();
         import('./pages-my.js').then(m => m.renderMyPage());
+        rePushGuard();
       }
       return;
     }
