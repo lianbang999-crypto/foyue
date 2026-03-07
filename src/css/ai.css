@@ -200,8 +200,11 @@
   font-size: 12px;
   text-decoration: none;
   transition: background 0.15s;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
 }
-a.ai-source-tag:hover {
+button.ai-source-tag:hover {
   background: var(--accent);
   color: var(--text-inverse);
 }

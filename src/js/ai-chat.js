@@ -8,7 +8,6 @@ let chatInstance = null;
 const MAX_MESSAGES = 50;
 const MAX_PERSIST = 20; // max messages to persist
 const LS_KEY = 'ai-chat-history';
-const WENKU_BASE = 'https://wenku.foyue.org';
 
 let _lastQuestion = '';
 
@@ -85,6 +84,17 @@ function createChatPage() {
     chip.addEventListener('click', () => {
       chatInput.value = chip.textContent.trim();
       chatForm.dispatchEvent(new Event('submit', { cancelable: true }));
+    });
+  });
+
+  // Source tags → open internal wenku reader
+  chatMessages.addEventListener('click', (e) => {
+    const tag = e.target.closest('.ai-source-tag[data-doc-id]');
+    if (!tag) return;
+    const docId = tag.dataset.docId;
+    const query = tag.dataset.query || '';
+    import('./wenku-reader.js').then(mod => mod.openReader(docId, query)).catch(() => {
+      import('./utils.js').then(m => m.showToast('文稿打开失败'));
     });
   });
 
@@ -173,9 +183,7 @@ function createChatPage() {
     const title = escapeHtml(s.title);
     if (s.doc_id) {
       const hlQuery = extractHighlightQuery(_lastQuestion);
-      const qParam = hlQuery ? `?q=${encodeURIComponent(hlQuery)}` : '';
-      const url = `${WENKU_BASE}/#/read/${encodeURIComponent(s.doc_id)}${qParam}`;
-      return `<a class="ai-source-tag" href="${url}" target="_blank" rel="noopener">${title}</a>`;
+      return `<button class="ai-source-tag" data-doc-id="${escapeHtml(s.doc_id)}" data-query="${escapeHtml(hlQuery)}">${title}</button>`;
     }
     return `<span class="ai-source-tag">${title}</span>`;
   }
