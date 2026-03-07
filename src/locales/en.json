@@ -160,5 +160,8 @@
   "reader_mode_eink": "E-Ink",
   "reader_font_sans": "Sans",
   "reader_font_serif": "Serif",
-  "reader_font_kai": "Kai"
+  "reader_font_kai": "Kai",
+  "wenku_end": "— End —",
+  "more": "More",
+  "cancel": "Cancel"
 }

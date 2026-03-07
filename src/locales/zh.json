@@ -160,5 +160,8 @@
   "reader_mode_eink": "墨水",
   "reader_font_sans": "黑体",
   "reader_font_serif": "宋体",
-  "reader_font_kai": "楷体"
+  "reader_font_kai": "楷体",
+  "wenku_end": "— 全文完 —",
+  "more": "更多",
+  "cancel": "取消"
 }
