@@ -70,6 +70,28 @@ export async function getCachedCount() {
 }
 
 /**
+ * Get total size of cached audio in bytes.
+ * @returns {Promise<number>}
+ */
+export async function getCachedSize() {
+  try {
+    const cache = await caches.open(AUDIO_CACHE);
+    const keys = await cache.keys();
+    let total = 0;
+    for (const req of keys) {
+      const resp = await cache.match(req);
+      if (resp) {
+        const cl = resp.headers.get('Content-Length');
+        if (cl) total += parseInt(cl, 10);
+      }
+    }
+    return total;
+  } catch (e) {
+    return 0;
+  }
+}
+
+/**
  * Clear all cached audio.
  * @returns {Promise<boolean>}
  */
