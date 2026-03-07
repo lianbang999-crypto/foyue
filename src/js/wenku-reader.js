@@ -1,4 +1,5 @@
 /* ===== Wenku Immersive Reader ===== */
+/* v2: WeChat-read style topbar, continuous scroll, tap-zones, auto dark mode */
 import { escapeHtml, debounce, showToast } from './utils.js';
 import { getWenkuDocument, recordWenkuRead } from './wenku-api.js';
 import { saveBookmark, getBookmark } from './wenku.js';
@@ -6,9 +7,11 @@ import { t } from './i18n.js';
 
 /* Settings persistence */
 const SETTINGS_KEY = 'wenku-reader-settings';
+const SCROLL_KEY = 'wenku-reader-scroll'; // per-doc scroll progress
 
-/** Resolve initial mode: follow app theme on first use, then persist user choice */
+/** Resolve initial mode: follow system theme, then persist user choice */
 function defaultMode() {
+  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
   const appTheme = document.documentElement.getAttribute('data-theme');
   if (appTheme === 'dark') return 'dark';
   return 'light';
@@ -24,32 +27,50 @@ function persistSettings(s) {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch { /* full */ }
 }
 
+/* Scroll progress persistence (per document) */
+function saveScrollProgress(docId, percent) {
+  try {
+    const data = JSON.parse(localStorage.getItem(SCROLL_KEY) || '{}');
+    data[docId] = { percent, ts: Date.now() };
+    // Cap at 200 entries
+    const keys = Object.keys(data);
+    if (keys.length > 200) {
+      keys.sort((a, b) => (data[a].ts || 0) - (data[b].ts || 0));
+      keys.slice(0, keys.length - 200).forEach(k => delete data[k]);
+    }
+    localStorage.setItem(SCROLL_KEY, JSON.stringify(data));
+  } catch { /* full */ }
+}
+
+function getScrollProgress(docId) {
+  try {
+    const data = JSON.parse(localStorage.getItem(SCROLL_KEY) || '{}');
+    return data[docId] ? data[docId].percent : 0;
+  } catch { return 0; }
+}
+
 let readerEl = null;
 let currentDocId = null;
 let settings = loadSettings();
 let menuVisible = false;
 let settingsVisible = false;
 
-/* Pagination state */
-let pages = [];
-let currentPage = 0;
-const CHARS_PER_PAGE = 2000;
-
 /* Throttle read-count API */
 let _lastReadId = null;
 let _lastReadTs = 0;
 
+/* System theme listener */
+let _themeMediaQuery = null;
+
 /* ===== Open Reader ===== */
 export async function openReader(docId, highlightQuery) {
-  // Properly close existing reader (cleans up keydown listeners, restores body scroll)
+  // Properly close existing reader
   if (readerEl) closeReader(/* skipHistory */ true);
 
   currentDocId = docId;
   settings = loadSettings();
   menuVisible = false;
   settingsVisible = false;
-  pages = [];
-  currentPage = 0;
 
   // Create reader container
   readerEl = document.createElement('div');
@@ -68,7 +89,7 @@ export async function openReader(docId, highlightQuery) {
   const scrollArea = readerEl.querySelector('#readerScroll');
   scrollArea.innerHTML = '<div class="wenku-loading" style="padding-top:40vh">' + (t('search_wenku_loading') || '加载中...') + '</div>';
 
-  // Fetch document (with error boundary)
+  // Fetch document
   let data;
   try {
     data = await getWenkuDocument(docId);
@@ -76,8 +97,8 @@ export async function openReader(docId, highlightQuery) {
   if (!data || !data.document) {
     scrollArea.innerHTML = `<div class="wenku-empty" style="padding-top:30vh">
       <div style="margin-bottom:16px">${t('loading_fail') || '加载失败'}</div>
-      <button class="reader-retry-btn" id="readerRetry" style="padding:8px 24px;border-radius:8px;border:1px solid var(--reader-text-secondary,#999);background:transparent;color:var(--reader-text,#333);font-size:.82rem;cursor:pointer;margin-right:8px">${t('retry') || '重试'}</button>
-      <button class="reader-retry-btn" id="readerRetryClose" style="padding:8px 24px;border-radius:8px;border:1px solid var(--reader-text-secondary,#999);background:transparent;color:var(--reader-text,#333);font-size:.82rem;cursor:pointer">${t('wenku_back') || '返回'}</button>
+      <button class="reader-retry-btn" id="readerRetry">${t('retry') || '重试'}</button>
+      <button class="reader-retry-btn" id="readerRetryClose">${t('wenku_back') || '返回'}</button>
     </div>`;
     const retryBtn = scrollArea.querySelector('#readerRetry');
     const closeBtn = scrollArea.querySelector('#readerRetryClose');
@@ -88,18 +109,18 @@ export async function openReader(docId, highlightQuery) {
 
   const doc = data.document;
 
-  // Record read (throttled — skip if same doc within 60s)
+  // Record read (throttled)
   if (docId !== _lastReadId || Date.now() - _lastReadTs > 60000) {
     recordWenkuRead(docId);
     _lastReadId = docId;
     _lastReadTs = Date.now();
   }
 
-  // Build header HTML
+  // Build content — continuous scroll (no pagination)
   const titleHtml = `<div class="reader-scroll-title">${escapeHtml(doc.title)}</div>`;
   const metaHtml = `<div class="reader-scroll-meta">${escapeHtml(doc.series_name || t('wenku_da_an') || '大安法师')}</div>`;
 
-  // Audio link (if mapped)
+  // Audio link
   let audioLinkHtml = '';
   if (doc.audio_series_id) {
     audioLinkHtml = `<a class="reader-audio-link" id="readerAudioLink" data-series="${escapeHtml(doc.audio_series_id)}">
@@ -108,44 +129,29 @@ export async function openReader(docId, highlightQuery) {
     </a>`;
   }
 
-  // Paginate content
-  pages = paginateContent(doc.content || '');
+  // Full body content (continuous scroll — no pagination)
+  const bodyHtml = textToHtml(doc.content || '');
 
-  // Restore page from bookmark
-  if (!highlightQuery) {
-    const bm = getBookmark(docId);
-    if (bm && bm.percent > 0 && pages.length > 1) {
-      currentPage = Math.min(Math.floor((bm.percent / 100) * pages.length), pages.length - 1);
-    }
-  }
+  // Next lecture card at end
+  const nextCardHtml = data.nextId ? buildNextLectureCard(data.nextId, data.totalEpisodes, doc.episode_num) : buildEndCard();
 
-  // If searching, find the page containing the match
-  if (highlightQuery && pages.length > 1) {
-    const stops = new Set(['的', '了', '是', '在', '有', '和', '就', '不', '人', '都', '一', '这', '中', '大', '为', '上', '个', '到', '说', '也']);
-    const kw = [...highlightQuery].filter(c => !stops.has(c) && c.trim()).join('');
-    if (kw.length >= 2) {
-      const idx = pages.findIndex(p => p.includes(escapeHtml(kw)));
-      if (idx >= 0) currentPage = idx;
-    }
-  }
-
-  const bodyHtml = pages[currentPage] || '';
   scrollArea.innerHTML = titleHtml + metaHtml + audioLinkHtml
     + `<div class="reader-scroll-body" id="readerBody">${bodyHtml}</div>`
-    + buildPageNav();
+    + nextCardHtml;
 
   // Update topbar title
   const topTitle = readerEl.querySelector('.reader-topbar-title');
   if (topTitle) topTitle.textContent = doc.title;
 
+  // Update topbar series name
+  const topSeries = readerEl.querySelector('.reader-topbar-series');
+  if (topSeries) topSeries.textContent = doc.series_name || '';
+
   // Apply settings
   applySettings();
 
-  // Prev/Next lecture buttons
+  // Prev/Next lecture buttons in bottom bar
   updateNavButtons(data.prevId, data.nextId, data.totalEpisodes, doc.episode_num);
-
-  // Update progress bar to current page
-  updateProgress();
 
   // Search highlight
   if (highlightQuery) {
@@ -155,21 +161,38 @@ export async function openReader(docId, highlightQuery) {
   // Wire up events
   wireEvents(data.prevId, data.nextId, doc);
 
-  // Preload next document into cache (fire-and-forget)
-  if (data.nextId) {
-    getWenkuDocument(data.nextId);
+  // Restore scroll position
+  if (!highlightQuery) {
+    const savedPct = getScrollProgress(docId);
+    if (savedPct > 0) {
+      requestAnimationFrame(() => {
+        const sh = scrollArea.scrollHeight - scrollArea.clientHeight;
+        if (sh > 0) scrollArea.scrollTo(0, (savedPct / 100) * sh);
+      });
+    }
   }
+
+  // Listen for system theme changes
+  setupThemeListener();
+
+  // Preload next document
+  if (data.nextId) getWenkuDocument(data.nextId);
 }
 
 /* ===== Close Reader ===== */
 export function closeReader(skipHistory) {
   if (readerEl) {
-    // Save final bookmark immediately (avoid debounce loss)
-    if (currentDocId && pages.length > 0) {
-      const pct = pages.length > 1 ? (currentPage / (pages.length - 1)) * 100 : 0;
-      const titleEl = readerEl.querySelector('.reader-topbar-title');
-      const metaEl = readerEl.querySelector('.reader-scroll-meta');
-      saveBookmark(currentDocId, pct, titleEl?.textContent || '', metaEl?.textContent || '');
+    // Save final bookmark + scroll
+    if (currentDocId) {
+      const scrollArea = readerEl.querySelector('#readerScroll');
+      if (scrollArea) {
+        const sh = scrollArea.scrollHeight - scrollArea.clientHeight;
+        const pct = sh > 0 ? Math.min(100, (scrollArea.scrollTop / sh) * 100) : 0;
+        saveScrollProgress(currentDocId, pct);
+        const titleEl = readerEl.querySelector('.reader-topbar-title');
+        const metaEl = readerEl.querySelector('.reader-scroll-meta');
+        saveBookmark(currentDocId, pct, titleEl?.textContent || '', metaEl?.textContent || '');
+      }
     }
     if (readerEl._onKeydown) {
       document.removeEventListener('keydown', readerEl._onKeydown);
@@ -177,142 +200,88 @@ export function closeReader(skipHistory) {
     readerEl.remove();
     readerEl = null;
   }
+  // Remove theme listener
+  teardownThemeListener();
   document.body.style.overflow = '';
-  // Clean up URL if still on ?doc= page
   if (!skipHistory && new URLSearchParams(window.location.search).has('doc')) {
     window.history.replaceState({}, '', window.location.pathname);
   }
   currentDocId = null;
-  pages = [];
-  currentPage = 0;
 }
 
-/* ===== Pagination ===== */
-function paginateContent(text) {
-  if (!text) return ['<p></p>'];
-  // Split on double newlines (paragraph breaks)
-  const blocks = text.split(/\n\n+/).filter(b => b.trim());
-  const result = [];
-  let curParas = [];
-  let curLen = 0;
-
-  for (const block of blocks) {
-    const paraHtml = `<p>${escapeHtml(block.trim()).replace(/\n/g, '<br>')}</p>`;
-    const rawLen = block.length;
-    if (curLen + rawLen > CHARS_PER_PAGE && curParas.length > 0) {
-      result.push(curParas.join(''));
-      curParas = [];
-      curLen = 0;
-    }
-    curParas.push(paraHtml);
-    curLen += rawLen;
-  }
-  if (curParas.length > 0) result.push(curParas.join(''));
-  return result.length ? result : ['<p></p>'];
-}
-
-function buildPageNav() {
-  if (pages.length <= 1) return '';
-  return `
-    <div class="reader-page-nav" id="readerPageNav">
-      <button class="reader-page-btn" id="readerPagePrev" ${currentPage === 0 ? 'disabled' : ''} aria-label="上一页">
-        <svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg>
-      </button>
-      <span class="reader-page-indicator" id="readerPageIndicator">${currentPage + 1} / ${pages.length}</span>
-      <button class="reader-page-btn" id="readerPageNext" ${currentPage >= pages.length - 1 ? 'disabled' : ''} aria-label="下一页">
-        <svg viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
-      </button>
-    </div>`;
-}
-
-function goToPage(idx, direction) {
-  if (idx < 0 || idx >= pages.length || !readerEl) return;
-  const oldPage = currentPage;
-  currentPage = idx;
-
-  const body = readerEl.querySelector('#readerBody');
-  const navEl = readerEl.querySelector('#readerPageNav');
-  const scrollArea = readerEl.querySelector('#readerScroll');
-
-  // Animate page transition
-  if (body && direction !== undefined) {
-    const dir = direction || (idx > oldPage ? 'left' : 'right');
-    body.classList.add('page-exit-' + dir);
-    requestAnimationFrame(() => {
-      body.innerHTML = pages[currentPage];
-      body.classList.remove('page-exit-' + dir);
-      body.classList.add('page-enter-' + dir);
-      requestAnimationFrame(() => body.classList.remove('page-enter-' + dir));
-    });
-  } else if (body) {
-    body.innerHTML = pages[currentPage];
-  }
-
-  if (navEl) navEl.outerHTML = buildPageNav();
-
-  wirePageNav();
-  if (scrollArea) scrollArea.scrollTo(0, 0);
-  applySettings();
-  updateProgress();
-
-  // Immediately save bookmark on page turn
-  if (currentDocId) {
-    const pct = pages.length > 1 ? (currentPage / (pages.length - 1)) * 100 : 0;
-    const titleEl = readerEl.querySelector('.reader-topbar-title');
-    const metaEl = readerEl.querySelector('.reader-scroll-meta');
-    saveBookmark(currentDocId, pct, titleEl?.textContent || '', metaEl?.textContent || '');
-  }
-}
-
-function wirePageNav() {
-  if (!readerEl) return;
-  const prev = readerEl.querySelector('#readerPagePrev');
-  const next = readerEl.querySelector('#readerPageNext');
-  if (prev) prev.addEventListener('click', () => goToPage(currentPage - 1));
-  if (next) next.addEventListener('click', () => goToPage(currentPage + 1));
-}
-
-function updateProgress() {
-  if (!readerEl) return;
-  const pct = pages.length > 1 ? (currentPage / (pages.length - 1)) * 100 : 0;
-  const fill = readerEl.querySelector('.reader-progress-fill');
-  const text = readerEl.querySelector('.reader-progress-text');
-  if (fill) fill.style.width = pct + '%';
-  if (text) text.textContent = Math.round(pct) + '%';
+/* ===== Text to HTML ===== */
+function textToHtml(text) {
+  if (!text) return '<p></p>';
+  return text
+    .split(/\n\n+/)
+    .filter(p => p.trim())
+    .map(p => `<p>${escapeHtml(p.trim()).replace(/\n/g, '<br>')}</p>`)
+    .join('');
 }
 
 /* ===== Build Reader Shell ===== */
 function buildReaderShell() {
   return `
-    <div class="reader-topbar" id="readerTopbar">
-      <button class="reader-topbar-btn" id="readerClose" aria-label="${t('wenku_reader_close') || '关闭阅读器'}">
+    <div class="reader-topbar visible" id="readerTopbar">
+      <button class="reader-topbar-close" id="readerClose" aria-label="${t('wenku_reader_close') || '关闭阅读器'}">
         <svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg>
       </button>
-      <div class="reader-topbar-title"></div>
-      <button class="reader-topbar-btn" id="readerShare" aria-label="${t('wenku_reader_share') || '分享'}">
-        <svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-      </button>
-      <button class="reader-topbar-btn" id="readerSettingsBtn" aria-label="${t('wenku_reader_settings') || '阅读设置'}">
-        <svg viewBox="0 0 24 24"><text x="12" y="16" font-size="14" font-weight="600" fill="currentColor" stroke="none" text-anchor="middle" font-family="serif">Aa</text></svg>
+      <div class="reader-topbar-center">
+        <div class="reader-topbar-series"></div>
+      </div>
+      <button class="reader-topbar-action" id="readerMore" aria-label="${t('more') || '更多'}">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
       </button>
     </div>
     <div class="reader-scroll" id="readerScroll"></div>
-    <div class="reader-bottombar" id="readerBottombar">
-      <div class="reader-progress-row">
-        <div class="reader-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"><div class="reader-progress-fill"></div></div>
-        <div class="reader-progress-text">0%</div>
-      </div>
-      <div class="reader-nav-row">
-        <button class="reader-nav-btn" id="readerPrev" disabled aria-label="${t('wenku_prev_lecture') || '上一讲'}">
-          <svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg> ${t('wenku_prev_lecture') || '上一讲'}
-        </button>
-        <button class="reader-nav-btn" id="readerNext" disabled aria-label="${t('wenku_next_lecture') || '下一讲'}">
-          ${t('wenku_next_lecture') || '下一讲'} <svg viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
-        </button>
-      </div>
+    <div class="reader-progress-line" id="readerProgressLine"><div class="reader-progress-line-fill" id="readerProgressFill"></div></div>
+    <div class="reader-bottombar visible" id="readerBottombar">
+      <button class="reader-bottom-nav-btn" id="readerPrev" disabled aria-label="${t('wenku_prev_lecture') || '上一讲'}">
+        <svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg>
+        <span>${t('wenku_prev_lecture') || '上一讲'}</span>
+      </button>
+      <span class="reader-bottom-pct" id="readerPctText">0%</span>
+      <button class="reader-bottom-nav-btn" id="readerNext" disabled aria-label="${t('wenku_next_lecture') || '下一讲'}">
+        <span>${t('wenku_next_lecture') || '下一讲'}</span>
+        <svg viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
+      </button>
+    </div>
+    <div class="reader-actionsheet-backdrop" id="readerActionBackdrop"></div>
+    <div class="reader-actionsheet" id="readerActionSheet">
+      <button class="reader-action-item" id="readerActionShare">
+        <svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+        <span>${t('wenku_reader_share') || '分享'}</span>
+      </button>
+      <button class="reader-action-item" id="readerActionSettings">
+        <svg viewBox="0 0 24 24"><text x="12" y="16" font-size="14" font-weight="600" fill="currentColor" stroke="none" text-anchor="middle" font-family="serif">Aa</text></svg>
+        <span>${t('wenku_reader_settings') || '阅读设置'}</span>
+      </button>
+      <button class="reader-action-item reader-action-cancel" id="readerActionCancel">
+        <span>${t('cancel') || '取消'}</span>
+      </button>
     </div>
     ${buildSettingsPanel()}
   `;
+}
+
+/* ===== Next Lecture Card ===== */
+function buildNextLectureCard(nextId, total, currentEp) {
+  const nextEp = currentEp ? currentEp + 1 : '';
+  const label = nextEp ? `${t('wenku_next_lecture') || '下一讲'} · ${nextEp}/${total || '?'}` : (t('wenku_next_lecture') || '下一讲');
+  return `
+    <div class="reader-next-card" id="readerNextCard" data-next-id="${escapeHtml(nextId)}">
+      <div class="reader-next-divider"></div>
+      <div class="reader-next-label">${label}</div>
+      <svg viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
+    </div>`;
+}
+
+function buildEndCard() {
+  return `
+    <div class="reader-end-card">
+      <div class="reader-next-divider"></div>
+      <div class="reader-end-text">${t('wenku_end') || '— 全文完 —'}</div>
+    </div>`;
 }
 
 function buildSettingsPanel() {
@@ -350,32 +319,21 @@ function buildSettingsPanel() {
 function wireEvents(prevId, nextId, doc) {
   if (!readerEl) return;
 
-  // Close — trigger history.back() so popstate handler manages routing
+  // Close button
   readerEl.querySelector('#readerClose').addEventListener('click', () => history.back());
 
-  // Tap to toggle menu — middle 1/3 of screen
-  const scrollArea = readerEl.querySelector('#readerScroll');
-  scrollArea.addEventListener('click', (e) => {
-    if (e.target.closest('a') || e.target.closest('button')) return;
-    const rect = scrollArea.getBoundingClientRect();
-    const y = e.clientY - rect.top;
-    const h = rect.height;
-    if (y > h * 0.33 && y < h * 0.67) {
-      toggleMenu();
-    }
-  });
+  // More button → action sheet
+  readerEl.querySelector('#readerMore').addEventListener('click', () => toggleActionSheet());
 
-  // Settings button
-  readerEl.querySelector('#readerSettingsBtn').addEventListener('click', () => toggleSettings());
+  // Action sheet backdrop
+  readerEl.querySelector('#readerActionBackdrop').addEventListener('click', () => toggleActionSheet(false));
+  readerEl.querySelector('#readerActionCancel').addEventListener('click', () => toggleActionSheet(false));
 
-  // Settings backdrop — click to dismiss
-  const settingsBackdrop = readerEl.querySelector('#readerSettingsBackdrop');
-  if (settingsBackdrop) settingsBackdrop.addEventListener('click', () => { if (settingsVisible) toggleSettings(); });
-
-  // Share button — use toast instead of flash
-  readerEl.querySelector('#readerShare').addEventListener('click', async () => {
-    const docTitle = readerEl.querySelector('.reader-topbar-title')?.textContent || '';
-    const seriesName = readerEl.querySelector('.reader-scroll-meta')?.textContent || '';
+  // Share action
+  readerEl.querySelector('#readerActionShare').addEventListener('click', async () => {
+    toggleActionSheet(false);
+    const docTitle = readerEl.querySelector('.reader-topbar-title')?.textContent || doc.title || '';
+    const seriesName = doc.series_name || '';
     const title = docTitle ? `《${docTitle}》` : '净土法音文库';
     const shareText = seriesName ? `${title} — ${seriesName}` : title;
     const url = `${window.location.origin}/?doc=${encodeURIComponent(currentDocId)}`;
@@ -395,7 +353,17 @@ function wireEvents(prevId, nextId, doc) {
     }
   });
 
-  // Settings panel interactions
+  // Settings action
+  readerEl.querySelector('#readerActionSettings').addEventListener('click', () => {
+    toggleActionSheet(false);
+    toggleSettings(true);
+  });
+
+  // Settings backdrop
+  const settingsBackdrop = readerEl.querySelector('#readerSettingsBackdrop');
+  if (settingsBackdrop) settingsBackdrop.addEventListener('click', () => { if (settingsVisible) toggleSettings(false); });
+
+  // Font slider
   const fontSlider = readerEl.querySelector('#readerFontSlider');
   fontSlider.addEventListener('input', () => {
     settings.fontSize = parseInt(fontSlider.value);
@@ -403,6 +371,7 @@ function wireEvents(prevId, nextId, doc) {
     persistSettings(settings);
   });
 
+  // Mode buttons
   readerEl.querySelectorAll('.reader-mode-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       settings.mode = btn.dataset.mode;
@@ -413,6 +382,7 @@ function wireEvents(prevId, nextId, doc) {
     });
   });
 
+  // Font family buttons
   readerEl.querySelectorAll('.reader-font-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       settings.fontFamily = btn.dataset.font;
@@ -423,17 +393,17 @@ function wireEvents(prevId, nextId, doc) {
     });
   });
 
-  // Prev/Next lecture with loading state
+  // Prev/Next lecture buttons
   let navLocked = false;
   async function navTo(id, btn) {
     if (navLocked) return;
     navLocked = true;
-    if (btn) { btn.disabled = true; btn.textContent = t('search_wenku_loading') || '加载中...'; }
+    if (btn) { btn.disabled = true; btn.querySelector('span').textContent = t('search_wenku_loading') || '加载中...'; }
     try {
       await openReader(id);
     } catch {
       navLocked = false;
-      if (btn) { btn.disabled = false; }
+      if (btn) btn.disabled = false;
     }
   }
   const prevBtn = readerEl.querySelector('#readerPrev');
@@ -441,10 +411,27 @@ function wireEvents(prevId, nextId, doc) {
   if (prevId) { prevBtn.disabled = false; prevBtn.addEventListener('click', () => navTo(prevId, prevBtn)); }
   if (nextId) { nextBtn.disabled = false; nextBtn.addEventListener('click', () => navTo(nextId, nextBtn)); }
 
-  // Wire page navigation buttons
-  wirePageNav();
+  // Next lecture card at bottom of article
+  const nextCard = readerEl.querySelector('#readerNextCard');
+  if (nextCard) {
+    nextCard.addEventListener('click', () => navTo(nextCard.dataset.nextId, null));
+  }
 
-  // Touch swipe for page navigation
+  // Tap zones on scroll area
+  const scrollArea = readerEl.querySelector('#readerScroll');
+  scrollArea.addEventListener('click', (e) => {
+    if (e.target.closest('a') || e.target.closest('button') || e.target.closest('.reader-next-card')) return;
+    const rect = scrollArea.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const h = rect.height;
+    // Middle 1/3 = toggle toolbar
+    if (y > h * 0.33 && y < h * 0.67) {
+      toggleToolbars();
+    }
+    // Top & bottom 1/3: natural scroll — no action needed for continuous scroll
+  });
+
+  // Touch swipe left/right for prev/next lecture (not page)
   let touchStartX = 0, touchStartY = 0;
   scrollArea.addEventListener('touchstart', (e) => {
     touchStartX = e.touches[0].clientX;
@@ -453,9 +440,10 @@ function wireEvents(prevId, nextId, doc) {
   scrollArea.addEventListener('touchend', (e) => {
     const dx = e.changedTouches[0].clientX - touchStartX;
     const dy = e.changedTouches[0].clientY - touchStartY;
-    if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-      if (dx < 0) goToPage(currentPage + 1, 'left');
-      else goToPage(currentPage - 1, 'right');
+    // Only trigger on strong horizontal swipe with minimal vertical
+    if (Math.abs(dx) > 120 && Math.abs(dx) > Math.abs(dy) * 2) {
+      if (dx < 0 && nextId) navTo(nextId, null); // swipe left = next lecture
+      else if (dx > 0) history.back(); // swipe right = go back
     }
   }, { passive: true });
 
@@ -470,35 +458,57 @@ function wireEvents(prevId, nextId, doc) {
     });
   }
 
-  // ESC to close, arrow keys for pages
+  // Keyboard shortcuts
   function onKeydown(e) {
     if (e.key === 'Escape') {
-      if (settingsVisible) toggleSettings();
+      if (settingsVisible) toggleSettings(false);
+      else if (actionSheetVisible()) toggleActionSheet(false);
       else history.back();
-    } else if (e.key === 'ArrowLeft') {
-      goToPage(currentPage - 1);
-    } else if (e.key === 'ArrowRight') {
-      goToPage(currentPage + 1);
     }
   }
   document.addEventListener('keydown', onKeydown);
   readerEl._onKeydown = onKeydown;
 
-  // Scroll tracking — save bookmark with page-based progress
+  // Scroll tracking — update progress bar + save bookmark
   const onScroll = debounce(() => {
     if (!readerEl || !currentDocId) return;
-    const pct = pages.length > 1
-      ? (currentPage / (pages.length - 1)) * 100
-      : (() => { const sh = scrollArea.scrollHeight - scrollArea.clientHeight; return sh > 0 ? Math.min(100, (scrollArea.scrollTop / sh) * 100) : 0; })();
+    const sh = scrollArea.scrollHeight - scrollArea.clientHeight;
+    const pct = sh > 0 ? Math.min(100, (scrollArea.scrollTop / sh) * 100) : 0;
+    updateProgress(pct);
+    saveScrollProgress(currentDocId, pct);
     saveBookmark(currentDocId, pct, doc.title, doc.series_name);
-    updateProgress();
-  }, 400);
+  }, 200);
   scrollArea.addEventListener('scroll', onScroll, { passive: true });
+
+  // Also update progress on fast scroll (not debounced, just the UI)
+  scrollArea.addEventListener('scroll', () => {
+    if (!readerEl) return;
+    const sh = scrollArea.scrollHeight - scrollArea.clientHeight;
+    const pct = sh > 0 ? Math.min(100, (scrollArea.scrollTop / sh) * 100) : 0;
+    const fill = readerEl.querySelector('#readerProgressFill');
+    if (fill) fill.style.width = pct + '%';
+  }, { passive: true });
 }
 
-/* ===== Toggle Menu ===== */
-function toggleMenu() {
-  if (settingsVisible) { toggleSettings(); return; }
+/* ===== Action Sheet ===== */
+function actionSheetVisible() {
+  if (!readerEl) return false;
+  return readerEl.querySelector('#readerActionSheet')?.classList.contains('visible');
+}
+
+function toggleActionSheet(force) {
+  if (!readerEl) return;
+  const sheet = readerEl.querySelector('#readerActionSheet');
+  const backdrop = readerEl.querySelector('#readerActionBackdrop');
+  const show = force !== undefined ? force : !sheet.classList.contains('visible');
+  sheet.classList.toggle('visible', show);
+  backdrop.classList.toggle('visible', show);
+}
+
+/* ===== Toggle Toolbars ===== */
+function toggleToolbars() {
+  if (settingsVisible) { toggleSettings(false); return; }
+  if (actionSheetVisible()) { toggleActionSheet(false); return; }
   menuVisible = !menuVisible;
   const top = readerEl.querySelector('#readerTopbar');
   const bottom = readerEl.querySelector('#readerBottombar');
@@ -506,17 +516,12 @@ function toggleMenu() {
   bottom.classList.toggle('visible', menuVisible);
 }
 
-function toggleSettings() {
-  settingsVisible = !settingsVisible;
+function toggleSettings(force) {
+  settingsVisible = force !== undefined ? force : !settingsVisible;
   const panel = readerEl.querySelector('#readerSettings');
   const backdrop = readerEl.querySelector('#readerSettingsBackdrop');
   panel.classList.toggle('visible', settingsVisible);
   if (backdrop) backdrop.classList.toggle('visible', settingsVisible);
-  if (settingsVisible) {
-    readerEl.querySelector('#readerTopbar').classList.add('visible');
-    readerEl.querySelector('#readerBottombar').classList.remove('visible');
-    menuVisible = false;
-  }
 }
 
 /* ===== Apply Settings ===== */
@@ -536,6 +541,15 @@ function applySettings() {
   }
 }
 
+/* ===== Update Progress ===== */
+function updateProgress(pct) {
+  if (!readerEl) return;
+  const fill = readerEl.querySelector('#readerProgressFill');
+  const text = readerEl.querySelector('#readerPctText');
+  if (fill) fill.style.width = pct + '%';
+  if (text) text.textContent = Math.round(pct) + '%';
+}
+
 /* ===== Update Nav Buttons ===== */
 function updateNavButtons(prevId, nextId) {
   if (!readerEl) return;
@@ -545,14 +559,33 @@ function updateNavButtons(prevId, nextId) {
   if (nextBtn && nextId) nextBtn.disabled = false;
 }
 
-/* ===== Text to HTML (kept for highlight fallback) ===== */
-function textToHtml(text) {
-  if (!text) return '<p></p>';
-  return text
-    .split(/\n\n+/)
-    .filter(p => p.trim())
-    .map(p => `<p>${escapeHtml(p.trim()).replace(/\n/g, '<br>')}</p>`)
-    .join('');
+/* ===== System Theme Listener ===== */
+function setupThemeListener() {
+  if (!window.matchMedia) return;
+  _themeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  _themeMediaQuery._handler = (e) => {
+    // Only auto-switch if user hasn't explicitly chosen a non-matching mode
+    const saved = loadSettings();
+    if (saved.mode === 'light' || saved.mode === 'dark') {
+      settings.mode = e.matches ? 'dark' : 'light';
+      applySettings();
+      persistSettings(settings);
+      // Update mode buttons
+      if (readerEl) {
+        readerEl.querySelectorAll('.reader-mode-btn').forEach(b => b.classList.remove('active'));
+        const activeBtn = readerEl.querySelector(`.reader-mode-btn[data-mode="${settings.mode}"]`);
+        if (activeBtn) activeBtn.classList.add('active');
+      }
+    }
+  };
+  _themeMediaQuery.addEventListener('change', _themeMediaQuery._handler);
+}
+
+function teardownThemeListener() {
+  if (_themeMediaQuery && _themeMediaQuery._handler) {
+    _themeMediaQuery.removeEventListener('change', _themeMediaQuery._handler);
+    _themeMediaQuery = null;
+  }
 }
 
 /* ===== Search Highlight ===== */
@@ -578,7 +611,7 @@ function highlightText(query) {
         mark.className = 'search-highlight';
         range.surroundContents(mark);
         mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      } catch { /* cross-node boundary, skip */ }
+      } catch { /* cross-node boundary */ }
       return;
     }
   }
