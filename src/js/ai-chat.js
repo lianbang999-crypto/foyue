@@ -87,13 +87,12 @@ function createChatPage() {
     });
   });
 
-  // Source tags → close AI chat, then open internal wenku reader
+  // Source tags → open internal wenku reader (z-index 400 > AI chat 300)
   chatMessages.addEventListener('click', (e) => {
     const tag = e.target.closest('.ai-source-tag[data-doc-id]');
     if (!tag) return;
     const docId = tag.dataset.docId;
     const query = tag.dataset.query || '';
-    chatInstance.hide();
     import('./wenku-reader.js').then(mod => mod.openReader(docId, query)).catch(() => {
       import('./utils.js').then(m => m.showToast('文稿打开失败'));
     });
@@ -123,20 +122,34 @@ function createChatPage() {
     showTyping();
 
     try {
-      // Create streaming message container
-      removeTyping();
-      const { msgContent, textEl } = createStreamingMessage();
+      // Streaming message container created lazily on first token
+      let msgContent = null, textEl = null;
       let fullText = '';
 
       const finalData = await askQuestionStream(
         question,
         { history: chatHistory.slice(-6) },
         (token) => {
+          // First token: remove typing dots, create streaming container
+          if (!textEl) {
+            removeTyping();
+            const stream = createStreamingMessage();
+            msgContent = stream.msgContent;
+            textEl = stream.textEl;
+          }
           fullText += token;
           textEl.textContent = fullText;
           chatMessages.scrollTop = chatMessages.scrollHeight;
         }
       );
+
+      // If no tokens came (empty response), still need to clean up
+      removeTyping();
+      if (!textEl) {
+        const stream = createStreamingMessage();
+        msgContent = stream.msgContent;
+        textEl = stream.textEl;
+      }
 
       // Finalize: remove cursor, replace plain text with formatted HTML
       textEl.classList.remove('ai-streaming');
