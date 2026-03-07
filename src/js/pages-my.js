@@ -8,6 +8,7 @@ import { playList } from './player.js';
 import { getDeferredPrompt, clearDeferredPrompt } from './pwa.js';
 import { showToast, escapeHtml } from './utils.js';
 import { renderMessageWall } from './message-wall.js';
+import { getCachedCount, clearAudioCache } from './audio-cache.js';
 
 function fmtRelTime(ts) {
   const d = Date.now() - ts;
@@ -112,6 +113,14 @@ export function renderMyPage() {
           </div>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
+        <div class="my-item" id="myCacheCard">
+          <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <div class="my-item-body">
+            <span class="my-item-label">${t('my_clear_cache')}</span>
+            <span class="my-item-desc" id="myCacheDesc">...</span>
+          </div>
+          <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
+        </div>
       </div>
     </div>
     <div class="my-section">
@@ -151,6 +160,20 @@ export function renderMyPage() {
     import('./wenku.js').then(mod => mod.renderWenkuHome(() => renderMyPage()));
   });
   page.querySelector('#myMessagesCard').addEventListener('click', () => showMessageWallSubview());
+
+  // Cache management card
+  const cacheDescEl = page.querySelector('#myCacheDesc');
+  getCachedCount().then(n => {
+    cacheDescEl.textContent = t('my_cache_size').replace('{n}', n);
+  });
+  page.querySelector('#myCacheCard').addEventListener('click', async () => {
+    const count = await getCachedCount();
+    if (count === 0) { showToast(t('my_cache_cleared')); return; }
+    if (!confirm(t('my_clear_cache') + '? (' + count + ')')) return;
+    await clearAudioCache();
+    cacheDescEl.textContent = t('my_cache_size').replace('{n}', 0);
+    showToast(t('my_cache_cleared'));
+  });
 
   // Wire up install button
   const installBtn = page.querySelector('#myInstallBtn');

@@ -8,6 +8,7 @@ import { renderHomePage } from './pages-home.js';
 import { getHistory } from './history.js';
 import { getPlayCount, appreciate } from './api.js';
 import { showToast, escapeHtml, showFloatText, fmtCount, fmtDuration } from './utils.js';
+import { isAudioCached } from './audio-cache.js';
 import { mountSummary } from './ai-summary.js';
 import { probeDurations, getCachedDuration } from './duration-cache.js';
 // import { mountTranscript } from './transcript.js';
@@ -124,6 +125,15 @@ export function showEpisodes(series, tabId) {
     frag.appendChild(li);
   });
   ul.appendChild(frag);
+
+  // Async: mark cached episodes with indicator
+  series.episodes.forEach((ep, idx) => {
+    isAudioCached(ep.url).then(cached => {
+      if (!cached) return;
+      const li = ul.children[idx];
+      if (li) li.classList.add('ep-cached');
+    });
+  });
 
   // Probe audio durations in background — only for episodes missing JSON duration (non-blocking)
   cancelProbe = probeDurations(series.episodes, (idx, seconds) => {

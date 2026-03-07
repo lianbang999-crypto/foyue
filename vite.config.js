@@ -30,7 +30,8 @@ export default defineConfig({
           'player': [
             './src/js/player.js',
             './src/js/history.js',
-            './src/js/api.js'
+            './src/js/api.js',
+            './src/js/audio-cache.js'
           ],
           // 将页面模块分离
           'pages': [

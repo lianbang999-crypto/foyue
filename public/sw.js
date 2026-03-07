@@ -4,6 +4,7 @@
 const CACHE_VERSION = 'v1';
 const STATIC_CACHE = 'static-' + CACHE_VERSION;
 const DATA_CACHE   = 'data-'   + CACHE_VERSION;
+const AUDIO_CACHE  = 'audio-v1';
 
 /* App-shell files to pre-cache on install */
 const APP_SHELL = [
@@ -47,7 +48,7 @@ self.addEventListener('activate', event => {
     caches.keys().then(keys =>
       Promise.all(
         keys
-          .filter(k => k !== STATIC_CACHE && k !== DATA_CACHE)
+          .filter(k => k !== STATIC_CACHE && k !== DATA_CACHE && k !== AUDIO_CACHE)
           .map(k => caches.delete(k))
       )
     ).then(() => self.clients.claim())
@@ -60,6 +61,17 @@ self.addEventListener('fetch', event => {
 
   if (event.request.method !== 'GET') return;
   if (shouldSkip(url)) return;
+
+  /* Cached audio: serve from audio cache if available (even for Range requests) */
+  if (url.hostname.includes('audio.foyue.org') || /\.(mp3|m4a|ogg)(\?|$)/.test(url.pathname)) {
+    event.respondWith(
+      caches.open(AUDIO_CACHE)
+        .then(cache => cache.match(url.href, { ignoreSearch: false }))
+        .then(cached => cached || fetch(event.request))
+    );
+    return;
+  }
+
   // Never intercept Range requests (audio/video streaming)
   if (event.request.headers.get('range')) return;
 

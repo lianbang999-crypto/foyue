@@ -6,6 +6,7 @@ import { t } from './i18n.js';
 import { fmt, showToast, seekAt, haptic, fmtCount } from './utils.js';
 import { addHistory, syncHistoryProgress, getHistory } from './history.js';
 import { recordPlay, getAppreciateCount } from './api.js';
+import { cacheAudio, getCachedAudioUrl, isAudioCached } from './audio-cache.js';
 
 /* ===== Playback State ===== */
 let pendingSeek = 0;
@@ -225,6 +226,13 @@ export function prepareList(episodes, idx, series, restoreTime) {
   const dom = getDOM();
   dom.audio.src = tr.url;
   dom.audio.load();
+  // ✅ Offline playback: async check cache, swap to blob URL if found
+  getCachedAudioUrl(tr.url).then(cachedUrl => {
+    if (!cachedUrl) return;
+    dom.audio.src = cachedUrl;
+    dom.audio.load();
+    dom.audio._cachedBlobUrl = cachedUrl;
+  }).catch(() => {});
   updateUI(tr);
   highlightEp();
   updateMediaSession(tr);
@@ -283,6 +291,22 @@ function playCurrent() {
   if (!usePreloaded) setBuffering(true);
   const seekTime = pendingSeek > 0 ? pendingSeek : 0;
   pendingSeek = 0;
+
+  // ✅ Offline playback: async check cache, swap to blob URL if found
+  if (!usePreloaded) {
+    getCachedAudioUrl(tr.url).then(cachedUrl => {
+      if (callId !== _playCurrentId) { if (cachedUrl) URL.revokeObjectURL(cachedUrl); return; }
+      if (cachedUrl) {
+        const pos = dom.audio.currentTime;
+        const rate = dom.audio.playbackRate;
+        dom.audio.src = cachedUrl;
+        dom.audio.playbackRate = rate;
+        dom.audio.load();
+        dom.audio._cachedBlobUrl = cachedUrl;
+        if (pos > 0) dom.audio.addEventListener('loadedmetadata', () => { dom.audio.currentTime = pos; }, { once: true });
+      }
+    }).catch(() => {});
+  }
 
   // Clean up preload reference (src already set on main audio)
   if (usePreloaded) {
@@ -889,10 +913,23 @@ function cleanupBgFetch() {
   if (bgFetchController) { bgFetchController.abort(); bgFetchController = null; }
   if (bgBlobUrl) { URL.revokeObjectURL(bgBlobUrl); bgBlobUrl = ''; }
   bgFetchUrl = '';
+  // Also revoke cached blob URL if present
+  const dom = getDOM();
+  if (dom.audio._cachedBlobUrl) { URL.revokeObjectURL(dom.audio._cachedBlobUrl); dom.audio._cachedBlobUrl = null; }
 }
 
 function startBgFullLoad(url) {
   // Don't re-fetch if already loading this URL or already blobbed
+  if (bgFetchUrl === url) return;
+
+  // Skip if audio is already in offline cache
+  isAudioCached(url).then(cached => {
+    if (cached) return;
+    _doBgFullLoad(url);
+  }).catch(() => _doBgFullLoad(url));
+}
+
+function _doBgFullLoad(url) {
   if (bgFetchUrl === url) return;
   cleanupBgFetch();
 
@@ -939,6 +976,8 @@ function startBgFullLoad(url) {
       }
 
       bgBlobUrl = URL.createObjectURL(blob);
+      // Also cache for offline playback
+      cacheAudio(url, blob).catch(() => {});
       const pos = dom.audio.currentTime;
       const wasPlaying = !dom.audio.paused;
       const rate = dom.audio.playbackRate;
@@ -984,6 +1023,8 @@ export function downloadCurrentTrack() {
 
   // If we already have a Blob URL, use it directly
   if (bgBlobUrl && bgFetchUrl === '') {
+    // Also cache for offline playback
+    fetch(bgBlobUrl).then(r => r.blob()).then(b => cacheAudio(tr.url, b)).catch(() => {});
     const a = document.createElement('a');
     a.href = bgBlobUrl;
     a.download = fileName;
@@ -1025,6 +1066,8 @@ export function downloadCurrentTrack() {
       return read();
     })
     .then(blob => {
+      // Cache for offline playback
+      cacheAudio(tr.url, blob).catch(() => {});
       const burl = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = burl;
@@ -1267,6 +1310,13 @@ export function restoreState(renderCategory, renderHomePage, renderMyPage) {
           dom.audio.src = tr.url;
           if (s.time) dom.audio.addEventListener('loadedmetadata', () => { dom.audio.currentTime = s.time; }, { once: true });
           updateUI(tr);
+          // ✅ Offline playback: async check cache, swap to blob URL if found
+          getCachedAudioUrl(tr.url).then(cachedUrl => {
+            if (!cachedUrl) return;
+            dom.audio.src = cachedUrl;
+            dom.audio._cachedBlobUrl = cachedUrl;
+            if (s.time) dom.audio.addEventListener('loadedmetadata', () => { dom.audio.currentTime = s.time; }, { once: true });
+          }).catch(() => {});
         }
         if (s.loop) {
           state.loopMode = (s.loop === 'none') ? 'all' : s.loop;
