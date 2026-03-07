@@ -91,10 +91,12 @@ function createChatPage() {
   chatMessages.addEventListener('click', (e) => {
     const tag = e.target.closest('.ai-source-tag[data-doc-id]');
     if (!tag) return;
+    e.preventDefault();
     const docId = tag.dataset.docId;
     const query = tag.dataset.query || '';
+    if (!docId) return;
     import('./wenku-reader.js').then(mod => mod.openReader(docId, query)).catch(() => {
-      import('./utils.js').then(m => m.showToast('文稿打开失败'));
+      import('./utils.js').then(m => m.showToast(t('loading_fail') || '文稿打开失败'));
     });
   });
 

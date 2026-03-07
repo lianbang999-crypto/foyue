@@ -193,6 +193,7 @@
   align-items: center;
 }
 .ai-source-tag {
+  -webkit-appearance: none; appearance: none; border: none;
   background: var(--accent-glow);
   color: var(--accent);
   padding: 2px 8px;
@@ -200,7 +201,6 @@
   font-size: 12px;
   text-decoration: none;
   transition: background 0.15s;
-  border: none;
   cursor: pointer;
   font-family: inherit;
 }
