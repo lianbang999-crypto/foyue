@@ -7,6 +7,7 @@
 // 配置常量
 // ============================================================
 export const AI_CONFIG = {
+  // 基础 Gateway 标识
   gateway: {
     id: 'buddhist-ai-gateway',
     skipCache: false,
@@ -29,6 +30,66 @@ export const AI_CONFIG = {
   rateLimit: {
     maxPerMinute: 10,
     maxPerDay: 100,
+  },
+};
+
+// ============================================================
+// AI Gateway 分场景配置 — 按调用类型区分缓存策略
+// ============================================================
+const GATEWAY_BASE = { id: 'buddhist-ai-gateway' };
+
+export const GATEWAY_PROFILES = {
+  // Embedding：相同文本 → 相同向量，高度确定性，长缓存
+  embedding: {
+    ...GATEWAY_BASE,
+    skipCache: false,
+    cacheTtl: 86400,      // 24 小时 — 同一文本的向量不会变
+  },
+
+  // 语义搜索（查询侧 embedding）：用户查询词可能重复，中等缓存
+  searchEmbedding: {
+    ...GATEWAY_BASE,
+    skipCache: false,
+    cacheTtl: 43200,      // 12 小时 — 热门查询词缓存
+  },
+
+  // RAG 问答（非流式）：含上下文，每次不同，跳过缓存
+  ragChat: {
+    ...GATEWAY_BASE,
+    skipCache: true,
+  },
+
+  // RAG 问答（流式 SSE）：必须跳过缓存
+  ragStream: {
+    ...GATEWAY_BASE,
+    skipCache: true,
+  },
+
+  // 文档摘要：确定性高（同标题+同内容），长缓存
+  summary: {
+    ...GATEWAY_BASE,
+    skipCache: false,
+    cacheTtl: 604800,     // 7 天 — 文档内容不变则摘要不变
+  },
+
+  // 每日推荐语：每天更新，缓存匹配推荐周期
+  recommend: {
+    ...GATEWAY_BASE,
+    skipCache: false,
+    cacheTtl: 43200,      // 12 小时 — 每天刷新，但当天内可复用
+  },
+
+  // Whisper 转写：相同音频 → 相同文字，缓存
+  whisper: {
+    ...GATEWAY_BASE,
+    skipCache: false,
+    cacheTtl: 604800,     // 7 天 — 同音频转写结果不变
+  },
+
+  // 管理员诊断：不缓存，确保测试结果真实
+  diagnostic: {
+    ...GATEWAY_BASE,
+    skipCache: true,
   },
 };
 
@@ -122,10 +183,12 @@ export function chunkText(text, docId, metadata = {}) {
 // ============================================================
 // 生成嵌入向量
 // ============================================================
-export async function generateEmbeddings(env, texts) {
+export async function generateEmbeddings(env, texts, options = {}) {
+  const { gatewayProfile = 'embedding' } = options;
   const response = await env.AI.run(
     AI_CONFIG.models.embedding,
-    { text: texts }
+    { text: texts },
+    { gateway: GATEWAY_PROFILES[gatewayProfile] || GATEWAY_PROFILES.embedding }
   );
   return response.data; // float[][] 每个 1024 维 (bge-m3 在 Workers AI 上输出 1024 维)
 }
@@ -140,7 +203,7 @@ export async function semanticSearch(env, query, options = {}) {
     scoreThreshold = AI_CONFIG.vectorize.scoreThreshold,
   } = options;
 
-  const [queryVector] = await generateEmbeddings(env, [query]);
+  const [queryVector] = await generateEmbeddings(env, [query], { gatewayProfile: 'searchEmbedding' });
 
   const queryOptions = { topK, returnMetadata: 'all' };
   if (Object.keys(filter).length > 0) {
@@ -269,7 +332,7 @@ ${context}
         max_tokens: 800,
         temperature: 0.3,
       },
-      { gateway: { ...AI_CONFIG.gateway, skipCache: true } }
+      { gateway: GATEWAY_PROFILES.ragChat }
     );
   } catch (err) {
     console.warn('Primary chat model failed, using fallback:', err.message);
@@ -280,7 +343,7 @@ ${context}
         max_tokens: 800,
         temperature: 0.3,
       },
-      { gateway: { ...AI_CONFIG.gateway, skipCache: true } }
+      { gateway: GATEWAY_PROFILES.ragChat }
     );
   }
 
@@ -373,14 +436,14 @@ export async function generateSummary(env, title, content) {
     response = await env.AI.run(
       AI_CONFIG.models.chat,
       { messages, max_tokens: 300, temperature: 0.2 },
-      { gateway: AI_CONFIG.gateway }
+      { gateway: GATEWAY_PROFILES.summary }
     );
   } catch (err) {
     console.warn('Summary primary model failed, using fallback:', err.message);
     response = await env.AI.run(
       AI_CONFIG.models.chatFallback,
       { messages, max_tokens: 300, temperature: 0.2 },
-      { gateway: AI_CONFIG.gateway }
+      { gateway: GATEWAY_PROFILES.summary }
     );
   }
 
@@ -447,4 +510,67 @@ export function timingSafeCompare(a, b) {
     diff |= bufA[i] ^ bufB[i];
   }
   return diff === 0;
+}
+
+// ============================================================
+// AI 调用日志 — 记录每次 AI Gateway 调用的场景和耗时
+// ============================================================
+export async function logAICall(env, { scenario, model, durationMs, cached = false, success = true, error = null }) {
+  try {
+    await env.DB.prepare(
+      `INSERT INTO ai_call_logs (scenario, model, duration_ms, cached, success, error, timestamp)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).bind(scenario, model, Math.round(durationMs), cached ? 1 : 0, success ? 1 : 0, error, Date.now()).run();
+  } catch (e) {
+    // 日志写入失败不应影响主流程
+    console.warn('[logAICall] Failed to log:', e.message);
+  }
+}
+
+// ============================================================
+// AI 调用统计 — 按场景汇总
+// ============================================================
+export async function getAICallStats(env, { days = 7 } = {}) {
+  const since = Date.now() - days * 86_400_000;
+  const { results } = await env.DB.prepare(
+    `SELECT scenario, model,
+            COUNT(*) as total_calls,
+            SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as success_count,
+            SUM(CASE WHEN cached = 1 THEN 1 ELSE 0 END) as cache_hits,
+            ROUND(AVG(duration_ms)) as avg_duration_ms,
+            MIN(duration_ms) as min_duration_ms,
+            MAX(duration_ms) as max_duration_ms
+     FROM ai_call_logs
+     WHERE timestamp > ?
+     GROUP BY scenario, model
+     ORDER BY total_calls DESC`
+  ).bind(since).all();
+  return results;
+}
+
+// ============================================================
+// 带计时和日志的 AI.run 封装
+// ctx 参数可选 — 传入 Pages Function context 以启用 waitUntil 非阻塞日志
+// ============================================================
+export async function runAIWithLogging(env, model, input, gatewayOptions, scenario, ctx = null) {
+  const start = Date.now();
+  let success = true;
+  let error = null;
+  try {
+    const result = await env.AI.run(model, input, gatewayOptions ? { gateway: gatewayOptions } : undefined);
+    return result;
+  } catch (err) {
+    success = false;
+    error = err.message?.slice(0, 200);
+    throw err;
+  } finally {
+    const durationMs = Date.now() - start;
+    const logPromise = logAICall(env, { scenario, model, durationMs, success, error });
+    // 使用 waitUntil 非阻塞写入；无 ctx 时直接 fire-and-forget
+    if (ctx?.waitUntil) {
+      ctx.waitUntil(logPromise);
+    } else {
+      logPromise.catch(() => {});
+    }
+  }
 }

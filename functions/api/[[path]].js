@@ -4,10 +4,10 @@
  */
 
 import {
-  AI_CONFIG, chunkText, generateEmbeddings, semanticSearch,
+  AI_CONFIG, GATEWAY_PROFILES, chunkText, generateEmbeddings, semanticSearch,
   retrieveDocuments, ragAnswer, buildRAGMessages, generateSummary,
   checkRateLimit, cleanupRateLimits, timingSafeCompare,
-  extractAIResponse,
+  extractAIResponse, getAICallStats, logAICall,
 } from '../lib/ai-utils.js';
 
 export async function onRequest(context) {
@@ -185,7 +185,7 @@ export async function onRequest(context) {
           if (!doc) return json({ error: 'No documents found' }, cors);
           const chunks = chunkText(doc.content, doc.id, { title: doc.title });
           const firstChunk = chunks[0];
-          const resp = await env.AI.run('@cf/baai/bge-m3', { text: [firstChunk.text] });
+          const resp = await env.AI.run(AI_CONFIG.models.embedding, { text: [firstChunk.text] }, { gateway: GATEWAY_PROFILES.diagnostic });
           return json({
             success: true,
             docId: doc.id,
@@ -198,7 +198,7 @@ export async function onRequest(context) {
         }
         // mode=simple: 简单文本测试
         const testText = '南无阿弥陀佛';
-        const resp = await env.AI.run('@cf/baai/bge-m3', { text: [testText] });
+        const resp = await env.AI.run(AI_CONFIG.models.embedding, { text: [testText] }, { gateway: GATEWAY_PROFILES.diagnostic });
         return json({
           success: true,
           model: '@cf/baai/bge-m3',
@@ -230,7 +230,7 @@ export async function onRequest(context) {
             max_tokens: 200,
             temperature: 0.3,
           },
-          { gateway: { ...AI_CONFIG.gateway, skipCache: true } }
+          { gateway: GATEWAY_PROFILES.diagnostic }
         );
         return json({
           success: true,
@@ -248,6 +248,26 @@ export async function onRequest(context) {
           error: err.message,
           stack: err.stack?.slice(0, 300),
         }, cors);
+      }
+    }
+
+    // GET /api/admin/ai-stats — AI Gateway 调用统计
+    if (path === '/api/admin/ai-stats' && method === 'GET') {
+      const tk = url.searchParams.get('token');
+      if (!tk || !env.ADMIN_TOKEN || !timingSafeCompare(tk, env.ADMIN_TOKEN)) {
+        return json({ error: 'Unauthorized' }, cors, 401);
+      }
+      const days = parseInt(url.searchParams.get('days') || '7', 10);
+      try {
+        const stats = await getAICallStats(env, { days: Math.min(days, 90) });
+        // 额外获取 Gateway 配置快照
+        const profiles = {};
+        for (const [key, val] of Object.entries(GATEWAY_PROFILES)) {
+          profiles[key] = { cacheTtl: val.cacheTtl || null, skipCache: val.skipCache };
+        }
+        return json({ success: true, days, stats, gatewayProfiles: profiles }, cors);
+      } catch (err) {
+        return json({ success: false, error: err.message }, cors);
       }
     }
 
@@ -968,8 +988,9 @@ async function handleIncrementalTranscribe(env, request, cors) {
 
       // 3. Whisper 转写
       const transcription = await env.AI.run(
-        '@cf/openai/whisper-large-v3-turbo',
-        { audio: [...new Uint8Array(audioBuffer)] }
+        AI_CONFIG.models.whisper,
+        { audio: [...new Uint8Array(audioBuffer)] },
+        { gateway: GATEWAY_PROFILES.whisper }
       );
 
       const text = transcription.text?.trim();
@@ -1258,7 +1279,7 @@ async function handleAiAskStream(env, request, cors) {
     aiStream = await env.AI.run(
       AI_CONFIG.models.chat,
       { messages, max_tokens: 800, temperature: 0.3, stream: true },
-      { gateway: { ...AI_CONFIG.gateway, skipCache: true } }
+      { gateway: GATEWAY_PROFILES.ragStream }
     );
   } catch (err) {
     console.warn('Primary chat model failed, using fallback:', err.message);
@@ -1266,7 +1287,7 @@ async function handleAiAskStream(env, request, cors) {
       aiStream = await env.AI.run(
         AI_CONFIG.models.chatFallback,
         { messages, max_tokens: 800, temperature: 0.3, stream: true },
-        { gateway: { ...AI_CONFIG.gateway, skipCache: true } }
+        { gateway: GATEWAY_PROFILES.ragStream }
       );
     } catch (err2) {
       return json({
@@ -1726,12 +1747,12 @@ ${epDesc}
   try {
     response = await env.AI.run(AI_CONFIG.models.chat, {
       messages, max_tokens: 500, temperature: 0.6,
-    }, { gateway: AI_CONFIG.gateway });
+    }, { gateway: GATEWAY_PROFILES.recommend });
   } catch (err) {
     console.warn('[DailyRec] Primary model failed, trying fallback:', err.message);
     response = await env.AI.run(AI_CONFIG.models.chatFallback, {
       messages, max_tokens: 500, temperature: 0.6,
-    }, { gateway: AI_CONFIG.gateway });
+    }, { gateway: GATEWAY_PROFILES.recommend });
   }
 
   const text = extractAIResponse(response);
@@ -1855,7 +1876,13 @@ async function handleAdminCleanup(env, request, cors) {
      WHERE status = 'generating' AND created_at < datetime('now', '-5 minutes')`
   ).run();
 
-  return json({ success: true, message: '过期限流记录及推荐缓存已清理' }, cors);
+  // 清理 30 天前的 AI 调用日志
+  const thirtyDaysAgo = Date.now() - 30 * 86_400_000;
+  await env.DB.prepare(
+    'DELETE FROM ai_call_logs WHERE timestamp < ?'
+  ).bind(thirtyDaysAgo).run();
+
+  return json({ success: true, message: '过期限流记录、推荐缓存及AI调用日志已清理' }, cors);
 }
 
 // ============================================================
