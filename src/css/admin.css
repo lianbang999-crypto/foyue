@@ -105,6 +105,9 @@
 .adm-msg-body{font-size:.84rem;color:var(--text);line-height:1.5;margin-bottom:10px;white-space:pre-wrap;word-break:break-word}
 .adm-msg-actions{display:flex;gap:6px;flex-wrap:wrap}
 
+/* --- AI Result Block --- */
+.adm-ai-result{background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;margin-top:12px;font-size:.74rem;font-family:var(--font-en),monospace;color:var(--text-secondary);line-height:1.5;overflow-x:auto;white-space:pre-wrap;word-break:break-word;max-height:300px;overflow-y:auto}
+
 /* --- Modal --- */
 .adm-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:500}
 .adm-modal{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);width:520px;max-width:92vw;max-height:85vh;overflow-y:auto;box-shadow:var(--shadow-md)}
