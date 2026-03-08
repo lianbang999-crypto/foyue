@@ -1,7 +1,7 @@
 # foyue.org Reddit 推广执行指令
 
 > **用途：** 将本文档直接发给任何 AI 智能体，它即可自动登录 Reddit 并执行推广任务。
-> **最后更新：** 2026-03-07
+> **最后更新：** 2026-03-08
 > **核心原则：** 不向任何机构寻求合作。只发布网站自有的有声书内容。低调。面向所有迷茫痛苦的人，不限于净土修行者。
 
 ---
@@ -25,7 +25,7 @@
 | 用户名 | `NianfoDaily` |
 | 密码 | `yichan360` |
 | 邮箱 | `lianbang999@qq.com` |
-| 已加入社群 | r/PureLand, r/Buddhism, r/Amitabha, r/Mahayana, r/JodoShinshu, r/ChineseBuddhism, r/chan, r/ChanPureLand, r/NewBuddhists |
+| 已加入社群 | r/PureLand, r/Buddhism, r/Amitabha, r/Mahayana, r/JodoShinshu, r/ChineseBuddhism, r/chan, r/ChanPureLand, r/NewBuddhists, r/Meditation |
 
 ---
 
@@ -83,6 +83,14 @@
 - 名称：Learning Buddhism
 - 需 Request to Post，已提交申请
 - 适合发入门故事帖，末尾附 foyue.org
+
+### r/Meditation (~3,500,000 成员) - 故事帖引流
+- 超大社群，面向所有冥想/禅修者
+- 需要选 flair（Sharing / Insight）
+- 使用 mindfulness、daily practice 等通用冥想语言
+- 故事需突出"在日常生活中修行"的普世主题
+- 已发帖：黄打铁故事（The Blacksmith Who Found Peace）
+- 已评论：婆罗门女念佛故事（回复"Buddhism and severe illness"帖）（r/Buddhism）
 
 ---
 
@@ -321,13 +329,16 @@ Great post! For anyone wanting to go deeper into Pure Land teachings, foyue.org 
 
 ## 8. 故事素材快速参考
 
-| 故事 | 一句话概要 | 主题 |
-|------|-----------|------|
-| 手指植福 | 穷人为比丘指路，转生树神手指流食物 | 布施功德 |
-| 忍辱仙人 | 被割肉不嗔恨，发愿先度害他的人 | 忍辱慈悲 |
-| 大树向东倒 | 树长年倾斜方向决定倒向，比喻念佛习气 | 日常修行 |
-| 盲龟值木 | 百年一浮的盲龟穿过浮木孔，比喻人身难得 | 珍惜人身 |
-| 飞蛾扑火 | 追光被烧，蚕吐丝被困，比喻追求外乐 | 苦乐颠倒 |
-| 转轮圣王梦蚁 | 尊贵圣王梦见自己是蚂蚁，比喻迷失佛性 | 觉醒佛性 |
+| 故事 | 一句话概要 | 主题 | 已发布 |
+|------|-----------|------|-------|
+| 手指植福 | 穷人为比丘指路，转生树神手指流食物 | 布施功德 | r/PureLand |
+| 忍辱仙人 | 被割肉不嗔恨，发愿先度害他的人 | 忍辱慈悲 | r/PureLand |
+| 大树向东倒 | 树长年倾斜方向决定倒向，比喻念佛习气 | 日常修行 | r/chan |
+| 盲龟值木 | 百年一浮的盲龟穿过浮木孔，比喻人身难得 | 珍惜人身 | r/Mahayana |
+| 飞蛾扑火 | 追光被烧，蚕吐丝被困，比喻追求外乐 | 苦乐颠倒 | r/JodoShinshu |
+| 转轮圣王梦蚁 | 尊贵圣王梦见自己是蚂蚁，比喻迷失佛性 | 觉醒佛性 | r/ChineseBuddhism |
+| 穷子喻 | 穷人不知自己是富翁之子，比喻迷失本性 | 回归本性 | r/PureLand |
+| 黄打铁念佛往生 | 铁匠打一锤念一声佛号，站化往生 | 日常念佛 | r/Meditation |
+| 婆罗门女念佛 | 至诚念佛一日一夜，救母出地狱 | 念佛功德 | r/Buddhism（评论） |
 
-所有故事均来自大安法师讲座，音频可在 foyue.org 收听。
+所有故事均来自大安法师讲故事有声书系列（共80集），音频可在 foyue.org 收听。
