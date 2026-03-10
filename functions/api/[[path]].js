@@ -1288,7 +1288,7 @@ async function handleAiAsk(env, request, cors) {
       score: Math.round(m.score * 100) / 100,
       category: doc?.category || m.metadata.category || '',
       series_name: doc?.series_name || m.metadata.series_name || '',
-      snippet: (m.metadata?.text || '').replace(/\s+/g, '').slice(0, 20),
+      snippet: (m.metadata?.text || '').replace(/\s+/g, '').slice(0, 60),
     });
     if (sources.length >= 3) break;
   }
@@ -1395,7 +1395,7 @@ async function handleAiAskStream(env, request, cors) {
       score: Math.round(m.score * 100) / 100,
       category: doc?.category || m.metadata.category || '',
       series_name: doc?.series_name || m.metadata.series_name || '',
-      snippet: (m.metadata?.text || '').replace(/\s+/g, '').slice(0, 20),
+      snippet: (m.metadata?.text || '').replace(/\s+/g, '').slice(0, 60),
     });
     if (sources.length >= 3) break;
   }

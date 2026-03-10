@@ -593,25 +593,43 @@ function highlightText(query) {
   const body = readerEl.querySelector('#readerBody');
   if (!body) return;
 
-  const stops = new Set(['的', '了', '是', '在', '有', '和', '就', '不', '人', '都', '一', '这', '中', '大', '为', '上', '个', '到', '说', '也']);
-  const keywords = [...query].filter(c => !stops.has(c) && c.trim()).join('');
-  if (keywords.length < 2) return;
+  // Build candidate search strings — try more specific first, fall back to less specific
+  const candidates = [];
+  const trimmed = query.trim();
+  if (trimmed.length >= 2) candidates.push(trimmed);
 
+  // Remove common Chinese stopwords and try again
+  const stops = new Set(['的', '了', '是', '在', '有', '和', '就', '不', '人', '都', '一', '这', '中', '大', '为', '上', '个', '到', '说', '也', '吗', '呢', '吧', '啊']);
+  const filtered = [...trimmed].filter(c => !stops.has(c) && c.trim()).join('');
+  if (filtered.length >= 2 && filtered !== trimmed) candidates.push(filtered);
+
+  // Try splitting into words (4+ chars) for partial matching
+  const words = trimmed.replace(/[，。！？、；：""''（）\s]+/g, '|').split('|').filter(w => w.length >= 4);
+  for (const w of words) candidates.push(w);
+
+  // Try each candidate against text nodes
+  for (const keyword of candidates) {
+    if (tryHighlight(body, keyword)) return;
+  }
+}
+
+function tryHighlight(body, keyword) {
   const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
   let node;
   while ((node = walker.nextNode())) {
-    const idx = node.textContent.indexOf(keywords);
+    const idx = node.textContent.indexOf(keyword);
     if (idx >= 0) {
       try {
         const range = document.createRange();
         range.setStart(node, idx);
-        range.setEnd(node, idx + keywords.length);
+        range.setEnd(node, idx + keyword.length);
         const mark = document.createElement('mark');
         mark.className = 'search-highlight';
         range.surroundContents(mark);
         mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
       } catch { /* cross-node boundary */ }
-      return;
+      return true;
     }
   }
+  return false;
 }
