@@ -90,6 +90,13 @@ const BUCKET_MAP = {
   jingdiandusong:   '09eef2d346704b409a5fbef97ce6464a',
 };
 
+// Categories that have been converted to Opus in the R2 opus bucket.
+// Only these categories will be resolved to opus URLs.
+// Update this set when more categories are converted.
+const OPUS_CONVERTED_CATEGORIES = new Set([
+  '听经台',
+]);
+
 export function registerOpusMapping(categories) {
   if (!categories || !Array.isArray(categories)) return;
   _opusPathMap.clear();
@@ -103,6 +110,9 @@ export function registerOpusMapping(categories) {
   for (const cat of categories) {
     const catTitle = cat.title;
     if (!catTitle) continue;
+
+    // Only build mappings for categories that have opus files
+    if (!OPUS_CONVERTED_CATEGORIES.has(catTitle)) continue;
 
     for (const s of (cat.series || [])) {
       const hexId = BUCKET_MAP[s.bucket];

@@ -7,7 +7,7 @@ import { fmt, showToast, seekAt, haptic, fmtCount } from './utils.js';
 import { addHistory, syncHistoryProgress, getHistory } from './history.js';
 import { recordPlay, getAppreciateCount } from './api.js';
 import { cacheAudio, getCachedAudioUrl, isAudioCached } from './audio-cache.js';
-import { resolveAudioUrl } from './audio-url.js';
+import { resolveAudioUrl, canonicalAudioUrl, isOpusSupported } from './audio-url.js';
 
 /* ===== Playback State ===== */
 let pendingSeek = 0;
@@ -625,6 +625,20 @@ export function onAudioError() {
 
   const errCode = dom.audio.error.code;
   const src = dom.audio.src;
+
+  // Opus → MP3 fallback: if the current src is an opus URL that failed,
+  // fall back to the canonical MP3 URL immediately (opus file may not exist)
+  if (src && src.includes('opus.foyue.org')) {
+    const mp3Url = canonicalAudioUrl(src);
+    if (mp3Url && mp3Url !== src) {
+      console.log('[Audio] Opus failed, falling back to MP3:', mp3Url);
+      audioRetries = 0; // reset retries for the MP3 URL
+      dom.audio.src = mp3Url;
+      dom.audio.load();
+      dom.audio.play().catch(() => {});
+      return;
+    }
+  }
 
   // #17: Distinguish error types; first retry is silent
   if (src && audioRetries < 3) {
