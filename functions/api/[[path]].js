@@ -1453,7 +1453,11 @@ async function handleAiAskStream(env, request, cors) {
             if (payload === '[DONE]') continue;
             try {
               const parsed = JSON.parse(payload);
-              const token = parsed.response || '';
+              // Support both old format ({ response: "token" }) and
+              // OpenAI-compatible format ({ choices: [{ delta: { content: "token" } }] })
+              const token = parsed.response
+                || parsed.choices?.[0]?.delta?.content
+                || '';
               if (token) {
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token })}\n\n`));
               }
