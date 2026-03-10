@@ -7,6 +7,7 @@ import { fmt, showToast, seekAt, haptic, fmtCount } from './utils.js';
 import { addHistory, syncHistoryProgress, getHistory } from './history.js';
 import { recordPlay, getAppreciateCount } from './api.js';
 import { cacheAudio, getCachedAudioUrl, isAudioCached } from './audio-cache.js';
+import { resolveAudioUrl } from './audio-url.js';
 
 /* ===== Playback State ===== */
 let pendingSeek = 0;
@@ -224,7 +225,7 @@ export function prepareList(episodes, idx, series, restoreTime) {
   const tr = state.playlist[state.epIdx];
   if (!tr) return;
   const dom = getDOM();
-  dom.audio.src = tr.url;
+  dom.audio.src = resolveAudioUrl(tr.url);
   dom.audio.load();
   // ✅ Offline playback: async check cache, swap to blob URL if found
   getCachedAudioUrl(tr.url).then(cachedUrl => {
@@ -283,7 +284,7 @@ function playCurrent() {
     console.log('[Player] Reusing preloaded audio, readyState:', preloadAudio.readyState);
   }
 
-  dom.audio.src = tr.url;
+  dom.audio.src = resolveAudioUrl(tr.url);
   dom.audio.playbackRate = SPEEDS[speedIdx];
   // Explicitly start loading — mobile browsers may ignore preload="auto"
   dom.audio.load();
@@ -878,7 +879,7 @@ export function preloadNextTrack() {
   // ✅ 关键优化：始终使用 preload="auto" 让浏览器真正缓冲音频数据
   // 这样切换下一曲时可以直接复用已缓冲的数据，大幅减少等待时间
   preloadAudio.preload = 'auto';
-  preloadAudio.src = nurl;
+  preloadAudio.src = resolveAudioUrl(nurl);
   preloadedUrl = nurl;
   // Error handler: silently discard failed preloads so they aren't reused
   preloadAudio.addEventListener('error', () => {
@@ -939,8 +940,9 @@ function _doBgFullLoad(url) {
 
   bgFetchUrl = url;
   bgFetchController = new AbortController();
+  const fetchUrl = resolveAudioUrl(url);
 
-  fetch(url, { signal: bgFetchController.signal })
+  fetch(fetchUrl, { signal: bgFetchController.signal })
     .then(resp => {
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       // Check Content-Length — skip very large files
@@ -955,8 +957,8 @@ function _doBgFullLoad(url) {
     .then(blob => {
       if (!blob) return;
       const dom = getDOM();
-      // Only swap if still playing the same URL
-      if (dom.audio.src !== url && !dom.audio.src.startsWith('blob:')) {
+      // Only swap if still playing the same URL (compare resolved URL since dom.audio.src is resolved)
+      if (dom.audio.src !== fetchUrl && !dom.audio.src.startsWith('blob:')) {
         cleanupBgFetch();
         return;
       }
@@ -1227,7 +1229,7 @@ export function restoreState(renderCategory, renderHomePage, renderMyPage) {
         state.epIdx = s.idx || 0;
         const tr = state.playlist[state.epIdx];
         if (tr) {
-          dom.audio.src = tr.url;
+          dom.audio.src = resolveAudioUrl(tr.url);
           if (s.time) dom.audio.addEventListener('loadedmetadata', () => { dom.audio.currentTime = s.time; }, { once: true });
           updateUI(tr);
           // ✅ Offline playback: async check cache, swap to blob URL if found

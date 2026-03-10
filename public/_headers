@@ -38,8 +38,20 @@
   Accept-Ranges: bytes
   Access-Control-Allow-Origin: *
 
-# Audio subdomain optimization
+/*.opus
+  Cache-Control: public, max-age=2592000, immutable
+  Accept-Ranges: bytes
+  Access-Control-Allow-Origin: *
+
+# Audio subdomain optimization (MP3)
 audio.foyue.org/*
+  Cache-Control: public, max-age=2592000, immutable
+  Accept-Ranges: bytes
+  Access-Control-Allow-Origin: https://foyue.org
+  Timing-Allow-Origin: https://foyue.org
+
+# Audio subdomain optimization (Opus)
+opus.foyue.org/*
   Cache-Control: public, max-age=2592000, immutable
   Accept-Ranges: bytes
   Access-Control-Allow-Origin: https://foyue.org
@@ -53,3 +65,4 @@ audio.foyue.org/*
 # Preconnect hints for faster audio loading
 /*
   Link: <https://audio.foyue.org>; rel=preconnect
+  Link: <https://opus.foyue.org>; rel=preconnect

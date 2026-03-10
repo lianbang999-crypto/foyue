@@ -282,7 +282,7 @@ async function renderEpisodes(container) {
 
 function showEpisodeModal(existing, container) {
   const isNew = !existing;
-  const e = existing || { episode_num:'', title:'', file_name:'', url:'', intro:'', story_number:'' };
+  const e = existing || { episode_num:'', title:'', file_name:'', intro:'', story_number:'', duration:'' };
   const overlay = document.createElement('div');
   overlay.className = 'adm-modal-overlay';
   overlay.innerHTML = `<div class="adm-modal">
@@ -293,9 +293,10 @@ function showEpisodeModal(existing, container) {
         <div class="adm-form-group"><label class="adm-form-label">故事编号 (可选)</label><input class="adm-input" id="eStory" type="number" value="${e.story_number || ''}"></div>
       </div>
       <div class="adm-form-group"><label class="adm-form-label">标题</label><input class="adm-input" id="eTitle" value="${esc(e.title)}"></div>
-      <div class="adm-form-group"><label class="adm-form-label">文件名</label><input class="adm-input" id="eFile" value="${esc(e.file_name)}"></div>
-      <div class="adm-form-group"><label class="adm-form-label">URL</label><input class="adm-input" id="eUrl" value="${esc(e.url || '')}"></div>
+      <div class="adm-form-group"><label class="adm-form-label">文件名</label><input class="adm-input" id="eFile" value="${esc(e.file_name)}" placeholder="例: 第1讲.mp3"></div>
+      <div class="adm-form-group"><label class="adm-form-label">时长(秒，可选)</label><input class="adm-input" id="eDur" type="number" value="${e.duration || ''}"></div>
       <div class="adm-form-group"><label class="adm-form-label">简介 (可选)</label><textarea class="adm-input adm-textarea" id="eIntro">${esc(e.intro || '')}</textarea></div>
+      <p class="adm-form-hint" style="color:#888;font-size:12px">音频 URL 由系统从 bucket + folder + 文件名自动生成</p>
     </div>
     <div class="adm-modal-footer">
       <button class="adm-btn" id="eCancel">取消</button>
@@ -312,9 +313,9 @@ function showEpisodeModal(existing, container) {
       episode_num: parseInt(overlay.querySelector('#eNum').value) || 0,
       title: overlay.querySelector('#eTitle').value.trim(),
       file_name: overlay.querySelector('#eFile').value.trim(),
-      url: overlay.querySelector('#eUrl').value.trim(),
       intro: overlay.querySelector('#eIntro').value.trim() || null,
       story_number: parseInt(overlay.querySelector('#eStory').value) || null,
+      duration: parseInt(overlay.querySelector('#eDur').value) || 0,
     };
     if (isNew) {
       await api.post('/episodes', body);

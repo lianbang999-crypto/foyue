@@ -516,7 +516,7 @@ function closeWenkuReader() {
 
 /* ===== DATA LOADING with cache + retry ===== */
 let loadAttempts = 0;
-const DATA_CACHE_VERSION = 2; // ✅ 优化：添加版本号，避免数据结构变更后的兼容性问题
+const DATA_CACHE_VERSION = 3; // v3: 数据源从 audio-data.json 迁移到 /api/categories
 const DATA_CACHE_KEY = 'pl-data-cache-v' + DATA_CACHE_VERSION;
 const DATA_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 
@@ -541,7 +541,7 @@ async function loadData() {
       return;
     }
     // No cache: fetch fresh
-    const r = await fetch('/data/audio-data.json');
+    const r = await fetch('/api/categories');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.data = await r.json();
     const initStr = JSON.stringify(state.data);
@@ -624,7 +624,7 @@ function saveCachedData(data, hash) {
 
 async function fetchFreshData() {
   try {
-    const r = await fetch('/data/audio-data.json');
+    const r = await fetch('/api/categories');
     if (!r.ok) return;
     const fresh = await r.json();
     // #16: Compare BEFORE saving — read cached hash first, then decide

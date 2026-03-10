@@ -9,6 +9,7 @@ import {
   checkRateLimit, cleanupRateLimits, timingSafeCompare,
   extractAIResponse, getAICallStats, logAICall,
 } from '../lib/ai-utils.js';
+import { buildAudioUrl } from '../lib/audio-utils.js';
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -468,30 +469,36 @@ function json(data, cors, status = 200, cacheControl) {
 
 // ============================================================
 async function getCategories(db) {
-  // ✅ 优化：使用 JOIN 一次性获取所有数据，避免 N+1 查询问题
+  // 一次性 JOIN categories + series + episodes，避免 N+1 查询
   const result = await db.prepare(`
     SELECT
       c.id as cat_id, c.title as cat_title, c.title_en as cat_title_en, c.sort_order as cat_sort,
       s.id as series_id, s.title, s.title_en, s.speaker, s.speaker_en,
-      s.bucket, s.folder, s.total_episodes, s.intro, s.play_count, s.sort_order
+      s.bucket, s.folder, s.total_episodes, s.intro, s.play_count, s.sort_order,
+      e.episode_num as ep_num, e.title as ep_title, e.file_name as ep_file,
+      e.intro as ep_intro, e.story_number as ep_story, e.duration as ep_duration,
+      e.play_count as ep_play_count
     FROM categories c
     LEFT JOIN series s ON c.id = s.category_id
-    ORDER BY c.sort_order, s.sort_order
+    LEFT JOIN episodes e ON s.id = e.series_id
+    ORDER BY c.sort_order, s.sort_order, e.episode_num
   `).all();
 
-  // 在内存中组装结果
-  const categories = new Map();
+  // 在内存中组装嵌套结构：categories → series → episodes
+  const catMap = new Map();
+  const serMap = new Map();
+
   for (const row of result.results) {
-    if (!categories.has(row.cat_id)) {
-      categories.set(row.cat_id, {
+    if (!catMap.has(row.cat_id)) {
+      catMap.set(row.cat_id, {
         id: row.cat_id,
         title: row.cat_title,
         titleEn: row.cat_title_en,
         series: []
       });
     }
-    if (row.series_id) {
-      categories.get(row.cat_id).series.push({
+    if (row.series_id && !serMap.has(row.series_id)) {
+      const s = {
         id: row.series_id,
         title: row.title,
         titleEn: row.title_en,
@@ -502,11 +509,28 @@ async function getCategories(db) {
         totalEpisodes: row.total_episodes,
         intro: row.intro,
         playCount: row.play_count,
-      });
+        episodes: []
+      };
+      serMap.set(row.series_id, s);
+      catMap.get(row.cat_id).series.push(s);
+    }
+    if (row.series_id && row.ep_num != null) {
+      const s = serMap.get(row.series_id);
+      const ep = {
+        id: row.ep_num,
+        title: row.ep_title,
+        fileName: row.ep_file,
+        url: buildAudioUrl(s.bucket, s.folder, row.ep_file),
+      };
+      if (row.ep_duration > 0) ep.duration = row.ep_duration;
+      if (row.ep_intro) ep.intro = row.ep_intro;
+      if (row.ep_story) ep.storyNumber = row.ep_story;
+      if (row.ep_play_count) ep.playCount = row.ep_play_count;
+      s.episodes.push(ep);
     }
   }
 
-  return { categories: [...categories.values()] };
+  return { categories: [...catMap.values()] };
 }
 
 async function getSeriesDetail(db, seriesId) {
@@ -517,8 +541,8 @@ async function getSeriesDetail(db, seriesId) {
   if (!series) return { error: 'Series not found' };
 
   const episodes = await db.prepare(
-    `SELECT episode_num as id, title, file_name as fileName, url, intro,
-            story_number as storyNumber, play_count as playCount
+    `SELECT episode_num as id, title, file_name as fileName, intro,
+            story_number as storyNumber, play_count as playCount, duration
      FROM episodes WHERE series_id = ? ORDER BY episode_num`
   ).bind(seriesId).all();
 
@@ -530,7 +554,12 @@ async function getSeriesDetail(db, seriesId) {
     playCount: series.play_count,
     categoryId: series.category_id, categoryTitle: series.category_title,
     episodes: episodes.results.map(ep => {
-      const obj = { id: ep.id, title: ep.title, fileName: ep.fileName, url: ep.url, playCount: ep.playCount };
+      const obj = {
+        id: ep.id, title: ep.title, fileName: ep.fileName,
+        url: buildAudioUrl(series.bucket, series.folder, ep.fileName),
+        playCount: ep.playCount
+      };
+      if (ep.duration > 0) obj.duration = ep.duration;
       if (ep.intro) obj.intro = ep.intro;
       if (ep.storyNumber) obj.storyNumber = ep.storyNumber;
       return obj;
@@ -539,12 +568,30 @@ async function getSeriesDetail(db, seriesId) {
 }
 
 async function getEpisodes(db, seriesId) {
+  const series = await db.prepare(
+    `SELECT bucket, folder FROM series WHERE id = ?`
+  ).bind(seriesId).first();
+  if (!series) return { episodes: [] };
+
   const episodes = await db.prepare(
-    `SELECT episode_num as id, title, file_name as fileName, url, intro,
-            story_number as storyNumber, play_count as playCount
+    `SELECT episode_num as id, title, file_name as fileName, intro,
+            story_number as storyNumber, play_count as playCount, duration
      FROM episodes WHERE series_id = ? ORDER BY episode_num`
   ).bind(seriesId).all();
-  return { episodes: episodes.results };
+
+  return {
+    episodes: episodes.results.map(ep => {
+      const obj = {
+        id: ep.id, title: ep.title, fileName: ep.fileName,
+        url: buildAudioUrl(series.bucket, series.folder, ep.fileName),
+      };
+      if (ep.duration > 0) obj.duration = ep.duration;
+      if (ep.intro) obj.intro = ep.intro;
+      if (ep.storyNumber) obj.storyNumber = ep.storyNumber;
+      if (ep.playCount) obj.playCount = ep.playCount;
+      return obj;
+    })
+  };
 }
 
 async function recordPlay(db, body, request) {
@@ -2148,11 +2195,14 @@ async function handleAdminGetEpisodes(db, seriesId, cors) {
 
 /** POST /api/admin/episodes */
 async function handleAdminCreateEpisode(db, body, cors) {
-  const { series_id, episode_num, title, file_name, url, intro, story_number } = body;
+  const { series_id, episode_num, title, file_name, intro, story_number, duration } = body;
   if (!series_id || !episode_num || !title || !file_name) return json({ error: 'Missing required fields' }, cors, 400);
+  // 自动从 series 的 bucket/folder + file_name 构建 URL
+  const series = await db.prepare('SELECT bucket, folder FROM series WHERE id = ?').bind(series_id).first();
+  const url = series ? buildAudioUrl(series.bucket, series.folder, file_name) : '';
   await db.prepare(
-    'INSERT INTO episodes (series_id, episode_num, title, file_name, url, intro, story_number) VALUES (?,?,?,?,?,?,?)'
-  ).bind(series_id, episode_num, title, file_name, url || '', intro || null, story_number || null).run();
+    'INSERT INTO episodes (series_id, episode_num, title, file_name, url, intro, story_number, duration) VALUES (?,?,?,?,?,?,?,?)'
+  ).bind(series_id, episode_num, title, file_name, url, intro || null, story_number || null, duration || 0).run();
   return json({ success: true }, cors, 201, 'no-store');
 }
 
@@ -2160,9 +2210,20 @@ async function handleAdminCreateEpisode(db, body, cors) {
 async function handleAdminUpdateEpisode(db, id, body, cors) {
   const fields = [];
   const vals = [];
-  const allowed = ['episode_num','title','file_name','url','intro','story_number'];
+  const allowed = ['episode_num','title','file_name','intro','story_number','duration'];
   for (const k of allowed) {
     if (body[k] !== undefined) { fields.push(`${k}=?`); vals.push(body[k]); }
+  }
+  // 如果 file_name 变更，自动重建 url
+  if (body.file_name !== undefined) {
+    const ep = await db.prepare('SELECT series_id FROM episodes WHERE id=?').bind(id).first();
+    if (ep) {
+      const series = await db.prepare('SELECT bucket, folder FROM series WHERE id=?').bind(ep.series_id).first();
+      if (series) {
+        fields.push('url=?');
+        vals.push(buildAudioUrl(series.bucket, series.folder, body.file_name));
+      }
+    }
   }
   if (!fields.length) return json({ error: 'No fields to update' }, cors, 400);
   vals.push(id);

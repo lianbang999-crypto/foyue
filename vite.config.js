@@ -31,7 +31,8 @@ export default defineConfig({
             './src/js/player.js',
             './src/js/history.js',
             './src/js/api.js',
-            './src/js/audio-cache.js'
+            './src/js/audio-cache.js',
+            './src/js/audio-url.js'
           ],
           // 将页面模块分离
           'pages': [

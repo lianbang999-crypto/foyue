@@ -63,10 +63,15 @@ self.addEventListener('fetch', event => {
   if (shouldSkip(url)) return;
 
   /* Cached audio: serve from audio cache if available (even for Range requests) */
-  if (url.hostname.includes('audio.foyue.org') || /\.(mp3|m4a|ogg)(\?|$)/.test(url.pathname)) {
+  /* Supports both MP3 (audio.foyue.org) and Opus (opus.foyue.org) domains */
+  if (url.hostname.includes('audio.foyue.org') || url.hostname.includes('opus.foyue.org') || /\.(mp3|m4a|ogg|opus)(\?|$)/.test(url.pathname)) {
+    // Normalize cache lookup key: always use canonical (MP3) URL
+    const canonical = url.href
+      .replace('opus.foyue.org', 'audio.foyue.org')
+      .replace(/\.opus(\?|$)/, '.mp3$1');
     event.respondWith(
       caches.open(AUDIO_CACHE)
-        .then(cache => cache.match(url.href, { ignoreSearch: false }))
+        .then(cache => cache.match(canonical, { ignoreSearch: false }))
         .then(cached => cached || fetch(event.request))
     );
     return;

@@ -1,23 +1,27 @@
 /* audio-cache.js — Cache API wrapper for offline audio playback */
 'use strict';
 
+import { canonicalAudioUrl, preferredMimeType } from './audio-url.js';
+
 const AUDIO_CACHE = 'audio-v1';
 const MAX_CACHE_BYTES = 500 * 1024 * 1024; // 500 MB cap
 
 /**
  * Store a fetched blob as a proper Response in Cache API.
+ * Cache key is always the canonical (MP3) URL for consistency.
  * @param {string} url - The original audio URL (used as cache key)
  * @param {Blob} blob - The audio data
  */
 export async function cacheAudio(url, blob) {
   try {
     const cache = await caches.open(AUDIO_CACHE);
+    const key = canonicalAudioUrl(url);
     const headers = new Headers({
-      'Content-Type': blob.type || 'audio/mpeg',
+      'Content-Type': blob.type || preferredMimeType(),
       'Content-Length': String(blob.size)
     });
     const response = new Response(blob, { status: 200, headers });
-    await cache.put(url, response);
+    await cache.put(key, response);
     // LRU eviction: if total exceeds cap, remove oldest entries
     _evictIfNeeded(cache).catch(() => {});
   } catch (e) {
@@ -56,7 +60,7 @@ async function _evictIfNeeded(cache) {
 export async function isAudioCached(url) {
   try {
     const cache = await caches.open(AUDIO_CACHE);
-    const resp = await cache.match(url);
+    const resp = await cache.match(canonicalAudioUrl(url));
     return !!resp;
   } catch (e) {
     return false;
@@ -72,7 +76,7 @@ export async function isAudioCached(url) {
 export async function getCachedAudioUrl(url) {
   try {
     const cache = await caches.open(AUDIO_CACHE);
-    const resp = await cache.match(url);
+    const resp = await cache.match(canonicalAudioUrl(url));
     if (!resp) return null;
     const blob = await resp.blob();
     return URL.createObjectURL(blob);
@@ -137,7 +141,7 @@ export async function clearAudioCache() {
 export async function removeCachedAudio(url) {
   try {
     const cache = await caches.open(AUDIO_CACHE);
-    return await cache.delete(url);
+    return await cache.delete(canonicalAudioUrl(url));
   } catch (e) {
     return false;
   }

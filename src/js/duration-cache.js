@@ -2,6 +2,7 @@
 /* Lazily probes audio URLs for duration via Audio API and caches in localStorage */
 import { state } from './state.js';
 import { getConnType } from './player.js';
+import { resolveAudioUrl } from './audio-url.js';
 
 const STORAGE_KEY = 'foyue_duration_cache';
 // Reduce concurrency when audio is playing to avoid bandwidth competition
@@ -60,7 +61,7 @@ function probeOne(url) {
     a.addEventListener('error', () => done(null));
     // Timeout after 15s per file
     setTimeout(() => done(null), 15000);
-    a.src = url;
+    a.src = resolveAudioUrl(url);
   });
 }
 
