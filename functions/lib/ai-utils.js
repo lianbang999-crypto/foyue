@@ -15,8 +15,8 @@ export const AI_CONFIG = {
   },
   models: {
     embedding: '@cf/baai/bge-m3',
-    chat: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-    chatFallback: '@cf/zai-org/glm-4.7-flash',
+    chat: '@cf/zai-org/glm-4.7-flash',
+    chatFallback: '@cf/meta/llama-3.1-8b-instruct-fast',
     whisper: '@cf/openai/whisper-large-v3-turbo',
   },
   vectorize: {
