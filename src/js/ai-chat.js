@@ -11,6 +11,15 @@ const LS_KEY = 'ai-chat-history';
 
 let _lastQuestion = '';
 
+/* ===== Follow-up question parsing ===== */
+function extractFollowUps(text) {
+  const match = text.match(/\[FOLLOWUP\](.*?)\[\/FOLLOWUP\]/s);
+  if (!match) return { cleanText: text, followUps: [] };
+  const cleanText = text.replace(/\[FOLLOWUP\].*?\[\/FOLLOWUP\]/s, '').trim();
+  const followUps = match[1].split('|').map(q => q.trim()).filter(q => q.length > 0 && q.length < 100);
+  return { cleanText, followUps };
+}
+
 /* ===== localStorage persistence ===== */
 function loadPersistedHistory() {
   try {
@@ -102,6 +111,56 @@ function createChatPage() {
 
   chatForm.addEventListener('submit', handleSubmit);
 
+  // Voice input (Whisper)
+  const micBtn = page.querySelector('#aiFsMic');
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    micBtn.style.display = '';
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+
+    micBtn.addEventListener('click', async () => {
+      if (isRecording) {
+        mediaRecorder.stop();
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioChunks = [];
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+        mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+        mediaRecorder.onstop = async () => {
+          isRecording = false;
+          micBtn.classList.remove('recording');
+          stream.getTracks().forEach(t => t.stop());
+          if (!audioChunks.length) return;
+          const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+          chatInput.value = '语音识别中...';
+          chatInput.disabled = true;
+          try {
+            const { voiceToText } = await import('./ai-client.js');
+            const result = await voiceToText(blob);
+            chatInput.value = result.text || '';
+            chatInput.disabled = false;
+            chatInput.focus();
+          } catch (err) {
+            chatInput.value = '';
+            chatInput.disabled = false;
+            import('./utils.js').then(m => m.showToast(err.message || '语音识别失败'));
+          }
+        };
+        mediaRecorder.start();
+        isRecording = true;
+        micBtn.classList.add('recording');
+        // 15 秒自动停止
+        setTimeout(() => { if (isRecording && mediaRecorder.state === 'recording') mediaRecorder.stop(); }, 15000);
+      } catch (err) {
+        import('./utils.js').then(m => m.showToast('无法访问麦克风'));
+      }
+    });
+  }
+
   function onKeydown(e) {
     if (e.key === 'Escape' && chatInstance.isOpen) chatInstance.hide();
   }
@@ -155,7 +214,8 @@ function createChatPage() {
 
       // Finalize: remove cursor, replace plain text with formatted HTML
       textEl.classList.remove('ai-streaming');
-      textEl.innerHTML = formatAnswer(fullText);
+      const { cleanText, followUps } = extractFollowUps(fullText);
+      textEl.innerHTML = formatAnswer(cleanText);
       if (finalData.sources?.length) {
         const srcDiv = document.createElement('div');
         srcDiv.className = 'ai-sources';
@@ -168,10 +228,26 @@ function createChatPage() {
         discP.textContent = finalData.disclaimer;
         msgContent.appendChild(discP);
       }
+      // Render follow-up question chips
+      if (followUps.length > 0) {
+        const followUpWrap = document.createElement('div');
+        followUpWrap.className = 'ai-suggest-wrap ai-followup-wrap';
+        followUps.forEach(q => {
+          const chip = document.createElement('button');
+          chip.className = 'ai-suggest-chip';
+          chip.textContent = q;
+          chip.addEventListener('click', () => {
+            chatInput.value = q;
+            chatForm.dispatchEvent(new Event('submit', { cancelable: true }));
+          });
+          followUpWrap.appendChild(chip);
+        });
+        msgContent.appendChild(followUpWrap);
+      }
       chatMessages.scrollTop = chatMessages.scrollHeight;
 
       // Persist
-      const answer = fullText.trim() || '抱歉，AI 暂时无法生成回答。';
+      const answer = cleanText.trim() || '抱歉，AI 暂时无法生成回答。';
       chatHistory.push({ role: 'assistant', content: answer, sources: finalData.sources, disclaimer: finalData.disclaimer });
       if (chatHistory.length > MAX_PERSIST) chatHistory.splice(0, chatHistory.length - MAX_PERSIST);
       persistHistory(chatHistory);
@@ -345,6 +421,14 @@ function buildPageHTML() {
     <form class="ai-fs-form" id="aiFsForm">
       <input type="text" class="ai-fs-input" id="aiFsInput"
              placeholder="输入您的问题..." maxlength="500" autocomplete="off" />
+      <button type="button" class="ai-fs-mic" id="aiFsMic" aria-label="语音输入" style="display:none">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="23"/>
+          <line x1="8" y1="23" x2="16" y2="23"/>
+        </svg>
+      </button>
       <button type="submit" class="ai-fs-send" id="aiFsSend" aria-label="发送">
         <svg viewBox="0 0 24 24" width="18" height="18"><path d="M2 21l21-9L2 3v7l15 2-15 2z" fill="currentColor"/></svg>
       </button>

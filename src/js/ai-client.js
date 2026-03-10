@@ -160,3 +160,39 @@ export async function getTranscriptAvailability(seriesId) {
 export async function getDailyRecommendation() {
   return aiFetch(`${AI_BASE}/daily-recommend`);
 }
+
+/**
+ * 语音转文字 — Whisper
+ * @param {Blob} audioBlob - 录音音频
+ * @returns {{ text: string }}
+ */
+export async function voiceToText(audioBlob) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT);
+  try {
+    const res = await fetch(`${AI_BASE}/voice-to-text`, {
+      method: 'POST',
+      headers: { 'Content-Type': audioBlob.type || 'audio/webm' },
+      body: audioBlob,
+      signal: controller.signal,
+    });
+    let data;
+    try { data = await res.json(); } catch { throw new Error('语音识别失败'); }
+    if (!res.ok) throw new Error(data.error || '语音识别失败');
+    return data;
+  } catch (err) {
+    if (err.name === 'AbortError') throw new Error('语音识别超时');
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * 个性化推荐
+ * @param {string[]} seriesIds - 最近收听的系列 ID
+ * @returns {{ recommendations: [...] }}
+ */
+export async function getPersonalizedRecommendations(seriesIds) {
+  return aiFetch(`${AI_BASE}/personalized-recommend?series=${seriesIds.join(',')}`);
+}

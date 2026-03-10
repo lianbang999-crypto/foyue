@@ -232,6 +232,43 @@ button.ai-source-tag:hover {
 /* Streaming text */
 .ai-streaming{white-space:pre-wrap;word-break:break-word}
 
+/* Follow-up question chips inside answers */
+.ai-followup-wrap {
+  margin-top: 10px;
+  padding: 0;
+}
+.ai-followup-wrap .ai-suggest-chip {
+  font-size: 13px;
+  padding: 6px 12px;
+}
+
+/* Voice input mic button */
+.ai-fs-mic {
+  -webkit-appearance: none;
+  appearance: none;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+}
+.ai-fs-mic:hover { color: var(--accent); }
+.ai-fs-mic.recording {
+  color: #ef4444;
+  animation: ai-pulse 1s ease-in-out infinite;
+}
+@keyframes ai-pulse {
+  0%, 100% { background: transparent; }
+  50% { background: rgba(239, 68, 68, 0.1); }
+}
+
 /* Input area */
 .ai-fs-form {
   display: flex;

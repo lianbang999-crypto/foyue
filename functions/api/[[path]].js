@@ -5,7 +5,8 @@
 
 import {
   AI_CONFIG, GATEWAY_PROFILES, chunkText, generateEmbeddings, semanticSearch,
-  retrieveDocuments, ragAnswer, buildRAGMessages, generateSummary,
+  retrieveDocuments, rerankResults, expandContextFromDocs,
+  ragAnswer, buildRAGMessages, generateSummary,
   checkRateLimit, cleanupRateLimits, timingSafeCompare,
   extractAIResponse, getAICallStats, logAICall,
 } from '../lib/ai-utils.js';
@@ -145,6 +146,22 @@ export async function onRequest(context) {
       return await handleDailyRecommend(env, cors);
     }
 
+    // POST /api/ai/voice-to-text — Whisper 语音识别
+    if (path === '/api/ai/voice-to-text' && method === 'POST') {
+      return await handleVoiceToText(env, request, cors);
+    }
+
+    // GET /api/ai/personalized-recommend — 个性化推荐
+    if (path === '/api/ai/personalized-recommend' && method === 'GET') {
+      return await handlePersonalizedRecommend(env, request, url, cors);
+    }
+
+    // GET /api/chapters/:seriesId/:episodeNum — 获取章节标记
+    const chapMatch = path.match(/^\/api\/chapters\/([^/]+)\/(\d+)$/);
+    if (chapMatch && method === 'GET') {
+      return await handleGetChapters(env, chapMatch[1], parseInt(chapMatch[2]), cors);
+    }
+
     // ==================== 留言墙路由 ====================
 
     // GET /api/messages — 获取留言列表
@@ -162,6 +179,11 @@ export async function onRequest(context) {
     // POST /api/admin/embeddings/build — 批量构建向量
     if (path === '/api/admin/embeddings/build' && method === 'POST') {
       return await handleBuildEmbeddings(env, request, cors);
+    }
+
+    // POST /api/admin/chapters/generate — 生成章节标记
+    if (path === '/api/admin/chapters/generate' && method === 'POST') {
+      return await handleGenerateChapters(env, request, cors);
     }
 
     // POST /api/admin/cleanup — 清理过期限流记录
@@ -1179,8 +1201,18 @@ async function handleAiAsk(env, request, cors) {
     console.warn('Vectorize search failed, falling back to D1:', err.message);
   }
 
+  // 重排序：使用 reranker 模型精排结果
+  if (matches.length >= 2) {
+    matches = await rerankResults(env, question, matches, { topK: 5 });
+  }
+
   // 从 D1 检索源文档
   let docs = await retrieveDocuments(env, matches);
+
+  // 上下文扩展：从源文档中扩展匹配片段的上下文窗口
+  if (matches.length > 0 && docs.length > 0) {
+    matches = expandContextFromDocs(matches, docs);
+  }
 
   // Fallback: 如果 Vectorize 没有结果，尝试 D1 关键词搜索
   if (!docs.length) {
@@ -1305,7 +1337,17 @@ async function handleAiAskStream(env, request, cors) {
     console.warn('Vectorize search failed, falling back to D1:', err.message);
   }
 
+  // 重排序
+  if (matches.length >= 2) {
+    matches = await rerankResults(env, question, matches, { topK: 5 });
+  }
+
   let docs = await retrieveDocuments(env, matches);
+
+  // 上下文扩展
+  if (matches.length > 0 && docs.length > 0) {
+    matches = expandContextFromDocs(matches, docs);
+  }
 
   if (!docs.length) {
     try {
@@ -1368,7 +1410,7 @@ async function handleAiAskStream(env, request, cors) {
   try {
     aiStream = await env.AI.run(
       AI_CONFIG.models.chat,
-      { messages, max_tokens: 800, temperature: 0.3, stream: true },
+      { messages, max_tokens: 1000, temperature: 0.3, stream: true },
       { gateway: GATEWAY_PROFILES.ragStream }
     );
   } catch (err) {
@@ -1376,7 +1418,7 @@ async function handleAiAskStream(env, request, cors) {
     try {
       aiStream = await env.AI.run(
         AI_CONFIG.models.chatFallback,
-        { messages, max_tokens: 800, temperature: 0.3, stream: true },
+        { messages, max_tokens: 1000, temperature: 0.3, stream: true },
         { gateway: GATEWAY_PROFILES.ragStream }
       );
     } catch (err2) {
@@ -1531,7 +1573,13 @@ async function handleAiSearch(env, request, query, cors) {
     return json({ error: limit.reason }, cors, 429);
   }
 
-  const matches = await semanticSearch(env, query, { topK: 10 });
+  let matches = await semanticSearch(env, query, { topK: 10 });
+
+  // 重排序搜索结果
+  if (matches.length >= 2) {
+    matches = await rerankResults(env, query, matches, { topK: 10 });
+  }
+
   const docs = await retrieveDocuments(env, matches);
 
   // 构建搜索结果，包含片段
@@ -1580,15 +1628,25 @@ async function handleBuildEmbeddings(env, request, cors) {
     return json({ error: 'Unauthorized' }, cors, 401);
   }
 
-  // 支持分批参数: ?limit=3&offset=0&retry=true
+  // 支持分批参数: ?limit=3&offset=0&retry=true&rebuild=true
   const url = new URL(request.url);
   const limit = Math.min(parseInt(url.searchParams.get('limit') || '3', 10), 10);
   const offset = parseInt(url.searchParams.get('offset') || '0', 10);
   const retryFailed = url.searchParams.get('retry') === 'true';
+  const rebuild = url.searchParams.get('rebuild') === 'true';
 
   // 获取待处理文档（跳过已完成的）
   let query;
-  if (retryFailed) {
+  if (rebuild) {
+    // 全量重建：忽略已完成状态，处理所有文档
+    query = env.DB.prepare(
+      `SELECT d.id, d.title, d.content, d.category, d.series_name,
+              d.audio_series_id, d.audio_episode_num
+       FROM documents d
+       WHERE d.content IS NOT NULL AND d.content != ''
+       ORDER BY d.id LIMIT ? OFFSET ?`
+    ).bind(limit, offset);
+  } else if (retryFailed) {
     // 只重试失败的
     query = env.DB.prepare(
       `SELECT d.id, d.title, d.content, d.category, d.series_name,
@@ -1613,17 +1671,26 @@ async function handleBuildEmbeddings(env, request, cors) {
   const { results: documents } = await query.all();
 
   // 查询总待处理数
-  const { results: [{ total }] } = retryFailed
-    ? await env.DB.prepare(
-        `SELECT COUNT(*) as total FROM documents d
-         INNER JOIN ai_embedding_jobs j ON j.document_id = d.id AND j.status = 'failed'
-         WHERE d.content IS NOT NULL AND d.content != ''`
-      ).all()
-    : await env.DB.prepare(
-        `SELECT COUNT(*) as total FROM documents d
-         LEFT JOIN ai_embedding_jobs j ON j.document_id = d.id AND j.status = 'completed'
-         WHERE d.content IS NOT NULL AND d.content != '' AND j.id IS NULL`
-      ).all();
+  let totalQuery;
+  if (rebuild) {
+    totalQuery = await env.DB.prepare(
+      `SELECT COUNT(*) as total FROM documents d
+       WHERE d.content IS NOT NULL AND d.content != ''`
+    ).all();
+  } else if (retryFailed) {
+    totalQuery = await env.DB.prepare(
+      `SELECT COUNT(*) as total FROM documents d
+       INNER JOIN ai_embedding_jobs j ON j.document_id = d.id AND j.status = 'failed'
+       WHERE d.content IS NOT NULL AND d.content != ''`
+    ).all();
+  } else {
+    totalQuery = await env.DB.prepare(
+      `SELECT COUNT(*) as total FROM documents d
+       LEFT JOIN ai_embedding_jobs j ON j.document_id = d.id AND j.status = 'completed'
+       WHERE d.content IS NOT NULL AND d.content != '' AND j.id IS NULL`
+    ).all();
+  }
+  const total = totalQuery.results[0]?.total || 0;
 
   if (!documents.length) {
     return json({ success: true, message: '所有文档已处理完毕', remaining: 0 }, cors);
@@ -2570,4 +2637,219 @@ async function handleWenkuSyncStatus(db, cors) {
   } catch (e) {
     return json({ error: e.message }, cors, 500);
   }
+}
+
+// ============================================================
+// POST /api/ai/voice-to-text — Whisper 语音识别
+// ============================================================
+async function handleVoiceToText(env, request, cors) {
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const limit = await checkRateLimit(env, ip, 'ai_voice');
+  if (!limit.allowed) return json({ error: limit.reason }, cors, 429);
+
+  const contentType = request.headers.get('Content-Type') || '';
+  if (!contentType.includes('audio/') && !contentType.includes('application/octet-stream') && !contentType.includes('video/webm')) {
+    return json({ error: 'Expected audio content' }, cors, 400);
+  }
+
+  const audioBuffer = await request.arrayBuffer();
+  if (audioBuffer.byteLength > 5 * 1024 * 1024) {
+    return json({ error: '音频文件过大，请控制在5MB以内' }, cors, 400);
+  }
+  if (audioBuffer.byteLength < 100) {
+    return json({ error: '音频数据过短' }, cors, 400);
+  }
+
+  try {
+    const result = await env.AI.run(
+      AI_CONFIG.models.whisper,
+      { audio: [...new Uint8Array(audioBuffer)] },
+      { gateway: GATEWAY_PROFILES.whisper }
+    );
+    const text = result?.text?.trim() || '';
+    if (!text) return json({ error: '未识别到语音内容' }, cors);
+    return json({ text }, cors, 200, 'no-store');
+  } catch (err) {
+    console.error('Whisper failed:', err.message);
+    return json({ error: '语音识别失败，请稍后重试' }, cors, 503);
+  }
+}
+
+// ============================================================
+// GET /api/ai/personalized-recommend — 个性化推荐
+// ============================================================
+async function handlePersonalizedRecommend(env, request, url, cors) {
+  const seriesIds = (url.searchParams.get('series') || '').split(',').filter(Boolean).slice(0, 5);
+  if (!seriesIds.length) return json({ recommendations: [] }, cors);
+
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const limit = await checkRateLimit(env, ip, 'ai_recommend');
+  if (!limit.allowed) return json({ error: limit.reason }, cors, 429);
+
+  // 获取用户最近收听系列的文档
+  const placeholders = seriesIds.map(() => '?').join(',');
+  const { results: docs } = await env.DB.prepare(
+    `SELECT id, title, content FROM documents
+     WHERE audio_series_id IN (${placeholders})
+     AND content IS NOT NULL
+     LIMIT 5`
+  ).bind(...seriesIds).all();
+
+  if (!docs.length) return json({ recommendations: [] }, cors);
+
+  // 生成综合嵌入向量
+  const combinedText = docs.map(d => d.title + ' ' + (d.content || '').slice(0, 500)).join('\n').slice(0, 2000);
+  const [queryVector] = await generateEmbeddings(env, [combinedText], { gatewayProfile: 'searchEmbedding' });
+
+  // 搜索相似内容，排除已收听系列
+  const results = await env.VECTORIZE.query(queryVector, { topK: 15, returnMetadata: 'all' });
+  const filtered = results.matches
+    .filter(m => m.score >= 0.4 && !seriesIds.includes(m.metadata?.audio_series_id || m.metadata?.series_name))
+    .slice(0, 10);
+
+  // 按系列去重，构建推荐列表
+  const recommendations = [];
+  const seenSeries = new Set();
+  for (const m of filtered) {
+    const sid = m.metadata?.audio_series_id || m.metadata?.series_name;
+    if (!sid || seenSeries.has(sid)) continue;
+    seenSeries.add(sid);
+    const series = await env.DB.prepare(
+      'SELECT id, title, speaker, total_episodes, category_id FROM series WHERE id = ?'
+    ).bind(sid).first();
+    if (series) {
+      recommendations.push({
+        series_id: series.id,
+        series_title: series.title,
+        speaker: series.speaker,
+        category_id: series.category_id,
+        total_episodes: series.total_episodes,
+        relevance_score: Math.round(m.score * 100) / 100,
+      });
+    }
+    if (recommendations.length >= 3) break;
+  }
+
+  return json({ recommendations }, cors, 200, 'private, max-age=3600');
+}
+
+// ============================================================
+// GET /api/chapters/:seriesId/:episodeNum — 获取章节标记
+// ============================================================
+async function handleGetChapters(env, seriesId, episodeNum, cors) {
+  try {
+    const { results } = await env.DB.prepare(
+      `SELECT chapter_index, title, start_time, end_time
+       FROM episode_chapters
+       WHERE series_id = ? AND episode_num = ?
+       ORDER BY chapter_index`
+    ).bind(seriesId, episodeNum).all();
+    return json({ chapters: results || [] }, cors);
+  } catch (err) {
+    return json({ chapters: [] }, cors);
+  }
+}
+
+// ============================================================
+// POST /api/admin/chapters/generate — 管理员生成章节标记
+// ============================================================
+async function handleGenerateChapters(env, request, cors) {
+  const token = request.headers.get('X-Admin-Token');
+  if (!token || !env.ADMIN_TOKEN || !timingSafeCompare(token, env.ADMIN_TOKEN)) {
+    return json({ error: 'Unauthorized' }, cors, 401);
+  }
+
+  let body;
+  try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
+  const { series_id, episode_num } = body;
+  if (!series_id || !episode_num) return json({ error: 'Missing series_id or episode_num' }, cors, 400);
+
+  // 查找文稿内容
+  const doc = await env.DB.prepare(
+    `SELECT id, title, content FROM documents
+     WHERE audio_series_id = ? AND audio_episode_num = ?
+     AND content IS NOT NULL AND content != ''
+     LIMIT 1`
+  ).bind(series_id, episode_num).first();
+
+  if (!doc || !doc.content) {
+    return json({ error: '未找到该集文稿，请先确保有转录文本' }, cors, 404);
+  }
+
+  // 获取音频时长
+  const ep = await env.DB.prepare(
+    'SELECT duration FROM episodes WHERE series_id = ? AND episode_num = ?'
+  ).bind(series_id, episode_num).first();
+  const totalDuration = ep?.duration || 3600;
+
+  // 使用 LLM 分析文稿内容，识别主题转换点
+  const truncated = doc.content.slice(0, 8000);
+  const messages = [
+    {
+      role: 'system',
+      content: `你是一位佛教音频内容编辑。请分析以下讲经文稿，识别主要的主题段落，生成章节标记。
+要求：
+1. 生成3-8个章节，每个章节有标题和预估的开始时间
+2. 标题简洁（10-20字），概括该段落的核心内容
+3. 开始时间按内容在全文中的相对位置估算（总时长约${Math.round(totalDuration / 60)}分钟）
+4. 严格按JSON数组格式输出，不要输出其他内容
+5. 第一个章节的开始时间为0`,
+    },
+    {
+      role: 'user',
+      content: `文稿标题：${doc.title}\n\n文稿内容：${truncated}\n\n请按以下JSON格式输出：
+[{"title":"章节标题","start_time":0},{"title":"...","start_time":360}]`,
+    },
+  ];
+
+  let response;
+  try {
+    response = await env.AI.run(AI_CONFIG.models.chat, {
+      messages, max_tokens: 500, temperature: 0.3,
+    }, { gateway: GATEWAY_PROFILES.ragChat });
+  } catch (err) {
+    response = await env.AI.run(AI_CONFIG.models.chatFallback, {
+      messages, max_tokens: 500, temperature: 0.3,
+    }, { gateway: GATEWAY_PROFILES.ragChat });
+  }
+
+  const text = extractAIResponse(response);
+  if (!text) return json({ error: 'AI 未能生成章节标记' }, cors, 503);
+
+  // 解析 JSON
+  const cleaned = text.replace(/```json?\s*/g, '').replace(/```/g, '').trim();
+  let chapters;
+  try {
+    chapters = JSON.parse(cleaned);
+  } catch (e) {
+    return json({ error: 'AI 输出格式解析失败', raw: cleaned.slice(0, 200) }, cors, 500);
+  }
+
+  if (!Array.isArray(chapters) || !chapters.length) {
+    return json({ error: '未生成有效章节' }, cors, 500);
+  }
+
+  // 写入数据库
+  let inserted = 0;
+  for (let i = 0; i < chapters.length; i++) {
+    const ch = chapters[i];
+    if (!ch.title || ch.start_time == null) continue;
+    try {
+      await env.DB.prepare(
+        `INSERT OR REPLACE INTO episode_chapters
+         (series_id, episode_num, chapter_index, title, start_time, end_time)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      ).bind(
+        series_id, episode_num, i,
+        ch.title.slice(0, 100),
+        Number(ch.start_time) || 0,
+        i < chapters.length - 1 ? (Number(chapters[i + 1].start_time) || null) : null
+      ).run();
+      inserted++;
+    } catch (err) {
+      console.warn('Chapter insert failed:', err.message);
+    }
+  }
+
+  return json({ success: true, chapters_count: inserted, chapters }, cors);
 }

@@ -35,7 +35,17 @@ import { renderMyPage } from './pages-my.js';
 import { renderCategory, showEpisodes } from './pages-category.js';
 import { doSearch, openSearchOverlay, closeSearchOverlay, isSearchOverlayOpen } from './search.js';
 import { initInstallPrompt, initBackGuard } from './pwa.js';
-import { initAiChat, updateAiContext, openAiChat, closeAiChat, isAiChatOpen, checkAiDeepLink } from './ai-chat.js';
+// AI chat — lazy loaded for performance (14KB deferred until first use)
+let _aiChatModule = null;
+async function getAiChatModule() {
+  if (!_aiChatModule) _aiChatModule = await import('./ai-chat.js');
+  return _aiChatModule;
+}
+function openAiChat() { getAiChatModule().then(m => m.openAiChat()); }
+function closeAiChat() { getAiChatModule().then(m => m.closeAiChat()); }
+function isAiChatOpen() { return _aiChatModule ? _aiChatModule.isAiChatOpen() : false; }
+function updateAiContext(seriesId, epNum) { if (_aiChatModule) _aiChatModule.updateAiContext(seriesId, epNum); }
+function checkAiDeepLink() { getAiChatModule().then(m => m.checkAiDeepLink()); }
 import { appreciate } from './api.js';
 import { monitor } from './monitor.js';
 import { opusQueryParam } from './audio-url.js';
