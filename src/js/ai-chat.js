@@ -111,55 +111,9 @@ function createChatPage() {
 
   chatForm.addEventListener('submit', handleSubmit);
 
-  // Voice input (Whisper)
-  const micBtn = page.querySelector('#aiFsMic');
-  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-    micBtn.style.display = '';
-    let mediaRecorder = null;
-    let audioChunks = [];
-    let isRecording = false;
-
-    micBtn.addEventListener('click', async () => {
-      if (isRecording) {
-        mediaRecorder.stop();
-        return;
-      }
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        audioChunks = [];
-        const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
-        mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-        mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
-        mediaRecorder.onstop = async () => {
-          isRecording = false;
-          micBtn.classList.remove('recording');
-          stream.getTracks().forEach(t => t.stop());
-          if (!audioChunks.length) return;
-          const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
-          chatInput.value = '语音识别中...';
-          chatInput.disabled = true;
-          try {
-            const { voiceToText } = await import('./ai-client.js');
-            const result = await voiceToText(blob);
-            chatInput.value = result.text || '';
-            chatInput.disabled = false;
-            chatInput.focus();
-          } catch (err) {
-            chatInput.value = '';
-            chatInput.disabled = false;
-            import('./utils.js').then(m => m.showToast(err.message || '语音识别失败'));
-          }
-        };
-        mediaRecorder.start();
-        isRecording = true;
-        micBtn.classList.add('recording');
-        // 15 秒自动停止
-        setTimeout(() => { if (isRecording && mediaRecorder.state === 'recording') mediaRecorder.stop(); }, 15000);
-      } catch (err) {
-        import('./utils.js').then(m => m.showToast('无法访问麦克风'));
-      }
-    });
-  }
+  // Voice input (Whisper) — temporarily disabled pending Whisper free-tier availability
+  // const micBtn = page.querySelector('#aiFsMic');
+  // Mic button stays hidden (style="display:none" in HTML)
 
   function onKeydown(e) {
     if (e.key === 'Escape' && chatInstance.isOpen) chatInstance.hide();

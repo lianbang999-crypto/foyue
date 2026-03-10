@@ -314,9 +314,10 @@ export async function retrieveDocuments(env, vectorMatches) {
 }
 
 // ============================================================
-// 提取 AI 响应文本 — 兼容新旧两种格式
+// 提取 AI 响应文本 — 兼容多种 Workers AI 模型格式
 // 旧格式: { response: "..." }
 // 新格式 (OpenAI 兼容): { choices: [{ message: { content: "..." } }] }
+// GLM / other: { result: { response: "..." } } or { text: "..." }
 // ============================================================
 export function extractAIResponse(result) {
   if (!result) return null;
@@ -332,6 +333,14 @@ export function extractAIResponse(result) {
       if (typeof msg.content === 'string' && msg.content) return msg.content;
       if (typeof msg.reasoning === 'string' && msg.reasoning) return msg.reasoning;
     }
+  }
+  // Nested result wrapper
+  if (result.result && typeof result.result.response === 'string' && result.result.response) {
+    return result.result.response;
+  }
+  // Direct text field
+  if (typeof result.text === 'string' && result.text) {
+    return result.text;
   }
   return null;
 }

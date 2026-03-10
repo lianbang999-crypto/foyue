@@ -1436,45 +1436,145 @@ async function handleAiAskStream(env, request, cors) {
 
   const sseStream = new ReadableStream({
     async start(controller) {
+      let tokenCount = 0;
       try {
+        // env.AI.run with stream:true returns a ReadableStream.
+        // The stream contains SSE-formatted text: "data: {...}\n\n"
+        // Format varies by model:
+        //   Old models:  data: {"response":"token"}
+        //   OpenAI-compat: data: {"choices":[{"delta":{"content":"token"}}]}
+        //   Some models may return raw text chunks (not SSE-wrapped)
         const reader = aiStream.getReader();
         const decoder = new TextDecoder();
+        let sseBuffer = '';
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          // Workers AI stream returns SSE-formatted text chunks:
-          // "data: {\"response\":\"token\"}\n\n" or "data: [DONE]\n\n"
           const text = typeof value === 'string' ? value : decoder.decode(value, { stream: true });
-          // Parse each SSE line from Workers AI
-          const lines = text.split('\n');
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
-            const payload = line.slice(6);
-            if (payload === '[DONE]') continue;
-            try {
-              const parsed = JSON.parse(payload);
-              // Support both old format ({ response: "token" }) and
-              // OpenAI-compatible format ({ choices: [{ delta: { content: "token" } }] })
-              const token = parsed.response
-                || parsed.choices?.[0]?.delta?.content
-                || '';
-              if (token) {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token })}\n\n`));
-              }
-            } catch { /* skip malformed lines */ }
+          sseBuffer += text;
+
+          // Process complete lines from the buffer
+          const segments = sseBuffer.split('\n');
+          sseBuffer = segments.pop() || ''; // keep incomplete last line
+
+          for (const line of segments) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('event:')) continue;
+
+            // SSE data line
+            if (trimmed.startsWith('data:')) {
+              const payload = trimmed.slice(5).trim();
+              if (payload === '[DONE]') continue;
+              try {
+                const parsed = JSON.parse(payload);
+                // Try all known Workers AI response formats
+                const token = parsed.response
+                  || parsed.choices?.[0]?.delta?.content
+                  || parsed.choices?.[0]?.text
+                  || parsed.result?.response
+                  || parsed.text
+                  || parsed.token
+                  || '';
+                if (token) {
+                  tokenCount++;
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token })}\n\n`));
+                }
+              } catch { /* skip malformed JSON */ }
+              continue;
+            }
+
+            // Fallback: some models may stream raw JSON objects without "data:" prefix
+            if (trimmed.startsWith('{')) {
+              try {
+                const parsed = JSON.parse(trimmed);
+                const token = parsed.response
+                  || parsed.choices?.[0]?.delta?.content
+                  || parsed.text
+                  || '';
+                if (token) {
+                  tokenCount++;
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token })}\n\n`));
+                }
+              } catch { /* not JSON */ }
+            }
           }
         }
-        // Send final event with sources
-        controller.enqueue(encoder.encode(
-          `event: done\ndata: ${JSON.stringify({ sources, disclaimer })}\n\n`
-        ));
+        // Process any remaining buffer
+        if (sseBuffer.trim()) {
+          const trimmed = sseBuffer.trim();
+          if (trimmed.startsWith('data:')) {
+            const payload = trimmed.slice(5).trim();
+            if (payload !== '[DONE]') {
+              try {
+                const parsed = JSON.parse(payload);
+                const token = parsed.response || parsed.choices?.[0]?.delta?.content || '';
+                if (token) {
+                  tokenCount++;
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token })}\n\n`));
+                }
+              } catch { /* skip */ }
+            }
+          }
+        }
       } catch (err) {
-        controller.enqueue(encoder.encode(
-          `event: error\ndata: ${JSON.stringify({ error: err.message || 'Stream failed' })}\n\n`
-        ));
-      } finally {
-        controller.close();
+        console.error('Stream processing error:', err.message);
+        // If stream fails and we got no tokens, try non-stream fallback
+        if (tokenCount === 0) {
+          try {
+            const fallbackResult = await env.AI.run(
+              AI_CONFIG.models.chat,
+              { messages, max_tokens: 1000, temperature: 0.3 },
+              { gateway: GATEWAY_PROFILES.ragChat }
+            );
+            const answer = extractAIResponse(fallbackResult);
+            if (answer) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: answer })}\n\n`));
+              tokenCount++;
+            }
+          } catch { /* fallback also failed */ }
+        }
+        if (tokenCount === 0) {
+          controller.enqueue(encoder.encode(
+            `event: error\ndata: ${JSON.stringify({ error: err.message || 'Stream failed' })}\n\n`
+          ));
+        }
       }
+
+      // If streaming produced zero tokens, attempt non-stream fallback
+      if (tokenCount === 0) {
+        try {
+          const fallbackResult = await env.AI.run(
+            AI_CONFIG.models.chat,
+            { messages, max_tokens: 1000, temperature: 0.3 },
+            { gateway: GATEWAY_PROFILES.ragChat }
+          );
+          const answer = extractAIResponse(fallbackResult);
+          if (answer) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: answer })}\n\n`));
+            tokenCount++;
+          }
+        } catch {
+          // Try fallback model non-stream
+          try {
+            const fallback2 = await env.AI.run(
+              AI_CONFIG.models.chatFallback,
+              { messages, max_tokens: 1000, temperature: 0.3 },
+              { gateway: GATEWAY_PROFILES.ragChat }
+            );
+            const answer2 = extractAIResponse(fallback2);
+            if (answer2) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: answer2 })}\n\n`));
+              tokenCount++;
+            }
+          } catch { /* all options exhausted */ }
+        }
+      }
+
+      // Send final event with sources
+      controller.enqueue(encoder.encode(
+        `event: done\ndata: ${JSON.stringify({ sources, disclaimer })}\n\n`
+      ));
+      controller.close();
     }
   });
 
