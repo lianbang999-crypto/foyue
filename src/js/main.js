@@ -38,6 +38,7 @@ import { initInstallPrompt, initBackGuard } from './pwa.js';
 import { initAiChat, updateAiContext, openAiChat, closeAiChat, isAiChatOpen, checkAiDeepLink } from './ai-chat.js';
 import { appreciate } from './api.js';
 import { monitor } from './monitor.js';
+import { registerOpusMapping } from './audio-url.js';
 
 // Close wenku reader if open — uses DOM check to avoid pulling wenku chunk into main bundle
 function closeWenkuReader() {
@@ -527,6 +528,7 @@ async function loadData() {
     const cached = loadCachedData();
     if (cached) {
       state.data = cached;
+      registerOpusMapping(cached.categories);
       dom.loader.style.display = 'none';
       if (state.tab === 'home') renderHomePage();
       else renderCategory(state.tab);
@@ -544,6 +546,7 @@ async function loadData() {
     const r = await fetch('/api/categories');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.data = await r.json();
+    registerOpusMapping(state.data.categories);
     const initStr = JSON.stringify(state.data);
     const initHash = Array.from(initStr).reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0);
     saveCachedData(state.data, initHash);
@@ -634,6 +637,7 @@ async function fetchFreshData() {
     const cachedHash = cachedRaw ? JSON.parse(cachedRaw)._hash : null;
     if (freshHash !== cachedHash || cachedHash === null) {
       state.data = fresh;
+      registerOpusMapping(fresh.categories);
       saveCachedData(fresh, freshHash);
     } else {
       // Data unchanged — just refresh the timestamp so TTL doesn't expire
