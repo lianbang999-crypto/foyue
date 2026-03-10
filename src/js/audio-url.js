@@ -95,6 +95,7 @@ const BUCKET_MAP = {
 // Update this set when more categories are converted.
 const OPUS_CONVERTED_CATEGORIES = new Set([
   '听经台',
+  '有声书',
 ]);
 
 export function registerOpusMapping(categories) {

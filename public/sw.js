@@ -1,7 +1,7 @@
 /* Service Worker — 净土法音 Offline Cache */
 'use strict';
 
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const STATIC_CACHE = 'static-' + CACHE_VERSION;
 const DATA_CACHE   = 'data-'   + CACHE_VERSION;
 const AUDIO_CACHE  = 'audio-v1';
@@ -28,6 +28,7 @@ const OPUS_CATEGORY_TO_BUCKET = {
  */
 const OPUS_FOLDER_TO_BUCKET = {
   '有声书/大安法师讲故事': '7be57e30faae4f81bbd76b61006ac8fc',
+  '有声书/净土百问': '772643034503463d9b954f0eea5ce80b',
 };
 
 /* App-shell files to pre-cache on install */
