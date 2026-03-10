@@ -377,22 +377,12 @@ export async function ragAnswer(env, question, contextDocs, options = {}) {
     }
   }
 
-  const systemPrompt = `你是站内搜索助手。从参考资料中找到与用户问题最相关的原文，直接引用，不要创作。
+  const systemPrompt = `你是佛学文库搜索助手，根据用户问题从下方资料中找出最相关的原文段落并直接引用回答。不要输出分析过程，不要自己创作内容，只引用资料原文。回答简短，不超150字。如果资料中没有相关内容就回复"未找到相关内容"。回答末尾另起一行写：[FOLLOWUP]相关问题一|相关问题二[/FOLLOWUP]
 
-要求：
-1. 用1句话概括（不超30字），然后引用原文最相关的1段（用引号标出，注明出处标题）
-2. 严禁自行创作，所有内容必须来自参考资料原文
-3. 未找到相关内容就说"未找到相关内容"
-4. 总回答不超150字
-5. 最后一行输出后续问题：[FOLLOWUP]问题一|问题二[/FOLLOWUP]
-
-以下是参考资料：
----
-${context}
----`;
+资料：
+${context}`;
 
   const messages = [{ role: 'system', content: systemPrompt }];
-  // 只保留最近 2 轮历史，减少 token 消耗
   for (const h of history.slice(-4)) {
     if (h.role === 'user' || h.role === 'assistant') {
       messages.push({ role: h.role, content: String(h.content || '').slice(0, 300) });
@@ -457,19 +447,10 @@ export function buildRAGMessages(question, contextDocs, options = {}) {
     }
   }
 
-  const systemPrompt = `你是站内搜索助手。从参考资料中找到与用户问题最相关的原文，直接引用，不要创作。
+  const systemPrompt = `你是佛学文库搜索助手，根据用户问题从下方资料中找出最相关的原文段落并直接引用回答。不要输出分析过程，不要自己创作内容，只引用资料原文。回答简短，不超150字。如果资料中没有相关内容就回复"未找到相关内容"。回答末尾另起一行写：[FOLLOWUP]相关问题一|相关问题二[/FOLLOWUP]
 
-要求：
-1. 用1句话概括（不超30字），然后引用原文最相关的1段（用引号标出，注明出处标题）
-2. 严禁自行创作，所有内容必须来自参考资料原文
-3. 未找到相关内容就说"未找到相关内容"
-4. 总回答不超150字
-5. 最后一行输出后续问题：[FOLLOWUP]问题一|问题二[/FOLLOWUP]
-
-以下是参考资料：
----
-${context}
----`;
+资料：
+${context}`;
 
   const messages = [{ role: 'system', content: systemPrompt }];
   for (const h of history.slice(-4)) {
