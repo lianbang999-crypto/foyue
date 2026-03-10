@@ -9,7 +9,7 @@ import {
   checkRateLimit, cleanupRateLimits, timingSafeCompare,
   extractAIResponse, getAICallStats, logAICall,
 } from '../lib/ai-utils.js';
-import { buildAudioUrl } from '../lib/audio-utils.js';
+import { buildAudioUrl, OPUS_CATEGORIES } from '../lib/audio-utils.js';
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -38,20 +38,21 @@ export async function onRequest(context) {
     // ==================== 原有路由 ====================
 
     // GET /api/categories
+    const opusSupported = url.searchParams.get('opus') === '1';
     if (path === '/api/categories' && method === 'GET') {
-      return json(await getCategories(db), cors);
+      return json(await getCategories(db, opusSupported), cors);
     }
 
     // GET /api/series/:id
     const sm = path.match(/^\/api\/series\/([^/]+)$/);
     if (sm && method === 'GET') {
-      return json(await getSeriesDetail(db, sm[1]), cors);
+      return json(await getSeriesDetail(db, sm[1], opusSupported), cors);
     }
 
     // GET /api/series/:id/episodes
     const em = path.match(/^\/api\/series\/([^/]+)\/episodes$/);
     if (em && method === 'GET') {
-      return json(await getEpisodes(db, em[1]), cors);
+      return json(await getEpisodes(db, em[1], opusSupported), cors);
     }
 
     // POST /api/play-count
@@ -468,7 +469,7 @@ function json(data, cors, status = 200, cacheControl) {
 }
 
 // ============================================================
-async function getCategories(db) {
+async function getCategories(db, opusSupported) {
   // 一次性 JOIN categories + series + episodes，避免 N+1 查询
   const result = await db.prepare(`
     SELECT
@@ -516,13 +517,26 @@ async function getCategories(db) {
     }
     if (row.series_id && row.ep_num != null) {
       const s = serMap.get(row.series_id);
+      const catTitle = catMap.get(row.cat_id).title;
+      const audioOpts = { opusSupported, categoryTitle: catTitle };
+      let url;
+      try {
+        url = buildAudioUrl(s.bucket, s.folder, row.ep_file, audioOpts);
+      } catch (e) {
+        console.error(e.message);
+        url = '';
+      }
       const ep = {
         id: row.ep_num,
         title: row.ep_title,
         fileName: row.ep_file,
-        url: buildAudioUrl(s.bucket, s.folder, row.ep_file),
+        url,
+        duration: row.ep_duration || 0,
       };
-      if (row.ep_duration > 0) ep.duration = row.ep_duration;
+      // Provide MP3 fallback URL for Opus episodes
+      if (opusSupported && OPUS_CATEGORIES.has(catTitle)) {
+        try { ep.mp3Url = buildAudioUrl(s.bucket, s.folder, row.ep_file); } catch {}
+      }
       if (row.ep_intro) ep.intro = row.ep_intro;
       if (row.ep_story) ep.storyNumber = row.ep_story;
       if (row.ep_play_count) ep.playCount = row.ep_play_count;
@@ -533,7 +547,7 @@ async function getCategories(db) {
   return { categories: [...catMap.values()] };
 }
 
-async function getSeriesDetail(db, seriesId) {
+async function getSeriesDetail(db, seriesId, opusSupported) {
   const series = await db.prepare(
     `SELECT s.*, c.id as category_id, c.title as category_title
      FROM series s JOIN categories c ON s.category_id = c.id WHERE s.id = ?`
@@ -546,20 +560,34 @@ async function getSeriesDetail(db, seriesId) {
      FROM episodes WHERE series_id = ? ORDER BY episode_num`
   ).bind(seriesId).all();
 
+  const catTitle = series.category_title;
+  const audioOpts = { opusSupported, categoryTitle: catTitle };
+  const isOpusCat = opusSupported && OPUS_CATEGORIES.has(catTitle);
+
   return {
     id: series.id, title: series.title, titleEn: series.title_en,
     speaker: series.speaker, speakerEn: series.speaker_en,
     bucket: series.bucket, folder: series.folder,
     totalEpisodes: series.total_episodes, intro: series.intro,
     playCount: series.play_count,
-    categoryId: series.category_id, categoryTitle: series.category_title,
+    categoryId: series.category_id, categoryTitle: catTitle,
     episodes: episodes.results.map(ep => {
+      let url;
+      try {
+        url = buildAudioUrl(series.bucket, series.folder, ep.fileName, audioOpts);
+      } catch (e) {
+        console.error(e.message);
+        url = '';
+      }
       const obj = {
         id: ep.id, title: ep.title, fileName: ep.fileName,
-        url: buildAudioUrl(series.bucket, series.folder, ep.fileName),
+        url,
+        duration: ep.duration || 0,
         playCount: ep.playCount
       };
-      if (ep.duration > 0) obj.duration = ep.duration;
+      if (isOpusCat) {
+        try { obj.mp3Url = buildAudioUrl(series.bucket, series.folder, ep.fileName); } catch {}
+      }
       if (ep.intro) obj.intro = ep.intro;
       if (ep.storyNumber) obj.storyNumber = ep.storyNumber;
       return obj;
@@ -567,9 +595,10 @@ async function getSeriesDetail(db, seriesId) {
   };
 }
 
-async function getEpisodes(db, seriesId) {
+async function getEpisodes(db, seriesId, opusSupported) {
   const series = await db.prepare(
-    `SELECT bucket, folder FROM series WHERE id = ?`
+    `SELECT s.bucket, s.folder, c.title as cat_title
+     FROM series s JOIN categories c ON s.category_id = c.id WHERE s.id = ?`
   ).bind(seriesId).first();
   if (!series) return { episodes: [] };
 
@@ -579,13 +608,27 @@ async function getEpisodes(db, seriesId) {
      FROM episodes WHERE series_id = ? ORDER BY episode_num`
   ).bind(seriesId).all();
 
+  const catTitle = series.cat_title;
+  const audioOpts = { opusSupported, categoryTitle: catTitle };
+  const isOpusCat = opusSupported && OPUS_CATEGORIES.has(catTitle);
+
   return {
     episodes: episodes.results.map(ep => {
+      let url;
+      try {
+        url = buildAudioUrl(series.bucket, series.folder, ep.fileName, audioOpts);
+      } catch (e) {
+        console.error(e.message);
+        url = '';
+      }
       const obj = {
         id: ep.id, title: ep.title, fileName: ep.fileName,
-        url: buildAudioUrl(series.bucket, series.folder, ep.fileName),
+        url,
+        duration: ep.duration || 0,
       };
-      if (ep.duration > 0) obj.duration = ep.duration;
+      if (isOpusCat) {
+        try { obj.mp3Url = buildAudioUrl(series.bucket, series.folder, ep.fileName); } catch {}
+      }
       if (ep.intro) obj.intro = ep.intro;
       if (ep.storyNumber) obj.storyNumber = ep.storyNumber;
       if (ep.playCount) obj.playCount = ep.playCount;

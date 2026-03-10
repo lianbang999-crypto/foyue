@@ -7,7 +7,7 @@ import { fmt, showToast, seekAt, haptic, fmtCount } from './utils.js';
 import { addHistory, syncHistoryProgress, getHistory } from './history.js';
 import { recordPlay, getAppreciateCount } from './api.js';
 import { cacheAudio, getCachedAudioUrl, isAudioCached } from './audio-cache.js';
-import { resolveAudioUrl, canonicalAudioUrl, isOpusSupported } from './audio-url.js';
+import { mp3FallbackUrl } from './audio-url.js';
 
 /* ===== Playback State ===== */
 let pendingSeek = 0;
@@ -225,7 +225,7 @@ export function prepareList(episodes, idx, series, restoreTime) {
   const tr = state.playlist[state.epIdx];
   if (!tr) return;
   const dom = getDOM();
-  dom.audio.src = resolveAudioUrl(tr.url);
+  dom.audio.src = tr.url;
   dom.audio.load();
   // ✅ Offline playback: async check cache, swap to blob URL if found
   getCachedAudioUrl(tr.url).then(cachedUrl => {
@@ -284,7 +284,7 @@ function playCurrent() {
     console.log('[Player] Reusing preloaded audio, readyState:', preloadAudio.readyState);
   }
 
-  dom.audio.src = resolveAudioUrl(tr.url);
+  dom.audio.src = tr.url;
   dom.audio.playbackRate = SPEEDS[speedIdx];
   // Explicitly start loading — mobile browsers may ignore preload="auto"
   dom.audio.load();
@@ -339,6 +339,8 @@ function playCurrent() {
       isSwitching = false;
       setPlayState(true);
       startStallWatch();
+      // Reset networkWeak on successful playback start
+      if (_networkWeak) setNetworkWeak(false);
       // Start background full-load after playback begins
       startBgFullLoad(tr.url);
     }).catch(err => {
@@ -360,6 +362,8 @@ function playCurrent() {
       setBuffering(false);
       setPlayState(true);
       startStallWatch();
+      // Reset networkWeak on successful playback start
+      if (_networkWeak) setNetworkWeak(false);
       // Start background full-load after playback begins
       startBgFullLoad(tr.url);
     }).catch(err => {
@@ -627,9 +631,10 @@ export function onAudioError() {
   const src = dom.audio.src;
 
   // Opus → MP3 fallback: if the current src is an opus URL that failed,
-  // fall back to the canonical MP3 URL immediately (opus file may not exist)
+  // fall back to the server-provided MP3 URL (or best-effort derivation)
   if (src && src.includes('opus.foyue.org')) {
-    const mp3Url = canonicalAudioUrl(src);
+    const tr = state.playlist[state.epIdx];
+    const mp3Url = (tr && tr.mp3Url) || mp3FallbackUrl(src);
     if (mp3Url && mp3Url !== src) {
       console.log('[Audio] Opus failed, falling back to MP3:', mp3Url);
       audioRetries = 0; // reset retries for the MP3 URL
@@ -893,7 +898,7 @@ export function preloadNextTrack() {
   // ✅ 关键优化：始终使用 preload="auto" 让浏览器真正缓冲音频数据
   // 这样切换下一曲时可以直接复用已缓冲的数据，大幅减少等待时间
   preloadAudio.preload = 'auto';
-  preloadAudio.src = resolveAudioUrl(nurl);
+  preloadAudio.src = nurl;
   preloadedUrl = nurl;
   // Error handler: silently discard failed preloads so they aren't reused
   preloadAudio.addEventListener('error', () => {
@@ -954,7 +959,7 @@ function _doBgFullLoad(url) {
 
   bgFetchUrl = url;
   bgFetchController = new AbortController();
-  const fetchUrl = resolveAudioUrl(url);
+  const fetchUrl = url;
 
   fetch(fetchUrl, { signal: bgFetchController.signal })
     .then(resp => {
@@ -1243,7 +1248,7 @@ export function restoreState(renderCategory, renderHomePage, renderMyPage) {
         state.epIdx = s.idx || 0;
         const tr = state.playlist[state.epIdx];
         if (tr) {
-          dom.audio.src = resolveAudioUrl(tr.url);
+          dom.audio.src = tr.url;
           if (s.time) dom.audio.addEventListener('loadedmetadata', () => { dom.audio.currentTime = s.time; }, { once: true });
           updateUI(tr);
           // ✅ Offline playback: async check cache, swap to blob URL if found
