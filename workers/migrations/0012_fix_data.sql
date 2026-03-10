@@ -47,13 +47,12 @@ UPDATE episodes SET title = '静蔼法师舍身护法' WHERE series_id = 'daanfa
 UPDATE episodes SET title = '冬瓜和尚预知时至' WHERE series_id = 'daanfashi-jiangushi' AND episode_num = 80;
 
 -- ============================================================
--- 2. Reorder 净土百问 (150 episodes, user-provided correct ordering)
+-- 2. Reorder 净土百问 (151 episodes, user-provided correct ordering)
 --    Delete all existing episodes and re-insert in correct order.
---    Also update total_episodes from 151 to 150.
 -- ============================================================
 
 
-UPDATE series SET total_episodes = 150 WHERE id = 'jingtu-baiwen';
+UPDATE series SET total_episodes = 151 WHERE id = 'jingtu-baiwen';
 DELETE FROM episodes WHERE series_id = 'jingtu-baiwen';
 INSERT INTO episodes (series_id, episode_num, title, file_name, url) VALUES ('jingtu-baiwen', 1, '初学净土从哪下手', '初学净土从哪下手.mp3', 'https://audio.foyue.org/772643034503463d9b954f0eea5ce80b/%E5%87%80%E5%9C%9F%E7%99%BE%E9%97%AE/%E5%88%9D%E5%AD%A6%E5%87%80%E5%9C%9F%E4%BB%8E%E5%93%AA%E4%B8%8B%E6%89%8B.mp3');
 INSERT INTO episodes (series_id, episode_num, title, file_name, url) VALUES ('jingtu-baiwen', 2, '如何将佛法落实于生活中', '如何将佛法落实于生活中.mp3', 'https://audio.foyue.org/772643034503463d9b954f0eea5ce80b/%E5%87%80%E5%9C%9F%E7%99%BE%E9%97%AE/%E5%A6%82%E4%BD%95%E5%B0%86%E4%BD%9B%E6%B3%95%E8%90%BD%E5%AE%9E%E4%BA%8E%E7%94%9F%E6%B4%BB%E4%B8%AD.mp3');
@@ -205,6 +204,7 @@ INSERT INTO episodes (series_id, episode_num, title, file_name, url) VALUES ('ji
 INSERT INTO episodes (series_id, episode_num, title, file_name, url) VALUES ('jingtu-baiwen', 148, '如何正确地看待儒教道教经典', '如何正确地看待儒教道教经典.mp3', 'https://audio.foyue.org/772643034503463d9b954f0eea5ce80b/%E5%87%80%E5%9C%9F%E7%99%BE%E9%97%AE/%E5%A6%82%E4%BD%95%E6%AD%A3%E7%A1%AE%E5%9C%B0%E7%9C%8B%E5%BE%85%E5%84%92%E6%95%99%E9%81%93%E6%95%99%E7%BB%8F%E5%85%B8.mp3');
 INSERT INTO episodes (series_id, episode_num, title, file_name, url) VALUES ('jingtu-baiwen', 149, '郭巨为孝养母亲而活埋儿子也算孝吗', '郭巨为孝养母亲而活埋儿子也算孝吗.mp3', 'https://audio.foyue.org/772643034503463d9b954f0eea5ce80b/%E5%87%80%E5%9C%9F%E7%99%BE%E9%97%AE/%E9%83%AD%E5%B7%A8%E4%B8%BA%E5%AD%9D%E5%85%BB%E6%AF%8D%E4%BA%B2%E8%80%8C%E6%B4%BB%E5%9F%8B%E5%84%BF%E5%AD%90%E4%B9%9F%E7%AE%97%E5%AD%9D%E5%90%97.mp3');
 INSERT INTO episodes (series_id, episode_num, title, file_name, url) VALUES ('jingtu-baiwen', 150, '母亲学佛后对家人要求很苛刻，是不是学错了', '母亲学佛后对家人要求很苛刻，是不是学错了.mp3', 'https://audio.foyue.org/772643034503463d9b954f0eea5ce80b/%E5%87%80%E5%9C%9F%E7%99%BE%E9%97%AE/%E6%AF%8D%E4%BA%B2%E5%AD%A6%E4%BD%9B%E5%90%8E%E5%AF%B9%E5%AE%B6%E4%BA%BA%E8%A6%81%E6%B1%82%E5%BE%88%E8%8B%9B%E5%88%BB%EF%BC%8C%E6%98%AF%E4%B8%8D%E6%98%AF%E5%AD%A6%E9%94%99%E4%BA%86.mp3');
+INSERT INTO episodes (series_id, episode_num, title, file_name, url) VALUES ('jingtu-baiwen', 151, '不持戒能往生吗', '不持戒能往生吗.mp3', 'https://audio.foyue.org/772643034503463d9b954f0eea5ce80b/%E5%87%80%E5%9C%9F%E7%99%BE%E9%97%AE/%E4%B8%8D%E6%8C%81%E6%88%92%E8%83%BD%E5%BE%80%E7%94%9F%E5%90%97.mp3');
 -- ============================================================
 -- 3. Add 欲海回狂 series (50 episodes)
 --    Bucket: youshengshu, Folder: 欲海回狂
