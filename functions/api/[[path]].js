@@ -1288,9 +1288,9 @@ async function handleAiAsk(env, request, cors) {
       score: Math.round(m.score * 100) / 100,
       category: doc?.category || m.metadata.category || '',
       series_name: doc?.series_name || m.metadata.series_name || '',
-      snippet: (m.metadata?.text || '').replace(/\s+/g, '').slice(0, 60),
+      snippet: (m.metadata?.text || '').replace(/\s+/g, '').slice(0, 120),
     });
-    if (sources.length >= 3) break;
+    if (sources.length >= 5) break;
   }
 
   return json({
@@ -1395,9 +1395,9 @@ async function handleAiAskStream(env, request, cors) {
       score: Math.round(m.score * 100) / 100,
       category: doc?.category || m.metadata.category || '',
       series_name: doc?.series_name || m.metadata.series_name || '',
-      snippet: (m.metadata?.text || '').replace(/\s+/g, '').slice(0, 60),
+      snippet: (m.metadata?.text || '').replace(/\s+/g, '').slice(0, 120),
     });
-    if (sources.length >= 3) break;
+    if (sources.length >= 5) break;
   }
 
   // --- Streaming phase ---
@@ -1410,7 +1410,7 @@ async function handleAiAskStream(env, request, cors) {
   try {
     aiStream = await env.AI.run(
       AI_CONFIG.models.chat,
-      { messages, max_tokens: 1000, temperature: 0.3, stream: true },
+      { messages, max_tokens: 300, temperature: 0.2, stream: true },
       { gateway: GATEWAY_PROFILES.ragStream }
     );
   } catch (err) {
@@ -1418,7 +1418,7 @@ async function handleAiAskStream(env, request, cors) {
     try {
       aiStream = await env.AI.run(
         AI_CONFIG.models.chatFallback,
-        { messages, max_tokens: 1000, temperature: 0.3, stream: true },
+        { messages, max_tokens: 300, temperature: 0.2, stream: true },
         { gateway: GATEWAY_PROFILES.ragStream }
       );
     } catch (err2) {
@@ -1523,7 +1523,7 @@ async function handleAiAskStream(env, request, cors) {
           try {
             const fallbackResult = await env.AI.run(
               AI_CONFIG.models.chat,
-              { messages, max_tokens: 1000, temperature: 0.3 },
+              { messages, max_tokens: 300, temperature: 0.2 },
               { gateway: GATEWAY_PROFILES.ragChat }
             );
             const answer = extractAIResponse(fallbackResult);
@@ -1545,7 +1545,7 @@ async function handleAiAskStream(env, request, cors) {
         try {
           const fallbackResult = await env.AI.run(
             AI_CONFIG.models.chat,
-            { messages, max_tokens: 1000, temperature: 0.3 },
+            { messages, max_tokens: 300, temperature: 0.2 },
             { gateway: GATEWAY_PROFILES.ragChat }
           );
           const answer = extractAIResponse(fallbackResult);
@@ -1558,7 +1558,7 @@ async function handleAiAskStream(env, request, cors) {
           try {
             const fallback2 = await env.AI.run(
               AI_CONFIG.models.chatFallback,
-              { messages, max_tokens: 1000, temperature: 0.3 },
+              { messages, max_tokens: 300, temperature: 0.2 },
               { gateway: GATEWAY_PROFILES.ragChat }
             );
             const answer2 = extractAIResponse(fallback2);
