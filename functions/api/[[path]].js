@@ -1290,7 +1290,7 @@ async function handleAiAsk(env, request, cors) {
       series_name: doc?.series_name || m.metadata.series_name || '',
       snippet: (m.metadata?.text || '').replace(/\s+/g, '').slice(0, 120),
     });
-    if (sources.length >= 5) break;
+    if (sources.length >= 3) break;
   }
 
   return json({
@@ -1397,7 +1397,7 @@ async function handleAiAskStream(env, request, cors) {
       series_name: doc?.series_name || m.metadata.series_name || '',
       snippet: (m.metadata?.text || '').replace(/\s+/g, '').slice(0, 120),
     });
-    if (sources.length >= 5) break;
+    if (sources.length >= 3) break;
   }
 
   // --- Streaming phase ---
