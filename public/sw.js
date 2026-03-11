@@ -62,6 +62,9 @@ self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   if (shouldSkip(url)) return;
 
+  // ✅ 修复：Range请求直接走网络，避免缓存冲突
+  if (event.request.headers.get('range')) return;
+
   /* Cached audio: serve from audio cache if available.
    * "Server Decides" — no URL normalization needed.
    * Cache key = the actual URL the player uses (Opus or MP3). */
@@ -73,9 +76,6 @@ self.addEventListener('fetch', event => {
     );
     return;
   }
-
-  // Never intercept Range requests (audio/video streaming)
-  if (event.request.headers.get('range')) return;
 
   /* Static assets: cache-first */
   if (isStaticAsset(url)) {

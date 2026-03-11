@@ -32,8 +32,22 @@ import {
 } from './player.js';
 import { renderHomePage } from './pages-home.js';
 import { renderMyPage } from './pages-my.js';
-import { renderCategory, showEpisodes } from './pages-category.js';
+// ✅ 修复代码分割警告：统一使用动态导入，避免静态和动态导入混用
+// import { renderCategory, showEpisodes } from './pages-category.js';
 import { doSearch, openSearchOverlay, closeSearchOverlay, isSearchOverlayOpen } from './search.js';
+
+// pages-category 动态导入函数
+let _categoryModule = null;
+async function getCategoryModule() {
+  if (!_categoryModule) _categoryModule = await import('./pages-category.js');
+  return _categoryModule;
+}
+export function renderCategory(...args) {
+  return getCategoryModule().then(mod => mod.renderCategory(...args));
+}
+export function showEpisodes(...args) {
+  return getCategoryModule().then(mod => mod.showEpisodes(...args));
+}
 import { initInstallPrompt, initBackGuard } from './pwa.js';
 // AI chat — lazy loaded for performance (14KB deferred until first use)
 let _aiChatModule = null;
@@ -545,6 +559,9 @@ async function loadData() {
         restoreState(renderCategory, renderHomePage, renderMyPage);
         if (state.isFirstVisit && state.epIdx < 0) playDefaultTrack();
       }
+      // ✅ 修复：缓存模式下也处理深链接
+      handleSeriesDeepLink();
+      handleWenkuDeepLink();
       // Refresh in background (non-blocking)
       fetchFreshData();
       // Handle ?tab=ai deep link

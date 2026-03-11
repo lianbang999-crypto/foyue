@@ -5,8 +5,9 @@
   "start_url": "/",
   "display": "standalone",
   "background_color": "#FAF9F6",
-  "theme_color": "#9A7B3C",
+  "theme_color": "#F7F2EA",
   "orientation": "portrait",
+  "id": "/",
   "icons": [
     {
       "src": "/icons/icon-192.png",
@@ -31,6 +32,29 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/home.png",
+      "sizes": "540x720",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "首页 - 佛号念诵"
+    },
+    {
+      "src": "/screenshots/player.png",
+      "sizes": "540x720",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "播放器界面"
+    },
+    {
+      "src": "/screenshots/wenku.png",
+      "sizes": "540x720",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "讲记文库"
     }
   ],
   "categories": ["education", "music"],

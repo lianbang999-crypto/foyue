@@ -2,6 +2,35 @@
 
 const API_BASE = '/api';
 
+// ✅ 增强：添加日志记录工具
+const API_LOGGER = {
+  enabled: true,
+  log: (level, method, url, error = null) => {
+    if (!API_LOGGER.enabled) return;
+    const timestamp = new Date().toISOString();
+    const logEntry = {
+      timestamp,
+      level,
+      method,
+      url,
+      error: error ? error.message : null
+    };
+    // 存储到控制台（开发环境）
+    if (import.meta.env.DEV) {
+      console.log(`[API ${level}]`, method, url, error || '');
+    }
+    // 存储到 localStorage（最多保留100条）
+    try {
+      const logs = JSON.parse(localStorage.getItem('api-logs') || '[]');
+      logs.push(logEntry);
+      if (logs.length > 100) logs.shift();
+      localStorage.setItem('api-logs', JSON.stringify(logs));
+    } catch (e) {
+      // ignore quota errors
+    }
+  }
+};
+
 /* Simple cache: { key: { data, ts } } */
 const _cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -37,14 +66,21 @@ const RECORD_FAIL_LIMIT = 3;
 
 export async function recordPlay(seriesId, episodeNum) {
   // Circuit breaker: skip if too many consecutive failures
-  if (_recordFailCount >= RECORD_FAIL_LIMIT) return null;
+  if (_recordFailCount >= RECORD_FAIL_LIMIT) {
+    API_LOGGER.log('warn', 'recordPlay', `${seriesId}/${episodeNum}`, new Error('Circuit breaker triggered'));
+    return null;
+  }
   try {
     const r = await fetch(`${API_BASE}/play-count`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ seriesId, episodeNum }),
     });
-    if (!r.ok) { _recordFailCount++; return null; }
+    if (!r.ok) {
+      _recordFailCount++;
+      API_LOGGER.log('error', 'recordPlay', `${seriesId}/${episodeNum}`, new Error(`HTTP ${r.status}`));
+      return null;
+    }
     _recordFailCount = 0; // Reset on success
     const data = await r.json();
     // Update cache with new count
@@ -56,9 +92,11 @@ export async function recordPlay(seriesId, episodeNum) {
         cacheSet(cacheKey, cached);
       }
     }
+    API_LOGGER.log('info', 'recordPlay', `${seriesId}/${episodeNum}`);
     return data;
   } catch (e) {
     _recordFailCount++;
+    API_LOGGER.log('error', 'recordPlay', `${seriesId}/${episodeNum}`, e);
     return null; // Silently fail - don't interrupt playback
   }
 }
@@ -95,9 +133,15 @@ export async function appreciate(seriesId, episodeNum) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ episodeNum }),
     });
-    if (!r.ok) return null;
-    return await r.json();
+    if (!r.ok) {
+      API_LOGGER.log('error', 'appreciate', `${seriesId}/${episodeNum}`, new Error(`HTTP ${r.status}`));
+      return null;
+    }
+    const data = await r.json();
+    API_LOGGER.log('info', 'appreciate', `${seriesId}/${episodeNum}`);
+    return data;
   } catch (e) {
+    API_LOGGER.log('error', 'appreciate', `${seriesId}/${episodeNum}`, e);
     return null;
   }
 }

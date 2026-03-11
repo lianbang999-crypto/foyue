@@ -70,11 +70,11 @@ export function initInstallPrompt() {
 /* ===== Back Navigation Guard ===== */
 export function initBackGuard(renderCategory, stateRef, { closeFullScreen, getPlaylistVisible, closePlaylist }) {
   const dom = getDOM();
-  if (window.matchMedia('(display-mode: standalone)').matches) return;
-  if (navigator.standalone) return;
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
 
   history.replaceState({ page: 'main' }, '');
   history.pushState({ page: 'guard' }, '');
+  
   window.addEventListener('popstate', (e) => {
     // Let wenku/reader navigation handle its own popstate (handled in main.js)
     const st = e.state;
@@ -104,6 +104,15 @@ export function initBackGuard(renderCategory, stateRef, { closeFullScreen, getPl
       history.pushState({ page: 'guard' }, '');
       return;
     }
+    
+    // ✅ 修复：standalone模式下，在首页时阻止退出，保持guard状态
+    if (isStandalone) {
+      // 已在首页，重新push guard防止退出
+      history.pushState({ page: 'guard' }, '');
+      return;
+    }
+    
+    // 非standalone模式，允许正常返回
     history.pushState({ page: 'guard' }, '');
   });
 }

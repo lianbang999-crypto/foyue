@@ -26,7 +26,12 @@ let bgBlobUrl = '';
 let _networkWeak = false;  // set true on stall or slow connection detection
 
 export function isNetworkWeak() { return _networkWeak; }
-export function setNetworkWeak(v) { _networkWeak = v; state.networkWeak = v; }
+export function setNetworkWeak(v) {
+  _networkWeak = v;
+  state.networkWeak = v;
+  // ✅ 优化：网络状态变化时更新stall检测间隔
+  updateStallDetectInterval();
+}
 
 /**
  * Detect connection type: 'wifi' | 'cellular' | 'unknown'
@@ -47,7 +52,17 @@ export function getConnType() {
 let stallTimer = null;       // Timer for detecting prolonged stall
 let stallRetries = 0;        // Auto-retry count for stalls
 const MAX_STALL_RETRIES = 3;
-const STALL_DETECT_MS = 12000; // 12s without progress → stalled
+// ✅ 优化：根据网络状况动态调整stall检测间隔
+let STALL_DETECT_MS = 12000; // 默认12s without progress → stalled
+
+function updateStallDetectInterval() {
+  // 根据网络质量动态调整检测间隔
+  if (_networkWeak) {
+    STALL_DETECT_MS = 8000; // 网络弱时缩短到8秒
+  } else {
+    STALL_DETECT_MS = 12000; // 正常情况12秒
+  }
+}
 
 /* ===== Buffering UI helper ===== */
 function setBuffering(on) {
@@ -160,18 +175,26 @@ export function retryPlayback() {
   audioRetries = 0;
   stallRetries = 0;
   setBuffering(true);
-  const currentTime = dom.audio.currentTime;
+
+  // ✅ 修复seek竞态：保存当前位置，使用pendingSeek机制
+  const savedTime = dom.audio.currentTime;
+  pendingSeek = savedTime; // 使用全局pendingSeek变量，避免竞态
+
   dom.audio.load();
   dom.audio.play().then(() => {
     setBuffering(false);
     setPlayState(true);
-    if (currentTime > 0) dom.audio.currentTime = currentTime;
+    // ✅ seek操作由playCurrent()中的pendingSeek机制处理，避免竞态
   }).catch(() => {
     // Fall back to waiting for canplay
     dom.audio.addEventListener('canplay', function onReady() {
       dom.audio.removeEventListener('canplay', onReady);
       setBuffering(false);
-      if (currentTime > 0) dom.audio.currentTime = currentTime;
+      // ✅ 使用pendingSeek而不是直接设置currentTime
+      if (pendingSeek > 0) {
+        dom.audio.currentTime = pendingSeek;
+        pendingSeek = 0; // 清除pendingSeek
+      }
       dom.audio.play().then(() => setPlayState(true)).catch(() => {
         setBuffering(false);
         setErrorState(t('error_tap_retry'));
@@ -262,6 +285,14 @@ function cleanupReadyListeners(dom) {
 function playCurrent() {
   const dom = getDOM();
   if (state.epIdx < 0 || state.epIdx >= state.playlist.length) return;
+
+  // ✅ 修复Blob URL内存泄漏：在切换音频前释放旧的Blob URL
+  const oldBlobUrl = dom.audio._cachedBlobUrl;
+  if (oldBlobUrl) {
+    URL.revokeObjectURL(oldBlobUrl);
+    dom.audio._cachedBlobUrl = null;
+  }
+
   isSwitching = true;
   audioRetries = 0;
   stallRetries = 0;
@@ -296,7 +327,11 @@ function playCurrent() {
   // ✅ Offline playback: async check cache, swap to blob URL if found
   if (!usePreloaded) {
     getCachedAudioUrl(tr.url).then(cachedUrl => {
-      if (callId !== _playCurrentId) { if (cachedUrl) URL.revokeObjectURL(cachedUrl); return; }
+      if (callId !== _playCurrentId) {
+        // ✅ 修复：过期的Blob URL也要释放
+        if (cachedUrl) URL.revokeObjectURL(cachedUrl);
+        return;
+      }
       if (cachedUrl) {
         const pos = dom.audio.currentTime;
         const rate = dom.audio.playbackRate;
@@ -905,13 +940,17 @@ export function preloadNextTrack() {
     console.warn('[Preload] Failed to preload:', nurl);
     cleanupPreload();
   });
-  // Timeout: if preload hasn't loaded enough data in 30s, discard it
+  // ✅ 优化：根据网络状况动态调整预加载超时时间
+  // 网络弱时缩短超时，避免占用带宽；网络好时延长超时，提高成功率
+  const timeoutMs = _networkWeak ? 20000 : 30000;
+
+  // Timeout: if preload hasn't loaded enough data, discard it
   preloadAudio._preloadTimeout = setTimeout(() => {
     if (preloadAudio && preloadAudio.readyState < 2) {
       console.warn('[Preload] Timeout, discarding stalled preload');
       cleanupPreload();
     }
-  }, 30000);
+  }, timeoutMs);
 }
 
 export function cleanupPreload() {
@@ -1150,7 +1189,7 @@ export function renderPlaylistItems() {
       if (pct > 0 && pct < 100) metaHTML += `<span class="pl-item-progress">${t('pl_played')}${pct}%</span>`;
     }
 
-    div.innerHTML = `<span class="pl-item-num">${realIdx + 1}</span><div class="pl-item-body"><div class="pl-item-title">${tr.title || tr.fileName}</div>${metaHTML ? '<div class="pl-item-meta">' + metaHTML + '</div>' : ''}</div>`;
+    div.innerHTML = `<span class="pl-item-num">${realIdx + 1}</span><div class="pl-item-body"><div class="pl-item-title">${escapeHtml(tr.title || tr.fileName)}</div>${metaHTML ? '<div class="pl-item-meta">' + metaHTML + '</div>' : ''}</div>`;
     div.addEventListener('click', () => { haptic(); state.epIdx = realIdx; playCurrent(); });
     frag.appendChild(div);
   });
@@ -1189,7 +1228,7 @@ function renderHistoryTab(dom) {
     let metaHTML = '';
     if (h.duration > 0) metaHTML += `<span class="pl-item-duration">${fmt(h.duration)}</span>`;
     if (pct > 0) metaHTML += `<span class="pl-item-progress">${t('pl_played')}${pct}%</span>`;
-    div.innerHTML = `<span class="pl-item-num">\u25B6</span><div class="pl-item-body"><div class="pl-item-title">${h.epTitle}</div><div class="pl-hist-sub">${h.seriesTitle}${h.speaker ? ' \u00B7 ' + h.speaker : ''}</div>${metaHTML ? '<div class="pl-item-meta">' + metaHTML + '</div>' : ''}</div>`;
+    div.innerHTML = `<span class="pl-item-num">\u25B6</span><div class="pl-item-body"><div class="pl-item-title">${escapeHtml(h.epTitle)}</div><div class="pl-hist-sub">${escapeHtml(h.seriesTitle)}${h.speaker ? ' \u00B7 ' + escapeHtml(h.speaker) : ''}</div>${metaHTML ? '<div class="pl-item-meta">' + metaHTML + '</div>' : ''}</div>`;
     div.addEventListener('click', () => {
       haptic();
       if (!state.data) return;

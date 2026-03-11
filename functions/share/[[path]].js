@@ -14,8 +14,9 @@ const CRAWLERS = /facebookexternalhit|Facebot|Twitterbot|LinkedInBot|Slackbot|Te
 
 const SITE_NAME = '净土法音';
 const SITE_DESC = '净土法音 · 听经闻法 念佛修行';
-const SITE_URL = 'https://amituofo.pages.dev';
-const OG_IMAGE = 'https://amituofo.pages.dev/icons/icon-512.png';
+// ✅ 修复：更新为正确的域名
+const SITE_URL = 'https://foyue.org';
+const OG_IMAGE = 'https://foyue.org/icons/icon-512.png';
 
 export async function onRequest(context) {
   const { request, env } = context;

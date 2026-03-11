@@ -1,0 +1,39 @@
+{
+  "project": "foyue",
+  "description": "foyue 项目",
+  "mcp": {
+    "required": [
+      {
+        "name": "filesystem",
+        "config": {
+          "rootPath": "/Users/bincai/lianbang999/foyue"
+        }
+      },
+      {
+        "name": "github",
+        "config": {}
+      },
+      {
+        "name": "sequential-thinking",
+        "config": {}
+      },
+      {
+        "name": "memory",
+        "config": {}
+      }
+    ],
+    "optional": [
+      {
+        "name": "brave-search",
+        "config": {}
+      }
+    ],
+    "development": [
+      {
+        "name": "playwright",
+        "config": {}
+      }
+    ]
+  },
+  "environment": {}
+}

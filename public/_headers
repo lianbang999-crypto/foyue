@@ -32,7 +32,7 @@
 
 # API responses are handled by the Worker (functions/api), not this file
 
-# Audio files optimization
+# Audio files optimization (if served from main domain)
 /*.mp3
   Cache-Control: public, max-age=2592000, immutable
   Accept-Ranges: bytes
@@ -43,20 +43,6 @@
   Accept-Ranges: bytes
   Access-Control-Allow-Origin: *
 
-# Audio subdomain optimization (MP3)
-audio.foyue.org/*
-  Cache-Control: public, max-age=2592000, immutable
-  Accept-Ranges: bytes
-  Access-Control-Allow-Origin: https://foyue.org
-  Timing-Allow-Origin: https://foyue.org
-
-# Audio subdomain optimization (Opus)
-opus.foyue.org/*
-  Cache-Control: public, max-age=2592000, immutable
-  Accept-Ranges: bytes
-  Access-Control-Allow-Origin: https://foyue.org
-  Timing-Allow-Origin: https://foyue.org
-
 # R2 audio files (if using custom domain)
 /audio/*
   Cache-Control: public, max-age=2592000, immutable
@@ -66,3 +52,6 @@ opus.foyue.org/*
 /*
   Link: <https://audio.foyue.org>; rel=preconnect
   Link: <https://opus.foyue.org>; rel=preconnect
+
+# ✅ 注意：audio.foyue.org 和 opus.foyue.org 的缓存头需要在 R2 存储桶配置中设置
+# _headers 文件只对当前域名有效，子域名规则不生效
