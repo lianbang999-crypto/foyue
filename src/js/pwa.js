@@ -13,8 +13,11 @@ export function initInstallPrompt() {
   const iosGuide = document.getElementById('iosGuide');
   const dismissed = localStorage.getItem('pl-install-dismissed');
 
+  // ✅ 如果已经在standalone模式，不显示安装提示
   if (window.matchMedia('(display-mode: standalone)').matches) return;
   if (navigator.standalone) return;
+
+  // ✅ 检查是否在7天内被用户关闭过
   if (dismissed) {
     const ts = parseInt(dismissed, 10);
     if (Date.now() - ts < 7 * 24 * 60 * 60 * 1000) return;
@@ -27,6 +30,7 @@ export function initInstallPrompt() {
   const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|Chrome/.test(ua);
 
+  // ✅ iOS Safari特殊处理
   if (isIOS && isSafari) {
     setTimeout(() => { iosGuide.classList.add('show'); }, 2000);
     document.getElementById('iosGuideClose').addEventListener('click', () => {
@@ -36,21 +40,28 @@ export function initInstallPrompt() {
     return;
   }
 
+  // ✅ 监听beforeinstallprompt事件
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
     banner.classList.add('show');
   });
 
+  // ✅ 安装按钮点击处理
   document.getElementById('installAccept').addEventListener('click', async () => {
     if (deferredPrompt) {
+      // ✅ 浏览器支持自动安装
       deferredPrompt.prompt();
       const result = await deferredPrompt.userChoice;
       deferredPrompt = null;
       banner.classList.remove('show');
-      if (result.outcome === 'accepted') localStorage.setItem('pl-install-dismissed', String(Date.now()));
+      if (result.outcome === 'accepted') {
+        localStorage.setItem('pl-install-dismissed', String(Date.now()));
+        showToast(t('install_success') || '安装成功！');
+      }
     } else {
-      showToast(t('install_menu_hint'));
+      // ✅ 浏览器不支持自动安装，显示手动安装引导
+      showManualInstallGuide();
       banner.classList.remove('show');
     }
   });
@@ -64,7 +75,33 @@ export function initInstallPrompt() {
   window.addEventListener('appinstalled', () => {
     banner.classList.remove('show');
     localStorage.setItem('pl-install-dismissed', String(Date.now()));
+    showToast(t('install_success') || '安装成功！');
   });
+}
+
+// ✅ 新增：显示手动安装引导
+function showManualInstallGuide() {
+  const ua = navigator.userAgent;
+  const isAndroid = /Android/.test(ua);
+  const isChrome = /Chrome/.test(ua) && !/Edg/.test(ua);
+  const isFirefox = /Firefox/.test(ua);
+  const isEdge = /Edg/.test(ua);
+
+  let guide = '';
+
+  if (isAndroid && isChrome) {
+    guide = '请点击浏览器右上角菜单 ⋮ → "添加到主屏幕"';
+  } else if (isAndroid && isFirefox) {
+    guide = '请点击浏览器右上角菜单 ⋮ → "添加到主屏幕"';
+  } else if (isEdge) {
+    guide = '请点击浏览器右上角菜单 ⋯ → "应用" → "将此站点作为应用安装"';
+  } else if (isFirefox) {
+    guide = '请点击浏览器地址栏右侧的安装图标 🏠';
+  } else {
+    guide = t('install_menu_hint') || '请点击浏览器菜单中的"添加到主屏幕"选项';
+  }
+
+  showToast(guide);
 }
 
 /* ===== Back Navigation Guard ===== */
