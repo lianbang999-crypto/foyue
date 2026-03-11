@@ -8,7 +8,7 @@ import {
   retrieveDocuments, rerankResults, expandContextFromDocs,
   ragAnswer, buildRAGMessages, generateSummary,
   checkRateLimit, cleanupRateLimits, timingSafeCompare,
-  extractAIResponse, getAICallStats, logAICall,
+  extractAIResponse, stripThinkTags, getAICallStats, logAICall,
 } from '../lib/ai-utils.js';
 import { buildAudioUrl, OPUS_CATEGORIES } from '../lib/audio-utils.js';
 
@@ -1410,7 +1410,7 @@ async function handleAiAskStream(env, request, cors) {
   try {
     aiStream = await env.AI.run(
       AI_CONFIG.models.chat,
-      { messages, max_tokens: 300, temperature: 0.2, stream: true },
+      { messages, max_tokens: 500, temperature: 0.2, stream: true },
       { gateway: GATEWAY_PROFILES.ragStream }
     );
   } catch (err) {
@@ -1418,7 +1418,7 @@ async function handleAiAskStream(env, request, cors) {
     try {
       aiStream = await env.AI.run(
         AI_CONFIG.models.chatFallback,
-        { messages, max_tokens: 300, temperature: 0.2, stream: true },
+        { messages, max_tokens: 500, temperature: 0.2, stream: true },
         { gateway: GATEWAY_PROFILES.ragStream }
       );
     } catch (err2) {
@@ -1437,6 +1437,9 @@ async function handleAiAskStream(env, request, cors) {
   const sseStream = new ReadableStream({
     async start(controller) {
       let tokenCount = 0;
+      // Track <think>...</think> blocks in stream to suppress them
+      let inThinkBlock = false;
+      let thinkBuffer = '';
       try {
         // env.AI.run with stream:true returns a ReadableStream.
         // The stream contains SSE-formatted text: "data: {...}\n\n"
@@ -1476,8 +1479,38 @@ async function handleAiAskStream(env, request, cors) {
                   || parsed.token
                   || '';
                 if (token) {
-                  tokenCount++;
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token })}\n\n`));
+                  // Filter out <think>...</think> blocks from stream
+                  thinkBuffer += token;
+                  if (inThinkBlock) {
+                    const endIdx = thinkBuffer.indexOf('</think>');
+                    if (endIdx !== -1) {
+                      inThinkBlock = false;
+                      thinkBuffer = thinkBuffer.slice(endIdx + 8);
+                    } else {
+                      continue;
+                    }
+                  }
+                  const startIdx = thinkBuffer.indexOf('<think>');
+                  if (startIdx !== -1) {
+                    const before = thinkBuffer.slice(0, startIdx);
+                    if (before.trim()) {
+                      tokenCount++;
+                      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: before })}\n\n`));
+                    }
+                    const endIdx = thinkBuffer.indexOf('</think>', startIdx);
+                    if (endIdx !== -1) {
+                      thinkBuffer = thinkBuffer.slice(endIdx + 8);
+                    } else {
+                      inThinkBlock = true;
+                      thinkBuffer = '';
+                      continue;
+                    }
+                  }
+                  if (thinkBuffer.trim()) {
+                    tokenCount++;
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: thinkBuffer })}\n\n`));
+                  }
+                  thinkBuffer = '';
                 }
               } catch { /* skip malformed JSON */ }
               continue;
@@ -1523,10 +1556,10 @@ async function handleAiAskStream(env, request, cors) {
           try {
             const fallbackResult = await env.AI.run(
               AI_CONFIG.models.chat,
-              { messages, max_tokens: 300, temperature: 0.2 },
+              { messages, max_tokens: 500, temperature: 0.2 },
               { gateway: GATEWAY_PROFILES.ragChat }
             );
-            const answer = extractAIResponse(fallbackResult);
+            const answer = stripThinkTags(extractAIResponse(fallbackResult));
             if (answer) {
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: answer })}\n\n`));
               tokenCount++;
@@ -1545,10 +1578,10 @@ async function handleAiAskStream(env, request, cors) {
         try {
           const fallbackResult = await env.AI.run(
             AI_CONFIG.models.chat,
-            { messages, max_tokens: 300, temperature: 0.2 },
+            { messages, max_tokens: 500, temperature: 0.2 },
             { gateway: GATEWAY_PROFILES.ragChat }
           );
-          const answer = extractAIResponse(fallbackResult);
+          const answer = stripThinkTags(extractAIResponse(fallbackResult));
           if (answer) {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: answer })}\n\n`));
             tokenCount++;
@@ -1558,10 +1591,10 @@ async function handleAiAskStream(env, request, cors) {
           try {
             const fallback2 = await env.AI.run(
               AI_CONFIG.models.chatFallback,
-              { messages, max_tokens: 300, temperature: 0.2 },
+              { messages, max_tokens: 500, temperature: 0.2 },
               { gateway: GATEWAY_PROFILES.ragChat }
             );
-            const answer2 = extractAIResponse(fallback2);
+            const answer2 = stripThinkTags(extractAIResponse(fallback2));
             if (answer2) {
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: answer2 })}\n\n`));
               tokenCount++;

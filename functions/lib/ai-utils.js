@@ -345,6 +345,12 @@ export function extractAIResponse(result) {
   return null;
 }
 
+// Strip Qwen3 <think>...</think> blocks from output
+export function stripThinkTags(text) {
+  if (!text) return text;
+  return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+}
+
 // ============================================================
 // RAG 问答 — 检索增强生成
 // ============================================================
@@ -377,7 +383,8 @@ export async function ragAnswer(env, question, contextDocs, options = {}) {
     }
   }
 
-  const systemPrompt = `你是佛学文库搜索助手，根据用户问题从下方资料中找出最相关的原文段落并直接引用回答。不要输出分析过程，不要自己创作内容，只引用资料原文。回答简短，不超150字。如果资料中没有相关内容就回复"未找到相关内容"。回答末尾另起一行写：[FOLLOWUP]相关问题一|相关问题二[/FOLLOWUP]
+  const systemPrompt = `/no_think
+你是佛学文库搜索助手，根据用户问题从下方资料中找出最相关的原文段落并直接引用回答。不要输出分析过程，不要自己创作内容，只引用资料原文。回答简短，不超150字。如果资料中没有相关内容就回复"未找到相关内容"。回答末尾另起一行写：[FOLLOWUP]相关问题一|相关问题二[/FOLLOWUP]
 
 资料：
 ${context}`;
@@ -396,7 +403,7 @@ ${context}`;
       AI_CONFIG.models.chat,
       {
         messages,
-        max_tokens: 300,
+        max_tokens: 500,
         temperature: 0.2,
       },
       { gateway: GATEWAY_PROFILES.ragChat }
@@ -407,14 +414,14 @@ ${context}`;
       AI_CONFIG.models.chatFallback,
       {
         messages,
-        max_tokens: 300,
+        max_tokens: 500,
         temperature: 0.2,
       },
       { gateway: GATEWAY_PROFILES.ragChat }
     );
   }
 
-  return { response: extractAIResponse(response) };
+  return { response: stripThinkTags(extractAIResponse(response)) };
 }
 
 // ============================================================
@@ -447,7 +454,8 @@ export function buildRAGMessages(question, contextDocs, options = {}) {
     }
   }
 
-  const systemPrompt = `你是佛学文库搜索助手，根据用户问题从下方资料中找出最相关的原文段落并直接引用回答。不要输出分析过程，不要自己创作内容，只引用资料原文。回答简短，不超150字。如果资料中没有相关内容就回复"未找到相关内容"。回答末尾另起一行写：[FOLLOWUP]相关问题一|相关问题二[/FOLLOWUP]
+  const systemPrompt = `/no_think
+你是佛学文库搜索助手，根据用户问题从下方资料中找出最相关的原文段落并直接引用回答。不要输出分析过程，不要自己创作内容，只引用资料原文。回答简短，不超150字。如果资料中没有相关内容就回复"未找到相关内容"。回答末尾另起一行写：[FOLLOWUP]相关问题一|相关问题二[/FOLLOWUP]
 
 资料：
 ${context}`;
