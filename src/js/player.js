@@ -366,7 +366,11 @@ function playCurrent() {
   }, switchTimeout);
 
   function tryPlay() {
-    if (callId !== _playCurrentId) return; // stale callback from previous switch
+    if (callId !== _playCurrentId) {
+      // ✅ 修复：早期返回时也要清除buffering状态
+      setBuffering(false);
+      return; // stale callback from previous switch
+    }
     setBuffering(false);
     if (seekTime > 0) dom.audio.currentTime = seekTime;
     dom.audio.play().then(() => {
@@ -381,6 +385,7 @@ function playCurrent() {
     }).catch(err => {
       clearTimeout(switchingTimeout);
       isSwitching = false;
+      setBuffering(false); // ✅ 修复：播放失败也要清除buffering状态
       if (callId === _playCurrentId && err.name !== 'AbortError') {
         setPlayState(false);
       }

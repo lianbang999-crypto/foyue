@@ -146,10 +146,36 @@ function renderFallbackRecs(recList) {
 }
 
 /* ---------- Async loader for AI daily recommendations ---------- */
+const DAILY_REC_CACHE_KEY = 'daily-rec-cache';
+const DAILY_REC_CACHE_DURATION = 6 * 60 * 60 * 1000; // 6小时
+
 async function loadDailyRecommendations(page) {
   const recList = page.querySelector('#homeRecList');
   if (!recList) return;
 
+  const todayDate = new Date().toISOString().slice(0, 10);
+
+  // 1. 先检查本地缓存
+  try {
+    const cached = localStorage.getItem(DAILY_REC_CACHE_KEY);
+    if (cached) {
+      const { date, recommendations, timestamp } = JSON.parse(cached);
+      const age = Date.now() - timestamp;
+
+      // 如果是今天且未过期
+      if (date === todayDate && age < DAILY_REC_CACHE_DURATION && recommendations && recommendations.length) {
+        // 立即渲染缓存内容
+        const recs = personalizeOrder(recommendations);
+        recList.innerHTML = recs.map(renderAiRecCard).join('');
+        wireAiRecClicks(recList);
+        return; // 使用缓存，不请求API
+      }
+    }
+  } catch (e) {
+    console.warn('[Home] Cache read error:', e);
+  }
+
+  // 2. 没有缓存或过期，请求API
   let attempts = 0;
   const maxAttempts = 3;
 
@@ -178,6 +204,17 @@ async function loadDailyRecommendations(page) {
       // Render
       recList.innerHTML = recs.map(renderAiRecCard).join('');
       wireAiRecClicks(recList);
+
+      // 3. 存储到本地缓存
+      try {
+        localStorage.setItem(DAILY_REC_CACHE_KEY, JSON.stringify({
+          date: result.date,
+          recommendations: result.recommendations,
+          timestamp: Date.now()
+        }));
+      } catch (e) {
+        console.warn('[Home] Cache write error:', e);
+      }
     } catch (err) {
       console.warn('[Home] AI recommendation fetch failed:', err);
       renderFallbackRecs(recList);
