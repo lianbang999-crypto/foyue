@@ -52,6 +52,11 @@ self.addEventListener('activate', event => {
           .map(k => caches.delete(k))
       )
     ).then(() => self.clients.claim())
+      .then(async () => {
+        // Notify all open clients that a new version is available
+        const clients = await self.clients.matchAll({ type: 'window' });
+        clients.forEach(c => c.postMessage({ type: 'app-updated', version: CACHE_VERSION }));
+      })
   );
 });
 
@@ -163,7 +168,11 @@ self.addEventListener('fetch', event => {
             return response;
           }).catch(err => {
             console.warn('[SW] Data fetch failed:', err);
-            return null;
+            // Return offline error response (cannot return null — invalid for respondWith)
+            return cached || new Response('{"error":"offline"}', {
+              status: 503,
+              headers: { 'Content-Type': 'application/json' },
+            });
           });
 
           // Return cached response immediately if available; otherwise wait for network

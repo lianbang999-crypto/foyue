@@ -575,6 +575,7 @@ async function loadData() {
       // ✅ 修复：缓存模式下也处理深链接
       handleSeriesDeepLink();
       handleWenkuDeepLink();
+      handleTabDeepLink();
       // Refresh in background (non-blocking)
       fetchFreshData();
       // Handle ?tab=ai deep link
@@ -600,6 +601,8 @@ async function loadData() {
     handleSeriesDeepLink();
     // Handle ?wenku= and ?doc= deep links
     handleWenkuDeepLink();
+    // Handle ?tab= deep links (including PWA shortcuts)
+    handleTabDeepLink();
     // Handle ?tab=ai deep link
     checkAiDeepLink();
   } catch (e) {
@@ -698,6 +701,13 @@ if ('serviceWorker' in navigator) {
         saveCachedData(fresh, freshHash);
         invalidateHomePage();
         if (state.tab === 'home') renderHomePage();
+      }
+    }
+    // New service worker activated — show update notice if user is not currently playing
+    if (event.data?.type === 'app-updated') {
+      const dom = getDOM();
+      if (dom.audio.paused) {
+        showToast(t('app_updated'));
       }
     }
   });
@@ -804,4 +814,28 @@ function handleWenkuDeepLink() {
       }, { skipPush: true });
     });
   }
+}
+
+/* ===== TAB DEEP LINK — from PWA shortcuts or external links ===== */
+// Handles ?tab=home, ?tab=tingjingtai, ?tab=youshengshu, ?tab=mypage
+// ?tab=ai is handled by checkAiDeepLink(); ?tab=wenku is handled by handleWenkuDeepLink()
+function handleTabDeepLink() {
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get('tab');
+  if (!tab) return;
+  const validTabs = ['home', 'tingjingtai', 'youshengshu', 'mypage'];
+  if (!validTabs.includes(tab)) return;
+  const TAB_I18N = { home: 'tab_home', tingjingtai: 'tab_lectures', youshengshu: 'tab_audiobooks', mypage: 'tab_my' };
+  state.tab = tab;
+  const dom = getDOM();
+  document.querySelectorAll('.tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tab);
+    b.setAttribute('aria-selected', String(b.dataset.tab === tab));
+  });
+  dom.navTitle.textContent = t(TAB_I18N[tab] || 'tab_home');
+  dom.navTitle.dataset.i18n = TAB_I18N[tab] || 'tab_home';
+  window.history.replaceState({}, '', window.location.pathname);
+  if (tab === 'mypage') renderMyPage();
+  else if (tab === 'home') renderHomePage();
+  else renderCategory(tab);
 }

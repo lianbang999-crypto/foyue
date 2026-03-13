@@ -8,7 +8,7 @@ import { playList } from './player.js';
 import { getDeferredPrompt, clearDeferredPrompt } from './pwa.js';
 import { showToast, escapeHtml } from './utils.js';
 import { renderMessageWall } from './message-wall.js';
-import { getCachedCount, clearAudioCache } from './audio-cache.js';
+import { getCachedCount, getCachedSize, clearAudioCache } from './audio-cache.js';
 
 function fmtRelTime(ts) {
   const d = Date.now() - ts;
@@ -158,12 +158,16 @@ export function renderMyPage() {
   });
   page.querySelector('#myMessagesCard').addEventListener('click', () => showMessageWallSubview());
 
-  // Cache cleanup item — show count, tap to clear directly; hidden when empty
+  // Cache cleanup item — show count + size, tap to clear directly; hidden when empty
   const cacheItemEl = page.querySelector('#myCacheItem');
   const cacheSizeEl = page.querySelector('#myCacheSize');
   cacheItemEl.style.display = 'none';
-  getCachedCount().then(n => {
-    if (n > 0) { cacheSizeEl.textContent = t('my_cache_size').replace('{n}', n); cacheItemEl.style.display = ''; }
+  Promise.all([getCachedCount(), getCachedSize()]).then(([n, bytes]) => {
+    if (n > 0) {
+      const mb = (bytes / (1024 * 1024)).toFixed(1);
+      cacheSizeEl.textContent = t('my_cache_size').replace('{n}', n) + ' · ' + mb + ' MB';
+      cacheItemEl.style.display = '';
+    }
   });
   cacheItemEl.addEventListener('click', async () => {
     await clearAudioCache();

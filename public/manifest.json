@@ -8,6 +8,7 @@
   "theme_color": "#F7F2EA",
   "orientation": "portrait",
   "id": "/",
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/icons/icon-192.png",
@@ -32,6 +33,29 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "佛号念诵",
+      "short_name": "佛号",
+      "description": "东林念佛堂佛号音频",
+      "url": "/?tab=home",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "听经台",
+      "short_name": "讲经",
+      "description": "大安法师讲经系列",
+      "url": "/?tab=tingjingtai",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "AI 问法",
+      "short_name": "问法",
+      "description": "AI 佛法问答助手",
+      "url": "/?tab=ai",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     }
   ],
   "screenshots": [
