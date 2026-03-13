@@ -111,7 +111,14 @@ function closeWenkuReader() {
       document.querySelectorAll('.tab').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
       btn.classList.add('active'); btn.setAttribute('aria-selected', 'true');
       state.tab = btn.dataset.tab; state.seriesId = null;
-      dom.navTitle.textContent = t(TAB_I18N[state.tab] || 'tab_lectures');
+      
+  // Add scroll listener for translucent header
+  dom.contentArea.addEventListener('scroll', () => {
+    const isScrolled = dom.contentArea.scrollTop > 10;
+    dom.header.classList.toggle('scrolled', isScrolled);
+  }, { passive: true });
+
+  dom.navTitle.textContent = t(TAB_I18N[state.tab] || 'tab_lectures');
       dom.navTitle.dataset.i18n = TAB_I18N[state.tab] || 'tab_lectures';
       if (state.tab === 'mypage') { renderMyPage(); }
       else if (state.tab === 'home') { renderHomePage(); }
