@@ -118,6 +118,36 @@ function closeWenkuReader() {
     dom.header.classList.toggle('scrolled', isScrolled);
   }, { passive: true });
 
+  // ✅ Wire up audio playback indicator in header
+  const navAudioIndicator = document.getElementById('navAudioIndicator');
+  if (navAudioIndicator) {
+    // Show/hide and update animation based on playback state
+    const updateAudioIndicator = () => {
+      if (dom.audio.src && !dom.audio.paused) {
+        navAudioIndicator.style.display = 'flex';
+        navAudioIndicator.classList.remove('paused');
+      } else if (dom.audio.src) {
+        navAudioIndicator.style.display = 'flex';
+        navAudioIndicator.classList.add('paused');
+      } else {
+        navAudioIndicator.style.display = 'none';
+      }
+    };
+
+    // Click to open player
+    navAudioIndicator.addEventListener('click', () => {
+      if (dom.audio.src) {
+        dom.expPlayer.classList.add('show');
+      }
+    });
+
+    // Update on audio events
+    dom.audio.addEventListener('play', updateAudioIndicator);
+    dom.audio.addEventListener('pause', updateAudioIndicator);
+    dom.audio.addEventListener('loadstart', updateAudioIndicator);
+    dom.audio.addEventListener('emptied', updateAudioIndicator);
+  }
+
   dom.navTitle.textContent = t(TAB_I18N[state.tab] || 'tab_lectures');
       dom.navTitle.dataset.i18n = TAB_I18N[state.tab] || 'tab_lectures';
       if (state.tab === 'mypage') { renderMyPage(); }
