@@ -30,7 +30,7 @@ import {
   retryPlayback, startStallWatch, clearStallWatch,
   onVisibilityResume, setNetworkWeak,
 } from './player.js';
-import { renderHomePage } from './pages-home.js';
+import { renderHomePage, invalidateHomePage } from './pages-home.js';
 import { renderMyPage } from './pages-my.js';
 // ✅ 修复代码分割警告：统一使用动态导入，避免静态和动态导入混用
 // import { renderCategory, showEpisodes } from './pages-category.js';
@@ -663,6 +663,9 @@ async function fetchFreshData() {
     if (freshHash !== cachedHash || cachedHash === null) {
       state.data = fresh;
       saveCachedData(fresh, freshHash);
+      // Invalidate cached home page so it rebuilds with updated data
+      invalidateHomePage();
+      if (state.tab === 'home') renderHomePage();
     } else {
       // Data unchanged — just refresh the timestamp so TTL doesn't expire
       saveCachedData(fresh, freshHash);

@@ -7,6 +7,60 @@ import { playList, togglePlay, getIsSwitching } from './player.js';
 import { getDailyRecommendation } from './ai-client.js';
 import { getHistory } from './history.js';
 
+/* ===== Home Page DOM Cache ===== */
+// Keep the home page element alive across tab switches to avoid full re-renders.
+let _homePageEl = null;
+let _homeAudioListenerFn = null;
+
+/** Call when category data changes so home page rebuilds on next visit. */
+export function invalidateHomePage() {
+  detachHomeAudioListeners();
+  _homePageEl = null;
+}
+
+function detachHomeAudioListeners() {
+  if (_homeAudioListenerFn) {
+    try {
+      const dom = getDOM();
+      dom.audio.removeEventListener('play', _homeAudioListenerFn);
+      dom.audio.removeEventListener('pause', _homeAudioListenerFn);
+    } catch (e) { /* DOM may not be ready */ }
+    _homeAudioListenerFn = null;
+  }
+}
+
+/** Attach play/pause listeners that update home-page play-state indicators. */
+function attachHomeAudioListeners(page) {
+  detachHomeAudioListeners();
+  const dom = getDOM();
+
+  function updateHomePlayState() {
+    if (getIsSwitching()) return;
+    const curSid = state.epIdx >= 0 && state.playlist.length
+      ? state.playlist[state.epIdx].seriesId : null;
+    const playing = !dom.audio.paused;
+    const contCard = page.querySelector('.home-continue-card');
+    if (contCard) {
+      const sid = contCard.dataset.sid;
+      const idx = parseInt(contCard.dataset.idx) || 0;
+      const active = curSid === sid && state.epIdx === idx && playing;
+      contCard.classList.toggle('playing', active);
+      const iconEl = contCard.querySelector('.home-continue-icon');
+      if (iconEl) iconEl.innerHTML = active ? ICON_PAUSE : ICON_PLAY;
+    }
+    page.querySelectorAll('.home-chant-card').forEach(card => {
+      const idx = parseInt(card.dataset.fhIdx);
+      card.classList.toggle('playing',
+        curSid === 'donglin-fohao' && state.epIdx === idx && playing);
+    });
+  }
+
+  dom.audio.addEventListener('play', updateHomePlayState);
+  dom.audio.addEventListener('pause', updateHomePlayState);
+  _homeAudioListenerFn = updateHomePlayState;
+  return updateHomePlayState;
+}
+
 const DAILY_QUOTES = [
   { zh: '若人但念阿弥陀，是名无上深妙禅。', en: 'To recite Amitabha is the supreme and profound meditation.', author: '永明延寿大师' },
   { zh: '得生与否，全由信愿之有无；品位高下，全由持名之深浅。', en: 'Rebirth depends on faith and vows; the grade depends on the depth of recitation.', author: '蕅益大师' },
@@ -82,27 +136,29 @@ function personalizeOrder(recs) {
   return scored.map(({ _score, ...rest }) => rest);
 }
 
-/* ---------- Wire click handlers on AI rec cards ---------- */
+/* ---------- Wire click handlers on AI rec cards (event delegation) ---------- */
 function wireAiRecClicks(container) {
-  container.querySelectorAll('.home-rec-card[data-epnum]').forEach(card => {
-    card.addEventListener('click', () => {
-      const sid = card.dataset.sid;
-      const catId = card.dataset.cat;
-      const epNum = parseInt(card.dataset.epnum);
-
-      for (const cat of state.data.categories) {
-        const sr = cat.series.find(s => s.id === sid);
-        if (sr) {
-          const epIdx = sr.episodes.findIndex(ep => ep.id === epNum);
-          const idx = epIdx >= 0 ? epIdx : Math.max(0, epNum - 1);
-          import('./pages-category.js').then(mod => {
-            mod.showEpisodes(sr, catId);
-            playList(sr.episodes, idx, sr);
-          });
-          return;
-        }
+  // Use a flag to avoid attaching duplicate listeners when re-rendering into the same element.
+  if (container._aiRecClickWired) return;
+  container._aiRecClickWired = true;
+  container.addEventListener('click', e => {
+    const card = e.target.closest('.home-rec-card[data-epnum]');
+    if (!card) return;
+    const sid = card.dataset.sid;
+    const catId = card.dataset.cat;
+    const epNum = parseInt(card.dataset.epnum);
+    for (const cat of state.data.categories) {
+      const sr = cat.series.find(s => s.id === sid);
+      if (sr) {
+        const epIdx = sr.episodes.findIndex(ep => ep.id === epNum);
+        const idx = epIdx >= 0 ? epIdx : Math.max(0, epNum - 1);
+        import('./pages-category.js').then(mod => {
+          mod.showEpisodes(sr, catId);
+          playList(sr.episodes, idx, sr);
+        });
+        return;
       }
-    });
+    }
   });
 }
 
@@ -149,33 +205,140 @@ function renderFallbackRecs(recList) {
 const DAILY_REC_CACHE_KEY = 'daily-rec-cache';
 const DAILY_REC_CACHE_DURATION = 6 * 60 * 60 * 1000; // 6小时
 
+/** Synchronously read cached recommendations if still fresh (returns array or null). */
+function getCachedRecs() {
+  try {
+    const raw = localStorage.getItem(DAILY_REC_CACHE_KEY);
+    if (!raw) return null;
+    const { date, recommendations, timestamp } = JSON.parse(raw);
+    const todayDate = new Date().toISOString().slice(0, 10);
+    if (date === todayDate && Date.now() - timestamp < DAILY_REC_CACHE_DURATION
+        && recommendations && recommendations.length) {
+      return recommendations;
+    }
+  } catch (e) { /* ignore */ }
+  return null;
+}
+
+/** Build the HTML for the continue-listening / new-user-guide section. */
+function buildDynamicSectionHtml() {
+  const dom = getDOM();
+  let html = '';
+  let hasPlayHistory = false;
+  try {
+    const st = JSON.parse(localStorage.getItem('pl-state'));
+    if (st && st.seriesId) {
+      let cSeries = null, cCat = null;
+      for (const c of state.data.categories) {
+        const s = c.series.find(x => x.id === st.seriesId);
+        if (s) { cSeries = s; cCat = c; break; }
+      }
+      if (cSeries) {
+        hasPlayHistory = true;
+        const cIdx = st.idx || 0;
+        const ep = cSeries.episodes[cIdx];
+        const epTitle = ep ? (ep.title || ep.fileName) : '';
+        const pct = st.duration > 0
+          ? Math.min(100, Math.round((st.time || 0) / st.duration * 100)) : 0;
+        const nowSid = state.epIdx >= 0 && state.playlist.length
+          ? state.playlist[state.epIdx].seriesId : null;
+        const isPlaying = nowSid === st.seriesId && state.epIdx === cIdx && !dom.audio.paused;
+        const icon = isPlaying ? ICON_PAUSE : ICON_PLAY;
+        html += `<div class="home-section home-section-tight"><div class="home-section-title">${t('home_continue')}</div>
+          <div class="home-continue-card${isPlaying ? ' playing' : ''}" data-sid="${cSeries.id}" data-cat="${cCat.id}" data-idx="${cIdx}" data-time="${st.time || 0}">
+            <div class="home-continue-icon">${icon}</div>
+            <div class="home-continue-body">
+              <div class="home-continue-title">${cSeries.title}</div>
+              <div class="home-continue-sub">${epTitle} · ${cIdx + 1}/${cSeries.totalEpisodes}</div>
+            </div>
+            <div class="home-continue-progress"><div class="home-continue-progress-fill" style="width:${pct}%"></div></div>
+          </div>
+        </div>`;
+      }
+    }
+  } catch (e) { /* ignore */ }
+
+  if (!hasPlayHistory) {
+    html += `<div class="home-section home-section-tight">
+      <div class="home-guide-card" id="homeGuide">
+        <div class="home-guide-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg></div>
+        <div class="home-guide-body">
+          <div class="home-guide-title">${t('home_guide_title')}</div>
+          <div class="home-guide-sub">${t('home_guide_desc')}</div>
+        </div>
+      </div>
+    </div>`;
+  }
+  return html;
+}
+
+/** Wire the continue-card click handler (called after each dynamic section rebuild). */
+function wireContinueCard(page) {
+  const contCard = page.querySelector('.home-continue-card');
+  if (!contCard) return;
+  contCard.addEventListener('click', () => {
+    const dom = getDOM();
+    const sid = contCard.dataset.sid;
+    const catId = contCard.dataset.cat;
+    const idx = parseInt(contCard.dataset.idx) || 0;
+    const restoreTime = parseFloat(contCard.dataset.time) || 0;
+    const curSid = state.epIdx >= 0 && state.playlist.length
+      ? state.playlist[state.epIdx].seriesId : null;
+    if (curSid === sid && state.epIdx === idx) {
+      dom.expPlayer.classList.add('show');
+      return;
+    }
+    const cat = state.data.categories.find(c => c.id === catId);
+    if (cat) {
+      const sr = cat.series.find(s => s.id === sid);
+      if (sr) {
+        playList(sr.episodes, idx, sr, restoreTime);
+        dom.expPlayer.classList.add('show');
+      }
+    }
+  });
+}
+
+/** Refresh only the continue/guide section inside the cached home page element. */
+function refreshDynamicSection(page) {
+  const dynWrap = page.querySelector('#homeDynamic');
+  if (!dynWrap) return;
+  dynWrap.innerHTML = buildDynamicSectionHtml();
+  wireContinueCard(page);
+}
+
 async function loadDailyRecommendations(page) {
   const recList = page.querySelector('#homeRecList');
   if (!recList) return;
 
+  // If the list already contains real (non-skeleton) cards, the content was
+  // pre-rendered from cache.  Just ensure click delegation is wired and bail.
+  if (recList.querySelector('.home-rec-card:not(.home-rec-skeleton)')) {
+    wireAiRecClicks(recList);
+    return;
+  }
+
   const todayDate = new Date().toISOString().slice(0, 10);
 
-  // 1. 先检查本地缓存
+  // 1. Check local cache
   try {
     const cached = localStorage.getItem(DAILY_REC_CACHE_KEY);
     if (cached) {
       const { date, recommendations, timestamp } = JSON.parse(cached);
       const age = Date.now() - timestamp;
-
-      // 如果是今天且未过期
-      if (date === todayDate && age < DAILY_REC_CACHE_DURATION && recommendations && recommendations.length) {
-        // 立即渲染缓存内容
+      if (date === todayDate && age < DAILY_REC_CACHE_DURATION
+          && recommendations && recommendations.length) {
         const recs = personalizeOrder(recommendations);
         recList.innerHTML = recs.map(renderAiRecCard).join('');
         wireAiRecClicks(recList);
-        return; // 使用缓存，不请求API
+        return;
       }
     }
   } catch (e) {
     console.warn('[Home] Cache read error:', e);
   }
 
-  // 2. 没有缓存或过期，请求API
+  // 2. No valid cache — fetch from API
   let attempts = 0;
   const maxAttempts = 3;
 
@@ -183,7 +346,6 @@ async function loadDailyRecommendations(page) {
     try {
       const result = await getDailyRecommendation();
 
-      // Still generating — retry
       if (result.generating && attempts < maxAttempts) {
         attempts++;
         setTimeout(tryLoad, 3000);
@@ -191,21 +353,15 @@ async function loadDailyRecommendations(page) {
       }
 
       let recs = result.recommendations;
-
-      // No AI recs — fallback
       if (!recs || !recs.length) {
         renderFallbackRecs(recList);
         return;
       }
 
-      // Personalize order
       recs = personalizeOrder(recs);
-
-      // Render
       recList.innerHTML = recs.map(renderAiRecCard).join('');
       wireAiRecClicks(recList);
 
-      // 3. 存储到本地缓存
       try {
         localStorage.setItem(DAILY_REC_CACHE_KEY, JSON.stringify({
           date: result.date,
@@ -227,78 +383,35 @@ async function loadDailyRecommendations(page) {
 /* ========== MAIN RENDER ========== */
 export function renderHomePage() {
   const dom = getDOM();
-  const lang = getLang();
   dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
+
+  // ── Fast path: reuse cached home page element ──
+  if (_homePageEl) {
+    refreshDynamicSection(_homePageEl);     // Update continue/guide card
+    dom.contentArea.appendChild(_homePageEl);
+    const updateFn = attachHomeAudioListeners(_homePageEl);
+    updateFn();                             // Sync play-state indicators immediately
+    loadDailyRecommendations(_homePageEl);  // No-op if content already rendered + cache fresh
+    return;
+  }
+
+  // ── Full render (first visit this session) ──
+  const lang = getLang();
   const page = document.createElement('div');
   page.className = 'home-page active';
 
-  // 1. Daily Quote
+  // Daily Quote
   const dayIdx = Math.floor(Date.now() / 86400000) % DAILY_QUOTES.length;
   const quote = DAILY_QUOTES[dayIdx];
   const quoteText = lang === 'zh' ? quote.zh : quote.en;
 
-  // 2. Chanting data
+  // Chanting data
   const fohaoCat = state.data.categories.find(c => c.id === 'fohao');
   const fohaoSeries = fohaoCat ? fohaoCat.series.find(s => s.id === 'donglin-fohao') : null;
   const fohaoEps = fohaoSeries ? fohaoSeries.episodes : [];
-  const nowSid = state.epIdx >= 0 && state.playlist.length ? state.playlist[state.epIdx].seriesId : null;
+  const nowSid = state.epIdx >= 0 && state.playlist.length
+    ? state.playlist[state.epIdx].seriesId : null;
 
-  // 3. Continue listening (or new user guide)
-  let continueHtml = '';
-  let hasPlayHistory = false;
-  try {
-    const st = JSON.parse(localStorage.getItem('pl-state'));
-    if (st && st.seriesId) {
-      let cSeries = null, cCat = null;
-      for (const c of state.data.categories) { const s = c.series.find(x => x.id === st.seriesId); if (s) { cSeries = s; cCat = c; break; } }
-      if (cSeries) {
-        hasPlayHistory = true;
-        const cIdx = st.idx || 0;
-        const ep = cSeries.episodes[cIdx];
-        const epTitle = ep ? (ep.title || ep.fileName) : '';
-        const pct = st.duration > 0 ? Math.min(100, Math.round((st.time || 0) / st.duration * 100)) : 0;
-        const isPlaying = nowSid === st.seriesId && state.epIdx === cIdx && !dom.audio.paused;
-        const icon = isPlaying ? ICON_PAUSE : ICON_PLAY;
-        continueHtml = `<div class="home-section home-section-tight"><div class="home-section-title">${t('home_continue')}</div>
-          <div class="home-continue-card${isPlaying ? ' playing' : ''}" data-sid="${cSeries.id}" data-cat="${cCat.id}" data-idx="${cIdx}" data-time="${st.time || 0}">
-            <div class="home-continue-icon">${icon}</div>
-            <div class="home-continue-body">
-              <div class="home-continue-title">${cSeries.title}</div>
-              <div class="home-continue-sub">${epTitle} · ${cIdx + 1}/${cSeries.totalEpisodes}</div>
-            </div>
-            <div class="home-continue-progress"><div class="home-continue-progress-fill" style="width:${pct}%"></div></div>
-          </div>
-        </div>`;
-      }
-    }
-  } catch (e) { /* ignore */ }
-
-  // New user guide card (shown when no play history)
-  let guideHtml = '';
-  if (!hasPlayHistory) {
-    guideHtml = `<div class="home-section home-section-tight">
-      <div class="home-guide-card" id="homeGuide">
-        <div class="home-guide-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg></div>
-        <div class="home-guide-body">
-          <div class="home-guide-title">${t('home_guide_title')}</div>
-          <div class="home-guide-sub">${t('home_guide_desc')}</div>
-        </div>
-      </div>
-    </div>`;
-  }
-
-  // 4. AI Daily Recommendation — skeleton placeholder, loaded async
-  const recHtml = `<div class="home-section" id="homeAiRec">
-    <div class="home-section-header">
-      <div class="home-section-title">${t('home_recommended')}</div>
-      <div class="home-ai-badge">AI</div>
-    </div>
-    <div class="home-rec-list" id="homeRecList">
-      ${renderRecSkeletons(3)}
-    </div>
-  </div>`;
-
-  // Chanting cards — play button + text design
   const chantCards = fohaoEps.map((ep, idx) => {
     const isPlaying = nowSid === 'donglin-fohao' && state.epIdx === idx;
     return `<div class="home-chant-card${isPlaying ? ' playing' : ''}" data-fh-idx="${idx}">
@@ -307,7 +420,21 @@ export function renderHomePage() {
     </div>`;
   }).join('');
 
-  // Layout: daily dharma → chanting → continue/guide → recommended
+  // AI recommendations — render inline from cache, otherwise show skeleton
+  const cachedRecs = getCachedRecs();
+  const initialRecContent = cachedRecs
+    ? personalizeOrder(cachedRecs).map(renderAiRecCard).join('')
+    : renderRecSkeletons(3);
+
+  const recHtml = `<div class="home-section" id="homeAiRec">
+    <div class="home-section-header">
+      <div class="home-section-title">${t('home_recommended')}</div>
+      <div class="home-ai-badge">AI</div>
+    </div>
+    <div class="home-rec-list" id="homeRecList">${initialRecContent}</div>
+  </div>`;
+
+  // Layout: quote → chanting → dynamic (continue/guide) → recommended
   page.innerHTML = `
     <div class="home-section home-section-tight">
       <div class="home-section-title">${t('home_daily_quote')}</div>
@@ -322,18 +449,18 @@ export function renderHomePage() {
         <div class="home-chanting-scroll">${chantCards}</div>
       </div>
     </div>
-    ${continueHtml}
-    ${guideHtml}
+    <div id="homeDynamic">${buildDynamicSectionHtml()}</div>
     ${recHtml}
   `;
   dom.contentArea.appendChild(page);
 
-  // Wire up chanting cards
+  // Wire chanting cards
   page.querySelectorAll('.home-chant-card').forEach(card => {
     card.addEventListener('click', () => {
       const idx = parseInt(card.dataset.fhIdx);
       if (!fohaoSeries) return;
-      const curSid = state.epIdx >= 0 && state.playlist.length ? state.playlist[state.epIdx].seriesId : null;
+      const curSid = state.epIdx >= 0 && state.playlist.length
+        ? state.playlist[state.epIdx].seriesId : null;
       if (curSid === 'donglin-fohao' && state.epIdx === idx) { togglePlay(); return; }
       playList(fohaoSeries.episodes, idx, fohaoSeries);
     });
@@ -349,55 +476,22 @@ export function renderHomePage() {
     }, { passive: true });
   }
 
-  // Wire up continue card
-  const contCard = page.querySelector('.home-continue-card');
-  if (contCard) {
-    contCard.addEventListener('click', () => {
-      const sid = contCard.dataset.sid;
-      const catId = contCard.dataset.cat;
-      const idx = parseInt(contCard.dataset.idx) || 0;
-      const restoreTime = parseFloat(contCard.dataset.time) || 0;
-      const curSid = state.epIdx >= 0 && state.playlist.length ? state.playlist[state.epIdx].seriesId : null;
-      if (curSid === sid && state.epIdx === idx) {
-        dom.expPlayer.classList.add('show');
-        return;
-      }
-      const cat = state.data.categories.find(c => c.id === catId);
-      if (cat) {
-        const sr = cat.series.find(s => s.id === sid);
-        if (sr) {
-          playList(sr.episodes, idx, sr, restoreTime);
-          dom.expPlayer.classList.add('show');
-        }
-      }
-    });
+  // Wire continue card
+  wireContinueCard(page);
+
+  // Wire AI rec clicks if pre-rendered from cache
+  if (cachedRecs) {
+    const recList = page.querySelector('#homeRecList');
+    if (recList) wireAiRecClicks(recList);
   }
 
-  // Live-update home page play states
-  function updateHomePlayState() {
-    if (getIsSwitching()) return;
-    const curSid = state.epIdx >= 0 && state.playlist.length ? state.playlist[state.epIdx].seriesId : null;
-    const playing = !dom.audio.paused;
-    if (contCard) {
-      const sid = contCard.dataset.sid;
-      const idx = parseInt(contCard.dataset.idx) || 0;
-      const active = curSid === sid && state.epIdx === idx && playing;
-      contCard.classList.toggle('playing', active);
-      const iconEl = contCard.querySelector('.home-continue-icon');
-      if (iconEl) iconEl.innerHTML = active ? ICON_PAUSE : ICON_PLAY;
-    }
-    page.querySelectorAll('.home-chant-card').forEach(card => {
-      const idx = parseInt(card.dataset.fhIdx);
-      card.classList.toggle('playing', curSid === 'donglin-fohao' && state.epIdx === idx && playing);
-    });
-  }
-  dom.audio.addEventListener('play', updateHomePlayState);
-  dom.audio.addEventListener('pause', updateHomePlayState);
-  const homeObs = new MutationObserver(() => {
-    if (!page.parentNode) { dom.audio.removeEventListener('play', updateHomePlayState); dom.audio.removeEventListener('pause', updateHomePlayState); homeObs.disconnect(); }
-  });
-  homeObs.observe(dom.contentArea, { childList: true });
+  // Attach audio listeners + set initial play-state
+  const updateFn = attachHomeAudioListeners(page);
+  updateFn();
 
-  // Load AI recommendations asynchronously
-  loadDailyRecommendations(page);
+  // Cache page element for fast re-use on subsequent tab switches
+  _homePageEl = page;
+
+  // Load recommendations from API if cache was empty/stale
+  if (!cachedRecs) loadDailyRecommendations(page);
 }
