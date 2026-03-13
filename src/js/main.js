@@ -111,44 +111,44 @@ function closeWenkuReader() {
       document.querySelectorAll('.tab').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
       btn.classList.add('active'); btn.setAttribute('aria-selected', 'true');
       state.tab = btn.dataset.tab; state.seriesId = null;
-      
-  // Add scroll listener for translucent header
-  dom.contentArea.addEventListener('scroll', () => {
-    const isScrolled = dom.contentArea.scrollTop > 10;
-    dom.header.classList.toggle('scrolled', isScrolled);
-  }, { passive: true });
 
-  // ✅ Wire up audio playback indicator in header
-  const navAudioIndicator = document.getElementById('navAudioIndicator');
-  if (navAudioIndicator) {
-    // Show/hide and update animation based on playback state
-    const updateAudioIndicator = () => {
-      if (dom.audio.src && !dom.audio.paused) {
-        navAudioIndicator.style.display = 'flex';
-        navAudioIndicator.classList.remove('paused');
-      } else if (dom.audio.src) {
-        navAudioIndicator.style.display = 'flex';
-        navAudioIndicator.classList.add('paused');
-      } else {
-        navAudioIndicator.style.display = 'none';
+      // Add scroll listener for translucent header
+      dom.contentArea.addEventListener('scroll', () => {
+        const isScrolled = dom.contentArea.scrollTop > 10;
+        dom.header.classList.toggle('scrolled', isScrolled);
+      }, { passive: true });
+
+      // ✅ Wire up audio playback indicator in header
+      const navAudioIndicator = document.getElementById('navAudioIndicator');
+      if (navAudioIndicator) {
+        // Show/hide and update animation based on playback state
+        const updateAudioIndicator = () => {
+          if (dom.audio.src && !dom.audio.paused) {
+            navAudioIndicator.style.display = 'flex';
+            navAudioIndicator.classList.remove('paused');
+          } else if (dom.audio.src) {
+            navAudioIndicator.style.display = 'flex';
+            navAudioIndicator.classList.add('paused');
+          } else {
+            navAudioIndicator.style.display = 'none';
+          }
+        };
+
+        // Click to open player
+        navAudioIndicator.addEventListener('click', () => {
+          if (dom.audio.src) {
+            dom.expPlayer.classList.add('show');
+          }
+        });
+
+        // Update on audio events
+        dom.audio.addEventListener('play', updateAudioIndicator);
+        dom.audio.addEventListener('pause', updateAudioIndicator);
+        dom.audio.addEventListener('loadstart', updateAudioIndicator);
+        dom.audio.addEventListener('emptied', updateAudioIndicator);
       }
-    };
 
-    // Click to open player
-    navAudioIndicator.addEventListener('click', () => {
-      if (dom.audio.src) {
-        dom.expPlayer.classList.add('show');
-      }
-    });
-
-    // Update on audio events
-    dom.audio.addEventListener('play', updateAudioIndicator);
-    dom.audio.addEventListener('pause', updateAudioIndicator);
-    dom.audio.addEventListener('loadstart', updateAudioIndicator);
-    dom.audio.addEventListener('emptied', updateAudioIndicator);
-  }
-
-  dom.navTitle.textContent = t(TAB_I18N[state.tab] || 'tab_lectures');
+      dom.navTitle.textContent = t(TAB_I18N[state.tab] || 'tab_lectures');
       dom.navTitle.dataset.i18n = TAB_I18N[state.tab] || 'tab_lectures';
       if (state.tab === 'mypage') { renderMyPage(); }
       else if (state.tab === 'home') { renderHomePage(); }
@@ -168,7 +168,7 @@ function closeWenkuReader() {
       if (!dom.expPlayer.classList.contains('show')) {
         // If audio is paused, start playback then open
         if (dom.audio.paused) {
-          dom.audio.play().catch(() => {});
+          dom.audio.play().catch(() => { });
         }
         dom.expPlayer.classList.add('show');
       } else {
@@ -241,30 +241,30 @@ function closeWenkuReader() {
   let _appreciating = false;
   let _lastAppreciateTime = 0;
   const APPRECIATE_COOLDOWN = 1000; // 1秒冷却时间
-  
+
   document.getElementById('expAppreciate').addEventListener('click', async () => {
     haptic();
-    
+
     // 防抖：1秒内不允许重复点击
     const now = Date.now();
     if (now - _lastAppreciateTime < APPRECIATE_COOLDOWN) return;
     if (_appreciating) return;
-    
+
     if (state.epIdx < 0 || !state.playlist[state.epIdx]) return;
     const tr = state.playlist[state.epIdx];
     const seriesId = tr.seriesId;
     if (!seriesId) return;
     const episodeNum = tr.id || state.epIdx + 1;
-    
+
     // ✅ 乐观UI更新 - 立即显示成功动画
     _appreciating = true;
     _lastAppreciateTime = now;
-    
+
     // 立即显示成功状态和动画
     appreciateSuccess(null);  // 先显示动画，不更新数字
     markAppreciated(seriesId);  // 持久化到localStorage
     showFloatText(document.getElementById('expAppreciate'), t('appreciate_thanks') || '随喜功德');
-    
+
     // 后台发送请求
     try {
       const result = await appreciate(seriesId, episodeNum);
@@ -564,7 +564,7 @@ function closeWenkuReader() {
 
   // Register Service Worker for offline caching
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('/sw.js').catch(() => { });
   }
 
   // ✅ 监控：定期保存监控数据到 localStorage
@@ -744,7 +744,16 @@ if ('serviceWorker' in navigator) {
     if (event.data?.type === 'app-updated') {
       const dom = getDOM();
       if (dom.audio.paused) {
-        showToast(t('app_updated'));
+        // 创建一个可点击刷新的新内容提示
+        let toast = document.querySelector('.update-toast');
+        if (!toast) {
+          toast = document.createElement('div');
+          toast.className = 'update-toast';
+          toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--accent);color:var(--bg);padding:10px 24px;border-radius:24px;font-size:0.85rem;font-weight:bold;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.15);cursor:pointer;animation:popIn 0.3s;';
+          toast.textContent = '发现新内容，点击刷新';
+          toast.onclick = () => window.location.reload();
+          document.body.appendChild(toast);
+        }
       }
     }
   });

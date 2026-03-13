@@ -213,7 +213,7 @@ function getCachedRecs() {
     const { date, recommendations, timestamp } = JSON.parse(raw);
     const todayDate = new Date().toISOString().slice(0, 10);
     if (date === todayDate && Date.now() - timestamp < DAILY_REC_CACHE_DURATION
-        && recommendations && recommendations.length) {
+      && recommendations && recommendations.length) {
       return recommendations;
     }
   } catch (e) { /* ignore */ }
@@ -327,7 +327,7 @@ async function loadDailyRecommendations(page) {
       const { date, recommendations, timestamp } = JSON.parse(cached);
       const age = Date.now() - timestamp;
       if (date === todayDate && age < DAILY_REC_CACHE_DURATION
-          && recommendations && recommendations.length) {
+        && recommendations && recommendations.length) {
         const recs = personalizeOrder(recommendations);
         recList.innerHTML = recs.map(renderAiRecCard).join('');
         wireAiRecClicks(recList);
@@ -447,8 +447,8 @@ export function renderHomePage() {
       </div>
     </div>
 
-    <!-- Quick Access Grid -->
-    <div class="home-section home-section-tight">
+    <!-- Quick Access Grid (Hidden) -->
+    <div class="home-section home-section-tight" style="display: none;">
       <div class="home-quick-grid">
         <div class="home-quick-card" data-nav="tingjingtai">
           <div class="home-quick-icon">
