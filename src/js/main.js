@@ -545,6 +545,19 @@ const DATA_CACHE_VERSION = 4; // v4: server-side format resolution (Opus/MP3 dec
 const DATA_CACHE_KEY = 'pl-data-cache-v' + DATA_CACHE_VERSION;
 const DATA_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 
+/** djb2-style hash for quick equality checks of serialised data. */
+function simpleHash(str) {
+  return Array.from(str).reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0);
+}
+
+/** Read the stored data hash from localStorage without throwing. */
+function getCachedHash() {
+  try {
+    const raw = localStorage.getItem(DATA_CACHE_KEY);
+    return raw ? JSON.parse(raw)._hash : null;
+  } catch (e) { return null; }
+}
+
 async function loadData() {
   const dom = getDOM();
   try {
@@ -656,10 +669,8 @@ async function fetchFreshData() {
     if (!r.ok) return;
     const fresh = await r.json();
     // #16: Compare BEFORE saving — read cached hash first, then decide
-    const freshStr = JSON.stringify(fresh);
-    const freshHash = Array.from(freshStr).reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0);
-    const cachedRaw = localStorage.getItem(DATA_CACHE_KEY);
-    const cachedHash = cachedRaw ? JSON.parse(cachedRaw)._hash : null;
+    const freshHash = simpleHash(JSON.stringify(fresh));
+    const cachedHash = getCachedHash();
     if (freshHash !== cachedHash || cachedHash === null) {
       state.data = fresh;
       saveCachedData(fresh, freshHash);
@@ -671,6 +682,25 @@ async function fetchFreshData() {
       saveCachedData(fresh, freshHash);
     }
   } catch (e) { /* silent */ }
+}
+
+/* ===== SERVICE WORKER MESSAGE HANDLER ===== */
+// When the SW's stale-while-revalidate detects that /api/categories changed on the server,
+// it broadcasts a 'data-updated' message so the page can refresh without a reload.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', event => {
+    if (event.data?.type === 'data-updated' && event.data.data) {
+      const fresh = event.data.data;
+      const freshHash = simpleHash(JSON.stringify(fresh));
+      const cachedHash = getCachedHash();
+      if (freshHash !== cachedHash) {
+        state.data = fresh;
+        saveCachedData(fresh, freshHash);
+        invalidateHomePage();
+        if (state.tab === 'home') renderHomePage();
+      }
+    }
+  });
 }
 
 /* ===== SHARE LINK HANDLING ===== */
