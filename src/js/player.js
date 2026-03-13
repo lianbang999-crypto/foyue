@@ -3,7 +3,7 @@ import { state } from './state.js';
 import { getDOM, RING_CIRCUMFERENCE } from './dom.js';
 import { SVG, ICON_PLAY, ICON_PAUSE, ICON_PLAY_FILLED, ICON_PAUSE_FILLED, ICON_APPRECIATE, ICON_APPRECIATE_FILLED } from './icons.js';
 import { t } from './i18n.js';
-import { fmt, showToast, seekAt, haptic, fmtCount } from './utils.js';
+import { fmt, showToast, seekAt, haptic, fmtCount, escapeHtml } from './utils.js';
 import { addHistory, syncHistoryProgress, getHistory } from './history.js';
 import { recordPlay, getAppreciateCount } from './api.js';
 import { cacheAudio, getCachedAudioUrl, isAudioCached } from './audio-cache.js';
