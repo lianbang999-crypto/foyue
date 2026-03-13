@@ -105,6 +105,54 @@ self.addEventListener('fetch', event => {
 
   /* Data / API: stale-while-revalidate — serve cache immediately, update in background */
   if (isDataRequest(url)) {
+    // ── Categories API: detect changes and notify page clients ──
+    if (url.pathname === '/api/categories') {
+      event.respondWith(
+        caches.open(DATA_CACHE).then(async cache => {
+          const cachedResp = await cache.match(event.request);
+          if (cachedResp) {
+            // Clone before returning so we can compare in the background task
+            const cachedClone = cachedResp.clone();
+            // Fetch fresh in background; compare; notify if changed
+            (async () => {
+              try {
+                const netResp = await fetch(event.request);
+                if (!netResp.ok) return;
+                const freshText = await netResp.text();
+                const oldText = await cachedClone.text();
+                // Always refresh the cached entry
+                cache.put(event.request, new Response(freshText, {
+                  status: netResp.status,
+                  statusText: netResp.statusText,
+                  headers: netResp.headers,
+                }));
+                // Broadcast to all page clients when data changed
+                if (freshText !== oldText) {
+                  try {
+                    const freshData = JSON.parse(freshText);
+                    const clients = await self.clients.matchAll({ type: 'window' });
+                    clients.forEach(c => c.postMessage({ type: 'data-updated', data: freshData }));
+                  } catch (e) { /* ignore JSON parse errors */ }
+                }
+              } catch (e) { /* network failed; keep serving stale */ }
+            })();
+            return cachedResp; // serve stale immediately
+          }
+          // No cache yet: fetch from network and cache the result
+          try {
+            const netResp = await fetch(event.request);
+            if (netResp.ok) {
+              cache.put(event.request, netResp.clone());
+            }
+            return netResp;
+          } catch (e) {
+            return new Response('{"error":"offline"}', { status: 503 });
+          }
+        })
+      );
+      return;
+    }
+
     event.respondWith(
       caches.open(DATA_CACHE).then(cache =>
         cache.match(event.request).then(cached => {
