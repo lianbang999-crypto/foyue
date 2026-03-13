@@ -1,7 +1,7 @@
 /* Service Worker — 净土法音 Offline Cache */
 'use strict';
 
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const STATIC_CACHE = 'static-' + CACHE_VERSION;
 const DATA_CACHE   = 'data-'   + CACHE_VERSION;
 const AUDIO_CACHE  = 'audio-v2';
@@ -55,7 +55,7 @@ self.addEventListener('activate', event => {
   );
 });
 
-/* ── Fetch: cache-first for static, network-first for data ── */
+/* ── Fetch: cache-first for static, stale-while-revalidate for data ── */
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
@@ -70,9 +70,18 @@ self.addEventListener('fetch', event => {
    * Cache key = the actual URL the player uses (Opus or MP3). */
   if (url.hostname.includes('audio.foyue.org') || url.hostname.includes('opus.foyue.org') || /\.(mp3|m4a|ogg|opus)(\?|$)/.test(url.pathname)) {
     event.respondWith(
-      caches.open(AUDIO_CACHE)
-        .then(cache => cache.match(event.request.url))
-        .then(cached => cached || fetch(event.request))
+      caches.open(AUDIO_CACHE).then(cache =>
+        cache.match(event.request.url).then(cached => {
+          if (cached) return cached;
+          return fetch(event.request).then(response => {
+            // Only cache successful full responses (not partial 206)
+            if (response.ok && response.status === 200) {
+              cache.put(event.request.url, response.clone());
+            }
+            return response;
+          });
+        })
+      )
     );
     return;
   }
@@ -94,16 +103,25 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  /* Data / API: network-first with cache fallback */
+  /* Data / API: stale-while-revalidate — serve cache immediately, update in background */
   if (isDataRequest(url)) {
     event.respondWith(
-      fetch(event.request).then(response => {
-        if (response.ok) {
-          const clone = response.clone();
-          caches.open(DATA_CACHE).then(c => c.put(event.request, clone));
-        }
-        return response;
-      }).catch(() => caches.match(event.request))
+      caches.open(DATA_CACHE).then(cache =>
+        cache.match(event.request).then(cached => {
+          const fetchPromise = fetch(event.request).then(response => {
+            if (response.ok) {
+              cache.put(event.request, response.clone());
+            }
+            return response;
+          }).catch(err => {
+            console.warn('[SW] Data fetch failed:', err);
+            return null;
+          });
+
+          // Return cached response immediately if available; otherwise wait for network
+          return cached || fetchPromise;
+        })
+      )
     );
     return;
   }
