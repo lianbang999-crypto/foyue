@@ -38,7 +38,9 @@
 <link rel="dns-prefetch" href="https://audio.foyue.org">
 <link rel="preconnect" href="https://opus.foyue.org">
 <link rel="dns-prefetch" href="https://opus.foyue.org">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<!-- ✅ Optimize font loading with display=swap and font-display for faster render -->
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet"></noscript>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -190,8 +192,12 @@
 
   <!-- CONTENT -->
   <main class="content" id="contentArea">
+    <!-- ✅ Optimized loader with inline SVG to avoid image request during initial load -->
     <div class="loader" id="loader" role="status" aria-live="polite">
-      <img src="/icons/logo.png" style="width:120px;height:auto;opacity:.4;animation:breathe 2.5s ease-in-out infinite" alt="">
+      <svg class="loader-logo" width="120" height="120" viewBox="0 0 512 512" style="opacity:.4;animation:breathe 2.5s ease-in-out infinite">
+        <circle cx="256" cy="256" r="200" fill="none" stroke="currentColor" stroke-width="8" opacity="0.2"/>
+        <path d="M256 100 L256 256 L350 350" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round"/>
+      </svg>
       <div class="loader-text">Loading...</div>
     </div>
   </main>
