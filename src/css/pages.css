@@ -864,3 +864,103 @@
     letter-spacing: 0.05em;
     font-family: inherit;
 }
+
+/* === HOME HERO BANNER === */
+.home-hero {
+    position: relative;
+    padding: 32px 16px 24px;
+    margin-bottom: 24px;
+    background: linear-gradient(135deg, var(--accent-gradient-top) 0%, rgba(131, 106, 50, 0.03) 100%);
+    border-radius: 0 0 24px 24px;
+    overflow: hidden;
+}
+
+.home-hero::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(circle at 30% 20%, rgba(193, 154, 107, 0.15) 0%, transparent 60%);
+    pointer-events: none;
+}
+
+.home-hero-content {
+    position: relative;
+    z-index: 1;
+}
+
+.home-hero-title {
+    font-size: 1.8rem;
+    font-weight: 500;
+    color: var(--accent);
+    text-align: center;
+    margin-bottom: 16px;
+    letter-spacing: 0.15em;
+    text-shadow: 0 2px 8px rgba(131, 106, 50, 0.1);
+}
+
+/* === HOME QUICK ACCESS GRID === */
+.home-quick-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    padding: 0 4px;
+}
+
+.home-quick-card {
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    padding: 16px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all .2s;
+}
+
+.home-quick-card:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(131, 106, 50, 0.1);
+}
+
+.home-quick-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--accent-glow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.home-quick-icon svg {
+    width: 18px;
+    height: 18px;
+    stroke: var(--accent);
+    fill: none;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.home-quick-label {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    text-align: center;
+    line-height: 1.3;
+    font-weight: 500;
+}
+
+/* Responsive: 2 columns on very small screens */
+@media (max-width: 340px) {
+    .home-quick-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}

@@ -434,15 +434,49 @@ export function renderHomePage() {
     <div class="home-rec-list" id="homeRecList">${initialRecContent}</div>
   </div>`;
 
-  // Layout: quote → chanting → dynamic (continue/guide) → recommended
+  // Layout: hero banner → chanting → dynamic (continue/guide) → recommended → quick access
   page.innerHTML = `
-    <div class="home-section home-section-tight">
-      <div class="home-section-title">${t('home_daily_quote')}</div>
-      <div class="home-quote home-quote-compact">
-        <div class="home-quote-text">${quoteText}</div>
-        <div class="home-quote-author">— ${quote.author}</div>
+    <!-- Hero Banner with Daily Quote -->
+    <div class="home-hero">
+      <div class="home-hero-content">
+        <div class="home-hero-title">南无阿弥陀佛</div>
+        <div class="home-quote home-quote-compact">
+          <div class="home-quote-text">${quoteText}</div>
+          <div class="home-quote-author">— ${quote.author}</div>
+        </div>
       </div>
     </div>
+
+    <!-- Quick Access Grid -->
+    <div class="home-section home-section-tight">
+      <div class="home-quick-grid">
+        <div class="home-quick-card" data-nav="tingjingtai">
+          <div class="home-quick-icon">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 3"/></svg>
+          </div>
+          <div class="home-quick-label">${t('tab_lectures')}</div>
+        </div>
+        <div class="home-quick-card" data-nav="youshengshu">
+          <div class="home-quick-icon">
+            <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M4 19.5V5a2 2 0 012-2h14v14H6.5"/></svg>
+          </div>
+          <div class="home-quick-label">${t('tab_audiobooks')}</div>
+        </div>
+        <div class="home-quick-card" data-nav="wenku">
+          <div class="home-quick-icon">
+            <svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          </div>
+          <div class="home-quick-label">${t('my_wenku')}</div>
+        </div>
+        <div class="home-quick-card" data-nav="ai">
+          <div class="home-quick-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2l1.09 3.26L16.36 6.36l-3.26 1.09L12 10.72l-1.09-3.27L7.64 6.36l3.27-1.1z"/><path d="M18 12l.73 2.18L20.91 14.91l-2.18.73L18 17.82l-.73-2.18-2.18-.73 2.18-.73z"/><path d="M6 15l.55 1.64 1.64.55-1.64.54L6 19.37l-.55-1.64-1.64-.54 1.64-.55z"/></svg>
+          </div>
+          <div class="home-quick-label">${t('my_messages')} AI</div>
+        </div>
+      </div>
+    </div>
+
     <div class="home-section home-section-tight">
       <div class="home-section-title">${t('home_chanting')}</div>
       <div class="home-chanting-wrap">
@@ -453,6 +487,24 @@ export function renderHomePage() {
     ${recHtml}
   `;
   dom.contentArea.appendChild(page);
+
+  // Wire quick access grid
+  page.querySelectorAll('.home-quick-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const nav = card.dataset.nav;
+      if (nav === 'wenku') {
+        import('./wenku.js').then(mod => mod.renderWenkuHome(() => {
+          import('./pages-my.js').then(m => m.renderMyPage());
+        }));
+      } else if (nav === 'ai') {
+        import('./ai-chat.js').then(m => m.openAiChat());
+      } else {
+        // Navigate to tab
+        const tabBtn = document.querySelector(`.tab[data-tab="${nav}"]`);
+        if (tabBtn) tabBtn.click();
+      }
+    });
+  });
 
   // Wire chanting cards
   page.querySelectorAll('.home-chant-card').forEach(card => {

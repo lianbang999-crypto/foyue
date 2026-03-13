@@ -494,3 +494,54 @@
     --text-secondary: rgba(238, 238, 238, 0.7)
   }
 }
+/* === AUDIO PLAYBACK INDICATOR === */
+.nav-audio-indicator {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 0 8px;
+    cursor: pointer;
+    transition: opacity .2s;
+}
+
+.nav-audio-indicator:hover {
+    opacity: 0.8;
+}
+
+.nav-audio-wave {
+    fill: var(--accent);
+}
+
+.wave-bar {
+    animation: audioWave 1s ease-in-out infinite;
+}
+
+.wave-bar.bar-1 {
+    animation-delay: 0s;
+}
+
+.wave-bar.bar-2 {
+    animation-delay: 0.2s;
+}
+
+.wave-bar.bar-3 {
+    animation-delay: 0.4s;
+}
+
+@keyframes audioWave {
+    0%, 100% {
+        transform: scaleY(0.5);
+        opacity: 0.6;
+    }
+    50% {
+        transform: scaleY(1);
+        opacity: 1;
+    }
+}
+
+/* Hide when audio is paused */
+.nav-audio-indicator.paused .wave-bar {
+    animation: none;
+    transform: scaleY(0.3);
+    opacity: 0.4;
+}
