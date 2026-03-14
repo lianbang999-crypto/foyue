@@ -1,7 +1,7 @@
 /* === RESET === */
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-html{font-size:16px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;scroll-behavior:smooth;overflow-x:hidden}
-body{-webkit-tap-highlight-color:transparent;font-family:var(--font-zh);background:var(--bg);background-image:linear-gradient(180deg,var(--body-gradient) 0%,transparent 40%);color:var(--text);min-height:100vh;overflow-x:hidden;max-width:100vw;transition:background .35s,color .35s}
+html{font-size:16px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;scroll-behavior:smooth;overflow-x:hidden;text-rendering:optimizeLegibility}
+body{-webkit-tap-highlight-color:transparent;font-family:var(--font-zh);background:var(--bg);background-image:linear-gradient(180deg,var(--body-gradient) 0%,transparent 40%);color:var(--text);min-height:100vh;overflow-x:hidden;max-width:100vw;transition:background var(--t-slow),color var(--t-slow)}
 @supports(min-height:100dvh){body{min-height:100dvh}}
 
 @media(prefers-reduced-motion:reduce){

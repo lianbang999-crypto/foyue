@@ -65,18 +65,18 @@
     background: var(--bg-card);
     border-radius: var(--radius);
     overflow: hidden;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02);
-    border: 1px solid rgba(131, 106, 50, 0.06);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border-card);
 }
 
 .my-item {
     display: flex;
     align-items: center;
     gap: 16px;
-    padding: 18px 20px;
+    padding: 17px 20px;
     background: transparent;
     cursor: pointer;
-    transition: background .2s, transform .2s;
+    transition: background var(--t-base);
     min-height: 56px;
     border-bottom: 1px solid var(--border);
 }
@@ -381,7 +381,7 @@
 /* === HOME PAGE === */
 .home-page {
     display: none;
-    animation: fadeAndRise .6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    animation: fadeAndRise .55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
     position: relative;
     padding-bottom: 24px
 }
@@ -404,8 +404,8 @@
     top: -20px;
     left: -20px;
     right: -20px;
-    height: 480px;
-    background: linear-gradient(180deg, var(--accent-gradient-top) 0%, rgba(131, 106, 50, 0.01) 60%, transparent 100%);
+    height: 520px;
+    background: linear-gradient(180deg, var(--accent-gradient-top) 0%, rgba(131, 106, 50, 0.008) 60%, transparent 100%);
     z-index: -1;
     pointer-events: none;
 }
@@ -418,18 +418,19 @@
     display: block
 }
 
-.home-section { margin-bottom: 32px; }
+.home-section { margin-bottom: 28px; }
 
 .home-section-tight {
-    margin-bottom: 18px
+    margin-bottom: 16px
 }
 
 .home-section-title {
-    font-size: .84rem;
+    font-size: .78rem;
     color: var(--text-secondary);
-    letter-spacing: .04em;
-    padding: 0 4px 12px;
-    font-weight: 500
+    letter-spacing: .07em;
+    padding: 0 4px 10px;
+    font-weight: 600;
+    text-transform: uppercase;
 }
 
 .home-section-header {
@@ -444,11 +445,11 @@
 }
 
 .home-section-more {
-    font-size: .76rem;
+    font-size: .74rem;
     color: var(--accent);
     cursor: pointer;
     white-space: nowrap;
-    font-weight: 500
+    font-weight: 600
 }
 
 
@@ -499,19 +500,22 @@
 
 .home-chant-card {
     flex-shrink: 0;
-    width: 130px;
+    width: 132px;
     background: var(--bg-card);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius);
     padding: 14px 12px;
     text-align: center;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-card);
     cursor: pointer;
-    transition: background .15s, border-color .15s
+    box-shadow: var(--shadow-xs);
+    transition: background var(--t-base), border-color var(--t-base), box-shadow var(--t-base), transform var(--t-fast)
 }
 
 .home-chant-card:hover {
     background: var(--bg-card-hover);
-    border-color: var(--border-active)
+    border-color: var(--border-active);
+    box-shadow: var(--shadow-sm);
+    transform: translateY(-1px);
 }
 
 @keyframes breatherGlow {
@@ -533,14 +537,15 @@
 }
 
 .home-chant-play {
-    width: 36px;
-    height: 36px;
+    width: 38px;
+    height: 38px;
     margin: 0 auto 8px;
     border-radius: 50%;
     background: var(--accent-glow);
     display: flex;
     align-items: center;
-    justify-content: center
+    justify-content: center;
+    transition: background var(--t-base);
 }
 
 .home-chant-play svg {
@@ -560,9 +565,9 @@
 }
 
 .home-chant-name {
-    font-size: .8rem;
+    font-size: .78rem;
     color: var(--text);
-    line-height: 1.3;
+    line-height: 1.35;
     font-weight: 400
 }
 
@@ -573,26 +578,29 @@
     background: var(--bg-card);
     border-radius: var(--radius);
     padding: 14px 16px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-card);
     cursor: pointer;
-    transition: background .15s;
+    transition: background var(--t-base), border-color var(--t-base), box-shadow var(--t-base);
     position: relative;
-    overflow: hidden
+    overflow: hidden;
+    box-shadow: var(--shadow-xs);
 }
 
 .home-continue-card:hover {
-    background: var(--bg-card-hover)
+    background: var(--bg-card-hover);
+    box-shadow: var(--shadow-sm);
 }
 
 .home-continue-icon {
-    width: 40px;
-    height: 40px;
+    width: 42px;
+    height: 42px;
     border-radius: 50%;
-    background: var(--accent);
+    background: linear-gradient(145deg, var(--accent-light), var(--accent));
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0
+    flex-shrink: 0;
+    box-shadow: 0 2px 10px var(--accent-shadow);
 }
 
 .home-continue-icon svg {
@@ -637,7 +645,7 @@
 
 .home-continue-progress-fill {
     height: 100%;
-    background: var(--accent);
+    background: linear-gradient(to right, var(--accent-light), var(--accent));
     border-radius: 0 0 var(--radius) var(--radius);
     transition: width .3s
 }
@@ -676,24 +684,38 @@
     background: var(--bg-card);
     border-radius: var(--radius);
     padding: 14px 16px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-card);
     cursor: pointer;
-    transition: background .15s
+    box-shadow: var(--shadow-xs);
+    transition: background var(--t-base), border-color var(--t-base), box-shadow var(--t-base), transform var(--t-fast)
 }
 
 .home-rec-card:hover {
-    background: var(--bg-card-hover)
+    background: var(--bg-card-hover);
+    border-color: var(--border-active);
+    box-shadow: var(--shadow-sm);
+    transform: translateY(-1px);
+}
+
+.home-rec-card:active {
+    transform: translateY(0);
+    box-shadow: var(--shadow-xs);
 }
 
 .home-rec-icon {
-    width: 40px;
-    height: 40px;
+    width: 42px;
+    height: 42px;
     border-radius: var(--radius-sm);
     background: var(--accent-glow);
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0
+    flex-shrink: 0;
+    transition: background var(--t-base);
+}
+
+.home-rec-card:hover .home-rec-icon {
+    background: var(--accent-glow-strong);
 }
 
 .home-rec-icon svg {
@@ -868,10 +890,10 @@
 /* === HOME HERO BANNER === */
 .home-hero {
     position: relative;
-    padding: 24px 16px 24px; margin-top:-24px; margin-left:-20px; margin-right:-20px;
-    margin-bottom: 24px;
-    background: linear-gradient(135deg, var(--accent-gradient-top) 0%, rgba(131, 106, 50, 0.03) 100%);
-    border-radius: 0 0 24px 24px;
+    padding: 28px 16px 28px; margin-top:-20px; margin-left:-20px; margin-right:-20px;
+    margin-bottom: 28px;
+    background: linear-gradient(160deg, var(--accent-gradient-top) 0%, var(--body-gradient) 60%, transparent 100%);
+    border-radius: 0 0 28px 28px;
     overflow: hidden;
 }
 
@@ -882,7 +904,8 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: radial-gradient(circle at 30% 20%, rgba(193, 154, 107, 0.15) 0%, transparent 60%);
+    background: radial-gradient(ellipse at 30% 15%, rgba(212, 175, 55, 0.18) 0%, transparent 55%),
+                radial-gradient(ellipse at 80% 80%, var(--accent-gradient-bottom) 0%, transparent 50%);
     pointer-events: none;
 }
 
@@ -892,52 +915,63 @@
 }
 
 .home-hero-title {
-    font-size: 1.8rem;
+    font-size: 1.9rem;
     font-weight: 500;
     color: var(--accent);
     text-align: center;
     margin-bottom: 16px;
-    letter-spacing: 0.15em;
-    text-shadow: 0 2px 8px rgba(131, 106, 50, 0.1);
+    letter-spacing: 0.18em;
+    text-shadow: 0 2px 12px rgba(131, 106, 50, 0.12);
 }
 
 /* === HOME QUICK ACCESS GRID === */
 .home-quick-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-    padding: 0 4px;
+    gap: 10px;
+    padding: 0 2px;
 }
 
 .home-quick-card {
     background: var(--bg-card);
     border-radius: var(--radius);
-    padding: 16px 8px;
+    padding: 16px 8px 14px;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 8px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-card);
     cursor: pointer;
-    transition: all .2s;
+    transition: background var(--t-base), border-color var(--t-base), transform var(--t-fast), box-shadow var(--t-base);
+    box-shadow: var(--shadow-xs);
 }
 
 .home-quick-card:hover {
     background: var(--bg-card-hover);
-    border-color: var(--accent);
+    border-color: var(--border-active);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(131, 106, 50, 0.1);
+    box-shadow: var(--shadow-sm), 0 4px 16px var(--accent-glow);
+}
+
+.home-quick-card:active {
+    transform: translateY(0);
+    box-shadow: var(--shadow-xs);
 }
 
 .home-quick-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
     background: var(--accent-glow);
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    transition: background var(--t-base);
+}
+
+.home-quick-card:hover .home-quick-icon {
+    background: var(--accent-glow-strong);
 }
 
 .home-quick-icon svg {
@@ -951,7 +985,7 @@
 }
 
 .home-quick-label {
-    font-size: 0.72rem;
+    font-size: 0.70rem;
     color: var(--text-secondary);
     text-align: center;
     line-height: 1.3;

@@ -24,12 +24,14 @@ export function showToast(msg) {
   if (!toast) {
     toast = document.createElement('div');
     toast.className = 'toast';
-    toast.style.cssText = 'position:fixed;bottom:calc(64px + var(--safe-bottom) + 16px);left:50%;transform:translateX(-50%);background:var(--text);color:var(--text-inverse);padding:8px 20px;border-radius:20px;font-size:.78rem;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none;font-family:var(--font-zh)';
     document.body.appendChild(toast);
   }
   toast.textContent = msg;
-  toast.style.opacity = '1';
-  toastTimer = setTimeout(() => { toast.style.opacity = '0'; }, 2000);
+  // Use CSS class instead of inline styles — force reflow before adding show
+  toast.classList.remove('show');
+  void toast.offsetWidth; // force reflow
+  toast.classList.add('show');
+  toastTimer = setTimeout(() => { toast.classList.remove('show'); }, 2200);
 }
 
 /* Calculate seek percentage from pointer event */
