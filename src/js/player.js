@@ -486,10 +486,10 @@ function updateUI(tr) {
   dom.expSeriesSpeaker.textContent = tr.speaker || '';
   const epNumExp = state.epIdx >= 0 ? `${state.epIdx + 1} / ${state.playlist.length}` : '';
   dom.expSeriesEpCount.textContent = epNumExp;
-  dom.miniProgressFill.style.width = '0%';
-  dom.expProgressFill.style.width = '0%';
+  dom.miniProgressFill.style.transform = 'scaleX(0)';
+  dom.expProgressFill.style.transform = 'scaleX(0)';
   dom.expProgressThumb.style.left = '0%';
-  dom.expBufferFill.style.width = '0%';
+  dom.expBufferFill.style.transform = 'scaleX(0)';
   dom.expTimeCurr.textContent = '0:00';
   dom.expTimeTotal.textContent = '0:00';
   dom.centerRingFill.style.strokeDashoffset = RING_CIRCUMFERENCE;
@@ -630,8 +630,8 @@ export function onTimeUpdate() {
     const p = Math.min(100, (ct / dur) * 100);
     
     // 批量更新DOM，减少重排/重绘
-    dom.miniProgressFill.style.width = p + '%';
-    dom.expProgressFill.style.width = p + '%';
+    dom.miniProgressFill.style.transform = `scaleX(${p / 100})`;
+    dom.expProgressFill.style.transform = `scaleX(${p / 100})`;
     dom.expProgressThumb.style.left = p + '%';
     dom.expTimeCurr.textContent = fmt(ct);
     dom.expTimeTotal.textContent = fmt(dur);
@@ -640,7 +640,7 @@ export function onTimeUpdate() {
     
     if (dom.audio.buffered.length > 0) {
       const bufEnd = dom.audio.buffered.end(dom.audio.buffered.length - 1);
-      dom.expBufferFill.style.width = Math.min(100, (bufEnd / dur) * 100) + '%';
+      dom.expBufferFill.style.transform = `scaleX(${Math.min(1, bufEnd / dur)})`;
     }
 
     // ✅ 优化：当播放进度达到80%时提前预加载下一曲，确保无缝切换

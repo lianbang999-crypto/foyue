@@ -41,7 +41,7 @@ export function seekCalc(e, el) {
 /* Update only the visual UI during drag (no audio.currentTime write) */
 export function seekUI(p, dom) {
   const pct = p * 100 + '%';
-  dom.expProgressFill.style.width = pct;
+  dom.expProgressFill.style.transform = `scaleX(${p})`;
   dom.expProgressThumb.style.left = pct;
   if (dom.audio.duration && isFinite(dom.audio.duration)) {
     dom.expTimeCurr.textContent = fmt(p * dom.audio.duration);

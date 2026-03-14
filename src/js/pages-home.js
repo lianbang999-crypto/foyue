@@ -176,13 +176,14 @@ function renderFallbackRecs(recList) {
   const picks = rotated.slice(0, 3);
 
   recList.innerHTML = picks.map(s => {
+    const pc = s.playCount ? " · " + (s.playCount >= 10000 ? (s.playCount / 10000).toFixed(1) + "w" : s.playCount) + (t("play_count_unit") || "次") : "";
     const introHtml = s.intro ? `<div class="home-rec-intro">${s.intro}</div>` : '';
     return `
     <div class="home-rec-card" data-sid="${s.id}" data-cat="${s.catId}">
       <div class="home-rec-icon">${CAT_ICONS[s.catId] || CAT_ICONS.tingjingtai}</div>
       <div class="home-rec-body">
         <div class="home-rec-title">${s.title}</div>${introHtml}
-        <div class="home-rec-sub">${s.speaker || ''} · ${s.totalEpisodes} ${t('episodes')}</div>
+        <div class="home-rec-sub">${s.speaker || ''} · ${s.totalEpisodes} ${t('episodes')}${pc}</div>
       </div>
     </div>`;
   }).join('');

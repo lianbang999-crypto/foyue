@@ -3,6 +3,7 @@ import { state } from './state.js';
 import { t } from './i18n.js';
 import { getDOM } from './dom.js';
 import { playList } from './player.js';
+import { getHistory } from './history.js';
 import { escapeHtml } from './utils.js';
 import { aiSearch } from './ai-client.js';
 
@@ -92,7 +93,9 @@ function doKeywordSearch(q, showEpisodes, renderCategory, renderHomePage) {
         li.innerHTML = `<span class="ep-num">${r.ep.id || r.idx + 1}</span><span class="ep-title">${highlight(r.ep.title || r.ep.fileName, q)} <small style="color:var(--text-muted)">\u00B7 ${escapeHtml(r.series.title)}</small></span>`;
         li.addEventListener('click', () => {
           closeSearchOverlay();
-          playList(r.series.episodes, r.idx, r.series);
+          const hist = getHistory();
+          const hEntry = hist.find(h => h.seriesId === r.series.id && h.epIdx === r.idx);
+          playList(r.series.episodes, r.idx, r.series, hEntry ? hEntry.time : 0);
         });
         ul.appendChild(li);
       });
@@ -277,7 +280,9 @@ function renderSearchResults(q, container) {
       li.innerHTML = `<span class="ep-num">${r.ep.id || r.idx + 1}</span><span class="ep-title">${highlight(r.ep.title || r.ep.fileName, q)} <small style="color:var(--text-muted)">\u00B7 ${escapeHtml(r.series.title)}</small></span>`;
       li.addEventListener('click', () => {
         closeSearchOverlay();
-        playList(r.series.episodes, r.idx, r.series);
+        const hist = getHistory();
+        const hEntry = hist.find(h => h.seriesId === r.series.id && h.epIdx === r.idx);
+        playList(r.series.episodes, r.idx, r.series, hEntry ? hEntry.time : 0);
       });
       ul.appendChild(li);
     });

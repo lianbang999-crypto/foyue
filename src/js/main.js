@@ -552,15 +552,16 @@ function closeWenkuReader() {
   loadData();
   setInterval(saveState, 15000);
 
-  // #22: Save state when user leaves, check buffer when returning
+  // #22: Comprehensive state saving for background resume (Item 3)
+  const handleSave = () => {
+    saveState();
+  };
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') {
-      saveState();
-    } else if (document.visibilityState === 'visible') {
-      // Returning from background — check if buffer needs recovery
-      onVisibilityResume();
-    }
+    if (document.visibilityState === 'hidden') handleSave();
+    else onVisibilityResume();
   });
+  window.addEventListener('pagehide', handleSave);
+  window.addEventListener('beforeunload', handleSave);
 
   // Register Service Worker for offline caching
   if ('serviceWorker' in navigator) {

@@ -77,7 +77,7 @@ export function showEpisodes(series, tabId) {
   updatePlayAllBtn();
   dom.audio.addEventListener('play', updatePlayAllBtn);
   dom.audio.addEventListener('pause', updatePlayAllBtn);
-  let cancelProbe = () => {};
+  let cancelProbe = () => { };
   const obs = new MutationObserver(() => {
     if (!view.parentNode) { dom.audio.removeEventListener('play', updatePlayAllBtn); dom.audio.removeEventListener('pause', updatePlayAllBtn); cancelProbe(); obs.disconnect(); }
   });
@@ -120,7 +120,9 @@ export function showEpisodes(series, tabId) {
       <span class="ep-duration" data-idx="${idx}">${durText}</span>`;
     li.addEventListener('click', () => {
       if (isCurrentTrack(series.id, idx)) { togglePlay(); return; }
-      playList(series.episodes, idx, series);
+      const hist = getHistory();
+      const hEntry = hist.find(h => h.seriesId === series.id && h.epIdx === idx);
+      playList(series.episodes, idx, series, hEntry ? hEntry.time : 0);
     });
     frag.appendChild(li);
   });
