@@ -591,6 +591,7 @@ export function setPlayState(playing) {
     '<rect x="5" y="3" width="4" height="18" rx="1"/><rect x="15" y="3" width="4" height="18" rx="1"/>' :
     '<polygon points="8,4 20,12 8,20"/>';
   dom.centerPlayBtn.classList.toggle('playing', playing);
+  dom.expPlayer.classList.toggle('playing', playing);
   // Remove dim state once audio is loaded
   dom.centerPlayBtn.classList.remove('no-audio');
   // Update accessible labels

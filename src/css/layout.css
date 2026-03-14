@@ -13,32 +13,34 @@
   }
 }
 
-/* === HEADER - top bar === */
+/* === HEADER === */
 .header {
   position: sticky;
   top: 0;
   z-index: 100;
   background: var(--bg-header);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
   border-bottom: 1px solid var(--border);
-  transition: background .35s
+  transition: background var(--t-base) var(--ease-in-out),
+              border-color var(--t-base) var(--ease-in-out)
 }
 
 .nav {
   display: flex;
   align-items: center;
-  padding: 0 12px;
-  height: 48px;
+  padding: 0 14px;
+  height: var(--header-h);
   gap: 0
 }
 
 .logo {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   flex-shrink: 0;
-  color: var(--text)
+  color: var(--text);
+  text-decoration: none
 }
 
 .logo svg {
@@ -47,10 +49,11 @@
 }
 
 .logo-title {
-  font-size: .82rem;
-  font-weight: 400;
+  font-size: .80rem;
+  font-weight: 500;
   color: var(--text-secondary);
-  white-space: nowrap
+  white-space: nowrap;
+  letter-spacing: .01em
 }
 
 .nav-spacer {
@@ -76,23 +79,23 @@
   left: 0;
   right: 0;
   z-index: 190;
-  background: rgba(250, 249, 246, 0.72);
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  border-top: 1px solid rgba(131, 106, 50, 0.08);
-  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.04);
+  background: var(--bg-glass);
+  backdrop-filter: blur(32px) saturate(180%);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -1px 0 var(--border), 0 -8px 32px rgba(0, 0, 0, 0.05);
   padding-bottom: var(--safe-bottom);
   display: flex;
   justify-content: space-around;
   align-items: flex-end;
-  height: calc(64px + var(--safe-bottom));
-  transition: transform .34s cubic-bezier(.22, 1, .36, 1)
+  height: calc(62px + var(--safe-bottom));
+  transition: transform var(--t-slow) var(--ease-spring)
 }
 
 [data-theme="dark"] .tab-bar {
-  background: rgba(20, 20, 20, 0.75);
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
-  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.2);
+  background: var(--bg-glass);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 -1px 0 rgba(255,255,255,0.06), 0 -8px 32px rgba(0, 0, 0, 0.28)
 }
 
 .tab-bar.hide {
@@ -102,14 +105,14 @@
 .tab {
   background: none;
   border: none;
-  padding: 8px 0 6px;
+  padding: 7px 0 5px;
   font-family: var(--font-zh);
-  font-size: .72rem;
+  font-size: .68rem;
   font-weight: 400;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   cursor: pointer;
   position: relative;
-  transition: color .2s;
+  transition: color var(--t-fast) var(--ease-in-out);
   white-space: nowrap;
   flex: 1;
   display: flex;
@@ -120,13 +123,14 @@
 }
 
 .tab-icon {
-  width: 24px;
-  height: 24px;
+  width: 23px;
+  height: 23px;
   stroke: currentColor;
   fill: none;
   stroke-width: 1.6;
   stroke-linecap: round;
-  stroke-linejoin: round
+  stroke-linejoin: round;
+  transition: transform var(--t-fast) var(--ease-spring)
 }
 
 .tab.active {
@@ -135,7 +139,22 @@
 }
 
 .tab.active .tab-icon {
-  stroke-width: 2
+  stroke-width: 2.0;
+  transform: translateY(-1px) scale(1.05)
+}
+
+/* Active dot indicator */
+.tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.8
 }
 
 .tab-sub {
@@ -148,15 +167,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 0 6px;
+  padding: 0 0 5px;
   position: relative
 }
 
 .center-play-btn {
   position: relative;
-  width: 48px;
-  height: 48px;
-  margin-top: -18px;
+  width: 50px;
+  height: 50px;
+  margin-top: -20px;
   border: none;
   background: var(--accent);
   border-radius: 50%;
@@ -164,20 +183,27 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 16px var(--accent-shadow);
-  transition: transform .15s, box-shadow .15s, opacity .3s;
+  box-shadow: 0 3px 16px var(--accent-shadow), 0 1px 4px var(--accent-shadow);
+  transition: transform var(--t-fast) var(--ease-spring),
+              box-shadow var(--t-fast) var(--ease-in-out),
+              opacity var(--t-base) var(--ease-in-out);
   z-index: 2;
   -webkit-appearance: none;
   appearance: none
 }
 
 .center-play-btn.no-audio {
-  opacity: 0.4;
+  opacity: 0.38;
   box-shadow: none
 }
 
 .center-play-btn:active {
-  transform: scale(0.94)
+  transform: scale(0.92)
+}
+
+.center-play-btn:hover:not(.no-audio) {
+  box-shadow: 0 4px 20px var(--accent-shadow-lg);
+  transform: scale(1.04)
 }
 
 .center-play-btn svg.center-play-icon {
@@ -191,12 +217,12 @@
 
 .center-play-btn .progress-ring {
   position: absolute;
-  top: -4px;
-  right: -4px;
-  bottom: -4px;
-  left: -4px;
-  width: 56px;
-  height: 56px;
+  top: -5px;
+  right: -5px;
+  bottom: -5px;
+  left: -5px;
+  width: 60px;
+  height: 60px;
   z-index: 1;
   transform: rotate(-90deg)
 }
@@ -204,45 +230,35 @@
 .center-play-btn .progress-ring-bg {
   fill: none;
   stroke: var(--border);
-  stroke-width: 3
+  stroke-width: 2.5
 }
 
 .center-play-btn .progress-ring-fill {
   fill: none;
-  stroke: var(--accent);
-  stroke-width: 3;
+  stroke: var(--accent-light);
+  stroke-width: 2.5;
   stroke-linecap: round;
-  stroke-dasharray: 157;
-  stroke-dashoffset: 157;
+  stroke-dasharray: 163;
+  stroke-dashoffset: 163;
   transition: stroke-dashoffset .15s linear
 }
 
 .center-play-btn.playing {
-  animation: centerSpin 8s linear infinite
+  animation: centerSpin 12s linear infinite
 }
 
 @keyframes centerSpin {
-  from {
-    transform: rotate(0deg)
-  }
-
-  to {
-    transform: rotate(360deg)
-  }
+  from { transform: rotate(0deg) }
+  to   { transform: rotate(360deg) }
 }
 
 .center-play-btn.playing .progress-ring {
-  animation: centerSpinReverse 8s linear infinite
+  animation: centerSpinReverse 12s linear infinite
 }
 
 @keyframes centerSpinReverse {
-  from {
-    transform: rotate(-90deg)
-  }
-
-  to {
-    transform: rotate(calc(-90deg - 360deg))
-  }
+  from { transform: rotate(-90deg) }
+  to   { transform: rotate(calc(-90deg - 360deg)) }
 }
 
 /* Icon buttons */
@@ -266,19 +282,21 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: var(--text-muted);
-  transition: all .2s;
+  color: var(--text-secondary);
+  transition: color var(--t-fast) var(--ease-in-out),
+              background var(--t-fast) var(--ease-in-out),
+              transform var(--t-fast) var(--ease-spring);
   padding: 0
 }
 
-.btn-icon:hover,
-.btn-icon:active {
-  color: var(--text)
+.btn-icon:hover {
+  color: var(--text);
+  background: var(--accent-glow)
 }
 
 .btn-icon:active {
   transform: scale(0.88);
-  transition: transform .05s
+  transition: transform 0.05s
 }
 
 .btn-icon.active {
@@ -300,33 +318,36 @@
   stroke-linejoin: round
 }
 
-/* AI Button in header — plain icon + text */
+/* AI Button in header — pill style */
 .ai-pill-btn {
   -webkit-appearance: none;
   appearance: none;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: none;
+  background: var(--accent-glow);
   color: var(--accent);
-  border: none;
-  border-radius: 8px;
-  padding: 6px 10px;
+  border: 1px solid var(--border-active);
+  border-radius: 20px;
+  padding: 5px 11px;
   font-family: var(--font-en);
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
   letter-spacing: .03em;
   cursor: pointer;
-  transition: opacity .15s;
-  min-height: 32px
+  transition: background var(--t-fast) var(--ease-in-out),
+              border-color var(--t-fast) var(--ease-in-out),
+              transform var(--t-fast) var(--ease-spring);
+  min-height: 30px
 }
 
 .ai-pill-btn:hover {
-  opacity: 0.7
+  background: var(--accent-glow-strong);
+  border-color: var(--accent-dim)
 }
 
 .ai-pill-btn:active {
-  transform: scale(0.96)
+  transform: scale(0.95)
 }
 
 .ai-pill-icon {
@@ -341,19 +362,19 @@
 /* === CONTENT === */
 .content {
   flex: 1;
-  padding: 24px 20px calc(64px + var(--safe-bottom) + 16px);
+  padding: 20px 20px calc(62px + var(--safe-bottom) + 16px);
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch
 }
 
 .content.has-player {
-  padding-bottom: calc(64px + var(--safe-bottom) + 16px)
+  padding-bottom: calc(62px + var(--safe-bottom) + 16px)
 }
 
 .view {
   display: none;
-  animation: viewIn .3s ease-out
+  animation: viewIn .28s var(--ease-spring)
 }
 
 .view.active {
@@ -363,7 +384,7 @@
 @keyframes viewIn {
   from {
     opacity: 0;
-    transform: translateY(6px)
+    transform: translateY(8px)
   }
 
   to {

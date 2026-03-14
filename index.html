@@ -249,10 +249,16 @@
       </div>
     </div>
 
-    <!-- Scrollable content area (series card + track info merged) -->
+    <!-- Scrollable content area — artwork + track info -->
     <div class="exp-player-content" id="expPlayerContent">
+      <!-- Circular artwork -->
+      <div class="exp-artwork" id="expArtwork">
+        <div class="exp-artwork-inner">
+          <img class="exp-series-icon" src="/icons/logo.png" alt="" aria-hidden="true" style="width:52px;height:auto;">
+        </div>
+      </div>
+      <!-- Track / series info below artwork -->
       <div class="exp-series-info" id="expSeriesInfo">
-        <img class="exp-series-icon" src="/icons/logo.png" alt="" style="width:52px;height:auto;opacity:.4;">
         <div class="exp-series-name" id="expSeriesName"></div>
         <div class="exp-series-speaker" id="expSeriesSpeaker"></div>
         <div class="exp-series-ep-count" id="expSeriesEpCount"></div>
