@@ -104,6 +104,36 @@ function closeWenkuReader() {
 
   // Tabs
   const TAB_I18N = { home: 'tab_home', tingjingtai: 'tab_lectures', youshengshu: 'tab_audiobooks', mypage: 'tab_my' };
+
+  // One-time setup: scroll listener for translucent header (must not be inside tab click handler)
+  dom.contentArea.addEventListener('scroll', () => {
+    const isScrolled = dom.contentArea.scrollTop > 10;
+    dom.header.classList.toggle('scrolled', isScrolled);
+  }, { passive: true });
+
+  // One-time setup: audio playback indicator in header
+  const navAudioIndicator = document.getElementById('navAudioIndicator');
+  if (navAudioIndicator) {
+    const updateAudioIndicator = () => {
+      if (dom.audio.src && !dom.audio.paused) {
+        navAudioIndicator.style.display = 'flex';
+        navAudioIndicator.classList.remove('paused');
+      } else if (dom.audio.src) {
+        navAudioIndicator.style.display = 'flex';
+        navAudioIndicator.classList.add('paused');
+      } else {
+        navAudioIndicator.style.display = 'none';
+      }
+    };
+    navAudioIndicator.addEventListener('click', () => {
+      if (dom.audio.src) dom.expPlayer.classList.add('show');
+    });
+    dom.audio.addEventListener('play', updateAudioIndicator);
+    dom.audio.addEventListener('pause', updateAudioIndicator);
+    dom.audio.addEventListener('loadstart', updateAudioIndicator);
+    dom.audio.addEventListener('emptied', updateAudioIndicator);
+  }
+
   document.querySelectorAll('.tab').forEach(btn => {
     btn.addEventListener('click', () => {
       // Close any open reader overlay before switching tabs
@@ -111,42 +141,6 @@ function closeWenkuReader() {
       document.querySelectorAll('.tab').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
       btn.classList.add('active'); btn.setAttribute('aria-selected', 'true');
       state.tab = btn.dataset.tab; state.seriesId = null;
-
-      // Add scroll listener for translucent header
-      dom.contentArea.addEventListener('scroll', () => {
-        const isScrolled = dom.contentArea.scrollTop > 10;
-        dom.header.classList.toggle('scrolled', isScrolled);
-      }, { passive: true });
-
-      // ✅ Wire up audio playback indicator in header
-      const navAudioIndicator = document.getElementById('navAudioIndicator');
-      if (navAudioIndicator) {
-        // Show/hide and update animation based on playback state
-        const updateAudioIndicator = () => {
-          if (dom.audio.src && !dom.audio.paused) {
-            navAudioIndicator.style.display = 'flex';
-            navAudioIndicator.classList.remove('paused');
-          } else if (dom.audio.src) {
-            navAudioIndicator.style.display = 'flex';
-            navAudioIndicator.classList.add('paused');
-          } else {
-            navAudioIndicator.style.display = 'none';
-          }
-        };
-
-        // Click to open player
-        navAudioIndicator.addEventListener('click', () => {
-          if (dom.audio.src) {
-            dom.expPlayer.classList.add('show');
-          }
-        });
-
-        // Update on audio events
-        dom.audio.addEventListener('play', updateAudioIndicator);
-        dom.audio.addEventListener('pause', updateAudioIndicator);
-        dom.audio.addEventListener('loadstart', updateAudioIndicator);
-        dom.audio.addEventListener('emptied', updateAudioIndicator);
-      }
 
       dom.navTitle.textContent = t(TAB_I18N[state.tab] || 'tab_lectures');
       dom.navTitle.dataset.i18n = TAB_I18N[state.tab] || 'tab_lectures';

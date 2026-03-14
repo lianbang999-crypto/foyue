@@ -14,6 +14,8 @@ let pendingSeek = 0;
 let isSwitching = false;
 let audioRetries = 0;
 let _dragging = false;
+// Prevents a second play() from racing while the first is still resolving (rapid-click guard)
+let _playPending = false;
 
 /* ===== Background Full-Load State ===== */
 // After playback starts, fetch the full audio file in the background.
@@ -286,6 +288,9 @@ function playCurrent() {
   const dom = getDOM();
   if (state.epIdx < 0 || state.epIdx >= state.playlist.length) return;
 
+  // A new track is starting — clear any pending play lock from a previous togglePlay() call
+  _playPending = false;
+
   // ✅ 修复Blob URL内存泄漏：在切换音频前释放旧的Blob URL
   const oldBlobUrl = dom.audio._cachedBlobUrl;
   if (oldBlobUrl) {
@@ -310,17 +315,22 @@ function playCurrent() {
   // ✅ 核心优化：如果预加载的音频匹配当前要播放的URL，直接复用已缓冲的数据
   let usePreloaded = false;
   if (preloadAudio && preloadedUrl === tr.url && preloadAudio.readyState >= 2) {
-    // Swap: copy the preloaded src (already buffered) to main audio
     usePreloaded = true;
-    console.log('[Player] Reusing preloaded audio, readyState:', preloadAudio.readyState);
   }
 
   dom.audio.src = tr.url;
   dom.audio.playbackRate = SPEEDS[speedIdx];
-  // Explicitly start loading — mobile browsers may ignore preload="auto"
-  dom.audio.load();
-  // Show loading state immediately (skip if preloaded — will resolve fast)
-  if (!usePreloaded) setBuffering(true);
+  if (usePreloaded) {
+    // Skip audio.load() — the browser already has this URL buffered (preload element primed
+    // the HTTP cache). Calling load() would reset readyState and trigger a redundant network
+    // round-trip, discarding the work the preload element already did.
+    // Use the existing cleanupPreload() helper to release the preload element.
+    cleanupPreload();
+  } else {
+    // Explicitly start loading — mobile browsers may ignore preload="auto"
+    dom.audio.load();
+    setBuffering(true);
+  }
   const seekTime = pendingSeek > 0 ? pendingSeek : 0;
   pendingSeek = 0;
 
@@ -342,14 +352,6 @@ function playCurrent() {
         if (pos > 0) dom.audio.addEventListener('loadedmetadata', () => { dom.audio.currentTime = pos; }, { once: true });
       }
     }).catch(() => {});
-  }
-
-  // Clean up preload reference (src already set on main audio)
-  if (usePreloaded) {
-    preloadAudio.src = '';
-    preloadAudio.load();
-    preloadAudio = null;
-    preloadedUrl = '';
   }
 
   // ✅ 优化：添加超时保护，防止isSwitching卡住（预加载时缩短到1.5秒）
@@ -741,16 +743,22 @@ export function onAudioError() {
   }
 }
 
+// Guard flag: prevents a second play() call from racing while the first is still pending.
+// See `_playPending` declaration near the top of this file (Playback State section).
+
 export function togglePlay() {
   const dom = getDOM();
   if (dom.audio.paused && dom.audio.src) {
-    // ✅ 优化：立即更新UI为播放状态，提供即时视觉反馈
+    if (_playPending) return; // play() already in-flight, ignore duplicate tap
+    _playPending = true;
     setPlayState(true);
     dom.audio.play().then(() => {
       startStallWatch();
-    }).catch(() => {
-      // ✅ 如果播放失败，回滚UI状态
-      setPlayState(false);
+    }).catch((err) => {
+      // AbortError means pause() was called before play() resolved — UI already handled
+      if (err.name !== 'AbortError') setPlayState(false);
+    }).finally(() => {
+      _playPending = false;
     });
   } else {
     // If switching tracks, cancel the switch cleanly
