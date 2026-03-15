@@ -1,6 +1,8 @@
 /* audio-cache.js — Cache API wrapper for offline audio playback */
 'use strict';
 
+import { addCachedUrl, removeCachedUrl, clearCachedUrls, isCachedUrl } from './store.js';
+
 const AUDIO_CACHE = 'audio-v2'; // v2: cache key = actual URL (no canonicalization)
 const MAX_CACHE_BYTES = 500 * 1024 * 1024; // 500 MB cap
 
@@ -20,6 +22,8 @@ export async function cacheAudio(url, blob) {
     });
     const response = new Response(blob, { status: 200, headers });
     await cache.put(key, response);
+    // Update the store so UI can check synchronously
+    addCachedUrl(url);
     // LRU eviction: if total exceeds cap, remove oldest entries
     _evictIfNeeded(cache).catch(() => {});
   } catch (e) {
@@ -52,10 +56,14 @@ async function _evictIfNeeded(cache) {
 
 /**
  * Check if a URL is in cache.
+ * Checks the store synchronously first; falls back to the real Cache API for accuracy.
  * @param {string} url
  * @returns {Promise<boolean>}
  */
 export async function isAudioCached(url) {
+  // Fast path: check store (synchronous, no async)
+  if (isCachedUrl(url)) return true;
+  // Slow path: check real Cache API (e.g., after browser eviction or first run)
   try {
     const cache = await caches.open(AUDIO_CACHE);
     const resp = await cache.match(url);
@@ -125,7 +133,9 @@ export async function getCachedSize() {
  */
 export async function clearAudioCache() {
   try {
-    return await caches.delete(AUDIO_CACHE);
+    const result = await caches.delete(AUDIO_CACHE);
+    clearCachedUrls(); // sync store
+    return result;
   } catch (e) {
     return false;
   }
@@ -139,7 +149,9 @@ export async function clearAudioCache() {
 export async function removeCachedAudio(url) {
   try {
     const cache = await caches.open(AUDIO_CACHE);
-    return await cache.delete(url);
+    const result = await cache.delete(url);
+    if (result) removeCachedUrl(url); // sync store
+    return result;
   } catch (e) {
     return false;
   }

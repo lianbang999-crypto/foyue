@@ -63,6 +63,7 @@ function checkAiDeepLink() { getAiChatModule().then(m => m.checkAiDeepLink()); }
 import { appreciate } from './api.js';
 import { monitor } from './monitor.js';
 import { opusQueryParam } from './audio-url.js';
+import { syncCachedUrlsFromCacheAPI, getStorePlayerState } from './store.js';
 
 // Close wenku reader if open — uses DOM check to avoid pulling wenku chunk into main bundle
 function closeWenkuReader() {
@@ -81,7 +82,10 @@ function closeWenkuReader() {
   // DOM refs
   const dom = initDOM();
 
-  state.isFirstVisit = !localStorage.getItem('pl-state');
+  state.isFirstVisit = !getStorePlayerState();
+
+  // Sync cached audio URLs from Cache API into store on startup (once, non-blocking)
+  syncCachedUrlsFromCacheAPI();
 
   // About modal
   const aboutOverlay = document.getElementById('aboutOverlay');

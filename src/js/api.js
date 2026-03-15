@@ -7,26 +7,18 @@ const API_LOGGER = {
   enabled: true,
   log: (level, method, url, error = null) => {
     if (!API_LOGGER.enabled) return;
-    const timestamp = new Date().toISOString();
-    const logEntry = {
-      timestamp,
-      level,
-      method,
-      url,
-      error: error ? error.message : null
-    };
-    // 存储到控制台（开发环境）
+    // Only log to localStorage in development; avoid polluting storage in production
     if (import.meta.env.DEV) {
       console.log(`[API ${level}]`, method, url, error || '');
-    }
-    // 存储到 localStorage（最多保留100条）
-    try {
-      const logs = JSON.parse(localStorage.getItem('api-logs') || '[]');
-      logs.push(logEntry);
-      if (logs.length > 100) logs.shift();
-      localStorage.setItem('api-logs', JSON.stringify(logs));
-    } catch (e) {
-      // ignore quota errors
+      try {
+        const timestamp = new Date().toISOString();
+        const logs = JSON.parse(localStorage.getItem('api-logs') || '[]');
+        logs.push({ timestamp, level, method, url, error: error ? error.message : null });
+        if (logs.length > 100) logs.shift();
+        localStorage.setItem('api-logs', JSON.stringify(logs));
+      } catch (e) {
+        // ignore quota errors
+      }
     }
   }
 };
@@ -59,10 +51,12 @@ function dedupFetch(key, fetcher) {
 /**
  * Record a play event for a series/episode
  * Called when a new episode starts playing
- * #21: Circuit breaker — stop sending after 3 consecutive failures
+ * #21: Circuit breaker — stop sending after 3 consecutive failures, auto-resets after 5 min
  */
 let _recordFailCount = 0;
 const RECORD_FAIL_LIMIT = 3;
+const CIRCUIT_BREAKER_RESET_MS = 5 * 60 * 1000; // 5 minutes
+let _circuitBreakerTimer = null;
 
 export async function recordPlay(seriesId, episodeNum) {
   // Circuit breaker: skip if too many consecutive failures
@@ -78,10 +72,19 @@ export async function recordPlay(seriesId, episodeNum) {
     });
     if (!r.ok) {
       _recordFailCount++;
+      // Trip circuit breaker: schedule auto-reset after 5 minutes
+      if (_recordFailCount >= RECORD_FAIL_LIMIT && !_circuitBreakerTimer) {
+        _circuitBreakerTimer = setTimeout(() => {
+          _recordFailCount = 0;
+          _circuitBreakerTimer = null;
+        }, CIRCUIT_BREAKER_RESET_MS);
+      }
       API_LOGGER.log('error', 'recordPlay', `${seriesId}/${episodeNum}`, new Error(`HTTP ${r.status}`));
       return null;
     }
     _recordFailCount = 0; // Reset on success
+    clearTimeout(_circuitBreakerTimer);
+    _circuitBreakerTimer = null;
     const data = await r.json();
     // Update cache with new count
     if (data && data.playCount) {
@@ -96,6 +99,13 @@ export async function recordPlay(seriesId, episodeNum) {
     return data;
   } catch (e) {
     _recordFailCount++;
+    // Trip circuit breaker: schedule auto-reset after 5 minutes
+    if (_recordFailCount >= RECORD_FAIL_LIMIT && !_circuitBreakerTimer) {
+      _circuitBreakerTimer = setTimeout(() => {
+        _recordFailCount = 0;
+        _circuitBreakerTimer = null;
+      }, CIRCUIT_BREAKER_RESET_MS);
+    }
     API_LOGGER.log('error', 'recordPlay', `${seriesId}/${episodeNum}`, e);
     return null; // Silently fail - don't interrupt playback
   }

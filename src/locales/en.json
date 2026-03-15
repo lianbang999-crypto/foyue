@@ -136,6 +136,7 @@
   "downloading": "Downloading...",
   "download_cellular_warn": "You are on cellular data. Download anyway?",
   "download_done": "Download complete",
+  "ep_cached_tooltip": "Available offline",
   "wenku_recent_reads": "Recent Reads",
   "wenku_da_an": "Master Da'an",
   "wenku_search_placeholder": "Search transcripts...",

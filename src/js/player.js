@@ -8,6 +8,7 @@ import { addHistory, syncHistoryProgress, getHistory } from './history.js';
 import { recordPlay, getAppreciateCount } from './api.js';
 import { cacheAudio, getCachedAudioUrl, isAudioCached } from './audio-cache.js';
 import { mp3FallbackUrl } from './audio-url.js';
+import { getStoreAppreciatedSet, addStoreAppreciated, getStorePlayerState, setStorePlayerState } from './store.js';
 
 /* ===== Playback State ===== */
 let pendingSeek = 0;
@@ -502,21 +503,14 @@ function updateUI(tr) {
   dom.centerRingFill.style.strokeDashoffset = RING_CIRCUMFERENCE;
 }
 
-/* ===== Appreciate State (per-series, persisted in localStorage) ===== */
+/* ===== Appreciate State (per-series, persisted in unified store) ===== */
 
 function getAppreciatedSet() {
-  try {
-    const raw = localStorage.getItem('appreciated');
-    return raw ? new Set(JSON.parse(raw)) : new Set();
-  } catch (e) { return new Set(); }
+  return getStoreAppreciatedSet();
 }
 
 function saveAppreciated(seriesId) {
-  try {
-    const set = getAppreciatedSet();
-    set.add(seriesId);
-    localStorage.setItem('appreciated', JSON.stringify([...set]));
-  } catch (e) { /* ignore */ }
+  addStoreAppreciated(seriesId);
 }
 
 export function isAppreciated(seriesId) {
@@ -1285,10 +1279,10 @@ export function saveState() {
   try {
     const tr = state.playlist[state.epIdx];
     if (!tr) return;
-    localStorage.setItem('pl-state', JSON.stringify({
+    setStorePlayerState({
       seriesId: tr.seriesId, idx: state.epIdx, time: dom.audio.currentTime, duration: dom.audio.duration || 0,
       tab: state.tab, loop: state.loopMode, speed: SPEEDS[speedIdx]
-    }));
+    });
     syncHistoryProgress(dom.audio);
   } catch (e) { /* ignore */ }
 }
@@ -1296,7 +1290,7 @@ export function saveState() {
 export function restoreState(renderCategory, renderHomePage, renderMyPage) {
   const dom = getDOM();
   try {
-    const s = JSON.parse(localStorage.getItem('pl-state'));
+    const s = getStorePlayerState();
     if (!s || !s.seriesId) return;
     for (const cat of state.data.categories) {
       const sr = cat.series.find(x => x.id === s.seriesId);

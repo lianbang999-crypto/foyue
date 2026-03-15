@@ -136,6 +136,7 @@
   "downloading": "下载中...",
   "download_cellular_warn": "当前使用流量，确定下载吗？",
   "download_done": "下载完成",
+  "ep_cached_tooltip": "已离线缓存，可离线播放",
   "wenku_recent_reads": "最近阅读",
   "wenku_da_an": "大安法师",
   "wenku_search_placeholder": "搜索讲义...",
