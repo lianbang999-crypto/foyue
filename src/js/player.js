@@ -757,6 +757,8 @@ export function togglePlay() {
   if (dom.audio.paused && dom.audio.src) {
     if (_playPending) return; // play() already in-flight, ignore duplicate tap
     _playPending = true;
+    // If audio reached the end, restart from the beginning
+    if (dom.audio.ended) dom.audio.currentTime = 0;
     setPlayState(true);
     dom.audio.play().then(() => {
       startStallWatch();
