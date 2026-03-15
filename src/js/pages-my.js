@@ -9,6 +9,7 @@ import { getDeferredPrompt, clearDeferredPrompt } from './pwa.js';
 import { showToast, escapeHtml } from './utils.js';
 import { renderMessageWall } from './message-wall.js';
 import { getCachedCount, getCachedSize, clearAudioCache } from './audio-cache.js';
+import { get as storeGet } from './store.js';
 
 function fmtRelTime(ts) {
   const d = Date.now() - ts;
@@ -46,6 +47,12 @@ export function renderMyPage() {
   const histDesc = histCount > 0
     ? t('my_history_desc').replace('{n}', histCount)
     : t('my_history_empty_desc');
+
+  // Counter stats for subtitle
+  const counterData = storeGet('counter') || { total: 0 };
+  const counterDesc = counterData.total > 0
+    ? t('my_counter_total_desc').replace('{n}', counterData.total)
+    : t('my_counter_desc');
 
   // Build install guide section
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
@@ -94,6 +101,14 @@ export function renderMyPage() {
           <div class="my-item-body">
             <span class="my-item-label">${t('my_history')}</span>
             <span class="my-item-desc">${histDesc}</span>
+          </div>
+          <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
+        </div>
+        <div class="my-item" id="myCounterCard">
+          <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2z"/><path d="M12 6v6l4 2"/><path d="M8 2.5C5.4 3.9 3.5 6.3 3 9"/></svg>
+          <div class="my-item-body">
+            <span class="my-item-label">${t('my_counter')}</span>
+            <span class="my-item-desc">${counterDesc}</span>
           </div>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
@@ -153,6 +168,9 @@ export function renderMyPage() {
 
   // Feature card clicks
   page.querySelector('#myHistoryCard').addEventListener('click', () => showHistorySubview());
+  page.querySelector('#myCounterCard').addEventListener('click', () => {
+    import('./counter.js').then(mod => mod.openCounter());
+  });
   page.querySelector('#myWenkuCard').addEventListener('click', () => {
     import('./wenku.js').then(mod => mod.renderWenkuHome(() => renderMyPage()));
   });
