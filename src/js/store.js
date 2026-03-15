@@ -13,6 +13,7 @@ const _defaults = () => ({
   durations:  {},
   appreciated: [],
   cachedUrls: [],
+  counter:    { total: 0, daily: 0, dailyDate: '', loops: 0, goal: 108 },
 });
 
 let _data = null;
