@@ -1,11 +1,12 @@
 /* ===== Play History ===== */
 import { state } from './state.js';
+import { get, set } from './store.js';
 
 export function getHistory() {
   try {
-    const h = JSON.parse(localStorage.getItem('pl-history')) || [];
-    return h.filter(x => x.seriesTitle && x.epTitle && x.timestamp);
-  } catch (e) {
+    const h = get('history');
+    return Array.isArray(h) ? h.filter(x => x.seriesTitle && x.epTitle && x.timestamp) : [];
+  } catch {
     return [];
   }
 }
@@ -30,12 +31,12 @@ export function addHistory(tr, audio) {
       time: audio.currentTime || 0, duration: audio.duration || 0, timestamp: Date.now()
     });
     if (h.length > 20) h = h.slice(0, 20);
-    localStorage.setItem('pl-history', JSON.stringify(h));
-  } catch (e) { /* ignore */ }
+    set('history', h);
+  } catch { /* ignore */ }
 }
 
 export function clearHistory() {
-  localStorage.removeItem('pl-history');
+  set('history', []);
 }
 
 export function syncHistoryProgress(audio) {
@@ -50,6 +51,6 @@ export function syncHistoryProgress(audio) {
         break;
       }
     }
-    localStorage.setItem('pl-history', JSON.stringify(h));
-  } catch (e) { /* ignore */ }
+    set('history', h);
+  } catch { /* ignore */ }
 }

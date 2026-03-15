@@ -2,35 +2,6 @@
 
 const API_BASE = '/api';
 
-// ✅ 增强：添加日志记录工具
-const API_LOGGER = {
-  enabled: true,
-  log: (level, method, url, error = null) => {
-    if (!API_LOGGER.enabled) return;
-    const timestamp = new Date().toISOString();
-    const logEntry = {
-      timestamp,
-      level,
-      method,
-      url,
-      error: error ? error.message : null
-    };
-    // 存储到控制台（开发环境）
-    if (import.meta.env.DEV) {
-      console.log(`[API ${level}]`, method, url, error || '');
-    }
-    // 存储到 localStorage（最多保留100条）
-    try {
-      const logs = JSON.parse(localStorage.getItem('api-logs') || '[]');
-      logs.push(logEntry);
-      if (logs.length > 100) logs.shift();
-      localStorage.setItem('api-logs', JSON.stringify(logs));
-    } catch (e) {
-      // ignore quota errors
-    }
-  }
-};
-
 /* Simple cache: { key: { data, ts } } */
 const _cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -59,15 +30,25 @@ function dedupFetch(key, fetcher) {
 /**
  * Record a play event for a series/episode
  * Called when a new episode starts playing
- * #21: Circuit breaker — stop sending after 3 consecutive failures
+ * Circuit breaker — stop sending after 3 consecutive failures.
+ * Auto-resets after 5 minutes so transient outages self-heal.
  */
 let _recordFailCount = 0;
+let _circuitResetTimer = null;
 const RECORD_FAIL_LIMIT = 3;
+const CIRCUIT_RESET_MS = 5 * 60 * 1000; // 5 minutes
+
+function _scheduleCircuitReset() {
+  clearTimeout(_circuitResetTimer);
+  _circuitResetTimer = setTimeout(() => {
+    _recordFailCount = 0;
+  }, CIRCUIT_RESET_MS);
+}
 
 export async function recordPlay(seriesId, episodeNum) {
   // Circuit breaker: skip if too many consecutive failures
   if (_recordFailCount >= RECORD_FAIL_LIMIT) {
-    API_LOGGER.log('warn', 'recordPlay', `${seriesId}/${episodeNum}`, new Error('Circuit breaker triggered'));
+    if (import.meta.env.DEV) console.warn('[API] recordPlay circuit breaker triggered', seriesId, episodeNum);
     return null;
   }
   try {
@@ -78,10 +59,12 @@ export async function recordPlay(seriesId, episodeNum) {
     });
     if (!r.ok) {
       _recordFailCount++;
-      API_LOGGER.log('error', 'recordPlay', `${seriesId}/${episodeNum}`, new Error(`HTTP ${r.status}`));
+      _scheduleCircuitReset();
+      if (import.meta.env.DEV) console.error('[API] recordPlay error', r.status, seriesId, episodeNum);
       return null;
     }
-    _recordFailCount = 0; // Reset on success
+    _recordFailCount = 0;
+    clearTimeout(_circuitResetTimer);
     const data = await r.json();
     // Update cache with new count
     if (data && data.playCount) {
@@ -92,11 +75,18 @@ export async function recordPlay(seriesId, episodeNum) {
         cacheSet(cacheKey, cached);
       }
     }
-    API_LOGGER.log('info', 'recordPlay', `${seriesId}/${episodeNum}`);
+    // Notify UI so play count display can refresh without a page reload
+    try {
+      window.dispatchEvent(new CustomEvent('playcount:updated', {
+        detail: { seriesId, episodeNum, playCount: data?.playCount }
+      }));
+    } catch {}
+    if (import.meta.env.DEV) console.log('[API] recordPlay ok', seriesId, episodeNum);
     return data;
   } catch (e) {
     _recordFailCount++;
-    API_LOGGER.log('error', 'recordPlay', `${seriesId}/${episodeNum}`, e);
+    _scheduleCircuitReset();
+    if (import.meta.env.DEV) console.error('[API] recordPlay exception', e);
     return null; // Silently fail - don't interrupt playback
   }
 }
@@ -133,15 +123,9 @@ export async function appreciate(seriesId, episodeNum) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ episodeNum }),
     });
-    if (!r.ok) {
-      API_LOGGER.log('error', 'appreciate', `${seriesId}/${episodeNum}`, new Error(`HTTP ${r.status}`));
-      return null;
-    }
-    const data = await r.json();
-    API_LOGGER.log('info', 'appreciate', `${seriesId}/${episodeNum}`);
-    return data;
-  } catch (e) {
-    API_LOGGER.log('error', 'appreciate', `${seriesId}/${episodeNum}`, e);
+    if (!r.ok) return null;
+    return await r.json();
+  } catch {
     return null;
   }
 }

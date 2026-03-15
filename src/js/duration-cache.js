@@ -1,33 +1,21 @@
 /* ===== Audio Duration Cache ===== */
-/* Lazily probes audio URLs for duration via Audio API and caches in localStorage */
+/* Lazily probes audio URLs for duration via Audio API and stores in unified store.
+ * When the JSON data source already has a duration field the probe is skipped entirely.
+ */
 import { state } from './state.js';
+import { get, patch } from './store.js';
 import { getConnType } from './player.js';
 
-const STORAGE_KEY = 'foyue_duration_cache';
 // Reduce concurrency when audio is playing to avoid bandwidth competition
 const MAX_CONCURRENT_IDLE = 3;
 const MAX_CONCURRENT_PLAYING = 1;
-
-let cache = null;
-
-function loadCache() {
-  if (cache) return cache;
-  try {
-    cache = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-  } catch { cache = {}; }
-  return cache;
-}
-
-function saveCache() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(cache)); } catch {}
-}
 
 /**
  * Get cached duration for a URL (seconds), or null if not cached.
  */
 export function getCachedDuration(url) {
-  const c = loadCache();
-  return c[url] ?? null;
+  const d = get('durations');
+  return (d && d[url] != null) ? d[url] : null;
 }
 
 /**
@@ -49,10 +37,9 @@ function probeOne(url) {
     a.addEventListener('loadedmetadata', () => {
       const d = a.duration;
       if (d && isFinite(d) && d > 0) {
-        const c = loadCache();
-        c[url] = Math.round(d);
-        cache = c;
-        done(Math.round(d));
+        const rounded = Math.round(d);
+        patch('durations', { [url]: rounded });
+        done(rounded);
       } else {
         done(null);
       }
@@ -72,17 +59,16 @@ function probeOne(url) {
  * Returns a cleanup function to abort remaining probes.
  */
 export function probeDurations(episodes, onDuration) {
-  const c = loadCache();
+  const durations = get('durations') || {};
   const queue = [];
   let aborted = false;
-  let saveTimer = null;
 
   // Skip probing entirely when network is weak
   if (state.networkWeak) {
     // Still report cached durations (for episodes without JSON duration)
     episodes.forEach((ep, idx) => {
       if (ep.duration) return; // already in JSON — no need to probe
-      const d = c[ep.url];
+      const d = durations[ep.url];
       if (d) onDuration(idx, d);
     });
     return () => {};
@@ -91,7 +77,7 @@ export function probeDurations(episodes, onDuration) {
   // Immediately report cached durations; queue uncached episodes for probing
   episodes.forEach((ep, idx) => {
     if (ep.duration) return; // already in JSON — caller already has this value
-    const d = c[ep.url];
+    const d = durations[ep.url];
     if (d) {
       onDuration(idx, d);
     } else {
@@ -114,11 +100,6 @@ export function probeDurations(episodes, onDuration) {
     return MAX_CONCURRENT_IDLE;
   }
 
-  function schedSave() {
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(saveCache, 2000);
-  }
-
   function next() {
     if (aborted) return;
     // Re-check network state each iteration
@@ -130,24 +111,12 @@ export function probeDurations(episodes, onDuration) {
       probeOne(episodes[idx].url).then(d => {
         running--;
         if (aborted) return;
-        if (d) {
-          onDuration(idx, d);
-          schedSave();
-        }
+        if (d) onDuration(idx, d);
         next();
       });
-    }
-    // All done — final save
-    if (qi >= queue.length && running === 0) {
-      clearTimeout(saveTimer);
-      saveCache();
     }
   }
   next();
 
-  return () => {
-    aborted = true;
-    clearTimeout(saveTimer);
-    saveCache();
-  };
+  return () => { aborted = true; };
 }
