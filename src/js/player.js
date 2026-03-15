@@ -8,7 +8,7 @@ import { addHistory, syncHistoryProgress, getHistory } from './history.js';
 import { recordPlay, getAppreciateCount } from './api.js';
 import { cacheAudio, getCachedAudioUrl, isAudioCached } from './audio-cache.js';
 import { mp3FallbackUrl } from './audio-url.js';
-import { getStoreAppreciatedSet, addStoreAppreciated, getStorePlayerState, setStorePlayerState } from './store.js';
+import { getStoreAppreciatedSet, addStoreAppreciated, getStorePlayerState, setStorePlayerState, isCachedUrl } from './store.js';
 
 /* ===== Playback State ===== */
 let pendingSeek = 0;
@@ -1191,20 +1191,13 @@ export function renderPlaylistItems() {
   });
   dom.plItems.appendChild(frag);
 
-  // Async: mark cached episodes with a small badge (non-blocking).
-  // Guard against stale callbacks if the list is re-rendered before the async check completes.
-  const renderGen = dom.plItems.dataset.renderGen = String(Date.now());
+  // Mark cached episodes with a small badge (synchronous via store).
   items.forEach((tr, displayIdx) => {
-    isAudioCached(tr.url).then(cached => {
-      if (!cached) return;
-      // Bail if the list was re-rendered since this check started
-      if (dom.plItems.dataset.renderGen !== renderGen) return;
-      const el = dom.plItems.children[displayIdx];
-      // Verify the element still corresponds to the expected track
-      if (el && el.querySelector('.pl-item-title')?.textContent === (tr.title || tr.fileName)) {
-        el.classList.add('pl-item-cached');
-      }
-    });
+    if (!isCachedUrl(tr.url)) return;
+    const el = dom.plItems.children[displayIdx];
+    if (el && el.querySelector('.pl-item-title')?.textContent === (tr.title || tr.fileName)) {
+      el.classList.add('pl-item-cached');
+    }
   });
   // #1: Scroll current item into view after panel animation completes (340ms).
   // Use instant scroll (no behavior:'smooth') to avoid visible jump.

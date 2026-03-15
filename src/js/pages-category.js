@@ -147,7 +147,7 @@ export function showEpisodes(series, tabId) {
       li.classList.toggle('ep-cached', isCached);
       const durEl = li.querySelector('.ep-duration');
       if (durEl) {
-        durEl.title = isCached ? (t('ep_cached_tooltip') || '已离线缓存') : '';
+        durEl.title = isCached ? (t('ep_cached_tooltip') || '') : '';
       }
     });
   }
@@ -162,8 +162,8 @@ export function showEpisodes(series, tabId) {
   function updateCurrentEpProgress() {
     const now = Date.now();
     if (now - _lastProgressUpdateTime < 1000) return; // throttle to ~1s
-    _lastProgressUpdateTime = now;
     if (state.epIdx < 0 || !state.playlist[state.epIdx]) return;
+    _lastProgressUpdateTime = now;
     const cur = state.playlist[state.epIdx];
     if (cur.seriesId !== series.id) return;
     const dur = dom.audio.duration;

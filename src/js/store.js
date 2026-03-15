@@ -21,7 +21,11 @@ function loadStore() {
       if (!_store.cachedUrls) _store.cachedUrls = [];
       return _store;
     }
-  } catch { /* fall through to migration */ }
+  } catch (e) {
+    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV) {
+      console.warn('[store] Failed to parse foyue_store, migrating from legacy keys', e);
+    }
+  }
 
   // First run: migrate from legacy individual keys
   _store = _migrate();
@@ -173,6 +177,7 @@ export function clearCachedUrls() {
 /**
  * Sync cachedUrls from the real Cache API on startup.
  * Called once at app init so isCachedUrl() works synchronously thereafter.
+ * Safe to call multiple times — each call refreshes the store with the latest Cache API state.
  */
 export async function syncCachedUrlsFromCacheAPI() {
   try {
