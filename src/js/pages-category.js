@@ -79,8 +79,20 @@ export function showEpisodes(series, tabId) {
   dom.audio.addEventListener('pause', updatePlayAllBtn);
   let cancelProbe = () => { };
   let onTimeUpdate = () => {};
+
+  // Declared here so the MutationObserver cleanup closure can reference it; the real
+  // implementation is assigned below once `ul` is available (it scopes queries to that element).
+  let updateHighlight = () => {};
+
   const obs = new MutationObserver(() => {
-    if (!view.parentNode) { dom.audio.removeEventListener('play', updatePlayAllBtn); dom.audio.removeEventListener('pause', updatePlayAllBtn); dom.audio.removeEventListener('timeupdate', onTimeUpdate); cancelProbe(); obs.disconnect(); }
+    if (!view.parentNode) {
+      dom.audio.removeEventListener('play', updatePlayAllBtn);
+      dom.audio.removeEventListener('pause', updatePlayAllBtn);
+      dom.audio.removeEventListener('timeupdate', onTimeUpdate);
+      dom.audio.removeEventListener('playing', updateHighlight);
+      cancelProbe();
+      obs.disconnect();
+    }
   });
   obs.observe(dom.contentArea, { childList: true });
 
@@ -91,6 +103,17 @@ export function showEpisodes(series, tabId) {
   });
 
   const ul = view.querySelector('#epList');
+
+  // Sync the .playing highlight whenever actual playback starts (covers auto-advance via onEnded).
+  // Uses the local `ul` so indices always match this series' list, regardless of other .ep-item
+  // elements that might exist elsewhere in the document (e.g. search results).
+  updateHighlight = () => {
+    ul.querySelectorAll('.ep-item').forEach((el, i) => {
+      el.classList.toggle('playing', isCurrentTrack(series.id, i));
+    });
+  };
+  dom.audio.addEventListener('playing', updateHighlight);
+
   const hist = getHistory();
   // Build a history lookup map for O(1) access instead of O(n) .find() per episode
   const histMap = new Map();
