@@ -166,5 +166,6 @@
   "wenku_end": "— 全文完 —",
   "more": "更多",
   "cancel": "取消",
-  "app_updated": "内容已更新"
+  "app_updated": "内容已更新",
+  "ep_cached_tooltip": "已下载，可离线收听"
 }

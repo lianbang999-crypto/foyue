@@ -8,7 +8,7 @@ import { renderHomePage } from './pages-home.js';
 import { getHistory } from './history.js';
 import { getPlayCount, appreciate } from './api.js';
 import { showToast, escapeHtml, showFloatText, fmtCount, fmtDuration } from './utils.js';
-import { isAudioCached } from './audio-cache.js';
+import { getBatchCachedStatus } from './audio-cache.js';
 import { mountSummary } from './ai-summary.js';
 import { probeDurations, getCachedDuration } from './duration-cache.js';
 // import { mountTranscript } from './transcript.js';
@@ -78,8 +78,9 @@ export function showEpisodes(series, tabId) {
   dom.audio.addEventListener('play', updatePlayAllBtn);
   dom.audio.addEventListener('pause', updatePlayAllBtn);
   let cancelProbe = () => { };
+  let onTimeUpdate = () => {};
   const obs = new MutationObserver(() => {
-    if (!view.parentNode) { dom.audio.removeEventListener('play', updatePlayAllBtn); dom.audio.removeEventListener('pause', updatePlayAllBtn); cancelProbe(); obs.disconnect(); }
+    if (!view.parentNode) { dom.audio.removeEventListener('play', updatePlayAllBtn); dom.audio.removeEventListener('pause', updatePlayAllBtn); dom.audio.removeEventListener('timeupdate', onTimeUpdate); cancelProbe(); obs.disconnect(); }
   });
   obs.observe(dom.contentArea, { childList: true });
 
@@ -88,10 +89,6 @@ export function showEpisodes(series, tabId) {
     if (isThisSeries) { togglePlay(); }
     else { playList(series.episodes, 0, series); }
   });
-
-  const hasAudio = !!dom.audio.src;
-  const alreadyPlaying = state.playlist.length && state.epIdx >= 0 && state.playlist[state.epIdx] && state.playlist[state.epIdx].seriesId === series.id;
-  if (!hasAudio && !alreadyPlaying && series.episodes.length) playList(series.episodes, 0, series);
 
   const ul = view.querySelector('#epList');
   const hist = getHistory();
@@ -128,12 +125,44 @@ export function showEpisodes(series, tabId) {
   });
   ul.appendChild(frag);
 
-  // Async: mark cached episodes with indicator
-  series.episodes.forEach((ep, idx) => {
-    isAudioCached(ep.url).then(cached => {
+  // Real-time progress bar for the currently playing episode (~1 update/sec)
+  let progressTick = 0;
+  onTimeUpdate = function () {
+    const now = performance.now();
+    if (now - progressTick < 1000) return;
+    progressTick = now;
+    const isThisSeries = state.playlist.length && state.epIdx >= 0
+      && state.playlist[state.epIdx] && state.playlist[state.epIdx].seriesId === series.id;
+    if (!isThisSeries) return;
+    const dur = dom.audio.duration;
+    if (!dur || !isFinite(dur) || dur <= 0) return;
+    const pct = Math.min(100, Math.round(dom.audio.currentTime / dur * 100));
+    const li = ul.children[state.epIdx];
+    if (!li) return;
+    let fillEl = li.querySelector('.ep-progress-fill');
+    if (!fillEl) {
+      const progEl = document.createElement('div');
+      progEl.className = 'ep-progress';
+      progEl.innerHTML = '<div class="ep-progress-fill"></div>';
+      const epText = li.querySelector('.ep-text');
+      if (epText) epText.appendChild(progEl);
+      fillEl = li.querySelector('.ep-progress-fill');
+    }
+    if (fillEl) fillEl.style.width = pct + '%';
+  };
+  dom.audio.addEventListener('timeupdate', onTimeUpdate);
+
+  // Batch-check cache status for all episodes (single cache.open() call)
+  getBatchCachedStatus(series.episodes.map(ep => ep.url)).then(cachedArr => {
+    const tooltip = t('ep_cached_tooltip') || '已下载，可离线收听';
+    cachedArr.forEach((cached, idx) => {
       if (!cached) return;
       const li = ul.children[idx];
-      if (li) li.classList.add('ep-cached');
+      if (li) {
+        li.classList.add('ep-cached');
+        const durEl = li.querySelector('.ep-duration');
+        if (durEl) durEl.title = tooltip;
+      }
     });
   });
 
