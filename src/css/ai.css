@@ -84,36 +84,75 @@
   padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   -webkit-overflow-scrolling: touch;
 }
 
+/* Welcome message special styling */
+.ai-welcome .ai-msg-content {
+  background: linear-gradient(135deg, var(--accent-glow), transparent);
+  border: 1px solid var(--border);
+  text-align: center;
+  border-radius: 18px;
+  padding: 20px 16px 14px;
+}
+.ai-welcome-icon {
+  display: block;
+  margin: 0 auto 10px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--accent-glow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+
 /* Messages — shared with old panel */
-.ai-msg { display: flex; }
+.ai-msg { display: flex; gap: 8px; align-items: flex-start; }
 .ai-msg-user { justify-content: flex-end; }
 .ai-msg-bot,
 .ai-msg-error { justify-content: flex-start; }
+
+/* Bot avatar */
+.ai-msg-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent-glow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.ai-msg-avatar svg { color: var(--accent); }
+.ai-msg-user .ai-msg-avatar { display: none; }
 
 .ai-msg-content {
   max-width: 85%;
   padding: 10px 14px;
   border-radius: var(--radius-sm);
   font-size: 15px;
-  line-height: 1.6;
+  line-height: 1.7;
 }
-.ai-msg-content p { margin: 0 0 4px; }
+.ai-msg-content p { margin: 0 0 6px; }
 .ai-msg-content p:last-child { margin: 0; }
 
 .ai-msg-user .ai-msg-content {
   background: var(--accent);
   color: var(--text-inverse);
-  border-radius: var(--radius-sm) var(--radius-sm) 2px var(--radius-sm);
+  border-radius: 18px 18px 4px 18px;
+  padding: 10px 16px;
+  box-shadow: 0 1px 4px var(--accent-shadow);
 }
 .ai-msg-bot .ai-msg-content {
   background: var(--bg-card);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm) var(--radius-sm) var(--radius-sm) 2px;
+  border-radius: 4px 18px 18px 18px;
+  box-shadow: var(--shadow-sm);
 }
 .ai-msg-error .ai-msg-content {
   background: #fef2f2;
@@ -129,20 +168,22 @@
 }
 
 .ai-msg-content .ai-disclaimer {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
 }
 
 /* AI 回复引用块 */
 .ai-msg-content .ai-quote {
-  margin: 8px 0;
-  padding: 8px 12px;
+  margin: 10px 0;
+  padding: 10px 14px;
   border-left: 3px solid var(--accent);
   background: var(--accent-glow);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   font-size: 14px;
-  line-height: 1.7;
+  line-height: 1.8;
 }
 .ai-msg-content .ai-quote p {
   margin: 0 0 4px;
@@ -169,77 +210,116 @@
   appearance: none;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 9999px;
-  padding: 8px 14px;
+  border-radius: 20px;
+  padding: 8px 16px;
   font-size: 14px;
   font-family: var(--font-zh);
   color: var(--text);
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition: all 0.2s ease;
+  box-shadow: var(--shadow-sm);
 }
 .ai-suggest-chip:hover {
   border-color: var(--accent);
   background: var(--accent-glow);
   color: var(--accent);
+  box-shadow: 0 2px 8px var(--accent-shadow);
+  transform: translateY(-1px);
+}
+.ai-suggest-chip:active {
+  transform: translateY(0);
 }
 
 .ai-sources {
   font-size: 13px;
   color: var(--text-secondary);
-  margin-top: 6px;
+  margin-top: 10px;
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
   align-items: center;
 }
 .ai-source-tag {
   -webkit-appearance: none; appearance: none; border: none;
   background: var(--accent-glow);
   color: var(--accent);
-  padding: 2px 8px;
-  border-radius: 4px;
+  padding: 4px 10px;
+  border-radius: 12px;
   font-size: 12px;
+  font-weight: 500;
   text-decoration: none;
-  transition: background 0.15s;
+  transition: all 0.2s ease;
   cursor: pointer;
   font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.ai-source-tag::before {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
 }
 button.ai-source-tag:hover {
   background: var(--accent);
   color: var(--text-inverse);
+  box-shadow: 0 1px 4px var(--accent-shadow);
+}
+button.ai-source-tag:hover::before {
+  background: var(--text-inverse);
 }
 
 /* Typing indicator */
 .ai-typing-dots {
   display: flex;
-  gap: 4px;
-  padding: 4px 0;
+  gap: 5px;
+  padding: 6px 2px;
 }
 .ai-typing-dots span {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--accent-dim);
-  animation: ai-bounce 1.2s infinite;
+  animation: ai-bounce 1.4s ease-in-out infinite;
 }
-.ai-typing-dots span:nth-child(2) { animation-delay: 0.15s; }
-.ai-typing-dots span:nth-child(3) { animation-delay: 0.3s; }
+.ai-typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.ai-typing-dots span:nth-child(3) { animation-delay: 0.4s; }
 @keyframes ai-bounce {
-  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-  30% { transform: translateY(-6px); opacity: 1; }
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
+  30% { transform: translateY(-8px); opacity: 1; }
 }
 
 /* Streaming text */
-.ai-streaming{white-space:pre-wrap;word-break:break-word}
+.ai-streaming { white-space: pre-wrap; word-break: break-word; }
+.ai-streaming::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--accent);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: ai-cursor-blink 0.8s step-end infinite;
+}
+@keyframes ai-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
 
 /* Follow-up question chips inside answers */
 .ai-followup-wrap {
-  margin-top: 10px;
-  padding: 0;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
 }
 .ai-followup-wrap .ai-suggest-chip {
   font-size: 13px;
-  padding: 6px 12px;
+  padding: 6px 14px;
+  box-shadow: none;
 }
 
 /* Voice input mic button */
@@ -281,17 +361,18 @@ button.ai-source-tag:hover {
 .ai-fs-input {
   flex: 1;
   border: 1px solid var(--border);
-  border-radius: 9999px;
-  padding: 10px 14px;
+  border-radius: 22px;
+  padding: 10px 16px;
   font-size: 15px;
   font-family: var(--font-zh);
   background: var(--bg-secondary);
   color: var(--text);
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 .ai-fs-input:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 .ai-fs-input::placeholder {
   color: var(--text-muted);
@@ -308,10 +389,11 @@ button.ai-source-tag:hover {
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
-  transition: opacity 0.15s;
+  transition: opacity 0.15s, transform 0.15s;
 }
-.ai-fs-send:hover { opacity: 0.85; }
-.ai-fs-send:disabled { opacity: 0.5; cursor: not-allowed; }
+.ai-fs-send:hover { opacity: 0.85; transform: scale(1.05); }
+.ai-fs-send:active { transform: scale(0.95); }
+.ai-fs-send:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
 /* AI loading dot */
 .ai-loading-dot {

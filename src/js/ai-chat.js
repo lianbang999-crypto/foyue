@@ -259,6 +259,8 @@ function createChatPage() {
     return html;
   }
 
+  const BOT_AVATAR = `<div class="ai-msg-avatar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.09 3.26L16.36 6.36l-3.26 1.09L12 10.72l-1.09-3.27L7.64 6.36l3.27-1.1z"/><path d="M18 12l.73 2.18L20.91 14.91l-2.18.73L18 17.82l-.73-2.18-2.18-.73 2.18-.73z"/></svg></div>`;
+
   function addMessage(role, content, sources, disclaimer, silent) {
     while (chatMessages.children.length > MAX_MESSAGES) {
       chatMessages.removeChild(chatMessages.children[1]);
@@ -266,7 +268,9 @@ function createChatPage() {
     const safeRole = ['user', 'bot', 'error'].includes(role) ? role : 'bot';
     const msg = document.createElement('div');
     msg.className = `ai-msg ai-msg-${safeRole}`;
-    let html = '<div class="ai-msg-content">';
+    let html = '';
+    if (safeRole === 'bot') html += BOT_AVATAR;
+    html += '<div class="ai-msg-content">';
     if (role === 'bot') {
       html += formatAnswer(content);
     } else {
@@ -290,6 +294,7 @@ function createChatPage() {
     }
     const msg = document.createElement('div');
     msg.className = 'ai-msg ai-msg-bot';
+    msg.innerHTML = BOT_AVATAR;
     const msgContent = document.createElement('div');
     msgContent.className = 'ai-msg-content';
     const textEl = document.createElement('div');
@@ -305,7 +310,7 @@ function createChatPage() {
     const indicator = document.createElement('div');
     indicator.className = 'ai-msg ai-msg-bot ai-typing';
     indicator.setAttribute('aria-label', 'AI 正在思考');
-    indicator.innerHTML = '<div class="ai-msg-content"><div class="ai-typing-dots"><span></span><span></span><span></span></div></div>';
+    indicator.innerHTML = BOT_AVATAR + '<div class="ai-msg-content"><div class="ai-typing-dots"><span></span><span></span><span></span></div></div>';
     chatMessages.appendChild(indicator);
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
@@ -360,9 +365,16 @@ function buildPageHTML() {
       </button>
     </div>
     <div class="ai-fs-messages" id="aiFsMessages" role="log" aria-live="polite">
-      <div class="ai-msg ai-msg-bot">
+      <div class="ai-msg ai-msg-bot ai-welcome">
         <div class="ai-msg-content">
-          <p>您好！我是净土法音 AI 问答助手。您可以向我提问有关净土法门、佛号念诵、讲经内容等任何问题。</p>
+          <div class="ai-welcome-icon">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2l1.09 3.26L16.36 6.36l-3.26 1.09L12 10.72l-1.09-3.27L7.64 6.36l3.27-1.1z"/>
+              <path d="M18 12l.73 2.18L20.91 14.91l-2.18.73L18 17.82l-.73-2.18-2.18-.73 2.18-.73z"/>
+            </svg>
+          </div>
+          <p>您好！我是净土法音 AI 问答助手。</p>
+          <p>您可以向我提问有关净土法门、佛号念诵、讲经内容等任何问题。</p>
           <p class="ai-disclaimer">AI 回答仅供参考，请以原始经典和法师开示为准。</p>
         </div>
       </div>
