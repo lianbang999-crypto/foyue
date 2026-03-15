@@ -250,15 +250,22 @@ export function prepareList(episodes, idx, series, restoreTime) {
   const tr = state.playlist[state.epIdx];
   if (!tr) return;
   const dom = getDOM();
-  dom.audio.src = tr.url;
-  dom.audio.load();
-  // ✅ Offline playback: async check cache, swap to blob URL if found
+  const capturedId = _playCurrentId; // guard against rapid calls overwriting each other
+  // ✅ Cache-first: check cache before setting src
   getCachedAudioUrl(tr.url).then(cachedUrl => {
-    if (!cachedUrl) return;
-    dom.audio.src = cachedUrl;
+    if (_playCurrentId !== capturedId) {
+      if (cachedUrl) URL.revokeObjectURL(cachedUrl); // revoke stale blob
+      return;
+    }
+    const srcUrl = cachedUrl || tr.url;
+    if (cachedUrl) dom.audio._cachedBlobUrl = cachedUrl;
+    dom.audio.src = srcUrl;
     dom.audio.load();
-    dom.audio._cachedBlobUrl = cachedUrl;
-  }).catch(() => {});
+  }).catch(() => {
+    if (_playCurrentId !== capturedId) return;
+    dom.audio.src = tr.url;
+    dom.audio.load();
+  });
   updateUI(tr);
   highlightEp();
   updateMediaSession(tr);
@@ -316,138 +323,132 @@ function playCurrent() {
   let usePreloaded = false;
   if (preloadAudio && preloadedUrl === tr.url && preloadAudio.readyState >= 2) {
     usePreloaded = true;
+    cleanupPreload(); // Release preload element; HTTP cache is now primed
   }
 
-  dom.audio.src = tr.url;
-  dom.audio.playbackRate = SPEEDS[speedIdx];
-  if (usePreloaded) {
-    // Skip audio.load() — the browser already has this URL buffered (preload element primed
-    // the HTTP cache). Calling load() would reset readyState and trigger a redundant network
-    // round-trip, discarding the work the preload element already did.
-    // Use the existing cleanupPreload() helper to release the preload element.
-    cleanupPreload();
-  } else {
-    // Explicitly start loading — mobile browsers may ignore preload="auto"
-    dom.audio.load();
-    setBuffering(true);
-  }
-  const seekTime = pendingSeek > 0 ? pendingSeek : 0;
+  // ✅ Fix 3: Compute seek time — pendingSeek > history resume > 0
+  let seekTime = pendingSeek > 0 ? pendingSeek : 0;
   pendingSeek = 0;
-
-  // ✅ Offline playback: async check cache, swap to blob URL if found
-  if (!usePreloaded) {
-    getCachedAudioUrl(tr.url).then(cachedUrl => {
-      if (callId !== _playCurrentId) {
-        // ✅ 修复：过期的Blob URL也要释放
-        if (cachedUrl) URL.revokeObjectURL(cachedUrl);
-        return;
-      }
-      if (cachedUrl) {
-        const pos = dom.audio.currentTime;
-        const rate = dom.audio.playbackRate;
-        dom.audio.src = cachedUrl;
-        dom.audio.playbackRate = rate;
-        dom.audio.load();
-        dom.audio._cachedBlobUrl = cachedUrl;
-        if (pos > 0) dom.audio.addEventListener('loadedmetadata', () => { dom.audio.currentTime = pos; }, { once: true });
-      }
-    }).catch(() => {});
+  if (seekTime === 0) {
+    const hist = getHistory();
+    const histEntry = hist.find(h => h.seriesId === tr.seriesId && h.epIdx === state.epIdx);
+    if (histEntry && histEntry.time > 5 && (!histEntry.duration || histEntry.time < histEntry.duration - 5)) {
+      seekTime = histEntry.time;
+    }
   }
 
   // ✅ 优化：添加超时保护，防止isSwitching卡住（预加载时缩短到1.5秒）
-  // Note: this only resets the isSwitching flag, NOT playback — play() continues independently
   const switchTimeout = usePreloaded ? 1500 : 8000;
   let switchingTimeout = setTimeout(() => {
     if (isSwitching && callId === _playCurrentId) {
       console.warn('[Player] isSwitching timeout, auto-reset');
       isSwitching = false;
       setBuffering(false);
-      // Don't call setPlayState(false) here — audio.play() may still be pending
-      // and will resolve on its own. Let the play/pause events handle UI state.
     }
   }, switchTimeout);
 
   function tryPlay() {
     if (callId !== _playCurrentId) {
-      // ✅ 修复：早期返回时也要清除buffering状态
       setBuffering(false);
       return; // stale callback from previous switch
     }
     setBuffering(false);
     if (seekTime > 0) dom.audio.currentTime = seekTime;
     dom.audio.play().then(() => {
+      if (callId !== _playCurrentId) return; // ✅ Fix 5: guard stale resolution
       clearTimeout(switchingTimeout);
       isSwitching = false;
       setPlayState(true);
       startStallWatch();
-      // Reset networkWeak on successful playback start
       if (_networkWeak) setNetworkWeak(false);
-      // Start background full-load after playback begins
       startBgFullLoad(tr.url);
     }).catch(err => {
       clearTimeout(switchingTimeout);
       isSwitching = false;
-      setBuffering(false); // ✅ 修复：播放失败也要清除buffering状态
+      setBuffering(false);
       if (callId === _playCurrentId && err.name !== 'AbortError') {
         setPlayState(false);
       }
     });
   }
 
-  if (dom.audio.readyState >= 2) {
-    tryPlay();
-  } else {
-    if (seekTime > 0) dom.audio.currentTime = seekTime;
-    dom.audio.play().then(() => {
-      clearTimeout(switchingTimeout);
-      isSwitching = false;
-      setBuffering(false);
-      setPlayState(true);
-      startStallWatch();
-      // Reset networkWeak on successful playback start
-      if (_networkWeak) setNetworkWeak(false);
-      // Start background full-load after playback begins
-      startBgFullLoad(tr.url);
-    }).catch(err => {
-      if (err.name === 'AbortError') return;
-      // Otherwise fall back to waiting for canplay/loadeddata events
-      function onReady() {
-        if (callId !== _playCurrentId) return;
-        cleanupReadyListeners(dom);
-        tryPlay();
-      }
-      dom.audio._onReady = onReady;
-      dom.audio.addEventListener('canplay', onReady);
-      dom.audio.addEventListener('loadeddata', onReady);
-
-      // #18: Soft timeout at 15s — show "loading slow" hint but keep waiting
-      dom.audio._slowTimeout = setTimeout(() => {
-        dom.audio._slowTimeout = null;
-        if (callId !== _playCurrentId) return;
-        if (dom.audio._onReady) {
-          showToast(t('loading_slow'));
-        }
-      }, 15000);
-
-      // #18: Hard timeout at 45s — give up if still not ready (long audio files can be 80MB+)
-      dom.audio._readyTimeout = setTimeout(() => {
-        dom.audio._readyTimeout = null;
-        if (callId !== _playCurrentId) return;
-        if (dom.audio._onReady) {
+  // ✅ Fix 1+4: doLoad sets src after cache check; all async paths guarded by callId
+  function doLoad(srcUrl, skipLoad) {
+    if (callId !== _playCurrentId) return;
+    dom.audio.src = srcUrl;
+    dom.audio.playbackRate = SPEEDS[speedIdx];
+    if (!skipLoad) {
+      dom.audio.load();
+      setBuffering(true);
+    }
+    if (dom.audio.readyState >= 2) {
+      tryPlay();
+    } else {
+      if (seekTime > 0) dom.audio.currentTime = seekTime;
+      dom.audio.play().then(() => {
+        if (callId !== _playCurrentId) return; // ✅ Fix 5
+        clearTimeout(switchingTimeout);
+        isSwitching = false;
+        setBuffering(false);
+        setPlayState(true);
+        startStallWatch();
+        if (_networkWeak) setNetworkWeak(false);
+        startBgFullLoad(tr.url);
+      }).catch(err => {
+        if (err.name === 'AbortError') return;
+        // Otherwise fall back to waiting for canplay/loadeddata events
+        function onReady() {
+          if (callId !== _playCurrentId) return;
           cleanupReadyListeners(dom);
-          if (dom.audio.readyState >= 2) {
-            tryPlay();
-          } else {
-            isSwitching = false;
-            setBuffering(false);
-            setPlayState(false);
-            setErrorState(t('error_tap_retry'));
-            showToast(t('error_play'));
-          }
+          tryPlay();
         }
-      }, 45000);
-    });
+        dom.audio._onReady = onReady;
+        dom.audio.addEventListener('canplay', onReady);
+        dom.audio.addEventListener('loadeddata', onReady);
+
+        // #18: Soft timeout at 15s — show "loading slow" hint but keep waiting
+        dom.audio._slowTimeout = setTimeout(() => {
+          dom.audio._slowTimeout = null;
+          if (callId !== _playCurrentId) return;
+          if (dom.audio._onReady) {
+            showToast(t('loading_slow'));
+          }
+        }, 15000);
+
+        // #18: Hard timeout at 45s — give up if still not ready (long audio files can be 80MB+)
+        dom.audio._readyTimeout = setTimeout(() => {
+          dom.audio._readyTimeout = null;
+          if (callId !== _playCurrentId) return;
+          if (dom.audio._onReady) {
+            cleanupReadyListeners(dom);
+            if (dom.audio.readyState >= 2) {
+              tryPlay();
+            } else {
+              isSwitching = false;
+              setBuffering(false);
+              setPlayState(false);
+              setErrorState(t('error_tap_retry'));
+              showToast(t('error_play'));
+            }
+          }
+        }, 45000);
+      });
+    }
   }
+
+  // ✅ Fix 1: Cache-first — check cache BEFORE setting dom.audio.src
+  getCachedAudioUrl(tr.url).then(cachedUrl => {
+    if (callId !== _playCurrentId) {
+      if (cachedUrl) URL.revokeObjectURL(cachedUrl); // ✅ Fix 4: revoke stale blob
+      return;
+    }
+    if (cachedUrl) dom.audio._cachedBlobUrl = cachedUrl;
+    // Use cached blob URL (always needs load()). Skip load() only when using HTTP cache from preload.
+    const skipLoad = !cachedUrl && usePreloaded;
+    doLoad(cachedUrl || tr.url, skipLoad);
+  }).catch(() => {
+    doLoad(tr.url, usePreloaded);
+  });
 
   updateUI(tr);
   highlightEp();
@@ -1027,39 +1028,17 @@ function _doBgFullLoad(url) {
     })
     .then(blob => {
       if (!blob) return;
-      const dom = getDOM();
-      // Only swap if still playing the same URL (compare resolved URL since dom.audio.src is resolved)
-      if (dom.audio.src !== fetchUrl && !dom.audio.src.startsWith('blob:')) {
-        cleanupBgFetch();
-        return;
-      }
-      // Also check the original URL stored on the audio element
+      // ✅ Fix 2: Only cache for offline playback — do NOT swap dom.audio.src during playback
       const currentTrack = state.playlist[state.epIdx];
       if (!currentTrack || currentTrack.url !== bgFetchUrl) {
-        cleanupBgFetch();
+        bgFetchController = null;
+        bgFetchUrl = '';
         return;
       }
-
-      bgBlobUrl = URL.createObjectURL(blob);
-      // Also cache for offline playback
       cacheAudio(url, blob).catch(() => {});
-      const pos = dom.audio.currentTime;
-      const wasPlaying = !dom.audio.paused;
-      const rate = dom.audio.playbackRate;
-
-      dom.audio.src = bgBlobUrl;
-      dom.audio.playbackRate = rate;
-      dom.audio.addEventListener('loadedmetadata', function onMeta() {
-        dom.audio.removeEventListener('loadedmetadata', onMeta);
-        dom.audio.currentTime = pos;
-        if (wasPlaying) dom.audio.play().catch(() => {});
-      }, { once: true });
-      dom.audio.load();
-
-      console.log('[BgLoad] Switched to local Blob URL');
+      console.log('[BgLoad] Cached audio for offline playback');
       bgFetchController = null;
       bgFetchUrl = '';
-      // Mark network as strong since full download succeeded
       setNetworkWeak(false);
     })
     .catch(err => {
