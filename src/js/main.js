@@ -389,7 +389,7 @@ function closeWenkuReader() {
   initInstallPrompt();
 
   // Back navigation guard (extended to handle AI chat)
-  initBackGuard(renderCategory, state, { closeFullScreen, getPlaylistVisible, closePlaylist });
+  initBackGuard(renderCategory, state, { closeFullScreen, getPlaylistVisible, closePlaylist, renderHomePage });
 
   // Handle browser back button for wenku, search overlay, and AI chat
   window.addEventListener('popstate', (e) => {
