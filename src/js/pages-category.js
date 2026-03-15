@@ -247,6 +247,20 @@ export function showEpisodes(series, tabId) {
     }
   });
 
+  // Update play count display when a new play is recorded for this series
+  const onPlayCountUpdated = (e) => {
+    if (e.detail?.seriesId !== series.id || !e.detail?.playCount) return;
+    const countSpan = view.querySelector('#epPlayCount');
+    if (countSpan) countSpan.textContent = ` \u00B7 ${fmtCount(e.detail.playCount)}${t('play_count_unit') || '\u6B21'}`;
+  };
+  window.addEventListener('playcount:updated', onPlayCountUpdated);
+  // Store cleanup so MutationObserver can remove listener when view is removed
+  const _origCleanupCache = _cleanupCacheListener;
+  _cleanupCacheListener = () => {
+    _origCleanupCache();
+    window.removeEventListener('playcount:updated', onPlayCountUpdated);
+  };
+
   // 阅读讲义按钮（应用内导航到文库）
   if (series.wenkuSeries) {
     const wenkuBtn = document.createElement('button');

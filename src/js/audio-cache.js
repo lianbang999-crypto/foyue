@@ -1,8 +1,72 @@
 /* audio-cache.js — Cache API wrapper for offline audio playback */
 'use strict';
 
+import { get, set } from './store.js';
+
 const AUDIO_CACHE = 'audio-v2'; // v2: cache key = actual URL (no canonicalization)
 const MAX_CACHE_BYTES = 500 * 1024 * 1024; // 500 MB cap
+
+/* ===== Store-backed cached URL set ===== */
+
+function _getCachedSet() {
+  const arr = get('cachedUrls');
+  return new Set(Array.isArray(arr) ? arr : []);
+}
+
+function _saveCachedSet(set_) {
+  set('cachedUrls', [...set_]);
+}
+
+function _addCachedUrl(url) {
+  const s = _getCachedSet();
+  s.add(url);
+  _saveCachedSet(s);
+  _dispatchChange();
+}
+
+function _removeCachedUrl(url) {
+  const s = _getCachedSet();
+  s.delete(url);
+  _saveCachedSet(s);
+  _dispatchChange();
+}
+
+function _clearCachedUrls() {
+  set('cachedUrls', []);
+  _dispatchChange();
+}
+
+function _dispatchChange() {
+  try {
+    window.dispatchEvent(new CustomEvent('audiocache:change'));
+  } catch {}
+}
+
+/**
+ * Synchronously check if a URL is in the store's cached-URL set.
+ * Faster than the async Cache API lookup — use for rendering.
+ * @param {string} url
+ * @returns {boolean}
+ */
+export function isCachedSync(url) {
+  return _getCachedSet().has(url);
+}
+
+/**
+ * Initialise the store's cachedUrls by scanning the actual Cache API.
+ * Call once on app start so the sync set reflects reality.
+ * @returns {Promise<void>}
+ */
+export async function initCachedUrls() {
+  try {
+    const cache = await caches.open(AUDIO_CACHE);
+    const keys = await cache.keys();
+    set('cachedUrls', keys.map(r => r.url));
+    _dispatchChange();
+  } catch {
+    set('cachedUrls', []);
+  }
+}
 
 /**
  * Store a fetched blob as a proper Response in Cache API.
@@ -20,6 +84,8 @@ export async function cacheAudio(url, blob) {
     });
     const response = new Response(blob, { status: 200, headers });
     await cache.put(key, response);
+    // Update store so UI can reflect instantly
+    _addCachedUrl(url);
     // LRU eviction: if total exceeds cap, remove oldest entries
     _evictIfNeeded(cache).catch(() => {});
   } catch (e) {
@@ -125,7 +191,9 @@ export async function getCachedSize() {
  */
 export async function clearAudioCache() {
   try {
-    return await caches.delete(AUDIO_CACHE);
+    const result = await caches.delete(AUDIO_CACHE);
+    _clearCachedUrls();
+    return result;
   } catch (e) {
     return false;
   }
@@ -153,7 +221,9 @@ export async function getBatchCachedStatus(urls) {
 export async function removeCachedAudio(url) {
   try {
     const cache = await caches.open(AUDIO_CACHE);
-    return await cache.delete(url);
+    const result = await cache.delete(url);
+    if (result) _removeCachedUrl(url);
+    return result;
   } catch (e) {
     return false;
   }
