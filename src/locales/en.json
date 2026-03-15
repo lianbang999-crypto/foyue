@@ -15,6 +15,8 @@
   "my_clear_cache": "Clear Cache",
   "my_cache_cleared": "Cache cleared",
   "my_cache_size": "{n} audio cached",
+  "my_cache_confirm": "Clear {mb} MB of cached audio?",
+  "my_cache_freed": "Cleared {mb} MB of cache",
   "my_greeting": "Namo Amitabha",
   "my_subtitle": "Pure Land Dharma Audio",
   "my_settings": "Settings",
