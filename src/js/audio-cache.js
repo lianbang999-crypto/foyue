@@ -132,7 +132,21 @@ export async function clearAudioCache() {
 }
 
 /**
- * Remove a single cached entry.
+ * Check multiple URLs against the cache in a single open() call.
+ * @param {string[]} urls
+ * @returns {Promise<boolean[]>} Array of booleans aligned to the input urls
+ */
+export async function getBatchCachedStatus(urls) {
+  try {
+    const cache = await caches.open(AUDIO_CACHE);
+    const results = await Promise.all(urls.map(url => cache.match(url)));
+    return results.map(r => !!r);
+  } catch (e) {
+    return urls.map(() => false);
+  }
+}
+
+/**
  * @param {string} url
  * @returns {Promise<boolean>}
  */
