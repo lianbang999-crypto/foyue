@@ -105,7 +105,7 @@ function showManualInstallGuide() {
 }
 
 /* ===== Back Navigation Guard ===== */
-export function initBackGuard(renderCategory, stateRef, { closeFullScreen, getPlaylistVisible, closePlaylist }) {
+export function initBackGuard(renderCategory, stateRef, { closeFullScreen, getPlaylistVisible, closePlaylist, renderHomePage }) {
   const dom = getDOM();
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
 
@@ -132,7 +132,14 @@ export function initBackGuard(renderCategory, stateRef, { closeFullScreen, getPl
     const epView = dom.contentArea.querySelector('.ep-view');
     if (epView) {
       epView.remove();
-      renderCategory(stateRef.tab);
+      // When the ep-view was opened from the home tab, renderCategory('home') would
+      // fail silently (no such category) and leave a blank page.  Use renderHomePage
+      // instead so the back gesture always restores visible content.
+      if (stateRef.tab === 'home' && renderHomePage) {
+        renderHomePage();
+      } else {
+        renderCategory(stateRef.tab);
+      }
       history.pushState({ page: 'guard' }, '');
       return;
     }

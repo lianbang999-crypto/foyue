@@ -344,6 +344,7 @@ function playCurrent() {
       console.warn('[Player] isSwitching timeout, auto-reset');
       isSwitching = false;
       setBuffering(false);
+      renderPlaylistItems(); // Remove loading indicator from playlist item
     }
   }, switchTimeout);
 
@@ -359,6 +360,7 @@ function playCurrent() {
       clearTimeout(switchingTimeout);
       isSwitching = false;
       setPlayState(true);
+      renderPlaylistItems(); // Remove loading indicator from playlist item
       startStallWatch();
       if (_networkWeak) setNetworkWeak(false);
       startBgFullLoad(tr.url);
@@ -368,6 +370,7 @@ function playCurrent() {
       setBuffering(false);
       if (callId === _playCurrentId && err.name !== 'AbortError') {
         setPlayState(false);
+        renderPlaylistItems(); // Remove loading indicator from playlist item
       }
     });
   }
@@ -415,7 +418,7 @@ function playCurrent() {
           }
         }, 15000);
 
-        // #18: Hard timeout at 45s — give up if still not ready (long audio files can be 80MB+)
+        // #18: Hard timeout at 20s — give up if still not ready
         dom.audio._readyTimeout = setTimeout(() => {
           dom.audio._readyTimeout = null;
           if (callId !== _playCurrentId) return;
@@ -429,9 +432,10 @@ function playCurrent() {
               setPlayState(false);
               setErrorState(t('error_tap_retry'));
               showToast(t('error_play'));
+              renderPlaylistItems(); // Remove loading indicator from playlist item
             }
           }
-        }, 45000);
+        }, 20000);
       });
     }
   }
@@ -1166,8 +1170,10 @@ export function renderPlaylistItems() {
   items.forEach((tr, displayIdx) => {
     const realIdx = plSortAsc ? displayIdx : state.playlist.length - 1 - displayIdx;
     const isCurrent = realIdx === state.epIdx;
+    // Show loading spinner on the current item while audio is being loaded
+    const isLoading = isCurrent && isSwitching;
     const div = document.createElement('div');
-    div.className = 'pl-item' + (isCurrent ? ' current' : '');
+    div.className = 'pl-item' + (isCurrent ? ' current' : '') + (isLoading ? ' loading' : '');
 
     // Build meta info (duration + progress)
     let metaHTML = '';
@@ -1181,11 +1187,31 @@ export function renderPlaylistItems() {
       if (pct > 0 && pct < 100) metaHTML += `<span class="pl-item-progress">${t('pl_played')}${pct}%</span>`;
     }
 
-    div.innerHTML = `<span class="pl-item-num">${realIdx + 1}</span><div class="pl-item-body"><div class="pl-item-title">${escapeHtml(tr.title || tr.fileName)}</div>${metaHTML ? '<div class="pl-item-meta">' + metaHTML + '</div>' : ''}</div>`;
+    // Loading spinner (visible only when .loading class is present)
+    const loadingSpinner = isLoading
+      ? '<span class="pl-item-loading-spinner"></span>'
+      : '';
+    div.innerHTML = `<span class="pl-item-num">${realIdx + 1}</span><div class="pl-item-body"><div class="pl-item-title">${escapeHtml(tr.title || tr.fileName)}</div>${metaHTML ? '<div class="pl-item-meta">' + metaHTML + '</div>' : ''}</div>${loadingSpinner}`;
     div.addEventListener('click', () => { haptic(); state.epIdx = realIdx; playCurrent(); });
     frag.appendChild(div);
   });
   dom.plItems.appendChild(frag);
+
+  // Async: mark cached episodes with a small badge (non-blocking).
+  // Guard against stale callbacks if the list is re-rendered before the async check completes.
+  const renderGen = dom.plItems.dataset.renderGen = String(Date.now());
+  items.forEach((tr, displayIdx) => {
+    isAudioCached(tr.url).then(cached => {
+      if (!cached) return;
+      // Bail if the list was re-rendered since this check started
+      if (dom.plItems.dataset.renderGen !== renderGen) return;
+      const el = dom.plItems.children[displayIdx];
+      // Verify the element still corresponds to the expected track
+      if (el && el.querySelector('.pl-item-title')?.textContent === (tr.title || tr.fileName)) {
+        el.classList.add('pl-item-cached');
+      }
+    });
+  });
   // #1: Scroll current item into view after panel animation completes (340ms).
   // Use instant scroll (no behavior:'smooth') to avoid visible jump.
   const cur = dom.plItems.querySelector('.current');

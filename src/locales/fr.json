@@ -15,6 +15,8 @@
   "my_clear_cache": "Vider le cache",
   "my_cache_cleared": "Cache vid\u00E9",
   "my_cache_size": "{n} audio en cache",
+  "my_cache_confirm": "Vider {mb} Mo de cache audio ?",
+  "my_cache_freed": "{mb} Mo de cache supprim\u00E9s",
   "my_greeting": "Namo Amitabha",
   "my_subtitle": "Audio du Dharma de la Terre Pure",
   "my_settings": "Param\u00E8tres",
