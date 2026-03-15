@@ -1,13 +1,9 @@
 /* ===== Play History ===== */
 import { state } from './state.js';
+import { getHistory as _storeGetHistory, setHistory } from './store.js';
 
 export function getHistory() {
-  try {
-    const h = JSON.parse(localStorage.getItem('pl-history')) || [];
-    return h.filter(x => x.seriesTitle && x.epTitle && x.timestamp);
-  } catch (e) {
-    return [];
-  }
+  return _storeGetHistory();
 }
 
 export function addHistory(tr, audio) {
@@ -30,12 +26,12 @@ export function addHistory(tr, audio) {
       time: audio.currentTime || 0, duration: audio.duration || 0, timestamp: Date.now()
     });
     if (h.length > 20) h = h.slice(0, 20);
-    localStorage.setItem('pl-history', JSON.stringify(h));
+    setHistory(h);
   } catch (e) { /* ignore */ }
 }
 
 export function clearHistory() {
-  localStorage.removeItem('pl-history');
+  setHistory([]);
 }
 
 export function syncHistoryProgress(audio) {
@@ -50,6 +46,6 @@ export function syncHistoryProgress(audio) {
         break;
       }
     }
-    localStorage.setItem('pl-history', JSON.stringify(h));
+    setHistory(h);
   } catch (e) { /* ignore */ }
 }

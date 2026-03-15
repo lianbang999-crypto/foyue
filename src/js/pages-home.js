@@ -342,6 +342,16 @@ async function loadDailyRecommendations(page) {
   // 2. No valid cache — fetch from API
   let attempts = 0;
   const maxAttempts = 3;
+  let fetchDone = false;
+
+  // Fallback timer: if API hasn't responded in 5 seconds, show fallback content
+  // immediately so the user sees something useful.  The background fetch continues
+  // and will update the list if/when it succeeds.
+  const fallbackTimer = setTimeout(() => {
+    if (!fetchDone && recList.querySelector('.home-rec-skeleton')) {
+      renderFallbackRecs(recList);
+    }
+  }, 5000);
 
   async function tryLoad() {
     try {
@@ -353,9 +363,13 @@ async function loadDailyRecommendations(page) {
         return;
       }
 
+      fetchDone = true;
+      clearTimeout(fallbackTimer);
+
       let recs = result.recommendations;
       if (!recs || !recs.length) {
-        renderFallbackRecs(recList);
+        // Only replace content if still showing skeleton/fallback (not already replaced)
+        if (!recList.querySelector('.home-rec-card[data-epnum]')) renderFallbackRecs(recList);
         return;
       }
 
@@ -373,8 +387,11 @@ async function loadDailyRecommendations(page) {
         console.warn('[Home] Cache write error:', e);
       }
     } catch (err) {
+      fetchDone = true;
+      clearTimeout(fallbackTimer);
       console.warn('[Home] AI recommendation fetch failed:', err);
-      renderFallbackRecs(recList);
+      // Only replace if still showing skeleton
+      if (recList.querySelector('.home-rec-skeleton')) renderFallbackRecs(recList);
     }
   }
 

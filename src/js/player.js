@@ -8,6 +8,7 @@ import { addHistory, syncHistoryProgress, getHistory } from './history.js';
 import { recordPlay, getAppreciateCount } from './api.js';
 import { cacheAudio, getCachedAudioUrl, isAudioCached } from './audio-cache.js';
 import { mp3FallbackUrl } from './audio-url.js';
+import { getStoreAppreciatedSet, addStoreAppreciated, getStorePlayerState, setStorePlayerState, isCachedUrl } from './store.js';
 
 /* ===== Playback State ===== */
 let pendingSeek = 0;
@@ -344,6 +345,7 @@ function playCurrent() {
       console.warn('[Player] isSwitching timeout, auto-reset');
       isSwitching = false;
       setBuffering(false);
+      renderPlaylistItems(); // Remove loading indicator from playlist item
     }
   }, switchTimeout);
 
@@ -359,6 +361,7 @@ function playCurrent() {
       clearTimeout(switchingTimeout);
       isSwitching = false;
       setPlayState(true);
+      renderPlaylistItems(); // Remove loading indicator from playlist item
       startStallWatch();
       if (_networkWeak) setNetworkWeak(false);
       startBgFullLoad(tr.url);
@@ -368,6 +371,7 @@ function playCurrent() {
       setBuffering(false);
       if (callId === _playCurrentId && err.name !== 'AbortError') {
         setPlayState(false);
+        renderPlaylistItems(); // Remove loading indicator from playlist item
       }
     });
   }
@@ -415,7 +419,7 @@ function playCurrent() {
           }
         }, 15000);
 
-        // #18: Hard timeout at 45s — give up if still not ready (long audio files can be 80MB+)
+        // #18: Hard timeout at 20s — give up if still not ready
         dom.audio._readyTimeout = setTimeout(() => {
           dom.audio._readyTimeout = null;
           if (callId !== _playCurrentId) return;
@@ -429,9 +433,10 @@ function playCurrent() {
               setPlayState(false);
               setErrorState(t('error_tap_retry'));
               showToast(t('error_play'));
+              renderPlaylistItems(); // Remove loading indicator from playlist item
             }
           }
-        }, 45000);
+        }, 20000);
       });
     }
   }
@@ -498,21 +503,14 @@ function updateUI(tr) {
   dom.centerRingFill.style.strokeDashoffset = RING_CIRCUMFERENCE;
 }
 
-/* ===== Appreciate State (per-series, persisted in localStorage) ===== */
+/* ===== Appreciate State (per-series, persisted in unified store) ===== */
 
 function getAppreciatedSet() {
-  try {
-    const raw = localStorage.getItem('appreciated');
-    return raw ? new Set(JSON.parse(raw)) : new Set();
-  } catch (e) { return new Set(); }
+  return getStoreAppreciatedSet();
 }
 
 function saveAppreciated(seriesId) {
-  try {
-    const set = getAppreciatedSet();
-    set.add(seriesId);
-    localStorage.setItem('appreciated', JSON.stringify([...set]));
-  } catch (e) { /* ignore */ }
+  addStoreAppreciated(seriesId);
 }
 
 export function isAppreciated(seriesId) {
@@ -1166,8 +1164,10 @@ export function renderPlaylistItems() {
   items.forEach((tr, displayIdx) => {
     const realIdx = plSortAsc ? displayIdx : state.playlist.length - 1 - displayIdx;
     const isCurrent = realIdx === state.epIdx;
+    // Show loading spinner on the current item while audio is being loaded
+    const isLoading = isCurrent && isSwitching;
     const div = document.createElement('div');
-    div.className = 'pl-item' + (isCurrent ? ' current' : '');
+    div.className = 'pl-item' + (isCurrent ? ' current' : '') + (isLoading ? ' loading' : '');
 
     // Build meta info (duration + progress)
     let metaHTML = '';
@@ -1181,11 +1181,24 @@ export function renderPlaylistItems() {
       if (pct > 0 && pct < 100) metaHTML += `<span class="pl-item-progress">${t('pl_played')}${pct}%</span>`;
     }
 
-    div.innerHTML = `<span class="pl-item-num">${realIdx + 1}</span><div class="pl-item-body"><div class="pl-item-title">${escapeHtml(tr.title || tr.fileName)}</div>${metaHTML ? '<div class="pl-item-meta">' + metaHTML + '</div>' : ''}</div>`;
+    // Loading spinner (visible only when .loading class is present)
+    const loadingSpinner = isLoading
+      ? '<span class="pl-item-loading-spinner"></span>'
+      : '';
+    div.innerHTML = `<span class="pl-item-num">${realIdx + 1}</span><div class="pl-item-body"><div class="pl-item-title">${escapeHtml(tr.title || tr.fileName)}</div>${metaHTML ? '<div class="pl-item-meta">' + metaHTML + '</div>' : ''}</div>${loadingSpinner}`;
     div.addEventListener('click', () => { haptic(); state.epIdx = realIdx; playCurrent(); });
     frag.appendChild(div);
   });
   dom.plItems.appendChild(frag);
+
+  // Mark cached episodes with a small badge (synchronous via store).
+  items.forEach((tr, displayIdx) => {
+    if (!isCachedUrl(tr.url)) return;
+    const el = dom.plItems.children[displayIdx];
+    if (el && el.querySelector('.pl-item-title')?.textContent === (tr.title || tr.fileName)) {
+      el.classList.add('pl-item-cached');
+    }
+  });
   // #1: Scroll current item into view after panel animation completes (340ms).
   // Use instant scroll (no behavior:'smooth') to avoid visible jump.
   const cur = dom.plItems.querySelector('.current');
@@ -1259,10 +1272,10 @@ export function saveState() {
   try {
     const tr = state.playlist[state.epIdx];
     if (!tr) return;
-    localStorage.setItem('pl-state', JSON.stringify({
+    setStorePlayerState({
       seriesId: tr.seriesId, idx: state.epIdx, time: dom.audio.currentTime, duration: dom.audio.duration || 0,
       tab: state.tab, loop: state.loopMode, speed: SPEEDS[speedIdx]
-    }));
+    });
     syncHistoryProgress(dom.audio);
   } catch (e) { /* ignore */ }
 }
@@ -1270,7 +1283,7 @@ export function saveState() {
 export function restoreState(renderCategory, renderHomePage, renderMyPage) {
   const dom = getDOM();
   try {
-    const s = JSON.parse(localStorage.getItem('pl-state'));
+    const s = getStorePlayerState();
     if (!s || !s.seriesId) return;
     for (const cat of state.data.categories) {
       const sr = cat.series.find(x => x.id === s.seriesId);

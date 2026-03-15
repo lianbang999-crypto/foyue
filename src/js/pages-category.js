@@ -3,12 +3,12 @@ import { state } from './state.js';
 import { t } from './i18n.js';
 import { getDOM } from './dom.js';
 import { CATEGORY_ICONS, ICON_PLAY_FILLED, ICON_PAUSE_FILLED } from './icons.js';
-import { playList, togglePlay, isCurrentTrack, getIsSwitching, markAppreciated, isAppreciated, shareSeries } from './player.js';
+import { playList, prepareList, togglePlay, isCurrentTrack, getIsSwitching, markAppreciated, isAppreciated, shareSeries } from './player.js';
 import { renderHomePage } from './pages-home.js';
 import { getHistory } from './history.js';
 import { getPlayCount, appreciate } from './api.js';
 import { showToast, escapeHtml, showFloatText, fmtCount, fmtDuration } from './utils.js';
-import { isAudioCached } from './audio-cache.js';
+import { getCachedUrls } from './store.js';
 import { mountSummary } from './ai-summary.js';
 import { probeDurations, getCachedDuration } from './duration-cache.js';
 // import { mountTranscript } from './transcript.js';
@@ -79,7 +79,14 @@ export function showEpisodes(series, tabId) {
   dom.audio.addEventListener('pause', updatePlayAllBtn);
   let cancelProbe = () => { };
   const obs = new MutationObserver(() => {
-    if (!view.parentNode) { dom.audio.removeEventListener('play', updatePlayAllBtn); dom.audio.removeEventListener('pause', updatePlayAllBtn); cancelProbe(); obs.disconnect(); }
+    if (!view.parentNode) {
+      dom.audio.removeEventListener('play', updatePlayAllBtn);
+      dom.audio.removeEventListener('pause', updatePlayAllBtn);
+      dom.audio.removeEventListener('timeupdate', updateCurrentEpProgress);
+      window.removeEventListener('store:cache-changed', onCacheChanged);
+      cancelProbe();
+      obs.disconnect();
+    }
   });
   obs.observe(dom.contentArea, { childList: true });
 
@@ -91,7 +98,8 @@ export function showEpisodes(series, tabId) {
 
   const hasAudio = !!dom.audio.src;
   const alreadyPlaying = state.playlist.length && state.epIdx >= 0 && state.playlist[state.epIdx] && state.playlist[state.epIdx].seriesId === series.id;
-  if (!hasAudio && !alreadyPlaying && series.episodes.length) playList(series.episodes, 0, series);
+  // Problem 1 fix: don't auto-play on series open — only prepare the UI
+  if (!hasAudio && !alreadyPlaying && series.episodes.length) prepareList(series.episodes, 0, series);
 
   const ul = view.querySelector('#epList');
   const hist = getHistory();
@@ -128,14 +136,54 @@ export function showEpisodes(series, tabId) {
   });
   ul.appendChild(frag);
 
-  // Async: mark cached episodes with indicator
-  series.episodes.forEach((ep, idx) => {
-    isAudioCached(ep.url).then(cached => {
-      if (!cached) return;
+  // Problem 3 fix: batch cache status check using store (synchronous) rather than
+  // individual async Cache API calls for every episode.
+  function applyCacheIndicators() {
+    const cachedUrls = getCachedUrls();
+    series.episodes.forEach((ep, idx) => {
       const li = ul.children[idx];
-      if (li) li.classList.add('ep-cached');
+      if (!li) return;
+      const isCached = cachedUrls.has(ep.url);
+      li.classList.toggle('ep-cached', isCached);
+      const durEl = li.querySelector('.ep-duration');
+      if (durEl) {
+        durEl.title = isCached ? (t('ep_cached_tooltip') || '') : '';
+      }
     });
-  });
+  }
+  applyCacheIndicators();
+
+  // Listen for cache state changes (e.g., after download or cache clear) and refresh indicators
+  function onCacheChanged() { applyCacheIndicators(); }
+  window.addEventListener('store:cache-changed', onCacheChanged);
+
+  // Problem 2 fix: real-time progress bar update for the currently playing episode
+  let _lastProgressUpdateTime = 0;
+  function updateCurrentEpProgress() {
+    const now = Date.now();
+    if (now - _lastProgressUpdateTime < 1000) return; // throttle to ~1s
+    if (state.epIdx < 0 || !state.playlist[state.epIdx]) return;
+    _lastProgressUpdateTime = now;
+    const cur = state.playlist[state.epIdx];
+    if (cur.seriesId !== series.id) return;
+    const dur = dom.audio.duration;
+    if (!dur || !isFinite(dur) || dur === 0) return;
+    const pct = Math.min(100, Math.round(dom.audio.currentTime / dur * 100));
+    const li = ul.children[state.epIdx];
+    if (!li) return;
+    let fill = li.querySelector('.ep-progress-fill');
+    if (!fill) {
+      const bar = document.createElement('div');
+      bar.className = 'ep-progress';
+      fill = document.createElement('div');
+      fill.className = 'ep-progress-fill';
+      bar.appendChild(fill);
+      const epText = li.querySelector('.ep-text');
+      if (epText) epText.appendChild(bar);
+    }
+    fill.style.width = pct + '%';
+  }
+  dom.audio.addEventListener('timeupdate', updateCurrentEpProgress);
 
   // Probe audio durations in background — only for episodes missing JSON duration (non-blocking)
   cancelProbe = probeDurations(series.episodes, (idx, seconds) => {
