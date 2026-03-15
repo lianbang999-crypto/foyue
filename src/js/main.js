@@ -722,7 +722,11 @@ async function fetchFreshData() {
 /* ===== SERVICE WORKER MESSAGE HANDLER ===== */
 // When the SW's stale-while-revalidate detects that /api/categories changed on the server,
 // it broadcasts a 'data-updated' message so the page can refresh without a reload.
+
 if ('serviceWorker' in navigator) {
+  // Record if page was controlled on load (false for first-time visitors / hard refresh)
+  const isFirstVisit = !navigator.serviceWorker.controller;
+
   navigator.serviceWorker.addEventListener('message', event => {
     if (event.data?.type === 'data-updated' && event.data.data) {
       const fresh = event.data.data;
@@ -737,6 +741,8 @@ if ('serviceWorker' in navigator) {
     }
     // New service worker activated — show update notice if user is not currently playing
     if (event.data?.type === 'app-updated') {
+      if (isFirstVisit) return; // 第一次安装不应该提示"发现新内容"
+
       const dom = getDOM();
       if (dom.audio.paused) {
         // 创建一个可点击刷新的新内容提示
