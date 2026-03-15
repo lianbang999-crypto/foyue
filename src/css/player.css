@@ -22,6 +22,12 @@
 .pl-item-meta{display:flex;align-items:center;gap:6px;margin-top:2px}
 .pl-item-duration{font-family:var(--font-en);font-size:.7rem;color:var(--text-muted)}
 .pl-item-progress{font-size:.68rem;color:var(--accent);font-weight:500}
+/* Cached audio badge */
+.pl-item-cached::after{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);opacity:.6;flex-shrink:0}
+/* Loading spinner for current item being switched to */
+.pl-item-loading-spinner{display:none}
+.pl-item.loading .pl-item-loading-spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:plSpinnerAnim .7s linear infinite;flex-shrink:0}
+@keyframes plSpinnerAnim{to{transform:rotate(360deg)}}
 /* History items in playlist */
 .pl-hist-sub{font-size:.72rem;color:var(--text-muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 

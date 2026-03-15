@@ -158,21 +158,26 @@ export function renderMyPage() {
   });
   page.querySelector('#myMessagesCard').addEventListener('click', () => showMessageWallSubview());
 
-  // Cache cleanup item — show count + size, tap to clear directly; hidden when empty
+  // Cache cleanup item — show count + size, tap to clear with confirmation; hidden when empty
   const cacheItemEl = page.querySelector('#myCacheItem');
   const cacheSizeEl = page.querySelector('#myCacheSize');
   cacheItemEl.style.display = 'none';
+  let _cachedBytes = 0;
   Promise.all([getCachedCount(), getCachedSize()]).then(([n, bytes]) => {
     if (n > 0) {
+      _cachedBytes = bytes;
       const mb = (bytes / (1024 * 1024)).toFixed(1);
       cacheSizeEl.textContent = t('my_cache_size').replace('{n}', n) + ' · ' + mb + ' MB';
       cacheItemEl.style.display = '';
     }
   });
   cacheItemEl.addEventListener('click', async () => {
+    const mb = (_cachedBytes / (1024 * 1024)).toFixed(1);
+    const msg = t('my_cache_confirm').replace('{mb}', mb);
+    if (!window.confirm(msg)) return;
     await clearAudioCache();
     cacheItemEl.style.display = 'none';
-    showToast(t('my_cache_cleared'));
+    showToast(t('my_cache_freed').replace('{mb}', mb));
   });
 
   // Wire up install button
