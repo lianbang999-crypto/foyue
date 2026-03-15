@@ -35,6 +35,8 @@ import { renderMyPage } from './pages-my.js';
 // ✅ 修复代码分割警告：统一使用动态导入，避免静态和动态导入混用
 // import { renderCategory, showEpisodes } from './pages-category.js';
 import { doSearch, openSearchOverlay, closeSearchOverlay, isSearchOverlayOpen } from './search.js';
+import { get as storeGet, saveNow as storeSaveNow } from './store.js';
+import { initCachedUrls } from './audio-cache.js';
 
 // pages-category 动态导入函数
 let _categoryModule = null;
@@ -81,7 +83,7 @@ function closeWenkuReader() {
   // DOM refs
   const dom = initDOM();
 
-  state.isFirstVisit = !localStorage.getItem('pl-state');
+  state.isFirstVisit = !storeGet('player')?.seriesId;
 
   // About modal
   const aboutOverlay = document.getElementById('aboutOverlay');
@@ -544,11 +546,16 @@ function closeWenkuReader() {
 
   applyI18n();
   loadData();
+
+  // Initialise the store's cached-URL set from the real Cache API (background, non-blocking)
+  initCachedUrls().catch(() => {});
+
   setInterval(saveState, 15000);
 
   // #22: Comprehensive state saving for background resume (Item 3)
   const handleSave = () => {
     saveState();
+    storeSaveNow(); // flush store to localStorage immediately
   };
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') handleSave();

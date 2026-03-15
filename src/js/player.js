@@ -8,6 +8,7 @@ import { addHistory, syncHistoryProgress, getHistory } from './history.js';
 import { recordPlay, getAppreciateCount } from './api.js';
 import { cacheAudio, getCachedAudioUrl, isAudioCached } from './audio-cache.js';
 import { mp3FallbackUrl } from './audio-url.js';
+import { get, set, patch, saveNow } from './store.js';
 
 /* ===== Playback State ===== */
 let pendingSeek = 0;
@@ -502,21 +503,21 @@ function updateUI(tr) {
   dom.centerRingFill.style.strokeDashoffset = RING_CIRCUMFERENCE;
 }
 
-/* ===== Appreciate State (per-series, persisted in localStorage) ===== */
+/* ===== Appreciate State (per-series, persisted in unified store) ===== */
 
 function getAppreciatedSet() {
   try {
-    const raw = localStorage.getItem('appreciated');
-    return raw ? new Set(JSON.parse(raw)) : new Set();
-  } catch (e) { return new Set(); }
+    const arr = get('appreciated');
+    return Array.isArray(arr) ? new Set(arr) : new Set();
+  } catch { return new Set(); }
 }
 
 function saveAppreciated(seriesId) {
   try {
-    const set = getAppreciatedSet();
-    set.add(seriesId);
-    localStorage.setItem('appreciated', JSON.stringify([...set]));
-  } catch (e) { /* ignore */ }
+    const s = getAppreciatedSet();
+    s.add(seriesId);
+    set('appreciated', [...s]);
+  } catch { /* ignore */ }
 }
 
 export function isAppreciated(seriesId) {
@@ -531,7 +532,7 @@ export function updateAppreciateBtn(seriesId, total) {
   const btn = document.getElementById('expAppreciate');
   if (!btn) return;
   const appreciated = isAppreciated(seriesId);
-  // Set icon based on localStorage state
+  // Set icon based on store state
   btn.innerHTML = appreciated ? ICON_APPRECIATE_FILLED : ICON_APPRECIATE;
   btn.classList.toggle('active', appreciated);
   btn.classList.remove('appreciate-pop');
@@ -1285,24 +1286,27 @@ export function saveState() {
   try {
     const tr = state.playlist[state.epIdx];
     if (!tr) return;
-    localStorage.setItem('pl-state', JSON.stringify({
-      seriesId: tr.seriesId, idx: state.epIdx, time: dom.audio.currentTime, duration: dom.audio.duration || 0,
-      tab: state.tab, loop: state.loopMode, speed: SPEEDS[speedIdx]
-    }));
+    patch('player', {
+      seriesId: tr.seriesId,
+      epIdx:    state.epIdx,
+      time:     dom.audio.currentTime,
+      speed:    SPEEDS[speedIdx],
+      loop:     state.loopMode,
+    });
     syncHistoryProgress(dom.audio);
-  } catch (e) { /* ignore */ }
+  } catch { /* ignore */ }
 }
 
 export function restoreState(renderCategory, renderHomePage, renderMyPage) {
   const dom = getDOM();
   try {
-    const s = JSON.parse(localStorage.getItem('pl-state'));
+    const s = get('player');
     if (!s || !s.seriesId) return;
     for (const cat of state.data.categories) {
       const sr = cat.series.find(x => x.id === s.seriesId);
       if (sr) {
         state.playlist = sr.episodes.map(ep => ({ ...ep, seriesId: sr.id, seriesTitle: sr.title, speaker: sr.speaker }));
-        state.epIdx = s.idx || 0;
+        state.epIdx = s.epIdx || 0;
         const tr = state.playlist[state.epIdx];
         if (tr) {
           dom.audio.src = tr.url;
@@ -1324,22 +1328,9 @@ export function restoreState(renderCategory, renderHomePage, renderMyPage) {
           const si = SPEEDS.indexOf(s.speed);
           if (si >= 0) { speedIdx = si; dom.audio.playbackRate = s.speed; document.getElementById('expSpeed').textContent = s.speed + 'x'; document.getElementById('expSpeed').classList.add('active'); }
         }
-        if (s.tab) {
-          state.tab = s.tab === 'fohao' ? 'home' : s.tab;
-          document.querySelectorAll('.tab').forEach(b => {
-            b.classList.toggle('active', b.dataset.tab === state.tab);
-            b.setAttribute('aria-selected', b.dataset.tab === state.tab ? 'true' : 'false');
-          });
-          const ti18n = { home: 'tab_home', tingjingtai: 'tab_lectures', youshengshu: 'tab_audiobooks', mypage: 'tab_my' };
-          dom.navTitle.textContent = t(ti18n[state.tab] || 'tab_home');
-          dom.navTitle.dataset.i18n = ti18n[state.tab] || 'tab_home';
-          if (state.tab === 'mypage') renderMyPage();
-          else if (state.tab === 'home') renderHomePage();
-          else renderCategory(state.tab);
-        }
         state.isFirstVisit = false;
         break;
       }
     }
-  } catch (e) { /* ignore */ }
+  } catch { /* ignore */ }
 }

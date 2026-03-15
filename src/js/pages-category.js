@@ -8,7 +8,7 @@ import { renderHomePage } from './pages-home.js';
 import { getHistory } from './history.js';
 import { getPlayCount, appreciate } from './api.js';
 import { showToast, escapeHtml, showFloatText, fmtCount, fmtDuration } from './utils.js';
-import { getBatchCachedStatus } from './audio-cache.js';
+import { isCachedSync } from './audio-cache.js';
 import { mountSummary } from './ai-summary.js';
 import { probeDurations, getCachedDuration } from './duration-cache.js';
 // import { mountTranscript } from './transcript.js';
@@ -79,8 +79,9 @@ export function showEpisodes(series, tabId) {
   dom.audio.addEventListener('pause', updatePlayAllBtn);
   let cancelProbe = () => { };
   let onTimeUpdate = () => {};
+  let _cleanupCacheListener = () => {};
   const obs = new MutationObserver(() => {
-    if (!view.parentNode) { dom.audio.removeEventListener('play', updatePlayAllBtn); dom.audio.removeEventListener('pause', updatePlayAllBtn); dom.audio.removeEventListener('timeupdate', onTimeUpdate); cancelProbe(); obs.disconnect(); }
+    if (!view.parentNode) { dom.audio.removeEventListener('play', updatePlayAllBtn); dom.audio.removeEventListener('pause', updatePlayAllBtn); dom.audio.removeEventListener('timeupdate', onTimeUpdate); cancelProbe(); _cleanupCacheListener(); obs.disconnect(); }
   });
   obs.observe(dom.contentArea, { childList: true });
 
@@ -152,19 +153,24 @@ export function showEpisodes(series, tabId) {
   };
   dom.audio.addEventListener('timeupdate', onTimeUpdate);
 
-  // Batch-check cache status for all episodes (single cache.open() call)
-  getBatchCachedStatus(series.episodes.map(ep => ep.url)).then(cachedArr => {
-    const tooltip = t('ep_cached_tooltip') || '已下载，可离线收听';
-    cachedArr.forEach((cached, idx) => {
-      if (!cached) return;
+  // Apply cache status synchronously from store (no async needed)
+  const tooltip = t('ep_cached_tooltip') || '已下载，可离线收听';
+  function applyCacheStatus() {
+    series.episodes.forEach((ep, idx) => {
       const li = ul.children[idx];
-      if (li) {
-        li.classList.add('ep-cached');
-        const durEl = li.querySelector('.ep-duration');
-        if (durEl) durEl.title = tooltip;
-      }
+      if (!li) return;
+      const cached = isCachedSync(ep.url);
+      li.classList.toggle('ep-cached', cached);
+      const durEl = li.querySelector('.ep-duration');
+      if (durEl) durEl.title = cached ? tooltip : '';
     });
-  });
+  }
+  applyCacheStatus();
+
+  // Re-apply when the cache store changes (e.g. download completes or cache cleared)
+  const onCacheChange = () => applyCacheStatus();
+  window.addEventListener('audiocache:change', onCacheChange);
+  _cleanupCacheListener = () => window.removeEventListener('audiocache:change', onCacheChange);
 
   // Probe audio durations in background — only for episodes missing JSON duration (non-blocking)
   cancelProbe = probeDurations(series.episodes, (idx, seconds) => {
@@ -223,6 +229,20 @@ export function showEpisodes(series, tabId) {
       countSpan.textContent = ` \u00B7 ${fmtCount(data.totalPlayCount)}${t('play_count_unit') || '\u6B21'}`;
     }
   });
+
+  // Update play count display when a new play is recorded for this series
+  const onPlayCountUpdated = (e) => {
+    if (e.detail?.seriesId !== series.id || !e.detail?.playCount) return;
+    const countSpan = view.querySelector('#epPlayCount');
+    if (countSpan) countSpan.textContent = ` \u00B7 ${fmtCount(e.detail.playCount)}${t('play_count_unit') || '\u6B21'}`;
+  };
+  window.addEventListener('playcount:updated', onPlayCountUpdated);
+  // Store cleanup so MutationObserver can remove listener when view is removed
+  const _origCleanupCache = _cleanupCacheListener;
+  _cleanupCacheListener = () => {
+    _origCleanupCache();
+    window.removeEventListener('playcount:updated', onPlayCountUpdated);
+  };
 
   // 阅读讲义按钮（应用内导航到文库）
   if (series.wenkuSeries) {
