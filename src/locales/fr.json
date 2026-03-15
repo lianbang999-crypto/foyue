@@ -167,5 +167,6 @@
   "wenku_end": "— Fin —",
   "more": "Plus",
   "cancel": "Annuler",
-  "app_updated": "Contenu mis à jour"
+  "app_updated": "Contenu mis à jour",
+  "ep_cached_tooltip": "Téléchargé pour lecture hors ligne"
 }
