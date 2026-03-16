@@ -216,7 +216,11 @@ function closeCounter(view, popHandler, escHandler) {
   if (popHandler) window.removeEventListener('popstate', popHandler);
   if (escHandler) window.removeEventListener('keydown', escHandler);
   view.classList.remove('counter-view--visible');
-  setTimeout(() => view.remove(), 350);
+  setTimeout(() => {
+    view.remove();
+    const homeTab = document.querySelector('.tab[data-tab="home"]');
+    if (homeTab) homeTab.click();
+  }, 350);
 }
 
 function wireCounterEvents(view, data, _session) {
@@ -377,7 +381,7 @@ function wireCounterEvents(view, data, _session) {
 
   /* ── Menu button → Practice picker ── */
   view.querySelector('#counterMenu').addEventListener('click', () => {
-    showPracticePicker(view, data, () => updateUI());
+    showPracticePicker(view, data, () => { session = 0; updateUI(); });
   });
 }
 
@@ -432,7 +436,7 @@ function showGoalPicker(parentView, goals, data, onDone) {
     const val = parseInt(input.value);
     if (isNaN(val) || val < 1 || val > MAX_GOAL_VALUE) {
       input.classList.add('counter-goal-custom-input--error');
-      showToast(t('counter_goal_custom_invalid'));
+      showToast(t('counter_goal_invalid'));
       setTimeout(() => input.classList.remove('counter-goal-custom-input--error'), 600);
       return;
     }
@@ -470,7 +474,7 @@ function showPracticePicker(parentView, data, onDone) {
           <input class="counter-goal-custom-input" id="customPracticeInput" type="text"
                  maxlength="20" placeholder="${t('counter_custom_practice_hint')}"
                  value="${escapeHtml(data.customPractice || '')}">
-          <button class="counter-goal-custom-btn" id="customPracticeConfirm">${t('counter_goal_custom')}</button>
+          <button class="counter-goal-custom-btn" id="customPracticeConfirm">${t('counter_practice_custom_confirm')}</button>
         </div>
       </div>
       <button class="counter-goal-cancel" id="practiceCancel">${t('cancel')}</button>
@@ -523,6 +527,7 @@ function showPracticePicker(parentView, data, onDone) {
     const input = sheet.querySelector('#customPracticeInput');
     const val = input.value.trim();
     if (!val) {
+      showToast(t('counter_practice_custom_empty'));
       input.classList.add('counter-goal-custom-input--error');
       setTimeout(() => input.classList.remove('counter-goal-custom-input--error'), 600);
       return;
