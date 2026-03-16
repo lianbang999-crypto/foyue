@@ -123,7 +123,11 @@ export function openCounter() {
     closeCounter(view, popHandler, escHandler);
   };
   const escHandler = (e) => {
-    if (e.key === 'Escape') history.back();
+    if (e.key === 'Escape') {
+      // If a picker sheet is open (and visible), let it handle the Escape key
+      if (view.querySelector('.counter-goal-sheet--visible, .counter-practice-sheet--visible')) return;
+      history.back();
+    }
   };
   window.addEventListener('popstate', popHandler);
   window.addEventListener('keydown', escHandler);
@@ -348,8 +352,25 @@ function wireCounterEvents(view, data, _session) {
       updateUIFast(true);
     };
 
+    // Track touch start position to distinguish taps from swipes
+    let touchStartX = 0;
+    let touchStartY = 0;
+    tapArea.addEventListener('touchstart', (e) => {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+
     tapArea.addEventListener('click', doCount);
-    tapArea.addEventListener('touchend', (e) => { e.preventDefault(); doCount(e); }, { passive: false });
+    tapArea.addEventListener('touchend', (e) => {
+      // If touch data is unavailable, fall back to counting
+      if (!e.changedTouches || !e.changedTouches[0]) { e.preventDefault(); doCount(e); return; }
+      // If the touch moved more than 20px it's a swipe — let the browser handle it
+      const dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
+      const dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
+      if (dx > 20 || dy > 20) return;
+      e.preventDefault();
+      doCount(e);
+    }, { passive: false });
     tapArea.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doCount(e); } });
   }
 
@@ -411,7 +432,7 @@ function showGoalPicker(parentView, goals, data, onDone) {
       <div class="counter-goal-custom-row">
         <input class="counter-goal-custom-input" id="goalCustomInput" type="number" min="1" max="${MAX_GOAL_VALUE}"
                placeholder="${t('counter_goal_custom_hint')}">
-        <button class="counter-goal-custom-btn" id="goalCustomConfirm">${t('counter_goal_custom')}</button>
+        <button class="counter-goal-custom-btn" id="goalCustomConfirm">${t('counter_goal_custom_save')}</button>
       </div>
       <button class="counter-goal-cancel" id="goalCancel">${t('cancel')}</button>
     </div>
@@ -463,6 +484,10 @@ function showPracticePicker(parentView, data, onDone) {
 
   const customLabel = escapeHtml(data.customPractice || CUSTOM_KEY);
   const isCustomActive = data.practice === CUSTOM_KEY;
+  // Plan A: if customPractice exists, the button acts as a direct selector;
+  // input is hidden by default and only revealed via the Edit button.
+  // If no customPractice yet, show the input immediately so the user can set one.
+  const hasCustom = !!data.customPractice;
 
   const sheet = document.createElement('div');
   sheet.className = 'counter-practice-sheet';
@@ -476,14 +501,17 @@ function showPracticePicker(parentView, data, onDone) {
                   data-name="${name}">${name}</button>
         `).join('')}
       </div>
-      <button class="counter-practice-opt counter-practice-opt--custom${isCustomActive ? ' counter-practice-opt--active' : ''}"
-              id="practiceCustomOpt" data-name="${CUSTOM_KEY}">${customLabel}</button>
-      <div class="counter-custom-input-wrap${isCustomActive ? '' : ' counter-custom-input-wrap--hidden'}" id="customInputWrap">
+      <div class="counter-practice-custom-row">
+        <button class="counter-practice-opt counter-practice-opt--custom${isCustomActive ? ' counter-practice-opt--active' : ''}"
+                id="practiceCustomOpt" data-name="${CUSTOM_KEY}">${customLabel}</button>
+        ${hasCustom ? `<button class="counter-practice-custom-edit" id="practiceCustomEdit">${t('counter_practice_custom_edit')}</button>` : ''}
+      </div>
+      <div class="counter-custom-input-wrap${hasCustom ? ' counter-custom-input-wrap--hidden' : ''}" id="customInputWrap">
         <div class="counter-goal-custom-row">
           <input class="counter-goal-custom-input" id="customPracticeInput" type="text"
                  maxlength="20" placeholder="${t('counter_custom_practice_hint')}"
                  value="${escapeHtml(data.customPractice || '')}">
-          <button class="counter-goal-custom-btn" id="customPracticeConfirm">${t('counter_practice_custom_confirm')}</button>
+          <button class="counter-goal-custom-btn" id="customPracticeConfirm">${t('counter_practice_custom_save')}</button>
         </div>
       </div>
       <button class="counter-goal-cancel" id="practiceCancel">${t('cancel')}</button>
@@ -520,14 +548,37 @@ function showPracticePicker(parentView, data, onDone) {
     });
   });
 
-  // Custom option: toggle input row
+  // Custom option: Plan A — direct select if customPractice exists, else show input
   const customOpt = sheet.querySelector('#practiceCustomOpt');
   const customWrap = sheet.querySelector('#customInputWrap');
   customOpt.addEventListener('click', () => {
-    const visible = !customWrap.classList.contains('counter-custom-input-wrap--hidden');
-    customWrap.classList.toggle('counter-custom-input-wrap--hidden', visible);
-    if (!visible) sheet.querySelector('#customPracticeInput').focus();
+    if (data.customPractice) {
+      // Directly select the existing custom practice
+      data.practice = CUSTOM_KEY;
+      if (!data.practices[CUSTOM_KEY]) {
+        data.practices[CUSTOM_KEY] = { total: 0, daily: 0, dailyDate: todayStr(), goal: 108 };
+      }
+      checkAndResetDaily(getPracticeStats(data));
+      patch('counter', data);
+      haptic(15);
+      onDone();
+      showToast(t('counter_practice_changed').replace('{name}', data.customPractice));
+      close();
+    } else {
+      // No custom practice yet — show input row
+      customWrap.classList.remove('counter-custom-input-wrap--hidden');
+      sheet.querySelector('#customPracticeInput').focus();
+    }
   });
+
+  // Edit button: reveal input row to modify the custom practice name
+  const editBtn = sheet.querySelector('#practiceCustomEdit');
+  if (editBtn) {
+    editBtn.addEventListener('click', () => {
+      customWrap.classList.remove('counter-custom-input-wrap--hidden');
+      sheet.querySelector('#customPracticeInput').focus();
+    });
+  }
 
   // Confirm custom practice name
   const confirmCustom = () => {
