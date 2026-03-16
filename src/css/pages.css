@@ -1004,6 +1004,21 @@
     letter-spacing: .03em;
 }
 
+.counter-header-center {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+}
+
+.counter-header-practice {
+    font-size: .72rem;
+    color: var(--accent);
+    letter-spacing: .06em;
+    font-weight: 500;
+}
+
 .counter-back,
 .counter-menu {
     width: 36px;
@@ -1202,6 +1217,19 @@
     margin-top: 2px;
 }
 
+.counter-practice-label {
+    font-size: .78rem;
+    color: var(--accent);
+    letter-spacing: .08em;
+    font-weight: 500;
+    margin-top: 2px;
+    max-width: 90%;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* Ripple effect */
 .counter-ripples {
     position: absolute;
@@ -1334,6 +1362,15 @@
     color: rgba(200, 60, 60, 0.8);
 }
 
+.counter-action-btn--practice {
+    border-color: var(--accent-dim);
+    color: var(--accent);
+}
+
+.counter-action-btn--practice svg {
+    color: var(--accent);
+}
+
 /* Namo footer */
 .counter-namo {
     text-align: center;
@@ -1435,3 +1472,64 @@
 .counter-goal-cancel:hover {
     background: var(--bg-card-hover);
 }
+
+/* Practice picker sheet */
+.counter-practice-sheet {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+}
+
+.counter-practice-options {
+    grid-template-columns: repeat(2, 1fr) !important;
+}
+
+.counter-practice-options .counter-goal-opt {
+    font-family: var(--font-zh);
+    font-size: .86rem;
+}
+
+/* Custom input row (practice + goal) */
+.counter-practice-custom-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.counter-practice-custom-input {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    border-radius: var(--radius-sm);
+    font-size: .88rem;
+    color: var(--text);
+    font-family: var(--font-zh);
+    outline: none;
+    transition: border-color .15s;
+}
+
+.counter-practice-custom-input:focus {
+    border-color: var(--accent);
+}
+
+.counter-practice-custom-confirm {
+    padding: 10px 16px;
+    border: 1px solid var(--accent);
+    background: var(--accent-glow);
+    border-radius: var(--radius-sm);
+    font-size: .86rem;
+    color: var(--accent);
+    cursor: pointer;
+    font-family: var(--font-zh);
+    white-space: nowrap;
+    transition: background .15s;
+}
+
+.counter-practice-custom-confirm:hover {
+    background: var(--accent-dim);
+}
+
