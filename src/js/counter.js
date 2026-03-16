@@ -1,6 +1,5 @@
 /* ===== 念佛计数器 (Buddhist Chanting Counter) ===== */
 import { t } from './i18n.js';
-import { getDOM } from './dom.js';
 import { get, patch } from './store.js';
 import { haptic, showToast } from './utils.js';
 
@@ -33,8 +32,6 @@ function getCounterData() {
 
 /* ── Main render ── */
 export function openCounter() {
-  const dom = getDOM();
-
   // Remove existing counter view if present
   document.querySelectorAll('.counter-view').forEach(el => el.remove());
 
@@ -56,12 +53,16 @@ export function openCounter() {
   // Wire events
   wireCounterEvents(view, data, session);
 
-  // Handle browser back button
+  // Handle browser back button + Escape key
   const popHandler = (e) => {
     if (e.state && e.state.counter) return;
-    closeCounter(view, popHandler);
+    closeCounter(view, popHandler, escHandler);
+  };
+  const escHandler = (e) => {
+    if (e.key === 'Escape') history.back();
   };
   window.addEventListener('popstate', popHandler);
+  window.addEventListener('keydown', escHandler);
 }
 
 function buildCounterHTML(data, session) {
@@ -172,8 +173,9 @@ function buildCounterHTML(data, session) {
   `;
 }
 
-function closeCounter(view, popHandler) {
+function closeCounter(view, popHandler, escHandler) {
   if (popHandler) window.removeEventListener('popstate', popHandler);
+  if (escHandler) window.removeEventListener('keydown', escHandler);
   view.classList.remove('counter-view--visible');
   setTimeout(() => view.remove(), 350);
 }
@@ -182,7 +184,7 @@ function wireCounterEvents(view, data, _session) {
   let session = _session;
 
   /* ── Update UI helper ── */
-  function updateUI() {
+  function updateUI(bump = false) {
     const loops = Math.floor(data.total / BEADS_PER_LOOP);
     const beadPos = data.total % BEADS_PER_LOOP;
     const circum = Math.round(2 * Math.PI * 88);
@@ -202,7 +204,13 @@ function wireCounterEvents(view, data, _session) {
     const hintEl = view.querySelector('#counterHint');
     const practiceEl = view.querySelector('#counterPracticeName');
 
-    if (numEl) { numEl.textContent = session; numEl.classList.add('counter-number--bump'); setTimeout(() => numEl.classList.remove('counter-number--bump'), 180); }
+    if (numEl) {
+      numEl.textContent = session;
+      if (bump) {
+        numEl.classList.add('counter-number--bump');
+        setTimeout(() => numEl.classList.remove('counter-number--bump'), 180);
+      }
+    }
     if (sessionEl) sessionEl.textContent = session;
     if (totalEl) totalEl.textContent = data.total;
     if (loopsEl) loopsEl.textContent = loops;
@@ -259,7 +267,7 @@ function wireCounterEvents(view, data, _session) {
         showToast(t('counter_daily_done'));
       }
 
-      updateUI();
+      updateUI(true);
     };
 
     tapArea.addEventListener('click', doCount);
@@ -332,12 +340,15 @@ function showGoalPicker(parentView, goals, data, onDone) {
   requestAnimationFrame(() => sheet.classList.add('counter-goal-sheet--visible'));
 
   const close = () => {
+    window.removeEventListener('keydown', sheetEscHandler);
     sheet.classList.remove('counter-goal-sheet--visible');
     setTimeout(() => sheet.remove(), 250);
   };
 
   sheet.querySelector('#goalBackdrop').addEventListener('click', close);
   sheet.querySelector('#goalCancel').addEventListener('click', close);
+  const sheetEscHandler = (e) => { if (e.key === 'Escape') close(); };
+  window.addEventListener('keydown', sheetEscHandler);
   sheet.querySelectorAll('.counter-goal-opt').forEach(btn => {
     btn.addEventListener('click', () => {
       data.goal = parseInt(btn.dataset.goal);
@@ -389,12 +400,15 @@ function showPracticePicker(parentView, data, onDone) {
   requestAnimationFrame(() => sheet.classList.add('counter-practice-sheet--visible'));
 
   const close = () => {
+    window.removeEventListener('keydown', practiceEscHandler);
     sheet.classList.remove('counter-practice-sheet--visible');
     setTimeout(() => sheet.remove(), 250);
   };
 
   sheet.querySelector('#practiceBackdrop').addEventListener('click', close);
   sheet.querySelector('#practiceCancel').addEventListener('click', close);
+  const practiceEscHandler = (e) => { if (e.key === 'Escape') close(); };
+  window.addEventListener('keydown', practiceEscHandler);
   sheet.querySelectorAll('.counter-practice-opt').forEach(btn => {
     btn.addEventListener('click', () => {
       data.practice = btn.dataset.name;
