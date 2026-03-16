@@ -195,6 +195,9 @@
   "counter_goal_custom_invalid": "Please enter a valid positive number",
   "counter_custom_practice_hint": "Enter practice name",
   "counter_practice_custom_confirm": "Confirm",
+  "counter_practice_custom_save": "Save",
+  "counter_practice_custom_edit": "Edit",
+  "counter_goal_custom_save": "Save",
   "counter_goal_invalid": "Goal must be between 1-99999",
   "counter_practice_custom_empty": "Please enter a practice name",
   "counter_practice_custom_too_long": "Practice name cannot exceed 20 characters"
