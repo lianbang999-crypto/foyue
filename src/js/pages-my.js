@@ -49,10 +49,19 @@ export function renderMyPage() {
     : t('my_history_empty_desc');
 
   // Counter stats for subtitle
-  const counterData = storeGet('counter') || { total: 0 };
-  const counterDesc = counterData.total > 0
-    ? t('my_counter_total_desc').replace('{n}', counterData.total) + (counterData.practice ? ' · ' + counterData.practice : '')
-    : t('my_counter_desc');
+  const counterData = storeGet('counter') || {};
+  let counterDesc = t('my_counter_desc');
+  if (counterData.practices) {
+    const practice = counterData.practice || '南无阿弥陀佛';
+    const ps = counterData.practices[practice];
+    if (ps && ps.total > 0) {
+      const displayName = practice === '自定义' ? (counterData.customPractice || '自定义') : practice;
+      counterDesc = t('my_counter_total_desc').replace('{n}', ps.total) + ' · ' + displayName;
+    }
+  } else if (counterData.total > 0) {
+    // Backward compat: old flat structure
+    counterDesc = t('my_counter_total_desc').replace('{n}', counterData.total) + (counterData.practice ? ' · ' + counterData.practice : '');
+  }
 
   // Build install guide section
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;

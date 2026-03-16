@@ -193,5 +193,6 @@
   "counter_practice_changed": "Changé en : {name}",
   "counter_goal_custom": "Personnalisé",
   "counter_goal_custom_hint": "Entrez l'objectif quotidien",
-  "counter_goal_custom_invalid": "Veuillez entrer un nombre valide"
+  "counter_goal_custom_invalid": "Veuillez entrer un nombre valide",
+  "counter_custom_practice_hint": "Entrez le nom de la pratique"
 }

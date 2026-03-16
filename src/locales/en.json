@@ -192,5 +192,6 @@
   "counter_practice_changed": "Switched to: {name}",
   "counter_goal_custom": "Custom",
   "counter_goal_custom_hint": "Enter daily goal",
-  "counter_goal_custom_invalid": "Please enter a valid positive number"
+  "counter_goal_custom_invalid": "Please enter a valid positive number",
+  "counter_custom_practice_hint": "Enter practice name"
 }
