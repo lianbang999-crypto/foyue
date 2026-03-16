@@ -188,5 +188,10 @@
   "counter_per_loop": "108 par tour",
   "counter_tap_hint": "Appuyer pour compter",
   "counter_to_next_loop": "Encore {n} pour le prochain tour",
-  "my_counter_total_desc": "{n} récitations au total"
+  "my_counter_total_desc": "{n} récitations au total",
+  "counter_practice_title": "Choisir la pratique",
+  "counter_practice_changed": "Changé en : {name}",
+  "counter_goal_custom": "Personnalisé",
+  "counter_goal_custom_hint": "Entrez l'objectif quotidien",
+  "counter_goal_custom_invalid": "Veuillez entrer un nombre valide"
 }

@@ -187,5 +187,10 @@
   "counter_per_loop": "108 per loop",
   "counter_tap_hint": "Tap to count",
   "counter_to_next_loop": "{n} more to next loop",
-  "my_counter_total_desc": "{n} recitations total"
+  "my_counter_total_desc": "{n} recitations total",
+  "counter_practice_title": "Select Practice",
+  "counter_practice_changed": "Switched to: {name}",
+  "counter_goal_custom": "Custom",
+  "counter_goal_custom_hint": "Enter daily goal",
+  "counter_goal_custom_invalid": "Please enter a valid positive number"
 }

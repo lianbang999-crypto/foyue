@@ -5,6 +5,12 @@ import { get, patch } from './store.js';
 import { haptic, showToast } from './utils.js';
 
 const BEADS_PER_LOOP = 108;
+const MAX_GOAL_VALUE = 99999;
+
+const PRACTICE_PRESETS = [
+  '阿弥陀佛', '南无阿弥陀佛', '观世音菩萨', '大势至菩萨',
+  '大悲咒', '往生咒', '心经', '礼佛大忏悔文',
+];
 
 /* ── Helpers ── */
 function todayStr() {
@@ -13,7 +19,9 @@ function todayStr() {
 }
 
 function getCounterData() {
-  const data = get('counter') || { total: 0, daily: 0, dailyDate: '', loops: 0, goal: 108 };
+  const data = get('counter') || { total: 0, daily: 0, dailyDate: '', goal: 108, practice: '阿弥陀佛' };
+  // Ensure practice field exists for data migrated from older versions
+  if (!data.practice) data.practice = '阿弥陀佛';
   // Reset daily count if it's a new day
   if (data.dailyDate !== todayStr()) {
     data.daily = 0;
@@ -122,6 +130,7 @@ function buildCounterHTML(data, session) {
           </svg>
           <!-- Count number -->
           <div class="counter-number" id="counterNumber">${session}</div>
+          <div class="counter-practice-name" id="counterPracticeName">${data.practice}</div>
           <div class="counter-hint" id="counterHint">${t('counter_tap_hint')}</div>
         </div>
         <!-- Ripple container -->
@@ -138,7 +147,7 @@ function buildCounterHTML(data, session) {
           <div class="counter-progress-bar-fill${goalDone ? ' counter-progress-bar-fill--done' : ''}"
                id="ctrGoalBar" style="width:${goalPct}%"></div>
         </div>
-        <div class="counter-per-loop">${t('counter_per_loop')} · ${t('counter_to_next_loop').replace('{n}', BEADS_PER_LOOP - (data.total % BEADS_PER_LOOP))}</div>
+        <div class="counter-per-loop">${t('counter_per_loop')} · ${t('counter_to_next_loop').replace('{n}', BEADS_PER_LOOP - beadPos || BEADS_PER_LOOP)}</div>
       </div>
     </div>
 
@@ -191,6 +200,7 @@ function wireCounterEvents(view, data, _session) {
     const goalValEl = view.querySelector('#ctrGoalVal');
     const progressFill = view.querySelector('#counterProgressFill');
     const hintEl = view.querySelector('#counterHint');
+    const practiceEl = view.querySelector('#counterPracticeName');
 
     if (numEl) { numEl.textContent = session; numEl.classList.add('counter-number--bump'); setTimeout(() => numEl.classList.remove('counter-number--bump'), 180); }
     if (sessionEl) sessionEl.textContent = session;
@@ -201,8 +211,9 @@ function wireCounterEvents(view, data, _session) {
     if (goalLabelEl && goalValEl) { goalLabelEl.firstChild.textContent = (goalDone ? '✓ ' : '') + t('counter_goal') + ': '; goalValEl.textContent = data.goal; }
     if (progressFill) progressFill.style.strokeDashoffset = offset;
     if (hintEl) hintEl.style.display = session > 0 ? 'none' : '';
+    if (practiceEl) practiceEl.textContent = data.practice;
     const perLoopEl = view.querySelector('.counter-per-loop');
-    if (perLoopEl) perLoopEl.textContent = t('counter_per_loop') + ' · ' + t('counter_to_next_loop').replace('{n}', BEADS_PER_LOOP - beadPos);
+    if (perLoopEl) perLoopEl.textContent = t('counter_per_loop') + ' · ' + t('counter_to_next_loop').replace('{n}', beadPos === 0 ? BEADS_PER_LOOP : BEADS_PER_LOOP - beadPos);
   }
 
   /* ── Ripple effect ── */
@@ -230,8 +241,10 @@ function wireCounterEvents(view, data, _session) {
       patch('counter', data);
 
       // Spawn ripple at tap position
-      const cx = (e.touches ? e.touches[0].clientX : e.clientX);
-      const cy = (e.touches ? e.touches[0].clientY : e.clientY);
+      // On touchend, e.touches is empty; use e.changedTouches instead
+      const touch = (e.changedTouches && e.changedTouches[0]) || (e.touches && e.touches[0]);
+      const cx = touch ? touch.clientX : e.clientX;
+      const cy = touch ? touch.clientY : e.clientY;
       spawnRipple(cx, cy);
 
       const justCompletedLoop = data.total % BEADS_PER_LOOP === 0;
@@ -280,12 +293,16 @@ function wireCounterEvents(view, data, _session) {
     data.total = 0;
     data.daily = 0;
     data.dailyDate = todayStr();
-    data.loops = 0;
     session = 0;
     patch('counter', data);
     haptic(30);
     updateUI();
     showToast(t('counter_reset_all'));
+  });
+
+  /* ── Menu button → Practice picker ── */
+  view.querySelector('#counterMenu').addEventListener('click', () => {
+    showPracticePicker(view, data, () => updateUI());
   });
 }
 
@@ -301,6 +318,11 @@ function showGoalPicker(parentView, goals, data, onDone) {
       <div class="counter-goal-panel-title">${t('counter_goal_hint')}</div>
       <div class="counter-goal-options">
         ${goals.map(g => `<button class="counter-goal-opt${data.goal === g ? ' counter-goal-opt--active' : ''}" data-goal="${g}">${g}</button>`).join('')}
+      </div>
+      <div class="counter-goal-custom-row">
+        <input class="counter-goal-custom-input" id="goalCustomInput" type="number" min="1" max="${MAX_GOAL_VALUE}"
+               placeholder="${t('counter_goal_custom_hint')}">
+        <button class="counter-goal-custom-btn" id="goalCustomConfirm">${t('counter_goal_custom')}</button>
       </div>
       <button class="counter-goal-cancel" id="goalCancel">${t('cancel')}</button>
     </div>
@@ -322,6 +344,64 @@ function showGoalPicker(parentView, goals, data, onDone) {
       patch('counter', data);
       haptic(15);
       onDone();
+      close();
+    });
+  });
+
+  sheet.querySelector('#goalCustomConfirm').addEventListener('click', () => {
+    const input = sheet.querySelector('#goalCustomInput');
+    const val = parseInt(input.value);
+    if (isNaN(val) || val < 1 || val > MAX_GOAL_VALUE) {
+      input.classList.add('counter-goal-custom-input--error');
+      showToast(t('counter_goal_custom_invalid'));
+      setTimeout(() => input.classList.remove('counter-goal-custom-input--error'), 600);
+      return;
+    }
+    data.goal = val;
+    patch('counter', data);
+    haptic(15);
+    onDone();
+    close();
+  });
+}
+
+function showPracticePicker(parentView, data, onDone) {
+  // Remove existing picker
+  parentView.querySelectorAll('.counter-practice-sheet').forEach(el => el.remove());
+
+  const sheet = document.createElement('div');
+  sheet.className = 'counter-practice-sheet';
+  sheet.innerHTML = `
+    <div class="counter-practice-backdrop" id="practiceBackdrop"></div>
+    <div class="counter-practice-panel">
+      <div class="counter-practice-panel-title">${t('counter_practice_title')}</div>
+      <div class="counter-practice-options">
+        ${PRACTICE_PRESETS.map(name => `
+          <button class="counter-practice-opt${data.practice === name ? ' counter-practice-opt--active' : ''}"
+                  data-name="${name}">${name}</button>
+        `).join('')}
+      </div>
+      <button class="counter-goal-cancel" id="practiceCancel">${t('cancel')}</button>
+    </div>
+  `;
+  parentView.appendChild(sheet);
+
+  requestAnimationFrame(() => sheet.classList.add('counter-practice-sheet--visible'));
+
+  const close = () => {
+    sheet.classList.remove('counter-practice-sheet--visible');
+    setTimeout(() => sheet.remove(), 250);
+  };
+
+  sheet.querySelector('#practiceBackdrop').addEventListener('click', close);
+  sheet.querySelector('#practiceCancel').addEventListener('click', close);
+  sheet.querySelectorAll('.counter-practice-opt').forEach(btn => {
+    btn.addEventListener('click', () => {
+      data.practice = btn.dataset.name;
+      patch('counter', data);
+      haptic(15);
+      onDone();
+      showToast(t('counter_practice_changed').replace('{name}', data.practice));
       close();
     });
   });
