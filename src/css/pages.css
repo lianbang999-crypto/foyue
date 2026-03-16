@@ -1586,7 +1586,35 @@
 
 /* Full-width custom practice button */
 .counter-practice-opt--custom {
-    width: 100%;
+    flex: 1;
+}
+
+/* Row wrapping the custom practice button + optional edit button */
+.counter-practice-custom-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+/* Small edit button next to the custom practice selector */
+.counter-practice-custom-edit {
+    flex-shrink: 0;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    border-radius: var(--radius-sm);
+    font-size: .82rem;
+    font-weight: 500;
+    color: var(--text-2);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .15s, border-color .15s;
+}
+
+.counter-practice-custom-edit:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--accent);
+    color: var(--accent);
 }
 
 /* Custom practice input area inside the picker */

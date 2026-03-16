@@ -196,6 +196,9 @@
   "counter_goal_custom_invalid": "Veuillez entrer un nombre valide",
   "counter_custom_practice_hint": "Entrez le nom de la pratique",
   "counter_practice_custom_confirm": "Confirmer",
+  "counter_practice_custom_save": "Enregistrer",
+  "counter_practice_custom_edit": "Modifier",
+  "counter_goal_custom_save": "Enregistrer",
   "counter_goal_invalid": "L'objectif doit être compris entre 1 et 99999",
   "counter_practice_custom_empty": "Veuillez saisir un nom de pratique",
   "counter_practice_custom_too_long": "Le nom de la pratique ne peut pas dépasser 20 caractères"

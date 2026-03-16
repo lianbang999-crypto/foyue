@@ -90,6 +90,7 @@ export function showEpisodes(series, tabId) {
       dom.audio.removeEventListener('pause', updatePlayAllBtn);
       dom.audio.removeEventListener('timeupdate', onTimeUpdate);
       dom.audio.removeEventListener('playing', updateHighlight);
+      dom.audio.removeEventListener('ended', updateHighlight);
       cancelProbe();
       obs.disconnect();
     }
@@ -113,6 +114,7 @@ export function showEpisodes(series, tabId) {
     });
   };
   dom.audio.addEventListener('playing', updateHighlight);
+  dom.audio.addEventListener('ended', updateHighlight);
 
   const hist = getHistory();
   // Build a history lookup map for O(1) access instead of O(n) .find() per episode
@@ -142,7 +144,8 @@ export function showEpisodes(series, tabId) {
       if (isCurrentTrack(series.id, idx)) { togglePlay(); return; }
       const hist = getHistory();
       const hEntry = hist.find(h => h.seriesId === series.id && h.epIdx === idx);
-      playList(series.episodes, idx, series, hEntry ? hEntry.time : 0);
+      const resumeTime = (hEntry && hEntry.time > 5 && (!hEntry.duration || hEntry.time < hEntry.duration - 5)) ? hEntry.time : 0;
+      playList(series.episodes, idx, series, resumeTime);
     });
     frag.appendChild(li);
   });
