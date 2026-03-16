@@ -614,6 +614,8 @@ export function highlightEp() {
 
 export function isCurrentTrack(sid, idx) {
   if (state.epIdx < 0 || !state.playlist.length) return false;
+  const dom = getDOM();
+  if (dom && dom.audio && dom.audio.ended) return false;
   const c = state.playlist[state.epIdx];
   return c && c.seriesId === sid && idx === state.epIdx;
 }
