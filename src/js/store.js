@@ -13,7 +13,15 @@ const _defaults = () => ({
   durations:  {},
   appreciated: [],
   cachedUrls: [],
-  counter:    { total: 0, daily: 0, dailyDate: '', goal: 108, practice: '阿弥陀佛' },
+  counter:    {
+    practice: '南无阿弥陀佛',
+    customPractice: '',
+    practices: {
+      '南无阿弥陀佛': { total: 0, daily: 0, dailyDate: '', goal: 108 },
+      '阿弥陀佛':     { total: 0, daily: 0, dailyDate: '', goal: 108 },
+      '自定义':       { total: 0, daily: 0, dailyDate: '', goal: 108 },
+    },
+  },
 });
 
 let _data = null;

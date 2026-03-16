@@ -192,5 +192,6 @@
   "counter_practice_changed": "已切换：{name}",
   "counter_goal_custom": "自定义",
   "counter_goal_custom_hint": "请输入每日目标次数",
-  "counter_goal_custom_invalid": "请输入有效的正整数"
+  "counter_goal_custom_invalid": "请输入有效的正整数",
+  "counter_custom_practice_hint": "请输入功课名称"
 }

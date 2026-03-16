@@ -1,15 +1,13 @@
 /* ===== 念佛计数器 (Buddhist Chanting Counter) ===== */
 import { t } from './i18n.js';
 import { get, patch } from './store.js';
-import { haptic, showToast } from './utils.js';
+import { haptic, showToast, escapeHtml } from './utils.js';
 
 const BEADS_PER_LOOP = 108;
 const MAX_GOAL_VALUE = 99999;
+const CUSTOM_KEY = '自定义';
 
-const PRACTICE_PRESETS = [
-  '阿弥陀佛', '南无阿弥陀佛', '观世音菩萨', '大势至菩萨',
-  '大悲咒', '往生咒', '心经', '礼佛大忏悔文',
-];
+const PRACTICE_PRESETS = ['南无阿弥陀佛', '阿弥陀佛'];
 
 /* ── Helpers ── */
 function todayStr() {
@@ -17,14 +15,71 @@ function todayStr() {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
+/* Return the per-practice stats object for the current practice */
+function getPracticeStats(data) {
+  if (!data.practices[data.practice]) {
+    data.practices[data.practice] = { total: 0, daily: 0, dailyDate: '', goal: 108 };
+  }
+  return data.practices[data.practice];
+}
+
+/* Return the display name for the current practice */
+function getPracticeDisplayName(data) {
+  if (data.practice === CUSTOM_KEY) {
+    return data.customPractice || CUSTOM_KEY;
+  }
+  return data.practice;
+}
+
 function getCounterData() {
-  const data = get('counter') || { total: 0, daily: 0, dailyDate: '', goal: 108, practice: '阿弥陀佛' };
-  // Ensure practice field exists for data migrated from older versions
-  if (!data.practice) data.practice = '阿弥陀佛';
+  let data = get('counter');
+
+  // Migrate from old flat structure or initialize fresh
+  if (!data || !data.practices) {
+    const old = data || {};
+    data = { practice: '南无阿弥陀佛', customPractice: '', practices: {} };
+
+    // Initialize all preset practices with empty stats
+    for (const p of [...PRACTICE_PRESETS, CUSTOM_KEY]) {
+      data.practices[p] = { total: 0, daily: 0, dailyDate: '', goal: 108 };
+    }
+
+    // Carry over existing data to the matching practice slot
+    if (old.total !== undefined) {
+      if (PRACTICE_PRESETS.includes(old.practice)) {
+        data.practice = old.practice;
+        data.practices[old.practice] = {
+          total: old.total || 0, daily: old.daily || 0,
+          dailyDate: old.dailyDate || '', goal: old.goal || 108,
+        };
+      } else if (old.practice) {
+        // Old practice was a custom preset – migrate to custom slot
+        data.practice = CUSTOM_KEY;
+        data.customPractice = old.practice;
+        data.practices[CUSTOM_KEY] = {
+          total: old.total || 0, daily: old.daily || 0,
+          dailyDate: old.dailyDate || '', goal: old.goal || 108,
+        };
+      } else {
+        data.practices['南无阿弥陀佛'] = {
+          total: old.total || 0, daily: old.daily || 0,
+          dailyDate: old.dailyDate || '', goal: old.goal || 108,
+        };
+      }
+    }
+    patch('counter', data);
+  }
+
+  // Ensure the current practice slot exists
+  if (!data.practices[data.practice]) {
+    data.practices[data.practice] = { total: 0, daily: 0, dailyDate: '', goal: 108 };
+  }
+
   // Reset daily count if it's a new day
-  if (data.dailyDate !== todayStr()) {
-    data.daily = 0;
-    data.dailyDate = todayStr();
+  const ps = getPracticeStats(data);
+  if (ps.dailyDate !== todayStr()) {
+    ps.daily = 0;
+    ps.dailyDate = todayStr();
     patch('counter', data);
   }
   return data;
@@ -66,10 +121,11 @@ export function openCounter() {
 }
 
 function buildCounterHTML(data, session) {
-  const loops = Math.floor(data.total / BEADS_PER_LOOP);
-  const beadPos = data.total % BEADS_PER_LOOP;
-  const goalPct = data.goal > 0 ? Math.min(100, Math.round(data.daily / data.goal * 100)) : 0;
-  const goalDone = data.goal > 0 && data.daily >= data.goal;
+  const ps = getPracticeStats(data);
+  const beadPos = ps.total % BEADS_PER_LOOP;
+  const goalPct = ps.goal > 0 ? Math.min(100, Math.round(ps.daily / ps.goal * 100)) : 0;
+  const goalDone = ps.goal > 0 && ps.daily >= ps.goal;
+  const displayName = escapeHtml(getPracticeDisplayName(data));
 
   return `
     <div class="counter-header">
@@ -83,23 +139,7 @@ function buildCounterHTML(data, session) {
     </div>
 
     <div class="counter-body">
-      <!-- Stats row -->
-      <div class="counter-stats">
-        <div class="counter-stat">
-          <div class="counter-stat-val" id="ctrSession">${session}</div>
-          <div class="counter-stat-lbl">${t('counter_session')}</div>
-        </div>
-        <div class="counter-stat counter-stat--accent">
-          <div class="counter-stat-val" id="ctrLoops">${loops}</div>
-          <div class="counter-stat-lbl">${t('counter_loops')}</div>
-        </div>
-        <div class="counter-stat">
-          <div class="counter-stat-val" id="ctrTotal">${data.total}</div>
-          <div class="counter-stat-lbl">${t('counter_total')}</div>
-        </div>
-      </div>
-
-      <!-- Main tap button -->
+      <!-- Main tap button (stats row removed for minimalist focus) -->
       <div class="counter-tap-area" id="counterTapArea" role="button" tabindex="0"
            aria-label="${t('counter_tap_hint')}">
         <!-- Outer ring glow -->
@@ -131,7 +171,7 @@ function buildCounterHTML(data, session) {
           </svg>
           <!-- Count number -->
           <div class="counter-number" id="counterNumber">${session}</div>
-          <div class="counter-practice-name" id="counterPracticeName">${data.practice}</div>
+          <div class="counter-practice-name" id="counterPracticeName">${displayName}</div>
           <div class="counter-hint" id="counterHint">${t('counter_tap_hint')}</div>
         </div>
         <!-- Ripple container -->
@@ -141,14 +181,13 @@ function buildCounterHTML(data, session) {
       <!-- Daily progress bar -->
       <div class="counter-daily-wrap">
         <div class="counter-daily-row">
-          <span class="counter-daily-lbl">${t('counter_daily')}: <strong id="ctrDaily">${data.daily}</strong></span>
-          <span class="counter-daily-goal" id="ctrGoalLabel">${goalDone ? '✓ ' : ''}${t('counter_goal')}: <span id="ctrGoalVal">${data.goal}</span></span>
+          <span class="counter-daily-lbl">${t('counter_daily')}: <strong id="ctrDaily">${ps.daily}</strong></span>
+          <span class="counter-daily-goal" id="ctrGoalLabel">${goalDone ? '✓ ' : ''}${t('counter_goal')}: <span id="ctrGoalVal">${ps.goal}</span></span>
         </div>
         <div class="counter-progress-bar">
           <div class="counter-progress-bar-fill${goalDone ? ' counter-progress-bar-fill--done' : ''}"
                id="ctrGoalBar" style="width:${goalPct}%"></div>
         </div>
-        <div class="counter-per-loop">${t('counter_per_loop')} · ${t('counter_to_next_loop').replace('{n}', BEADS_PER_LOOP - beadPos || BEADS_PER_LOOP)}</div>
       </div>
     </div>
 
@@ -183,19 +222,16 @@ function closeCounter(view, popHandler, escHandler) {
 function wireCounterEvents(view, data, _session) {
   let session = _session;
 
-  /* ── Update UI helper ── */
+  /* ── Full UI update (settings change, loop complete, goal done, reset) ── */
   function updateUI(bump = false) {
-    const loops = Math.floor(data.total / BEADS_PER_LOOP);
-    const beadPos = data.total % BEADS_PER_LOOP;
+    const ps = getPracticeStats(data);
+    const beadPos = ps.total % BEADS_PER_LOOP;
     const circum = Math.round(2 * Math.PI * 88);
     const offset = Math.round(circum * (1 - beadPos / BEADS_PER_LOOP));
-    const goalPct = data.goal > 0 ? Math.min(100, Math.round(data.daily / data.goal * 100)) : 0;
-    const goalDone = data.goal > 0 && data.daily >= data.goal;
+    const goalPct = ps.goal > 0 ? Math.min(100, Math.round(ps.daily / ps.goal * 100)) : 0;
+    const goalDone = ps.goal > 0 && ps.daily >= ps.goal;
 
     const numEl = view.querySelector('#counterNumber');
-    const sessionEl = view.querySelector('#ctrSession');
-    const totalEl = view.querySelector('#ctrTotal');
-    const loopsEl = view.querySelector('#ctrLoops');
     const dailyEl = view.querySelector('#ctrDaily');
     const barEl = view.querySelector('#ctrGoalBar');
     const goalLabelEl = view.querySelector('#ctrGoalLabel');
@@ -211,17 +247,41 @@ function wireCounterEvents(view, data, _session) {
         setTimeout(() => numEl.classList.remove('counter-number--bump'), 180);
       }
     }
-    if (sessionEl) sessionEl.textContent = session;
-    if (totalEl) totalEl.textContent = data.total;
-    if (loopsEl) loopsEl.textContent = loops;
-    if (dailyEl) dailyEl.textContent = data.daily;
+    if (dailyEl) dailyEl.textContent = ps.daily;
     if (barEl) { barEl.style.width = goalPct + '%'; barEl.classList.toggle('counter-progress-bar-fill--done', goalDone); }
-    if (goalLabelEl && goalValEl) { goalLabelEl.firstChild.textContent = (goalDone ? '✓ ' : '') + t('counter_goal') + ': '; goalValEl.textContent = data.goal; }
+    if (goalLabelEl && goalValEl) { goalLabelEl.firstChild.textContent = (goalDone ? '✓ ' : '') + t('counter_goal') + ': '; goalValEl.textContent = ps.goal; }
     if (progressFill) progressFill.style.strokeDashoffset = offset;
     if (hintEl) hintEl.style.display = session > 0 ? 'none' : '';
-    if (practiceEl) practiceEl.textContent = data.practice;
-    const perLoopEl = view.querySelector('.counter-per-loop');
-    if (perLoopEl) perLoopEl.textContent = t('counter_per_loop') + ' · ' + t('counter_to_next_loop').replace('{n}', beadPos === 0 ? BEADS_PER_LOOP : BEADS_PER_LOOP - beadPos);
+    if (practiceEl) practiceEl.textContent = getPracticeDisplayName(data);
+  }
+
+  /* ── Fast tap update — only the minimal DOM writes needed ── */
+  function updateUIFast(bump) {
+    const ps = getPracticeStats(data);
+    const beadPos = ps.total % BEADS_PER_LOOP;
+    const circum = Math.round(2 * Math.PI * 88);
+    const offset = Math.round(circum * (1 - beadPos / BEADS_PER_LOOP));
+
+    const numEl = view.querySelector('#counterNumber');
+    const progressFill = view.querySelector('#counterProgressFill');
+    const dailyEl = view.querySelector('#ctrDaily');
+    const barEl = view.querySelector('#ctrGoalBar');
+    const hintEl = view.querySelector('#counterHint');
+
+    if (numEl) {
+      numEl.textContent = session;
+      if (bump) {
+        numEl.classList.add('counter-number--bump');
+        setTimeout(() => numEl.classList.remove('counter-number--bump'), 180);
+      }
+    }
+    if (progressFill) progressFill.style.strokeDashoffset = offset;
+    if (dailyEl) dailyEl.textContent = ps.daily;
+    if (barEl) {
+      const goalPct = ps.goal > 0 ? Math.min(100, Math.round(ps.daily / ps.goal * 100)) : 0;
+      barEl.style.width = goalPct + '%';
+    }
+    if (hintEl && session === 1) hintEl.style.display = 'none';
   }
 
   /* ── Ripple effect ── */
@@ -241,11 +301,12 @@ function wireCounterEvents(view, data, _session) {
   const tapArea = view.querySelector('#counterTapArea');
   if (tapArea) {
     const doCount = (e) => {
-      haptic(12);
+      haptic(30);
       session++;
-      data.total++;
-      data.daily++;
-      data.dailyDate = todayStr();
+      const ps = getPracticeStats(data);
+      ps.total++;
+      ps.daily++;
+      ps.dailyDate = todayStr();
       patch('counter', data);
 
       // Spawn ripple at tap position
@@ -255,19 +316,23 @@ function wireCounterEvents(view, data, _session) {
       const cy = touch ? touch.clientY : e.clientY;
       spawnRipple(cx, cy);
 
-      const justCompletedLoop = data.total % BEADS_PER_LOOP === 0;
+      const justCompletedLoop = ps.total % BEADS_PER_LOOP === 0;
       if (justCompletedLoop) {
-        haptic(40);
-        showToast(t('counter_loop_done'));
-      }
-
-      const goalJustDone = data.goal > 0 && data.daily === data.goal;
-      if (goalJustDone) {
         haptic(60);
-        showToast(t('counter_daily_done'));
+        showToast(t('counter_loop_done'));
+        updateUI(true);
+        return;
       }
 
-      updateUI(true);
+      const goalJustDone = ps.goal > 0 && ps.daily === ps.goal;
+      if (goalJustDone) {
+        haptic(80);
+        showToast(t('counter_daily_done'));
+        updateUI(true);
+        return;
+      }
+
+      updateUIFast(true);
     };
 
     tapArea.addEventListener('click', doCount);
@@ -298,9 +363,11 @@ function wireCounterEvents(view, data, _session) {
   /* ── Reset all ── */
   view.querySelector('#counterResetAll').addEventListener('click', () => {
     if (!window.confirm(t('counter_reset_confirm'))) return;
-    data.total = 0;
-    data.daily = 0;
-    data.dailyDate = todayStr();
+    // Reset all practices (preserve goals)
+    for (const p of Object.keys(data.practices)) {
+      const goal = data.practices[p].goal || 108;
+      data.practices[p] = { total: 0, daily: 0, dailyDate: todayStr(), goal };
+    }
     session = 0;
     patch('counter', data);
     haptic(30);
@@ -318,6 +385,7 @@ function showGoalPicker(parentView, goals, data, onDone) {
   // Remove existing picker
   parentView.querySelectorAll('.counter-goal-sheet').forEach(el => el.remove());
 
+  const ps = getPracticeStats(data);
   const sheet = document.createElement('div');
   sheet.className = 'counter-goal-sheet';
   sheet.innerHTML = `
@@ -325,7 +393,7 @@ function showGoalPicker(parentView, goals, data, onDone) {
     <div class="counter-goal-panel">
       <div class="counter-goal-panel-title">${t('counter_goal_hint')}</div>
       <div class="counter-goal-options">
-        ${goals.map(g => `<button class="counter-goal-opt${data.goal === g ? ' counter-goal-opt--active' : ''}" data-goal="${g}">${g}</button>`).join('')}
+        ${goals.map(g => `<button class="counter-goal-opt${ps.goal === g ? ' counter-goal-opt--active' : ''}" data-goal="${g}">${g}</button>`).join('')}
       </div>
       <div class="counter-goal-custom-row">
         <input class="counter-goal-custom-input" id="goalCustomInput" type="number" min="1" max="${MAX_GOAL_VALUE}"
@@ -351,7 +419,7 @@ function showGoalPicker(parentView, goals, data, onDone) {
   window.addEventListener('keydown', sheetEscHandler);
   sheet.querySelectorAll('.counter-goal-opt').forEach(btn => {
     btn.addEventListener('click', () => {
-      data.goal = parseInt(btn.dataset.goal);
+      ps.goal = parseInt(btn.dataset.goal);
       patch('counter', data);
       haptic(15);
       onDone();
@@ -368,7 +436,7 @@ function showGoalPicker(parentView, goals, data, onDone) {
       setTimeout(() => input.classList.remove('counter-goal-custom-input--error'), 600);
       return;
     }
-    data.goal = val;
+    ps.goal = val;
     patch('counter', data);
     haptic(15);
     onDone();
@@ -379,6 +447,9 @@ function showGoalPicker(parentView, goals, data, onDone) {
 function showPracticePicker(parentView, data, onDone) {
   // Remove existing picker
   parentView.querySelectorAll('.counter-practice-sheet').forEach(el => el.remove());
+
+  const customLabel = escapeHtml(data.customPractice || CUSTOM_KEY);
+  const isCustomActive = data.practice === CUSTOM_KEY;
 
   const sheet = document.createElement('div');
   sheet.className = 'counter-practice-sheet';
@@ -391,6 +462,16 @@ function showPracticePicker(parentView, data, onDone) {
           <button class="counter-practice-opt${data.practice === name ? ' counter-practice-opt--active' : ''}"
                   data-name="${name}">${name}</button>
         `).join('')}
+      </div>
+      <button class="counter-practice-opt counter-practice-opt--custom${isCustomActive ? ' counter-practice-opt--active' : ''}"
+              id="practiceCustomOpt" data-name="${CUSTOM_KEY}">${customLabel}</button>
+      <div class="counter-custom-input-wrap${isCustomActive ? '' : ' counter-custom-input-wrap--hidden'}" id="customInputWrap">
+        <div class="counter-goal-custom-row">
+          <input class="counter-goal-custom-input" id="customPracticeInput" type="text"
+                 maxlength="20" placeholder="${t('counter_custom_practice_hint')}"
+                 value="${escapeHtml(data.customPractice || '')}">
+          <button class="counter-goal-custom-btn" id="customPracticeConfirm">${t('counter_goal_custom')}</button>
+        </div>
       </div>
       <button class="counter-goal-cancel" id="practiceCancel">${t('cancel')}</button>
     </div>
@@ -409,14 +490,59 @@ function showPracticePicker(parentView, data, onDone) {
   sheet.querySelector('#practiceCancel').addEventListener('click', close);
   const practiceEscHandler = (e) => { if (e.key === 'Escape') close(); };
   window.addEventListener('keydown', practiceEscHandler);
-  sheet.querySelectorAll('.counter-practice-opt').forEach(btn => {
+
+  // Preset option buttons
+  sheet.querySelectorAll('.counter-practice-opt[data-name]:not(#practiceCustomOpt)').forEach(btn => {
     btn.addEventListener('click', () => {
       data.practice = btn.dataset.name;
+      if (!data.practices[data.practice]) {
+        data.practices[data.practice] = { total: 0, daily: 0, dailyDate: todayStr(), goal: 108 };
+      }
+      // Reset daily if needed for newly selected practice
+      const ps = getPracticeStats(data);
+      if (ps.dailyDate !== todayStr()) { ps.daily = 0; ps.dailyDate = todayStr(); }
       patch('counter', data);
       haptic(15);
       onDone();
       showToast(t('counter_practice_changed').replace('{name}', data.practice));
       close();
     });
+  });
+
+  // Custom option: toggle input row
+  const customOpt = sheet.querySelector('#practiceCustomOpt');
+  const customWrap = sheet.querySelector('#customInputWrap');
+  customOpt.addEventListener('click', () => {
+    const visible = !customWrap.classList.contains('counter-custom-input-wrap--hidden');
+    customWrap.classList.toggle('counter-custom-input-wrap--hidden', visible);
+    if (!visible) sheet.querySelector('#customPracticeInput').focus();
+  });
+
+  // Confirm custom practice name
+  const confirmCustom = () => {
+    const input = sheet.querySelector('#customPracticeInput');
+    const val = input.value.trim();
+    if (!val) {
+      input.classList.add('counter-goal-custom-input--error');
+      setTimeout(() => input.classList.remove('counter-goal-custom-input--error'), 600);
+      return;
+    }
+    data.customPractice = val;
+    data.practice = CUSTOM_KEY;
+    if (!data.practices[CUSTOM_KEY]) {
+      data.practices[CUSTOM_KEY] = { total: 0, daily: 0, dailyDate: todayStr(), goal: 108 };
+    }
+    const ps = getPracticeStats(data);
+    if (ps.dailyDate !== todayStr()) { ps.daily = 0; ps.dailyDate = todayStr(); }
+    patch('counter', data);
+    haptic(15);
+    onDone();
+    showToast(t('counter_practice_changed').replace('{name}', val));
+    close();
+  };
+
+  sheet.querySelector('#customPracticeConfirm').addEventListener('click', confirmCustom);
+  sheet.querySelector('#customPracticeInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); confirmCustom(); }
   });
 }
