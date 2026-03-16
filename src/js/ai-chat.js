@@ -8,6 +8,8 @@ const MAX_MESSAGES = 50;
 const MAX_PERSIST = 20; // max messages to persist
 const LS_KEY = 'ai-chat-history';
 const MAX_INPUT_LEN = 500;
+const INPUT_WARN_THRESHOLD = 0.85; // show char-count warning at 85% of max
+const OPEN_FOCUS_DELAY_MS = 350; // matches CSS slide-in animation duration (0.35s)
 
 let _lastQuestion = '';
 
@@ -175,7 +177,7 @@ function createChatPage() {
     const len = chatInput.value.length;
     if (charCount) {
       charCount.textContent = `${len}/${MAX_INPUT_LEN}`;
-      charCount.classList.toggle('ai-char-warn', len > MAX_INPUT_LEN * 0.85);
+      charCount.classList.toggle('ai-char-warn', len > MAX_INPUT_LEN * INPUT_WARN_THRESHOLD);
       charCount.classList.toggle('ai-char-over', len >= MAX_INPUT_LEN);
     }
   }
@@ -420,7 +422,7 @@ function createChatPage() {
       this.isOpen = true;
       document.addEventListener('keydown', onKeydown);
       chatMessages.scrollTop = chatMessages.scrollHeight;
-      setTimeout(() => chatInput.focus(), 350);
+      setTimeout(() => chatInput.focus(), OPEN_FOCUS_DELAY_MS);
       const url = new URL(window.location);
       url.searchParams.set('tab', 'ai');
       window.history.pushState({ aiChat: true }, '', url);
