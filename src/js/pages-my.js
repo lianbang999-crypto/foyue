@@ -51,7 +51,7 @@ export function renderMyPage() {
   // Counter stats for subtitle
   const counterData = storeGet('counter') || { total: 0 };
   const counterDesc = counterData.total > 0
-    ? t('my_counter_total_desc').replace('{n}', counterData.total)
+    ? t('my_counter_total_desc').replace('{n}', counterData.total) + (counterData.practice ? ' · ' + counterData.practice : '')
     : t('my_counter_desc');
 
   // Build install guide section
