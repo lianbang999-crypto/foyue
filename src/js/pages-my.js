@@ -55,12 +55,12 @@ export function renderMyPage() {
     const practice = counterData.practice || '南无阿弥陀佛';
     const ps = counterData.practices[practice];
     if (ps && ps.total > 0) {
-      const displayName = practice === '自定义' ? (counterData.customPractice || '自定义') : practice;
+      const displayName = practice === '自定义' ? escapeHtml(counterData.customPractice || '自定义') : escapeHtml(practice);
       counterDesc = t('my_counter_total_desc').replace('{n}', ps.total) + ' · ' + displayName;
     }
   } else if (counterData.total > 0) {
     // Backward compat: old flat structure
-    counterDesc = t('my_counter_total_desc').replace('{n}', counterData.total) + (counterData.practice ? ' · ' + counterData.practice : '');
+    counterDesc = t('my_counter_total_desc').replace('{n}', counterData.total) + (counterData.practice ? ' · ' + escapeHtml(counterData.practice) : '');
   }
 
   // Build install guide section
