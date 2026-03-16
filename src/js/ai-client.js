@@ -99,8 +99,8 @@ export async function askQuestionStream(question, context = {}, onToken) {
               if (parsed.token && onToken) onToken(parsed.token);
             }
           } catch (e) {
-            if (e.message && e.message !== 'Stream error') {
-              // JSON parse error — skip
+            if (e instanceof SyntaxError) {
+              // JSON parse error — skip malformed SSE data
             } else {
               throw e;
             }
