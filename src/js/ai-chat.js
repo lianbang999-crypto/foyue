@@ -330,7 +330,8 @@ function createChatPage() {
     return html;
   }
 
-  const BOT_AVATAR = `<div class="ai-msg-avatar" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.09 3.26L16.36 6.36l-3.26 1.09L12 10.72l-1.09-3.27L7.64 6.36l3.27-1.1z"/><path d="M18 12l.73 2.18L20.91 14.91l-2.18.73L18 17.82l-.73-2.18-2.18-.73 2.18-.73z"/></svg></div>`;
+  /* Lotus avatar — Buddhist Pure Land theme */
+  const BOT_AVATAR = `<div class="ai-msg-avatar" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4c-1.5 2.5-2 5-2 7.5s.5 4 2 5c1.5-1 2-2.5 2-5s-.5-5-2-7.5z"/><path d="M7.5 8c-2 1-3.5 3.5-3.5 6.5 0 1 .4 2 1.5 2.5"/><path d="M16.5 8c2 1 3.5 3.5 3.5 6.5 0 1-.4 2-1.5 2.5"/><path d="M9.5 7.5c-1.5.5-2.5 2-3 4"/><path d="M14.5 7.5c1.5.5 2.5 2 3 4"/><line x1="12" y1="16.5" x2="12" y2="20"/><path d="M9.5 20c.7-.5 1.6-.5 2.5 0 .9-.5 1.8-.5 2.5 0"/></svg></div>`;
 
   function addMessage(role, content, sources, disclaimer, silent) {
     while (chatMessages.children.length > MAX_MESSAGES) {
@@ -411,7 +412,9 @@ function createChatPage() {
   page.setAttribute('aria-modal', 'true');
   page.setAttribute('role', 'dialog');
   page.setAttribute('aria-label', 'AI 问法');
+  /* Hide: inert for modern browsers; aria-hidden as fallback for older ones */
   page.setAttribute('inert', '');
+  page.setAttribute('aria-hidden', 'true');
   appEl.appendChild(page);
 
   chatInstance = {
@@ -419,6 +422,7 @@ function createChatPage() {
     show() {
       page.classList.add('show');
       page.removeAttribute('inert');
+      page.setAttribute('aria-hidden', 'false');
       this.isOpen = true;
       document.addEventListener('keydown', onKeydown);
       chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -430,6 +434,7 @@ function createChatPage() {
     hide() {
       page.classList.remove('show');
       page.setAttribute('inert', '');
+      page.setAttribute('aria-hidden', 'true');
       this.isOpen = false;
       document.removeEventListener('keydown', onKeydown);
       const url = new URL(window.location);
@@ -448,10 +453,14 @@ function buildWelcomeHTML() {
       <div class="ai-msg ai-msg-bot ai-welcome">
         <div class="ai-msg-content">
           <div class="ai-welcome-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2l1.09 3.26L16.36 6.36l-3.26 1.09L12 10.72l-1.09-3.27L7.64 6.36l3.27-1.1z"/>
-              <path d="M18 12l.73 2.18L20.91 14.91l-2.18.73L18 17.82l-.73-2.18-2.18-.73 2.18-.73z"/>
-              <path d="M6 15l.55 1.64 1.64.55-1.64.54L6 19.37l-.55-1.64-1.64-.54 1.64-.55z"/>
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 4c-1.5 2.5-2 5-2 7.5s.5 4 2 5c1.5-1 2-2.5 2-5s-.5-5-2-7.5z"/>
+              <path d="M7.5 8c-2 1-3.5 3.5-3.5 6.5 0 1 .4 2 1.5 2.5"/>
+              <path d="M16.5 8c2 1 3.5 3.5 3.5 6.5 0 1-.4 2-1.5 2.5"/>
+              <path d="M9.5 7.5c-1.5.5-2.5 2-3 4"/>
+              <path d="M14.5 7.5c1.5.5 2.5 2 3 4"/>
+              <line x1="12" y1="16.5" x2="12" y2="20"/>
+              <path d="M9.5 20c.7-.5 1.6-.5 2.5 0 .9-.5 1.8-.5 2.5 0"/>
             </svg>
           </div>
           <p class="ai-welcome-title">南无阿弥陀佛</p>
@@ -478,8 +487,13 @@ function buildPageHTML() {
       <div class="ai-fs-title">
         <span class="ai-fs-title-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2l1.09 3.26L16.36 6.36l-3.26 1.09L12 10.72l-1.09-3.27L7.64 6.36l3.27-1.1z"/>
-            <path d="M18 12l.73 2.18L20.91 14.91l-2.18.73L18 17.82l-.73-2.18-2.18-.73 2.18-.73z"/>
+            <path d="M12 4c-1.5 2.5-2 5-2 7.5s.5 4 2 5c1.5-1 2-2.5 2-5s-.5-5-2-7.5z"/>
+            <path d="M7.5 8c-2 1-3.5 3.5-3.5 6.5 0 1 .4 2 1.5 2.5"/>
+            <path d="M16.5 8c2 1 3.5 3.5 3.5 6.5 0 1-.4 2-1.5 2.5"/>
+            <path d="M9.5 7.5c-1.5.5-2.5 2-3 4"/>
+            <path d="M14.5 7.5c1.5.5 2.5 2 3 4"/>
+            <line x1="12" y1="16.5" x2="12" y2="20"/>
+            <path d="M9.5 20c.7-.5 1.6-.5 2.5 0 .9-.5 1.8-.5 2.5 0"/>
           </svg>
         </span>
         <span>AI 问法</span>

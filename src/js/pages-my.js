@@ -185,6 +185,17 @@ export function renderMyPage() {
   });
   page.querySelector('#myMessagesCard').addEventListener('click', () => showMessageWallSubview());
 
+  // Prefetch wenku series data in background to speed up first open of 文库
+  // Uses idle callback (or fallback timeout) so it doesn't compete with primary page rendering
+  const _prefetchWenku = () => {
+    import('./wenku-api.js').then(m => m.getWenkuSeries()).catch(() => {});
+  };
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(_prefetchWenku, { timeout: 3000 });
+  } else {
+    setTimeout(_prefetchWenku, 1000);
+  }
+
   // Cache cleanup item — show count + size, tap to clear with confirmation; hidden when empty
   const cacheItemEl = page.querySelector('#myCacheItem');
   const cacheSizeEl = page.querySelector('#myCacheSize');
