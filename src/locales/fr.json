@@ -188,5 +188,12 @@
   "counter_per_loop": "108 par tour",
   "counter_tap_hint": "Appuyer pour compter",
   "counter_to_next_loop": "Encore {n} pour le prochain tour",
-  "my_counter_total_desc": "{n} récitations au total"
+  "my_counter_total_desc": "{n} récitations au total",
+  "counter_practice": "Pratique",
+  "counter_set_practice": "Définir pratique",
+  "counter_practice_hint": "Choisir ou saisir un nom de pratique",
+  "counter_practice_custom_label": "Personnalisé",
+  "counter_practice_custom_placeholder": "Saisir le nom…",
+  "counter_goal_custom": "Personnalisé",
+  "counter_goal_custom_placeholder": "Saisir l'objectif…"
 }

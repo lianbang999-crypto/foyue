@@ -187,5 +187,12 @@
   "counter_per_loop": "108 per loop",
   "counter_tap_hint": "Tap to count",
   "counter_to_next_loop": "{n} more to next loop",
-  "my_counter_total_desc": "{n} recitations total"
+  "my_counter_total_desc": "{n} recitations total",
+  "counter_practice": "Practice",
+  "counter_set_practice": "Set Practice",
+  "counter_practice_hint": "Choose or enter a practice name",
+  "counter_practice_custom_label": "Custom",
+  "counter_practice_custom_placeholder": "Enter practice name…",
+  "counter_goal_custom": "Custom",
+  "counter_goal_custom_placeholder": "Enter goal number…"
 }

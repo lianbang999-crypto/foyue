@@ -187,5 +187,12 @@
   "counter_per_loop": "每圈108声",
   "counter_tap_hint": "点击计数",
   "counter_to_next_loop": "距下一圈还差 {n} 声",
-  "my_counter_total_desc": "累计 {n} 声"
+  "my_counter_total_desc": "累计 {n} 声",
+  "counter_practice": "功课",
+  "counter_set_practice": "设置功课",
+  "counter_practice_hint": "选择或自定义功课名称",
+  "counter_practice_custom_label": "自定义",
+  "counter_practice_custom_placeholder": "输入功课名称…",
+  "counter_goal_custom": "自定义",
+  "counter_goal_custom_placeholder": "输入目标数量…"
 }
