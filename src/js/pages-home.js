@@ -344,14 +344,14 @@ async function loadDailyRecommendations(page) {
   const maxAttempts = 3;
   let fetchDone = false;
 
-  // Fallback timer: if API hasn't responded in 5 seconds, show fallback content
+  // Fallback timer: if API hasn't responded in 3 seconds, show fallback content
   // immediately so the user sees something useful.  The background fetch continues
   // and will update the list if/when it succeeds.
   const fallbackTimer = setTimeout(() => {
     if (!fetchDone && recList.querySelector('.home-rec-skeleton')) {
       renderFallbackRecs(recList);
     }
-  }, 5000);
+  }, 3000);
 
   async function tryLoad() {
     try {
@@ -515,7 +515,9 @@ export function renderHomePage() {
           import('./pages-my.js').then(m => m.renderMyPage());
         }));
       } else if (nav === 'ai') {
-        import('./ai-chat.js').then(m => m.openAiChat());
+        import('./ai-chat.js').then(m => m.openAiChat()).catch(() => {
+          import('./utils.js').then(u => u.showToast('AI 功能暂时无法加载，请刷新页面重试')).catch(() => {});
+        });
       } else {
         // Navigate to tab
         const tabBtn = document.querySelector(`.tab[data-tab="${nav}"]`);

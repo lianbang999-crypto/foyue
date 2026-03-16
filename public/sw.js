@@ -1,7 +1,7 @@
 /* Service Worker — 净土法音 Offline Cache */
 'use strict';
 
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const STATIC_CACHE = 'static-' + CACHE_VERSION;
 const DATA_CACHE   = 'data-'   + CACHE_VERSION;
 const AUDIO_CACHE  = 'audio-v2';
@@ -103,7 +103,13 @@ self.addEventListener('fetch', event => {
           }
           return response;
         });
-      }).catch(() => caches.match('/'))
+        // Fix: don't return the HTML page as a fallback for failed JS/CSS fetches.
+        // The previous .catch(() => caches.match('/')) caused the browser to receive
+        // HTML when a JS chunk couldn't be loaded, which made import() fail with a
+        // module parse error instead of a network error, showing the "AI feature
+        // unavailable" toast misleadingly.  Let network errors propagate naturally
+        // so dynamic import() rejects with a proper NetworkError.
+      })
     );
     return;
   }
