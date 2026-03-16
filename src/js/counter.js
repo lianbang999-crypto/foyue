@@ -23,6 +23,17 @@ function getPracticeStats(data) {
   return data.practices[data.practice];
 }
 
+/* Reset daily count if it's a new day; returns true if reset occurred */
+function checkAndResetDaily(ps) {
+  const today = todayStr();
+  if (ps.dailyDate !== today) {
+    ps.daily = 0;
+    ps.dailyDate = today;
+    return true;
+  }
+  return false;
+}
+
 /* Return the display name for the current practice */
 function getPracticeDisplayName(data) {
   if (data.practice === CUSTOM_KEY) {
@@ -77,9 +88,7 @@ function getCounterData() {
 
   // Reset daily count if it's a new day
   const ps = getPracticeStats(data);
-  if (ps.dailyDate !== todayStr()) {
-    ps.daily = 0;
-    ps.dailyDate = todayStr();
+  if (checkAndResetDaily(ps)) {
     patch('counter', data);
   }
   return data;
@@ -502,9 +511,7 @@ function showPracticePicker(parentView, data, onDone) {
       if (!data.practices[data.practice]) {
         data.practices[data.practice] = { total: 0, daily: 0, dailyDate: todayStr(), goal: 108 };
       }
-      // Reset daily if needed for newly selected practice
-      const ps = getPracticeStats(data);
-      if (ps.dailyDate !== todayStr()) { ps.daily = 0; ps.dailyDate = todayStr(); }
+      checkAndResetDaily(getPracticeStats(data));
       patch('counter', data);
       haptic(15);
       onDone();
@@ -532,13 +539,18 @@ function showPracticePicker(parentView, data, onDone) {
       setTimeout(() => input.classList.remove('counter-goal-custom-input--error'), 600);
       return;
     }
+    if (val.length > 20) {
+      showToast(t('counter_practice_custom_too_long'));
+      input.classList.add('counter-goal-custom-input--error');
+      setTimeout(() => input.classList.remove('counter-goal-custom-input--error'), 600);
+      return;
+    }
     data.customPractice = val;
     data.practice = CUSTOM_KEY;
     if (!data.practices[CUSTOM_KEY]) {
       data.practices[CUSTOM_KEY] = { total: 0, daily: 0, dailyDate: todayStr(), goal: 108 };
     }
-    const ps = getPracticeStats(data);
-    if (ps.dailyDate !== todayStr()) { ps.daily = 0; ps.dailyDate = todayStr(); }
+    checkAndResetDaily(getPracticeStats(data));
     patch('counter', data);
     haptic(15);
     onDone();
