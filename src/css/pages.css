@@ -1195,6 +1195,19 @@
     transform: scale(1.12);
 }
 
+.counter-practice-name {
+    font-size: .7rem;
+    color: var(--accent);
+    letter-spacing: .06em;
+    font-weight: 500;
+    margin-top: 4px;
+    max-width: 90%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+}
+
 .counter-hint {
     font-size: .72rem;
     color: var(--text-muted);
@@ -1434,4 +1447,139 @@
 
 .counter-goal-cancel:hover {
     background: var(--bg-card-hover);
+}
+
+/* Custom goal input row */
+.counter-goal-custom-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.counter-goal-custom-input {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    border-radius: var(--radius-sm);
+    font-size: .9rem;
+    color: var(--text);
+    font-family: var(--font-en);
+    outline: none;
+    transition: border-color .15s;
+    -moz-appearance: textfield;
+}
+
+.counter-goal-custom-input::-webkit-inner-spin-button,
+.counter-goal-custom-input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+}
+
+.counter-goal-custom-input:focus {
+    border-color: var(--accent-dim);
+}
+
+.counter-goal-custom-input--error {
+    border-color: rgba(200, 60, 60, 0.7);
+    animation: counter-input-shake .3s ease;
+}
+
+@keyframes counter-input-shake {
+    0%, 100% { transform: translateX(0); }
+    25%       { transform: translateX(-4px); }
+    75%       { transform: translateX(4px); }
+}
+
+.counter-goal-custom-btn {
+    padding: 10px 14px;
+    border: 1px solid var(--accent-dim);
+    background: var(--accent-glow);
+    border-radius: var(--radius-sm);
+    font-size: .84rem;
+    color: var(--accent);
+    cursor: pointer;
+    font-family: var(--font-zh);
+    white-space: nowrap;
+    transition: background .15s;
+}
+
+.counter-goal-custom-btn:hover {
+    background: var(--accent-glow);
+    filter: brightness(1.1);
+}
+
+/* Practice picker sheet */
+.counter-practice-sheet {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+}
+
+.counter-practice-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    opacity: 0;
+    transition: opacity .25s;
+}
+
+.counter-practice-sheet--visible .counter-practice-backdrop {
+    opacity: 1;
+}
+
+.counter-practice-panel {
+    position: relative;
+    background: var(--bg-card);
+    border-radius: var(--radius) var(--radius) 0 0;
+    padding: 20px;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    transform: translateY(100%);
+    transition: transform .25s cubic-bezier(0.22, 1, 0.36, 1);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.counter-practice-sheet--visible .counter-practice-panel {
+    transform: translateY(0);
+}
+
+.counter-practice-panel-title {
+    font-size: .88rem;
+    font-weight: 600;
+    color: var(--text);
+    text-align: center;
+}
+
+.counter-practice-options {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+
+.counter-practice-opt {
+    padding: 12px 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    border-radius: var(--radius-sm);
+    font-size: .86rem;
+    font-weight: 500;
+    color: var(--text);
+    cursor: pointer;
+    text-align: center;
+    transition: background .15s, border-color .15s;
+    font-family: var(--font-zh);
+}
+
+.counter-practice-opt:hover {
+    background: var(--bg-card-hover);
+}
+
+.counter-practice-opt--active {
+    border-color: var(--accent);
+    background: var(--accent-glow);
+    color: var(--accent);
 }
