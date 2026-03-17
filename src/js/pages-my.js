@@ -98,7 +98,7 @@ export function renderMyPage() {
   page.innerHTML = `
     <div class="my-profile">
       <div class="my-avatar">
-        <img src="/icons/about-logo.png" alt="净土法音" style="width:100%;height:100%;object-fit:contain;">
+        <picture><source srcset="/icons/about-logo.webp" type="image/webp"><img src="/icons/about-logo.png" alt="净土法音" style="width:100%;height:100%;object-fit:contain;"></picture>
       </div>
       <div class="my-name" data-i18n="my_greeting">${t('my_greeting')}</div>
       <div class="my-subtitle" data-i18n="my_subtitle">${t('my_subtitle')}</div>

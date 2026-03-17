@@ -160,13 +160,15 @@
 
 <body>
   <a href="#contentArea" class="skip-link">跳到主要内容</a>
-
   <div id="app">
     <!-- HEADER - top bar -->
     <header class="header">
       <nav class="nav">
         <div class="logo" aria-label="净土法音">
-          <img src="/icons/nav-logo.png" alt="净土法音" style="height:22px;width:auto;">
+          <picture>
+            <source srcset="/icons/nav-logo.webp" type="image/webp"><img src="/icons/nav-logo.png" alt="净土法音"
+              style="height:22px;width:auto;">
+          </picture>
           <span class="logo-title">净土法音</span>
         </div>
 
@@ -250,8 +252,11 @@
     <main class="content" id="contentArea">
       <!-- ✅ Optimized loader with inline SVG to avoid image request during initial load -->
       <div class="loader" id="loader" role="status" aria-live="polite">
-        <img class="loader-logo" src="/icons/loading-logo.png" alt="净土法音"
-          style="width:120px;height:auto;opacity:.8;animation:breathe 2.5s ease-in-out infinite">
+        <picture>
+          <source srcset="/icons/loading-logo.webp" type="image/webp"><img class="loader-logo"
+            src="/icons/loading-logo.png" alt="净土法音"
+            style="width:120px;height:auto;opacity:.8;animation:breathe 2.5s ease-in-out infinite">
+        </picture>
         <div class="loader-text">Loading...</div>
       </div>
     </main>
@@ -315,7 +320,10 @@
       <!-- Scrollable content area (series card + track info merged) -->
       <div class="exp-player-content" id="expPlayerContent">
         <div class="exp-series-info" id="expSeriesInfo">
-          <img class="exp-series-icon" src="/icons/player-cover.png" alt="" style="width:52px;height:auto;opacity:.4;">
+          <picture>
+            <source srcset="/icons/player-cover.webp" type="image/webp"><img class="exp-series-icon"
+              src="/icons/player-cover.png" alt="" style="width:52px;height:auto;opacity:.4;">
+          </picture>
           <div class="exp-series-name" id="expSeriesName"></div>
           <div class="exp-series-speaker" id="expSeriesSpeaker"></div>
           <div class="exp-series-ep-count" id="expSeriesEpCount"></div>
@@ -439,7 +447,10 @@
           <line x1="6" y1="6" x2="18" y2="18" />
         </svg></button>
       <div class="about-logo">
-        <img src="/icons/about-logo.png" style="width:64px;height:auto;" alt="净土法音">
+        <picture>
+          <source srcset="/icons/about-logo.webp" type="image/webp"><img src="/icons/about-logo.png"
+            style="width:64px;height:auto;" alt="净土法音">
+        </picture>
       </div>
       <div class="about-title" data-i18n="about_app_name">净土法音</div>
       <div class="about-subtitle">Pureland Dharma Audio</div>
