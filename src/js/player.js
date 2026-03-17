@@ -24,6 +24,8 @@ let _playPending = false;
 let bgFetchController = null;
 let bgFetchUrl = '';
 let bgBlobUrl = '';
+let bgLoadDelayTimer = null;
+let bgLoadScheduledUrl = '';
 
 /* ===== Network Quality State ===== */
 let _networkWeak = false;  // set true on stall or slow connection detection
@@ -459,7 +461,7 @@ function playCurrent() {
   highlightEp();
   updateMediaSession(tr);
   updateAppreciateBtn(tr.seriesId); // Reset badge first (no count yet)
-  
+
   // ✅ 优化：延迟加载点赞计数，避免阻塞播放启动
   // 使用 requestIdleCallback 在浏览器空闲时加载，或2秒后强制加载
   if ('requestIdleCallback' in window) {
@@ -476,7 +478,7 @@ function playCurrent() {
       });
     }, 500);
   }
-  
+
   renderPlaylistItems();
   addHistory(tr, dom.audio);
   // Record play to D1 database (non-blocking)
@@ -564,7 +566,7 @@ export function appreciateSuccess(total) {
     badge.textContent = fmtCount(total);
     btn.appendChild(badge);
   }
-  
+
   setTimeout(() => { btn.classList.remove('appreciate-pop'); }, 600);
 }
 
@@ -572,7 +574,7 @@ export function appreciateSuccess(total) {
 export function updateAppreciateCount(total) {
   const btn = document.getElementById('expAppreciate');
   if (!btn || total == null) return;
-  
+
   const oldBadge = btn.querySelector('.appreciate-badge');
   if (oldBadge) {
     // ✅ 数字增加动画
@@ -627,18 +629,18 @@ let cachedDom = null;
 export function onTimeUpdate() {
   if (_dragging) return; // Skip UI updates while user is dragging progress bar
   if (updateRafId) return; // 已经有待处理的更新，跳过
-  
+
   updateRafId = requestAnimationFrame(() => {
     updateRafId = null;
-    
+
     if (!cachedDom) cachedDom = getDOM();
     const dom = cachedDom;
-    
+
     const dur = dom.audio.duration;
     if (!dur || !isFinite(dur)) return;
     const ct = dom.audio.currentTime;
     const p = Math.min(100, (ct / dur) * 100);
-    
+
     // 批量更新DOM，减少重排/重绘
     dom.miniProgressFill.style.transform = `scaleX(${p / 100})`;
     dom.expProgressFill.style.transform = `scaleX(${p / 100})`;
@@ -647,14 +649,14 @@ export function onTimeUpdate() {
     dom.expTimeTotal.textContent = fmt(dur);
     const offset = RING_CIRCUMFERENCE * (1 - ct / dur);
     dom.centerRingFill.style.strokeDashoffset = offset;
-    
+
     if (dom.audio.buffered.length > 0) {
       const bufEnd = dom.audio.buffered.end(dom.audio.buffered.length - 1);
       dom.expBufferFill.style.transform = `scaleX(${Math.min(1, bufEnd / dur)})`;
     }
 
-    // ✅ 优化：当播放进度达到80%时提前预加载下一曲，确保无缝切换
-    if (p >= 80 && !preloadedUrl) {
+    // 仅在接近结束时为 Wi-Fi 用户预加载下一曲，避免长时间双路下载。
+    if ((dur - ct) <= 20 && !preloadedUrl) {
       preloadNextTrack();
     }
   });
@@ -690,7 +692,7 @@ export function onAudioError() {
       audioRetries = 0; // reset retries for the MP3 URL
       dom.audio.src = mp3Url;
       dom.audio.load();
-      dom.audio.play().catch(() => {});
+      dom.audio.play().catch(() => { });
       return;
     }
   }
@@ -849,11 +851,11 @@ export function shareTrack(ep, series) {
   const title = '\u300A' + (series.title || '') + '\u300B' + (ep.title || ep.fileName);
   const shareUrl = window.location.origin + '/share/' + encodeURIComponent(series.id) + '/' + ep.id;
   if (navigator.share) {
-    navigator.share({ title, text: title, url: shareUrl }).catch(() => {});
+    navigator.share({ title, text: title, url: shareUrl }).catch(() => { });
   } else {
     navigator.clipboard.writeText(title + '\n' + shareUrl).then(() => {
       showToast(t('link_copied'));
-    }).catch(() => {});
+    }).catch(() => { });
   }
 }
 
@@ -863,11 +865,11 @@ export function shareSeries(series) {
   const title = '\u300A' + (series.title || '') + '\u300B' + (epCount ? '\u5171' + epCount + unit : '');
   const shareUrl = window.location.origin + '/share/' + encodeURIComponent(series.id);
   if (navigator.share) {
-    navigator.share({ title, text: title, url: shareUrl }).catch(() => {});
+    navigator.share({ title, text: title, url: shareUrl }).catch(() => { });
   } else {
     navigator.clipboard.writeText(title + '\n' + shareUrl).then(() => {
       showToast(t('link_copied'));
-    }).catch(() => {});
+    }).catch(() => { });
   }
 }
 
@@ -947,6 +949,7 @@ export function preloadNextTrack() {
 
   // Skip preload when network is weak, save-data is on, or connection is 2G/3G
   if (_networkWeak) return;
+  if (getConnType() !== 'wifi') return;
   var conn = navigator.connection || navigator.mozConnection;
   if (conn && conn.saveData) return;
   if (conn && (conn.effectiveType === '2g' || conn.effectiveType === 'slow-2g')) return;
@@ -993,6 +996,11 @@ const BG_LOAD_MAX_SIZE = 150 * 1024 * 1024; // Skip files > 150 MB
 
 function cleanupBgFetch() {
   if (bgFetchController) { bgFetchController.abort(); bgFetchController = null; }
+  if (bgLoadDelayTimer) {
+    clearTimeout(bgLoadDelayTimer);
+    bgLoadDelayTimer = null;
+  }
+  bgLoadScheduledUrl = '';
   if (bgBlobUrl) { URL.revokeObjectURL(bgBlobUrl); bgBlobUrl = ''; }
   bgFetchUrl = '';
   // Also revoke cached blob URL if present
@@ -1001,14 +1009,23 @@ function cleanupBgFetch() {
 }
 
 function startBgFullLoad(url) {
-  // Don't re-fetch if already loading this URL or already blobbed
-  if (bgFetchUrl === url) return;
+  if (bgFetchUrl === url || bgLoadScheduledUrl === url) return;
 
-  // Skip if audio is already in offline cache
-  isAudioCached(url).then(cached => {
-    if (cached) return;
-    _doBgFullLoad(url);
-  }).catch(() => _doBgFullLoad(url));
+  const conn = navigator.connection || navigator.mozConnection;
+  if (getConnType() !== 'wifi') return;
+  if (!conn || conn.saveData || conn.effectiveType !== '4g') return;
+
+  bgLoadScheduledUrl = url;
+  bgLoadDelayTimer = setTimeout(() => {
+    bgLoadDelayTimer = null;
+    if (bgLoadScheduledUrl !== url) return;
+    bgLoadScheduledUrl = '';
+
+    isAudioCached(url).then(cached => {
+      if (cached) return;
+      _doBgFullLoad(url);
+    }).catch(() => _doBgFullLoad(url));
+  }, 45000);
 }
 
 function _doBgFullLoad(url) {
@@ -1044,7 +1061,7 @@ function _doBgFullLoad(url) {
         bgFetchUrl = '';
         return;
       }
-      cacheAudio(url, blob).catch(() => {});
+      cacheAudio(url, blob).catch(() => { });
       console.log('[BgLoad] Cached audio for offline playback');
       bgFetchController = null;
       bgFetchUrl = '';
@@ -1292,10 +1309,10 @@ export function saveState() {
     if (!tr) return;
     patch('player', {
       seriesId: tr.seriesId,
-      epIdx:    state.epIdx,
-      time:     dom.audio.currentTime,
-      speed:    SPEEDS[speedIdx],
-      loop:     state.loopMode,
+      epIdx: state.epIdx,
+      time: dom.audio.currentTime,
+      speed: SPEEDS[speedIdx],
+      loop: state.loopMode,
     });
     syncHistoryProgress(dom.audio);
   } catch { /* ignore */ }
@@ -1322,7 +1339,7 @@ export function restoreState(renderCategory, renderHomePage, renderMyPage) {
             dom.audio.src = cachedUrl;
             dom.audio._cachedBlobUrl = cachedUrl;
             if (s.time) dom.audio.addEventListener('loadedmetadata', () => { dom.audio.currentTime = s.time; }, { once: true });
-          }).catch(() => {});
+          }).catch(() => { });
         }
         if (s.loop) {
           state.loopMode = (s.loop === 'none') ? 'all' : s.loop;

@@ -13,7 +13,7 @@ import {
 import { buildAudioUrl, OPUS_CATEGORIES } from '../lib/audio-utils.js';
 
 export async function onRequest(context) {
-  const { request, env } = context;
+  const { request, env, waitUntil } = context;
   const url = new URL(request.url);
   const path = url.pathname;
   const method = request.method;
@@ -41,7 +41,17 @@ export async function onRequest(context) {
     // GET /api/categories
     const opusSupported = url.searchParams.get('opus') === '1';
     if (path === '/api/categories' && method === 'GET') {
-      return json(await getCategories(db, opusSupported), cors);
+      return getEdgeCachedJson(
+        request,
+        buildCategoriesCacheKey(url, opusSupported),
+        waitUntil,
+        async () => json(
+          await getCategories(db, opusSupported),
+          cors,
+          200,
+          'public, max-age=300, s-maxage=1800, stale-while-revalidate=86400'
+        )
+      );
     }
 
     // GET /api/series/:id
@@ -490,6 +500,37 @@ function json(data, cors, status = 200, cacheControl) {
   });
 }
 
+function buildCategoriesCacheKey(url, opusSupported) {
+  const cacheUrl = new URL(url.toString());
+  cacheUrl.search = '';
+  cacheUrl.searchParams.set('opus', opusSupported ? '1' : '0');
+  return new Request(cacheUrl.toString(), { method: 'GET' });
+}
+
+async function getEdgeCachedJson(request, cacheKey, waitUntil, buildResponse) {
+  const cache = caches.default;
+  const cached = await cache.match(cacheKey);
+  if (cached) return withEdgeCacheHeader(cached, 'HIT');
+
+  const response = await buildResponse(request);
+  if (response.ok) {
+    const cacheWrite = cache.put(cacheKey, response.clone());
+    if (typeof waitUntil === 'function') waitUntil(cacheWrite);
+    else await cacheWrite;
+  }
+  return withEdgeCacheHeader(response, 'MISS');
+}
+
+function withEdgeCacheHeader(response, status) {
+  const headers = new Headers(response.headers);
+  headers.set('X-Edge-Cache', status);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 // ============================================================
 async function getCategories(db, opusSupported) {
   // 一次性 JOIN categories + series + episodes，避免 N+1 查询
@@ -557,7 +598,7 @@ async function getCategories(db, opusSupported) {
       };
       // Provide MP3 fallback URL for Opus episodes
       if (opusSupported && OPUS_CATEGORIES.has(catTitle)) {
-        try { ep.mp3Url = buildAudioUrl(s.bucket, s.folder, row.ep_file); } catch {}
+        try { ep.mp3Url = buildAudioUrl(s.bucket, s.folder, row.ep_file); } catch { }
       }
       if (row.ep_intro) ep.intro = row.ep_intro;
       if (row.ep_story) ep.storyNumber = row.ep_story;
@@ -608,7 +649,7 @@ async function getSeriesDetail(db, seriesId, opusSupported) {
         playCount: ep.playCount
       };
       if (isOpusCat) {
-        try { obj.mp3Url = buildAudioUrl(series.bucket, series.folder, ep.fileName); } catch {}
+        try { obj.mp3Url = buildAudioUrl(series.bucket, series.folder, ep.fileName); } catch { }
       }
       if (ep.intro) obj.intro = ep.intro;
       if (ep.storyNumber) obj.storyNumber = ep.storyNumber;
@@ -649,7 +690,7 @@ async function getEpisodes(db, seriesId, opusSupported) {
         duration: ep.duration || 0,
       };
       if (isOpusCat) {
-        try { obj.mp3Url = buildAudioUrl(series.bucket, series.folder, ep.fileName); } catch {}
+        try { obj.mp3Url = buildAudioUrl(series.bucket, series.folder, ep.fileName); } catch { }
       }
       if (ep.intro) obj.intro = ep.intro;
       if (ep.storyNumber) obj.storyNumber = ep.storyNumber;
@@ -662,7 +703,7 @@ async function getEpisodes(db, seriesId, opusSupported) {
 async function recordPlay(db, body, request) {
   const { seriesId, episodeNum } = body;
   if (!seriesId || typeof seriesId !== 'string' ||
-      typeof episodeNum !== 'number' || !Number.isInteger(episodeNum) || episodeNum < 0) {
+    typeof episodeNum !== 'number' || !Number.isInteger(episodeNum) || episodeNum < 0) {
     return { error: 'Missing or invalid seriesId/episodeNum' };
   }
 
@@ -2414,7 +2455,7 @@ async function handleAdminCreateSeries(db, body, cors) {
 async function handleAdminUpdateSeries(db, id, body, cors) {
   const fields = [];
   const vals = [];
-  const allowed = ['category_id','title','title_en','speaker','speaker_en','bucket','folder','total_episodes','intro','sort_order'];
+  const allowed = ['category_id', 'title', 'title_en', 'speaker', 'speaker_en', 'bucket', 'folder', 'total_episodes', 'intro', 'sort_order'];
   for (const k of allowed) {
     if (body[k] !== undefined) { fields.push(`${k}=?`); vals.push(body[k]); }
   }
@@ -2457,7 +2498,7 @@ async function handleAdminCreateEpisode(db, body, cors) {
 async function handleAdminUpdateEpisode(db, id, body, cors) {
   const fields = [];
   const vals = [];
-  const allowed = ['episode_num','title','file_name','intro','story_number','duration'];
+  const allowed = ['episode_num', 'title', 'file_name', 'intro', 'story_number', 'duration'];
   for (const k of allowed) {
     if (body[k] !== undefined) { fields.push(`${k}=?`); vals.push(body[k]); }
   }

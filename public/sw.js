@@ -1,10 +1,10 @@
 /* Service Worker — 净土法音 Offline Cache */
 'use strict';
 
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const STATIC_CACHE = 'static-' + CACHE_VERSION;
-const DATA_CACHE   = 'data-'   + CACHE_VERSION;
-const AUDIO_CACHE  = 'audio-v2';
+const DATA_CACHE = 'data-' + CACHE_VERSION;
+const AUDIO_CACHE = 'audio-v2';
 
 /* App-shell files to pre-cache on install */
 const APP_SHELL = [
@@ -51,7 +51,12 @@ self.addEventListener('activate', event => {
           .filter(k => k !== STATIC_CACHE && k !== DATA_CACHE && k !== AUDIO_CACHE)
           .map(k => caches.delete(k))
       )
-    ).then(() => self.clients.claim())
+    ).then(async () => {
+      if (self.registration.navigationPreload) {
+        await self.registration.navigationPreload.enable();
+      }
+      await self.clients.claim();
+    })
       .then(async () => {
         // Notify all open clients that a new version is available
         const clients = await self.clients.matchAll({ type: 'window' });
@@ -186,15 +191,32 @@ self.addEventListener('fetch', event => {
   /* HTML navigation: network-first, fall back to cached shell */
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request)
-        .then(response => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(STATIC_CACHE).then(c => c.put(event.request, clone));
+      caches.open(STATIC_CACHE).then(async cache => {
+        const cached = await cache.match(event.request) || await cache.match('/');
+        const networkFetch = (async () => {
+          try {
+            const preloadResponse = await event.preloadResponse;
+            const response = preloadResponse || await fetch(event.request);
+            if (response && response.ok) {
+              await cache.put(event.request, response.clone());
+              if (url.pathname === '/' || url.pathname === '/index.html') {
+                await cache.put('/', response.clone());
+              }
+            }
+            return response;
+          } catch {
+            return null;
           }
-          return response;
-        })
-        .catch(() => caches.match('/'))
+        })();
+
+        if (cached) {
+          event.waitUntil(networkFetch);
+          return cached;
+        }
+
+        const response = await networkFetch;
+        return response || cache.match('/');
+      })
     );
     return;
   }
