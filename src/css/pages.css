@@ -1286,6 +1286,15 @@
     background: #4caf50;
 }
 
+.counter-streak {
+    font-size: .72rem;
+    color: var(--accent);
+    text-align: center;
+    letter-spacing: .04em;
+    font-weight: 500;
+    margin-top: 2px;
+}
+
 .counter-per-loop {
     font-size: .7rem;
     color: var(--text-muted);

@@ -5,7 +5,8 @@ import { haptic, showToast, escapeHtml } from './utils.js';
 
 const BEADS_PER_LOOP = 108;
 const MAX_GOAL_VALUE = 99999;
-const CUSTOM_KEY = '自定义';
+const CUSTOM_KEY = '__custom__';
+const MAX_RIPPLES = 6;
 
 const PRACTICE_PRESETS = ['南无阿弥陀佛', '阿弥陀佛'];
 
@@ -37,9 +38,81 @@ function checkAndResetDaily(ps) {
 /* Return the display name for the current practice */
 function getPracticeDisplayName(data) {
   if (data.practice === CUSTOM_KEY) {
-    return data.customPractice || CUSTOM_KEY;
+    return data.customPractice || t('counter_goal_custom');
   }
   return data.practice;
+}
+
+/* ── Daily log helpers ── */
+function recordDailyLog(data, practice, count) {
+  if (!data.dailyLog) data.dailyLog = {};
+  const today = todayStr();
+  if (!data.dailyLog[today]) data.dailyLog[today] = {};
+  if (!data.dailyLog[today][practice]) data.dailyLog[today][practice] = 0;
+  data.dailyLog[today][practice] += count;
+}
+
+/* Calculate streak: consecutive days (including today) with any practice logged */
+function getStreak(data) {
+  if (!data.dailyLog) return 0;
+  const today = new Date();
+  let streak = 0;
+  for (let i = 0; i < 9999; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    if (data.dailyLog[key]) {
+      streak++;
+    } else {
+      break;
+    }
+  }
+  return streak;
+}
+
+/* Prune daily log entries older than 90 days to limit localStorage size */
+function pruneDailyLog(data) {
+  if (!data.dailyLog) return;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 90);
+  const cutoffStr = cutoff.getFullYear() + '-' + String(cutoff.getMonth() + 1).padStart(2, '0') + '-' + String(cutoff.getDate()).padStart(2, '0');
+  for (const key of Object.keys(data.dailyLog)) {
+    if (key < cutoffStr) delete data.dailyLog[key];
+  }
+}
+
+/* ── Wake Lock ── */
+let _wakeLock = null;
+async function requestWakeLock() {
+  if (_wakeLock) return;
+  try {
+    if ('wakeLock' in navigator) {
+      _wakeLock = await navigator.wakeLock.request('screen');
+      _wakeLock.addEventListener('release', () => { _wakeLock = null; });
+    }
+  } catch { /* user denied or unsupported */ }
+}
+function releaseWakeLock() {
+  if (_wakeLock) {
+    _wakeLock.release().catch(() => {});
+    _wakeLock = null;
+  }
+}
+
+/* ── Data migration for CUSTOM_KEY change ── */
+function migrateCustomKey(data) {
+  // Migrate old '自定义' key to '__custom__'
+  const OLD_KEY = '自定义';
+  if (data.practices && data.practices[OLD_KEY]) {
+    if (!data.practices[CUSTOM_KEY] || data.practices[CUSTOM_KEY].total === 0) {
+      data.practices[CUSTOM_KEY] = data.practices[OLD_KEY];
+    }
+    delete data.practices[OLD_KEY];
+  }
+  if (data.practice === OLD_KEY) {
+    data.practice = CUSTOM_KEY;
+  }
+  return data;
 }
 
 function getCounterData() {
@@ -48,7 +121,7 @@ function getCounterData() {
   // Migrate from old flat structure or initialize fresh
   if (!data || !data.practices) {
     const old = data || {};
-    data = { practice: '南无阿弥陀佛', customPractice: '', practices: {} };
+    data = { practice: '南无阿弥陀佛', customPractice: '', practices: {}, dailyLog: {} };
 
     // Initialize all preset practices with empty stats
     for (const p of [...PRACTICE_PRESETS, CUSTOM_KEY]) {
@@ -81,6 +154,12 @@ function getCounterData() {
     patch('counter', data);
   }
 
+  // Migrate old '自定义' key to '__custom__'
+  migrateCustomKey(data);
+
+  // Ensure dailyLog exists
+  if (!data.dailyLog) data.dailyLog = {};
+
   // Ensure the current practice slot exists
   if (!data.practices[data.practice]) {
     data.practices[data.practice] = { total: 0, daily: 0, dailyDate: '', goal: 108 };
@@ -91,6 +170,10 @@ function getCounterData() {
   if (checkAndResetDaily(ps)) {
     patch('counter', data);
   }
+
+  // Prune old log entries
+  pruneDailyLog(data);
+
   return data;
 }
 
@@ -111,6 +194,17 @@ export function openCounter() {
   view.innerHTML = buildCounterHTML(data, session);
   document.getElementById('app').appendChild(view);
 
+  // Request wake lock to keep screen on during chanting
+  requestWakeLock();
+
+  // Re-acquire wake lock if it was released (e.g. after tab switch)
+  const visHandler = () => {
+    if (document.visibilityState === 'visible' && view.isConnected) {
+      requestWakeLock();
+    }
+  };
+  document.addEventListener('visibilitychange', visHandler);
+
   // Animate in
   requestAnimationFrame(() => view.classList.add('counter-view--visible'));
 
@@ -120,7 +214,7 @@ export function openCounter() {
   // Handle browser back button + Escape key
   const popHandler = (e) => {
     if (e.state && e.state.counter) return;
-    closeCounter(view, popHandler, escHandler);
+    closeCounter(view, popHandler, escHandler, visHandler);
   };
   const escHandler = (e) => {
     if (e.key === 'Escape') {
@@ -139,20 +233,21 @@ function buildCounterHTML(data, session) {
   const goalPct = ps.goal > 0 ? Math.min(100, Math.round(ps.daily / ps.goal * 100)) : 0;
   const goalDone = ps.goal > 0 && ps.daily >= ps.goal;
   const displayName = escapeHtml(getPracticeDisplayName(data));
+  const streak = getStreak(data);
 
   return `
     <div class="counter-header">
-      <button class="counter-back btn-icon" id="counterBack" aria-label="返回">
+      <button class="counter-back btn-icon" id="counterBack" aria-label="${t('wenku_back')}">
         <svg viewBox="0 0 24 24" width="20" height="20"><polyline points="15,18 9,12 15,6"/></svg>
       </button>
       <span class="counter-header-title">${t('counter_title')}</span>
-      <button class="counter-menu btn-icon" id="counterMenu" aria-label="更多">
+      <button class="counter-menu btn-icon" id="counterMenu" aria-label="${t('more')}">
         <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="5" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="19" r="1.5" fill="currentColor"/></svg>
       </button>
     </div>
 
     <div class="counter-body">
-      <!-- Main tap button (stats row removed for minimalist focus) -->
+      <!-- Main tap button -->
       <div class="counter-tap-area" id="counterTapArea" role="button" tabindex="0"
            aria-label="${t('counter_tap_hint')}">
         <!-- Outer ring glow -->
@@ -195,12 +290,13 @@ function buildCounterHTML(data, session) {
       <div class="counter-daily-wrap">
         <div class="counter-daily-row">
           <span class="counter-daily-lbl">${t('counter_daily')}: <strong id="ctrDaily">${ps.daily}</strong></span>
-          <span class="counter-daily-goal" id="ctrGoalLabel">${goalDone ? '✓ ' : ''}${t('counter_goal')}: <span id="ctrGoalVal">${ps.goal}</span></span>
+          <span class="counter-daily-goal" id="ctrGoalLabel">${goalDone ? '&#10003; ' : ''}${t('counter_goal')}: <span id="ctrGoalVal">${ps.goal}</span></span>
         </div>
         <div class="counter-progress-bar">
           <div class="counter-progress-bar-fill${goalDone ? ' counter-progress-bar-fill--done' : ''}"
                id="ctrGoalBar" style="width:${goalPct}%"></div>
         </div>
+        ${streak > 1 ? `<div class="counter-streak" id="counterStreak">${t('counter_streak').replace('{n}', streak)}</div>` : '<div class="counter-streak" id="counterStreak" style="display:none"></div>'}
       </div>
     </div>
 
@@ -225,9 +321,11 @@ function buildCounterHTML(data, session) {
   `;
 }
 
-function closeCounter(view, popHandler, escHandler) {
+function closeCounter(view, popHandler, escHandler, visHandler) {
   if (popHandler) window.removeEventListener('popstate', popHandler);
   if (escHandler) window.removeEventListener('keydown', escHandler);
+  if (visHandler) document.removeEventListener('visibilitychange', visHandler);
+  releaseWakeLock();
   view.classList.remove('counter-view--visible');
   setTimeout(() => {
     view.remove();
@@ -239,6 +337,20 @@ function closeCounter(view, popHandler, escHandler) {
 function wireCounterEvents(view, data, _session) {
   let session = _session;
 
+  /* ── Cache all DOM references once ── */
+  const els = {
+    number: view.querySelector('#counterNumber'),
+    daily: view.querySelector('#ctrDaily'),
+    bar: view.querySelector('#ctrGoalBar'),
+    goalLabel: view.querySelector('#ctrGoalLabel'),
+    goalVal: view.querySelector('#ctrGoalVal'),
+    progressFill: view.querySelector('#counterProgressFill'),
+    hint: view.querySelector('#counterHint'),
+    practice: view.querySelector('#counterPracticeName'),
+    ripples: view.querySelector('#counterRipples'),
+    streak: view.querySelector('#counterStreak'),
+  };
+
   /* ── Full UI update (settings change, loop complete, goal done, reset) ── */
   function updateUI(bump = false) {
     const ps = getPracticeStats(data);
@@ -248,28 +360,30 @@ function wireCounterEvents(view, data, _session) {
     const goalPct = ps.goal > 0 ? Math.min(100, Math.round(ps.daily / ps.goal * 100)) : 0;
     const goalDone = ps.goal > 0 && ps.daily >= ps.goal;
 
-    const numEl = view.querySelector('#counterNumber');
-    const dailyEl = view.querySelector('#ctrDaily');
-    const barEl = view.querySelector('#ctrGoalBar');
-    const goalLabelEl = view.querySelector('#ctrGoalLabel');
-    const goalValEl = view.querySelector('#ctrGoalVal');
-    const progressFill = view.querySelector('#counterProgressFill');
-    const hintEl = view.querySelector('#counterHint');
-    const practiceEl = view.querySelector('#counterPracticeName');
-
-    if (numEl) {
-      numEl.textContent = session;
+    if (els.number) {
+      els.number.textContent = session;
       if (bump) {
-        numEl.classList.add('counter-number--bump');
-        setTimeout(() => numEl.classList.remove('counter-number--bump'), 180);
+        els.number.classList.add('counter-number--bump');
+        setTimeout(() => els.number.classList.remove('counter-number--bump'), 180);
       }
     }
-    if (dailyEl) dailyEl.textContent = ps.daily;
-    if (barEl) { barEl.style.width = goalPct + '%'; barEl.classList.toggle('counter-progress-bar-fill--done', goalDone); }
-    if (goalLabelEl && goalValEl) { goalLabelEl.firstChild.textContent = (goalDone ? '✓ ' : '') + t('counter_goal') + ': '; goalValEl.textContent = ps.goal; }
-    if (progressFill) progressFill.style.strokeDashoffset = offset;
-    if (hintEl) hintEl.style.display = session > 0 ? 'none' : '';
-    if (practiceEl) practiceEl.textContent = getPracticeDisplayName(data);
+    if (els.daily) els.daily.textContent = ps.daily;
+    if (els.bar) { els.bar.style.width = goalPct + '%'; els.bar.classList.toggle('counter-progress-bar-fill--done', goalDone); }
+    if (els.goalLabel && els.goalVal) { els.goalLabel.firstChild.textContent = (goalDone ? '\u2713 ' : '') + t('counter_goal') + ': '; els.goalVal.textContent = ps.goal; }
+    if (els.progressFill) els.progressFill.style.strokeDashoffset = offset;
+    if (els.hint) els.hint.style.display = session > 0 ? 'none' : '';
+    if (els.practice) els.practice.textContent = getPracticeDisplayName(data);
+
+    // Update streak display
+    const streak = getStreak(data);
+    if (els.streak) {
+      if (streak > 1) {
+        els.streak.textContent = t('counter_streak').replace('{n}', streak);
+        els.streak.style.display = '';
+      } else {
+        els.streak.style.display = 'none';
+      }
+    }
   }
 
   /* ── Fast tap update — only the minimal DOM writes needed ── */
@@ -279,58 +393,58 @@ function wireCounterEvents(view, data, _session) {
     const circum = Math.round(2 * Math.PI * 88);
     const offset = Math.round(circum * (1 - beadPos / BEADS_PER_LOOP));
 
-    const numEl = view.querySelector('#counterNumber');
-    const progressFill = view.querySelector('#counterProgressFill');
-    const dailyEl = view.querySelector('#ctrDaily');
-    const barEl = view.querySelector('#ctrGoalBar');
-    const hintEl = view.querySelector('#counterHint');
-
-    if (numEl) {
-      numEl.textContent = session;
+    if (els.number) {
+      els.number.textContent = session;
       if (bump) {
-        numEl.classList.add('counter-number--bump');
-        setTimeout(() => numEl.classList.remove('counter-number--bump'), 180);
+        els.number.classList.add('counter-number--bump');
+        setTimeout(() => els.number.classList.remove('counter-number--bump'), 180);
       }
     }
-    if (progressFill) progressFill.style.strokeDashoffset = offset;
-    if (dailyEl) dailyEl.textContent = ps.daily;
-    if (barEl) {
+    if (els.progressFill) els.progressFill.style.strokeDashoffset = offset;
+    if (els.daily) els.daily.textContent = ps.daily;
+    if (els.bar) {
       const goalPct = ps.goal > 0 ? Math.min(100, Math.round(ps.daily / ps.goal * 100)) : 0;
-      barEl.style.width = goalPct + '%';
+      els.bar.style.width = goalPct + '%';
     }
-    if (hintEl && session === 1) hintEl.style.display = 'none';
+    if (els.hint && session === 1) els.hint.style.display = 'none';
   }
 
-  /* ── Ripple effect ── */
+  /* ── Ripple effect (pooled, max count limited) ── */
   function spawnRipple(x, y) {
-    const ripplesEl = view.querySelector('#counterRipples');
-    if (!ripplesEl) return;
+    if (!els.ripples) return;
+    // Limit concurrent ripples
+    while (els.ripples.children.length >= MAX_RIPPLES) {
+      els.ripples.removeChild(els.ripples.firstChild);
+    }
     const r = document.createElement('div');
     r.className = 'counter-ripple';
-    const rect = ripplesEl.getBoundingClientRect();
+    const rect = els.ripples.getBoundingClientRect();
     r.style.left = (x - rect.left) + 'px';
     r.style.top = (y - rect.top) + 'px';
-    ripplesEl.appendChild(r);
+    els.ripples.appendChild(r);
     r.addEventListener('animationend', () => r.remove());
   }
 
-  /* ── Tap count ── */
+  /* ── Tap count (unified pointer handling to prevent double-fire) ── */
   const tapArea = view.querySelector('#counterTapArea');
   if (tapArea) {
-    const doCount = (e) => {
+    let touchHandled = false;
+
+    const doCount = (cx, cy) => {
       haptic(30);
       session++;
       const ps = getPracticeStats(data);
       ps.total++;
       ps.daily++;
       ps.dailyDate = todayStr();
+
+      // Record to daily log
+      const practiceKey = data.practice === CUSTOM_KEY ? (data.customPractice || CUSTOM_KEY) : data.practice;
+      recordDailyLog(data, practiceKey, 1);
+
       patch('counter', data);
 
       // Spawn ripple at tap position
-      // On touchend, e.touches is empty; use e.changedTouches instead
-      const touch = (e.changedTouches && e.changedTouches[0]) || (e.touches && e.touches[0]);
-      const cx = touch ? touch.clientX : e.clientX;
-      const cy = touch ? touch.clientY : e.clientY;
       spawnRipple(cx, cy);
 
       const justCompletedLoop = ps.total % BEADS_PER_LOOP === 0;
@@ -360,18 +474,38 @@ function wireCounterEvents(view, data, _session) {
       touchStartY = e.touches[0].clientY;
     }, { passive: true });
 
-    tapArea.addEventListener('click', doCount);
     tapArea.addEventListener('touchend', (e) => {
-      // If touch data is unavailable, fall back to counting
-      if (!e.changedTouches || !e.changedTouches[0]) { e.preventDefault(); doCount(e); return; }
+      // If touch data is unavailable, fall back
+      if (!e.changedTouches || !e.changedTouches[0]) {
+        e.preventDefault();
+        touchHandled = true;
+        doCount(0, 0);
+        return;
+      }
       // If the touch moved more than 20px it's a swipe — let the browser handle it
       const dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
       const dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
       if (dx > 20 || dy > 20) return;
       e.preventDefault();
-      doCount(e);
+      touchHandled = true;
+      doCount(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
     }, { passive: false });
-    tapArea.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doCount(e); } });
+
+    tapArea.addEventListener('click', (e) => {
+      // Skip if already handled by touchend (prevents double-count on touch devices)
+      if (touchHandled) {
+        touchHandled = false;
+        return;
+      }
+      doCount(e.clientX, e.clientY);
+    });
+
+    tapArea.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        doCount(0, 0);
+      }
+    });
   }
 
   /* ── Back button ── */
@@ -482,9 +616,9 @@ function showPracticePicker(parentView, data, onDone) {
   // Remove existing picker
   parentView.querySelectorAll('.counter-practice-sheet').forEach(el => el.remove());
 
-  const customLabel = escapeHtml(data.customPractice || CUSTOM_KEY);
+  const customLabel = escapeHtml(data.customPractice || t('counter_goal_custom'));
   const isCustomActive = data.practice === CUSTOM_KEY;
-  // Plan A: if customPractice exists, the button acts as a direct selector;
+  // If customPractice exists, the button acts as a direct selector;
   // input is hidden by default and only revealed via the Edit button.
   // If no customPractice yet, show the input immediately so the user can set one.
   const hasCustom = !!data.customPractice;
@@ -548,7 +682,7 @@ function showPracticePicker(parentView, data, onDone) {
     });
   });
 
-  // Custom option: Plan A — direct select if customPractice exists, else show input
+  // Custom option: direct select if customPractice exists, else show input
   const customOpt = sheet.querySelector('#practiceCustomOpt');
   const customWrap = sheet.querySelector('#customInputWrap');
   customOpt.addEventListener('click', () => {

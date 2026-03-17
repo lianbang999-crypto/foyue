@@ -19,8 +19,9 @@ const _defaults = () => ({
     practices: {
       '南无阿弥陀佛': { total: 0, daily: 0, dailyDate: '', goal: 108 },
       '阿弥陀佛':     { total: 0, daily: 0, dailyDate: '', goal: 108 },
-      '自定义':       { total: 0, daily: 0, dailyDate: '', goal: 108 },
+      '__custom__':   { total: 0, daily: 0, dailyDate: '', goal: 108 },
     },
+    dailyLog: {},
   },
 });
 

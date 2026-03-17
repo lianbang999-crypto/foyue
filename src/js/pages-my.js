@@ -55,7 +55,7 @@ export function renderMyPage() {
     const practice = counterData.practice || '南无阿弥陀佛';
     const ps = counterData.practices[practice];
     if (ps && ps.total > 0) {
-      const displayName = practice === '自定义' ? escapeHtml(counterData.customPractice || '自定义') : escapeHtml(practice);
+      const displayName = practice === '__custom__' ? escapeHtml(counterData.customPractice || t('counter_goal_custom')) : escapeHtml(practice);
       counterDesc = t('my_counter_total_desc').replace('{n}', ps.total) + ' · ' + displayName;
     }
   } else if (counterData.total > 0) {

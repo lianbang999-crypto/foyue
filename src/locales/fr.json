@@ -201,5 +201,6 @@
   "counter_goal_custom_save": "Enregistrer",
   "counter_goal_invalid": "L'objectif doit être compris entre 1 et 99999",
   "counter_practice_custom_empty": "Veuillez saisir un nom de pratique",
-  "counter_practice_custom_too_long": "Le nom de la pratique ne peut pas dépasser 20 caractères"
+  "counter_practice_custom_too_long": "Le nom de la pratique ne peut pas dépasser 20 caractères",
+  "counter_streak": "{n} jours consécutifs"
 }
