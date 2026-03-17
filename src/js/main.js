@@ -53,15 +53,35 @@ export function showEpisodes(...args) {
 import { initInstallPrompt, initBackGuard } from './pwa.js';
 // AI chat — lazy loaded for performance (14KB deferred until first use)
 let _aiChatModule = null;
+let _aiChatLoading = false;
 async function getAiChatModule() {
   if (!_aiChatModule) _aiChatModule = await import('./ai-chat.js');
   return _aiChatModule;
 }
-function openAiChat() { getAiChatModule().then(m => m.openAiChat()); }
-function closeAiChat() { getAiChatModule().then(m => m.closeAiChat()); }
+function openAiChat() {
+  if (_aiChatLoading) return;
+  const btn = document.getElementById('btnAiChat');
+  _aiChatLoading = true;
+  if (btn) btn.style.opacity = '0.5';
+  getAiChatModule().then(m => {
+    m.openAiChat();
+  }).catch(() => {
+    showToast('AI 功能暂时无法加载，请刷新页面重试');
+  }).finally(() => {
+    _aiChatLoading = false;
+    if (btn) btn.style.opacity = '';
+  });
+}
+function closeAiChat() { getAiChatModule().then(m => m.closeAiChat()).catch(() => {}); }
 function isAiChatOpen() { return _aiChatModule ? _aiChatModule.isAiChatOpen() : false; }
 function updateAiContext(seriesId, epNum) { if (_aiChatModule) _aiChatModule.updateAiContext(seriesId, epNum); }
-function checkAiDeepLink() { getAiChatModule().then(m => m.checkAiDeepLink()); }
+function checkAiDeepLink() {
+  // Only load the AI module when the deep link is actually present.
+  // Eagerly loading it on every page load wastes bandwidth and hurts performance.
+  if (new URLSearchParams(window.location.search).get('tab') === 'ai') {
+    openAiChat();
+  }
+}
 import { appreciate } from './api.js';
 import { monitor } from './monitor.js';
 import { opusQueryParam } from './audio-url.js';

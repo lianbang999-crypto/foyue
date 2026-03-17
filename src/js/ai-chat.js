@@ -2,12 +2,14 @@
 import { askQuestionStream } from './ai-client.js';
 import { t } from './i18n.js';
 import { escapeHtml } from './utils.js';
-import { getDOM } from './dom.js';
 
 let chatInstance = null;
 const MAX_MESSAGES = 50;
 const MAX_PERSIST = 20; // max messages to persist
 const LS_KEY = 'ai-chat-history';
+const MAX_INPUT_LEN = 500;
+const INPUT_WARN_THRESHOLD = 0.85; // show char-count warning at 85% of max
+const OPEN_FOCUS_DELAY_MS = 350; // matches CSS slide-in animation duration (0.35s)
 
 let _lastQuestion = '';
 
@@ -65,18 +67,38 @@ function createChatPage() {
   const chatForm = page.querySelector('#aiFsForm');
   const chatInput = page.querySelector('#aiFsInput');
   const chatSend = page.querySelector('#aiFsSend');
+  const charCount = page.querySelector('#aiFsCharCount');
 
   // Restore persisted messages into DOM
   if (chatHistory.length > 0) {
     // Remove default welcome + suggestions
-    const suggestWrap = page.querySelector('.ai-suggest-wrap');
-    if (suggestWrap) suggestWrap.remove();
+    const welcomeWrap = page.querySelector('.ai-welcome-wrap');
+    if (welcomeWrap) welcomeWrap.remove();
     for (const msg of chatHistory) {
       addMessage(msg.role === 'user' ? 'user' : 'bot', msg.content, msg.sources, msg.disclaimer, true);
     }
   }
 
   page.querySelector('#aiFsBack').addEventListener('click', () => chatInstance.hide());
+
+  // Clear chat history button
+  page.querySelector('#aiFsClear').addEventListener('click', () => {
+    if (!chatHistory.length && !chatMessages.querySelector('.ai-msg-user')) return;
+    // Clear persisted history
+    chatHistory.splice(0, chatHistory.length);
+    persistHistory(chatHistory);
+    // Reset DOM — rebuild welcome state
+    chatMessages.innerHTML = buildWelcomeHTML();
+    // Re-attach suggest chip listeners
+    chatMessages.querySelectorAll('.ai-suggest-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        chatInput.value = chip.textContent.trim();
+        updateCharCount();
+        chatForm.dispatchEvent(new Event('submit', { cancelable: true }));
+      });
+    });
+    isLoading = false;
+  });
 
   page.querySelector('#aiFsShare').addEventListener('click', () => {
     const url = window.location.origin + '/?tab=ai';
@@ -89,12 +111,16 @@ function createChatPage() {
     }
   });
 
-  page.querySelectorAll('.ai-suggest-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      chatInput.value = chip.textContent.trim();
-      chatForm.dispatchEvent(new Event('submit', { cancelable: true }));
+  function attachSuggestChips() {
+    page.querySelectorAll('.ai-suggest-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        chatInput.value = chip.textContent.trim();
+        updateCharCount();
+        chatForm.dispatchEvent(new Event('submit', { cancelable: true }));
+      });
     });
-  });
+  }
+  attachSuggestChips();
 
   // Source tags → open internal wenku reader (z-index 400 > AI chat 300)
   chatMessages.addEventListener('click', (e) => {
@@ -109,11 +135,52 @@ function createChatPage() {
     });
   });
 
-  chatForm.addEventListener('submit', handleSubmit);
+  // Retry button on error messages
+  chatMessages.addEventListener('click', (e) => {
+    const retryBtn = e.target.closest('.ai-retry-btn');
+    if (!retryBtn || isLoading) return;
+    const question = retryBtn.dataset.question;
+    if (!question) return;
+    // Remove the error message
+    const errMsg = retryBtn.closest('.ai-msg-error');
+    if (errMsg) errMsg.remove();
+    chatInput.value = question;
+    updateCharCount();
+    chatForm.dispatchEvent(new Event('submit', { cancelable: true }));
+  });
 
-  // Voice input (Whisper) — temporarily disabled pending Whisper free-tier availability
-  // const micBtn = page.querySelector('#aiFsMic');
-  // Mic button stays hidden (style="display:none" in HTML)
+  chatForm.addEventListener('submit', handleSubmit);
+  chatSend.addEventListener('click', () => {
+    chatForm.dispatchEvent(new Event('submit', { cancelable: true }));
+  });
+
+  // Auto-resize textarea
+  function autoResize() {
+    chatInput.style.height = 'auto';
+    const maxH = 120;
+    chatInput.style.height = Math.min(chatInput.scrollHeight, maxH) + 'px';
+  }
+  chatInput.addEventListener('input', () => {
+    autoResize();
+    updateCharCount();
+  });
+
+  // Ctrl+Enter or Cmd+Enter also submits
+  chatInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      chatForm.dispatchEvent(new Event('submit', { cancelable: true }));
+    }
+  });
+
+  function updateCharCount() {
+    const len = chatInput.value.length;
+    if (charCount) {
+      charCount.textContent = `${len}/${MAX_INPUT_LEN}`;
+      charCount.classList.toggle('ai-char-warn', len > MAX_INPUT_LEN * INPUT_WARN_THRESHOLD);
+      charCount.classList.toggle('ai-char-over', len >= MAX_INPUT_LEN);
+    }
+  }
 
   function onKeydown(e) {
     if (e.key === 'Escape' && chatInstance.isOpen) chatInstance.hide();
@@ -123,17 +190,20 @@ function createChatPage() {
     e.preventDefault();
     const question = chatInput.value.trim();
     if (!question || isLoading) return;
+    if (question.length > MAX_INPUT_LEN) return;
 
-    const suggestWrap = page.querySelector('.ai-suggest-wrap');
-    if (suggestWrap) suggestWrap.remove();
+    const welcomeWrap = page.querySelector('.ai-welcome-wrap');
+    if (welcomeWrap) welcomeWrap.remove();
 
     _lastQuestion = question;
     addMessage('user', question);
     chatHistory.push({ role: 'user', content: question });
     chatInput.value = '';
+    chatInput.style.height = '';
+    updateCharCount();
     isLoading = true;
     chatSend.disabled = true;
-    chatSend.style.opacity = '0.5';
+    chatSend.setAttribute('aria-busy', 'true');
     showTyping();
 
     try {
@@ -192,6 +262,7 @@ function createChatPage() {
           chip.textContent = q;
           chip.addEventListener('click', () => {
             chatInput.value = q;
+            updateCharCount();
             chatForm.dispatchEvent(new Event('submit', { cancelable: true }));
           });
           followUpWrap.appendChild(chip);
@@ -211,11 +282,11 @@ function createChatPage() {
       // Remove any empty streaming message
       const emptyStream = chatMessages.querySelector('.ai-msg-bot:last-child .ai-streaming');
       if (emptyStream && !emptyStream.textContent) emptyStream.closest('.ai-msg').remove();
-      addMessage('error', err.message || '请求失败，请稍后再试');
+      addErrorMessage(err.message || '请求失败，请稍后再试', question);
     } finally {
       isLoading = false;
       chatSend.disabled = false;
-      chatSend.style.opacity = '';
+      chatSend.removeAttribute('aria-busy');
     }
   }
 
@@ -259,7 +330,8 @@ function createChatPage() {
     return html;
   }
 
-  const BOT_AVATAR = `<div class="ai-msg-avatar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.09 3.26L16.36 6.36l-3.26 1.09L12 10.72l-1.09-3.27L7.64 6.36l3.27-1.1z"/><path d="M18 12l.73 2.18L20.91 14.91l-2.18.73L18 17.82l-.73-2.18-2.18-.73 2.18-.73z"/></svg></div>`;
+  /* Lotus avatar — Buddhist Pure Land theme */
+  const BOT_AVATAR = `<div class="ai-msg-avatar" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4c-1.5 2.5-2 5-2 7.5s.5 4 2 5c1.5-1 2-2.5 2-5s-.5-5-2-7.5z"/><path d="M7.5 8c-2 1-3.5 3.5-3.5 6.5 0 1 .4 2 1.5 2.5"/><path d="M16.5 8c2 1 3.5 3.5 3.5 6.5 0 1-.4 2-1.5 2.5"/><path d="M9.5 7.5c-1.5.5-2.5 2-3 4"/><path d="M14.5 7.5c1.5.5 2.5 2 3 4"/><line x1="12" y1="16.5" x2="12" y2="20"/><path d="M9.5 20c.7-.5 1.6-.5 2.5 0 .9-.5 1.8-.5 2.5 0"/></svg></div>`;
 
   function addMessage(role, content, sources, disclaimer, silent) {
     while (chatMessages.children.length > MAX_MESSAGES) {
@@ -268,18 +340,19 @@ function createChatPage() {
     const safeRole = ['user', 'bot', 'error'].includes(role) ? role : 'bot';
     const msg = document.createElement('div');
     msg.className = `ai-msg ai-msg-${safeRole}`;
+    if (!silent) msg.classList.add('ai-msg-enter');
     let html = '';
     if (safeRole === 'bot') html += BOT_AVATAR;
     html += '<div class="ai-msg-content">';
-    if (role === 'bot') {
+    if (safeRole === 'bot') {
       html += formatAnswer(content);
     } else {
       html += `<p>${escapeHtml(content)}</p>`;
     }
-    if (role === 'bot' && sources?.length) {
+    if (safeRole === 'bot' && sources?.length) {
       html += '<div class="ai-sources">' + sources.map(s => renderSourceTag(s)).join(' ') + '</div>';
     }
-    if (role === 'bot' && disclaimer) {
+    if (safeRole === 'bot' && disclaimer) {
       html += `<p class="ai-disclaimer">${escapeHtml(disclaimer)}</p>`;
     }
     html += '</div>';
@@ -288,12 +361,26 @@ function createChatPage() {
     if (!silent) chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 
+  function addErrorMessage(errText, question) {
+    while (chatMessages.children.length > MAX_MESSAGES) {
+      chatMessages.removeChild(chatMessages.children[1]);
+    }
+    const msg = document.createElement('div');
+    msg.className = 'ai-msg ai-msg-error ai-msg-enter';
+    const retryHtml = question
+      ? `<button class="ai-retry-btn" data-question="${escapeHtml(question)}" aria-label="重试">↩ 重试</button>`
+      : '';
+    msg.innerHTML = `<div class="ai-msg-content"><p>${escapeHtml(errText)}</p>${retryHtml}</div>`;
+    chatMessages.appendChild(msg);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
   function createStreamingMessage() {
     while (chatMessages.children.length > MAX_MESSAGES) {
       chatMessages.removeChild(chatMessages.children[1]);
     }
     const msg = document.createElement('div');
-    msg.className = 'ai-msg ai-msg-bot';
+    msg.className = 'ai-msg ai-msg-bot ai-msg-enter';
     msg.innerHTML = BOT_AVATAR;
     const msgContent = document.createElement('div');
     msgContent.className = 'ai-msg-content';
@@ -320,21 +407,34 @@ function createChatPage() {
     if (el) el.remove();
   }
 
-  document.getElementById('app').appendChild(page);
+  const appEl = document.getElementById('app');
+  if (!appEl) throw new Error('App element not found');
+  page.setAttribute('aria-modal', 'true');
+  page.setAttribute('role', 'dialog');
+  page.setAttribute('aria-label', 'AI 问法');
+  /* Hide: inert for modern browsers; aria-hidden as fallback for older ones */
+  page.setAttribute('inert', '');
+  page.setAttribute('aria-hidden', 'true');
+  appEl.appendChild(page);
 
   chatInstance = {
     isOpen: false,
     show() {
       page.classList.add('show');
+      page.removeAttribute('inert');
+      page.setAttribute('aria-hidden', 'false');
       this.isOpen = true;
       document.addEventListener('keydown', onKeydown);
       chatMessages.scrollTop = chatMessages.scrollHeight;
+      setTimeout(() => chatInput.focus(), OPEN_FOCUS_DELAY_MS);
       const url = new URL(window.location);
       url.searchParams.set('tab', 'ai');
       window.history.pushState({ aiChat: true }, '', url);
     },
     hide() {
       page.classList.remove('show');
+      page.setAttribute('inert', '');
+      page.setAttribute('aria-hidden', 'true');
       this.isOpen = false;
       document.removeEventListener('keydown', onKeydown);
       const url = new URL(window.location);
@@ -347,6 +447,37 @@ function createChatPage() {
   };
 }
 
+function buildWelcomeHTML() {
+  return `
+    <div class="ai-welcome-wrap">
+      <div class="ai-msg ai-msg-bot ai-welcome">
+        <div class="ai-msg-content">
+          <div class="ai-welcome-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 4c-1.5 2.5-2 5-2 7.5s.5 4 2 5c1.5-1 2-2.5 2-5s-.5-5-2-7.5z"/>
+              <path d="M7.5 8c-2 1-3.5 3.5-3.5 6.5 0 1 .4 2 1.5 2.5"/>
+              <path d="M16.5 8c2 1 3.5 3.5 3.5 6.5 0 1-.4 2-1.5 2.5"/>
+              <path d="M9.5 7.5c-1.5.5-2.5 2-3 4"/>
+              <path d="M14.5 7.5c1.5.5 2.5 2 3 4"/>
+              <line x1="12" y1="16.5" x2="12" y2="20"/>
+              <path d="M9.5 20c.7-.5 1.6-.5 2.5 0 .9-.5 1.8-.5 2.5 0"/>
+            </svg>
+          </div>
+          <p class="ai-welcome-title">南无阿弥陀佛</p>
+          <p>您好！我是净土法音 AI 问答助手，可回答净土法门、佛号念诵、讲经内容等问题。</p>
+          <p class="ai-disclaimer">AI 回答仅供参考，请以原始经典和法师开示为准。</p>
+        </div>
+      </div>
+      <p class="ai-suggest-label">您可以这样问：</p>
+      <div class="ai-suggest-wrap">
+        <button class="ai-suggest-chip">什么是念佛法门</button>
+        <button class="ai-suggest-chip">如何往生净土</button>
+        <button class="ai-suggest-chip">信愿行是什么</button>
+        <button class="ai-suggest-chip">临终助念方法</button>
+      </div>
+    </div>`;
+}
+
 function buildPageHTML() {
   return `
     <div class="ai-fs-header">
@@ -354,51 +485,45 @@ function buildPageHTML() {
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
       </button>
       <div class="ai-fs-title">
-        <svg class="ai-fs-title-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2l1.09 3.26L16.36 6.36l-3.26 1.09L12 10.72l-1.09-3.27L7.64 6.36l3.27-1.1z"/>
-          <path d="M18 12l.73 2.18L20.91 14.91l-2.18.73L18 17.82l-.73-2.18-2.18-.73 2.18-.73z"/>
-        </svg>
+        <span class="ai-fs-title-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 4c-1.5 2.5-2 5-2 7.5s.5 4 2 5c1.5-1 2-2.5 2-5s-.5-5-2-7.5z"/>
+            <path d="M7.5 8c-2 1-3.5 3.5-3.5 6.5 0 1 .4 2 1.5 2.5"/>
+            <path d="M16.5 8c2 1 3.5 3.5 3.5 6.5 0 1-.4 2-1.5 2.5"/>
+            <path d="M9.5 7.5c-1.5.5-2.5 2-3 4"/>
+            <path d="M14.5 7.5c1.5.5 2.5 2 3 4"/>
+            <line x1="12" y1="16.5" x2="12" y2="20"/>
+            <path d="M9.5 20c.7-.5 1.6-.5 2.5 0 .9-.5 1.8-.5 2.5 0"/>
+          </svg>
+        </span>
         <span>AI 问法</span>
       </div>
-      <button class="ai-fs-share" id="aiFsShare" aria-label="分享">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-      </button>
-    </div>
-    <div class="ai-fs-messages" id="aiFsMessages" role="log" aria-live="polite">
-      <div class="ai-msg ai-msg-bot ai-welcome">
-        <div class="ai-msg-content">
-          <div class="ai-welcome-icon">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2l1.09 3.26L16.36 6.36l-3.26 1.09L12 10.72l-1.09-3.27L7.64 6.36l3.27-1.1z"/>
-              <path d="M18 12l.73 2.18L20.91 14.91l-2.18.73L18 17.82l-.73-2.18-2.18-.73 2.18-.73z"/>
-            </svg>
-          </div>
-          <p>您好！我是净土法音 AI 问答助手。</p>
-          <p>您可以向我提问有关净土法门、佛号念诵、讲经内容等任何问题。</p>
-          <p class="ai-disclaimer">AI 回答仅供参考，请以原始经典和法师开示为准。</p>
-        </div>
-      </div>
-      <div class="ai-suggest-wrap">
-        <button class="ai-suggest-chip">什么是念佛法门</button>
-        <button class="ai-suggest-chip">如何往生净土</button>
-        <button class="ai-suggest-chip">信愿行是什么</button>
+      <div class="ai-fs-actions">
+        <button class="ai-fs-icon-btn" id="aiFsClear" aria-label="清空对话" title="清空对话">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+        </button>
+        <button class="ai-fs-icon-btn" id="aiFsShare" aria-label="分享">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+        </button>
       </div>
     </div>
-    <form class="ai-fs-form" id="aiFsForm">
-      <input type="text" class="ai-fs-input" id="aiFsInput"
-             placeholder="输入您的问题..." maxlength="500" autocomplete="off" />
-      <button type="button" class="ai-fs-mic" id="aiFsMic" aria-label="语音输入" style="display:none">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-          <line x1="12" y1="19" x2="12" y2="23"/>
-          <line x1="8" y1="23" x2="16" y2="23"/>
-        </svg>
-      </button>
-      <button type="submit" class="ai-fs-send" id="aiFsSend" aria-label="发送">
-        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M2 21l21-9L2 3v7l15 2-15 2z" fill="currentColor"/></svg>
-      </button>
-    </form>`;
+    <div class="ai-fs-messages" id="aiFsMessages" role="log" aria-live="polite" aria-label="对话消息">
+      ${buildWelcomeHTML()}
+    </div>
+    <div class="ai-fs-input-wrap">
+      <div class="ai-fs-form-row" id="aiFsForm">
+        <textarea class="ai-fs-input" id="aiFsInput"
+               placeholder="输入您的问题…（Enter 发送，Shift+Enter 换行）"
+               maxlength="${MAX_INPUT_LEN}" autocomplete="off" rows="1"
+               aria-label="输入问题"></textarea>
+        <button type="button" class="ai-fs-send" id="aiFsSend" aria-label="发送">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M2 21l21-9L2 3v7l15 2-15 2z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="ai-fs-input-footer">
+        <span class="ai-char-count" id="aiFsCharCount" aria-live="polite">0/${MAX_INPUT_LEN}</span>
+      </div>
+    </div>`;
 }
 
 export function checkAiDeepLink() {

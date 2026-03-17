@@ -112,6 +112,7 @@ let activeTab = 'audio'; // 'audio' | 'wenku'
 export function openSearchOverlay() {
   if (searchOverlay) {
     searchOverlay.classList.add('show');
+    searchOverlay.setAttribute('aria-hidden', 'false');
     const input = searchOverlay.querySelector('.search-overlay-input');
     if (input) {
       input.value = '';
@@ -128,6 +129,10 @@ export function openSearchOverlay() {
   const overlay = document.createElement('div');
   overlay.className = 'search-overlay show';
   overlay.id = 'searchOverlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-label', '搜索');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-hidden', 'false');
   overlay.innerHTML = `
     <div class="search-overlay-header">
       <button class="search-overlay-back" id="searchOverlayBack" aria-label="\u8FD4\u56DE">
@@ -204,6 +209,7 @@ function triggerSearch(q, container) {
 export function closeSearchOverlay() {
   if (searchOverlay) {
     searchOverlay.classList.remove('show');
+    searchOverlay.setAttribute('aria-hidden', 'true');
     if (searchOverlay._onKeydown) {
       document.removeEventListener('keydown', searchOverlay._onKeydown);
     }

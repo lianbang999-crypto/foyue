@@ -6,6 +6,7 @@ import { ICON_PLAY, ICON_PAUSE } from './icons.js';
 import { playList, togglePlay, getIsSwitching } from './player.js';
 import { getDailyRecommendation } from './ai-client.js';
 import { getHistory } from './history.js';
+import { get as storeGet } from './store.js';
 
 /* ===== Home Page DOM Cache ===== */
 // Keep the home page element alive across tab switches to avoid full re-renders.
@@ -227,7 +228,7 @@ function buildDynamicSectionHtml() {
   let html = '';
   let hasPlayHistory = false;
   try {
-    const st = JSON.parse(localStorage.getItem('pl-state'));
+    const st = storeGet('player');
     if (st && st.seriesId) {
       let cSeries = null, cCat = null;
       for (const c of state.data.categories) {
@@ -236,11 +237,16 @@ function buildDynamicSectionHtml() {
       }
       if (cSeries) {
         hasPlayHistory = true;
-        const cIdx = st.idx || 0;
+        const cIdx = st.epIdx || 0;
         const ep = cSeries.episodes[cIdx];
         const epTitle = ep ? (ep.title || ep.fileName) : '';
-        const pct = st.duration > 0
-          ? Math.min(100, Math.round((st.time || 0) / st.duration * 100)) : 0;
+        // Calculate progress percentage from history (which stores time+duration)
+        let pct = 0;
+        const history = getHistory();
+        const hEntry = history.find(h => h.seriesId === st.seriesId && h.epIdx === cIdx);
+        if (hEntry && hEntry.duration > 0) {
+          pct = Math.min(100, Math.round(hEntry.time / hEntry.duration * 100));
+        }
         const nowSid = state.epIdx >= 0 && state.playlist.length
           ? state.playlist[state.epIdx].seriesId : null;
         const isPlaying = nowSid === st.seriesId && state.epIdx === cIdx && !dom.audio.paused;
@@ -344,14 +350,14 @@ async function loadDailyRecommendations(page) {
   const maxAttempts = 3;
   let fetchDone = false;
 
-  // Fallback timer: if API hasn't responded in 5 seconds, show fallback content
+  // Fallback timer: if API hasn't responded in 3 seconds, show fallback content
   // immediately so the user sees something useful.  The background fetch continues
   // and will update the list if/when it succeeds.
   const fallbackTimer = setTimeout(() => {
     if (!fetchDone && recList.querySelector('.home-rec-skeleton')) {
       renderFallbackRecs(recList);
     }
-  }, 5000);
+  }, 3000);
 
   async function tryLoad() {
     try {
@@ -515,7 +521,9 @@ export function renderHomePage() {
           import('./pages-my.js').then(m => m.renderMyPage());
         }));
       } else if (nav === 'ai') {
-        import('./ai-chat.js').then(m => m.openAiChat());
+        import('./ai-chat.js').then(m => m.openAiChat()).catch(() => {
+          import('./utils.js').then(u => u.showToast('AI 功能暂时无法加载，请刷新页面重试')).catch(() => {});
+        });
       } else {
         // Navigate to tab
         const tabBtn = document.querySelector(`.tab[data-tab="${nav}"]`);
