@@ -40,13 +40,30 @@ export async function onRequest(context) {
 
     // GET /api/categories
     const opusSupported = url.searchParams.get('opus') === '1';
+    const homeView = url.searchParams.get('home') === '1';
     if (path === '/api/categories' && method === 'GET') {
       return getEdgeCachedJson(
         request,
-        buildCategoriesCacheKey(url, opusSupported),
+        buildCategoriesCacheKey(url, { opusSupported, homeView }),
         waitUntil,
         async () => json(
-          await getCategories(db, opusSupported),
+          await (homeView ? getHomeCategories(db, opusSupported) : getCategories(db, opusSupported)),
+          cors,
+          200,
+          'public, max-age=300, s-maxage=1800, stale-while-revalidate=86400'
+        )
+      );
+    }
+
+    const categoryMatch = path.match(/^\/api\/category\/([^/]+)$/);
+    if (categoryMatch && method === 'GET') {
+      const categoryId = decodeURIComponent(categoryMatch[1]);
+      return getEdgeCachedJson(
+        request,
+        buildCategoryCacheKey(url, { opusSupported, categoryId }),
+        waitUntil,
+        async () => json(
+          await getCategorySummary(db, categoryId),
           cors,
           200,
           'public, max-age=300, s-maxage=1800, stale-while-revalidate=86400'
@@ -500,8 +517,17 @@ function json(data, cors, status = 200, cacheControl) {
   });
 }
 
-function buildCategoriesCacheKey(url, opusSupported) {
+function buildCategoriesCacheKey(url, { opusSupported, homeView }) {
   const cacheUrl = new URL(url.toString());
+  cacheUrl.search = '';
+  if (homeView) cacheUrl.searchParams.set('home', '1');
+  cacheUrl.searchParams.set('opus', opusSupported ? '1' : '0');
+  return new Request(cacheUrl.toString(), { method: 'GET' });
+}
+
+function buildCategoryCacheKey(url, { opusSupported, categoryId }) {
+  const cacheUrl = new URL(url.toString());
+  cacheUrl.pathname = `/api/category/${encodeURIComponent(categoryId)}`;
   cacheUrl.search = '';
   cacheUrl.searchParams.set('opus', opusSupported ? '1' : '0');
   return new Request(cacheUrl.toString(), { method: 'GET' });
@@ -548,17 +574,84 @@ async function getCategories(db, opusSupported) {
     ORDER BY c.sort_order, s.sort_order, e.episode_num
   `).all();
 
+  return assembleCategories(result.results, opusSupported, 'full');
+}
+
+async function getHomeCategories(db, opusSupported) {
+  const result = await db.prepare(`
+    SELECT
+      c.id as cat_id, c.title as cat_title, c.title_en as cat_title_en, c.sort_order as cat_sort,
+      s.id as series_id, s.title, s.title_en, s.speaker, s.speaker_en,
+      s.bucket, s.folder, s.total_episodes, s.intro, s.play_count, s.sort_order,
+      e.episode_num as ep_num, e.title as ep_title, e.file_name as ep_file,
+      e.intro as ep_intro, e.story_number as ep_story, e.duration as ep_duration,
+      e.play_count as ep_play_count
+    FROM categories c
+    LEFT JOIN series s ON c.id = s.category_id
+    LEFT JOIN episodes e ON s.id = e.series_id
+    WHERE c.id = 'fohao'
+    ORDER BY c.sort_order, s.sort_order, e.episode_num
+  `).all();
+
+  return assembleCategories(result.results, opusSupported, 'home');
+}
+
+async function getCategorySummary(db, categoryId) {
+  const result = await db.prepare(`
+    SELECT
+      c.id as cat_id, c.title as cat_title, c.title_en as cat_title_en, c.sort_order as cat_sort,
+      s.id as series_id, s.title, s.title_en, s.speaker, s.speaker_en,
+      s.bucket, s.folder, s.total_episodes, s.intro, s.play_count, s.sort_order
+    FROM categories c
+    LEFT JOIN series s ON c.id = s.category_id
+    WHERE c.id = ?
+    ORDER BY c.sort_order, s.sort_order
+  `).bind(categoryId).all();
+
+  if (!result.results.length) return { error: 'Category not found' };
+
+  const category = {
+    id: result.results[0].cat_id,
+    title: result.results[0].cat_title,
+    titleEn: result.results[0].cat_title_en,
+    series: [],
+    _categoryLoaded: true,
+  };
+
+  for (const row of result.results) {
+    if (!row.series_id) continue;
+    category.series.push({
+      id: row.series_id,
+      title: row.title,
+      titleEn: row.title_en,
+      speaker: row.speaker,
+      speakerEn: row.speaker_en,
+      bucket: row.bucket,
+      folder: row.folder,
+      totalEpisodes: row.total_episodes,
+      intro: row.intro,
+      playCount: row.play_count,
+      episodes: null,
+    });
+  }
+
+  return { category };
+}
+
+function assembleCategories(rows, opusSupported, mode = 'full') {
+
   // 在内存中组装嵌套结构：categories → series → episodes
   const catMap = new Map();
   const serMap = new Map();
 
-  for (const row of result.results) {
+  for (const row of rows) {
     if (!catMap.has(row.cat_id)) {
       catMap.set(row.cat_id, {
         id: row.cat_id,
         title: row.cat_title,
         titleEn: row.cat_title_en,
-        series: []
+        series: [],
+        _categoryLoaded: true,
       });
     }
     if (row.series_id && !serMap.has(row.series_id)) {
@@ -607,7 +700,7 @@ async function getCategories(db, opusSupported) {
     }
   }
 
-  return { categories: [...catMap.values()] };
+  return { mode, categories: [...catMap.values()] };
 }
 
 async function getSeriesDetail(db, seriesId, opusSupported) {

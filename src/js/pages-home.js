@@ -141,12 +141,15 @@ function wireAiRecClicks(container) {
   // Use a flag to avoid attaching duplicate listeners when re-rendering into the same element.
   if (container._aiRecClickWired) return;
   container._aiRecClickWired = true;
-  container.addEventListener('click', e => {
+  container.addEventListener('click', async e => {
     const card = e.target.closest('.home-rec-card[data-epnum]');
     if (!card) return;
     const sid = card.dataset.sid;
     const catId = card.dataset.cat;
     const epNum = parseInt(card.dataset.epnum);
+    if (!state.isDataFull && state.ensureFullData) {
+      await state.ensureFullData({ rerenderHome: false });
+    }
     for (const cat of state.data.categories) {
       const sr = cat.series.find(s => s.id === sid);
       if (sr) {
@@ -277,7 +280,7 @@ function buildDynamicSectionHtml() {
 function wireContinueCard(page) {
   const contCard = page.querySelector('.home-continue-card');
   if (!contCard) return;
-  contCard.addEventListener('click', () => {
+  contCard.addEventListener('click', async () => {
     const dom = getDOM();
     const sid = contCard.dataset.sid;
     const catId = contCard.dataset.cat;
@@ -288,6 +291,9 @@ function wireContinueCard(page) {
     if (curSid === sid && state.epIdx === idx) {
       dom.expPlayer.classList.add('show');
       return;
+    }
+    if (!state.isDataFull && state.ensureFullData) {
+      await state.ensureFullData({ rerenderHome: false });
     }
     const cat = state.data.categories.find(c => c.id === catId);
     if (cat) {

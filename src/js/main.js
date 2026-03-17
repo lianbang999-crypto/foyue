@@ -74,6 +74,138 @@ function closeWenkuReader() {
   }
 }
 
+function buildCategoriesUrl({ home = false } = {}) {
+  const params = new URLSearchParams();
+  if (home) params.set('home', '1');
+  if (opusQueryParam()) params.set('opus', '1');
+  const query = params.toString();
+  return '/api/categories' + (query ? `?${query}` : '');
+}
+
+function buildCategoryUrl(categoryId) {
+  const params = new URLSearchParams();
+  if (opusQueryParam()) params.set('opus', '1');
+  const query = params.toString();
+  return `/api/category/${encodeURIComponent(categoryId)}` + (query ? `?${query}` : '');
+}
+
+function buildSeriesUrl(seriesId) {
+  const params = new URLSearchParams();
+  if (opusQueryParam()) params.set('opus', '1');
+  const query = params.toString();
+  return `/api/series/${encodeURIComponent(seriesId)}` + (query ? `?${query}` : '');
+}
+
+async function fetchCategoriesData({ home = false } = {}) {
+  const response = await fetch(buildCategoriesUrl({ home }));
+  if (!response.ok) throw new Error('HTTP ' + response.status);
+  return response.json();
+}
+
+async function fetchCategoryData(categoryId) {
+  const response = await fetch(buildCategoryUrl(categoryId));
+  if (!response.ok) throw new Error('HTTP ' + response.status);
+  return response.json();
+}
+
+async function fetchSeriesData(seriesId) {
+  const response = await fetch(buildSeriesUrl(seriesId));
+  if (!response.ok) throw new Error('HTTP ' + response.status);
+  return response.json();
+}
+
+function findSeriesInData(seriesId) {
+  if (!state.data || !seriesId) return null;
+  for (const cat of state.data.categories || []) {
+    const series = cat.series.find(item => item.id === seriesId);
+    if (series) return { cat, series };
+  }
+  return null;
+}
+
+function applyLoadedData(data) {
+  state.data = data;
+  state.isDataFull = data?.mode !== 'home';
+}
+
+function mergeCategoryIntoState(category) {
+  if (!state.data) {
+    state.data = { mode: 'partial', categories: [category] };
+    state.isDataFull = false;
+    return category;
+  }
+
+  const categories = Array.isArray(state.data.categories) ? [...state.data.categories] : [];
+  const idx = categories.findIndex(item => item.id === category.id);
+  if (idx >= 0) categories[idx] = { ...categories[idx], ...category };
+  else categories.push(category);
+  state.data = { ...state.data, mode: state.isDataFull ? state.data.mode : 'partial', categories };
+  return idx >= 0 ? categories[idx] : category;
+}
+
+function mergeSeriesIntoState(series) {
+  if (!state.data?.categories) return series;
+  const categories = state.data.categories.map(cat => {
+    if (cat.id !== series.categoryId) return cat;
+    const list = Array.isArray(cat.series) ? [...cat.series] : [];
+    const idx = list.findIndex(item => item.id === series.id);
+    const mergedSeries = idx >= 0 ? { ...list[idx], ...series } : series;
+    if (idx >= 0) list[idx] = mergedSeries;
+    else list.push(mergedSeries);
+    return { ...cat, _categoryLoaded: true, series: list };
+  });
+  state.data = { ...state.data, categories };
+  return findSeriesInData(series.id)?.series || series;
+}
+
+const categoryLoaders = new Map();
+const seriesLoaders = new Map();
+
+async function ensureCategoryData(categoryId) {
+  if (!categoryId || categoryId === 'home' || categoryId === 'mypage') return null;
+  if (state.isDataFull) return state.data?.categories?.find(cat => cat.id === categoryId) || null;
+
+  const existing = state.data?.categories?.find(cat => cat.id === categoryId);
+  if (existing?._categoryLoaded) return existing;
+  if (categoryLoaders.has(categoryId)) return categoryLoaders.get(categoryId);
+
+  const promise = (async () => {
+    const payload = await fetchCategoryData(categoryId);
+    if (!payload?.category) throw new Error('Category not found');
+    return mergeCategoryIntoState(payload.category);
+  })();
+
+  categoryLoaders.set(categoryId, promise);
+  try {
+    return await promise;
+  } finally {
+    categoryLoaders.delete(categoryId);
+  }
+}
+
+async function ensureSeriesDetail(seriesId, categoryId) {
+  if (!seriesId) return null;
+  if (state.isDataFull) return findSeriesInData(seriesId)?.series || null;
+
+  const existing = findSeriesInData(seriesId)?.series;
+  if (existing?.episodes?.length) return existing;
+  if (categoryId) await ensureCategoryData(categoryId);
+  if (seriesLoaders.has(seriesId)) return seriesLoaders.get(seriesId);
+
+  const promise = (async () => {
+    const payload = await fetchSeriesData(seriesId);
+    if (!payload || payload.error) throw new Error(payload?.error || 'Series not found');
+    return mergeSeriesIntoState(payload);
+  })();
+
+  seriesLoaders.set(seriesId, promise);
+  try {
+    return await promise;
+  } finally {
+    seriesLoaders.delete(seriesId);
+  }
+}
+
 /* ===== INIT ===== */
 (function init() {
   // Language & Theme
@@ -102,6 +234,7 @@ function closeWenkuReader() {
   document.getElementById('btnSearch').addEventListener('click', () => {
     haptic();
     openSearchOverlay();
+    if (!state.isDataFull && state.ensureFullData) state.ensureFullData();
   });
 
   // Tabs
@@ -137,7 +270,7 @@ function closeWenkuReader() {
   }
 
   document.querySelectorAll('.tab').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       // Close any open reader overlay before switching tabs
       closeWenkuReader();
       document.querySelectorAll('.tab').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
@@ -148,7 +281,13 @@ function closeWenkuReader() {
       dom.navTitle.dataset.i18n = TAB_I18N[state.tab] || 'tab_lectures';
       if (state.tab === 'mypage') { renderMyPage(); }
       else if (state.tab === 'home') { renderHomePage(); }
-      else { renderCategory(state.tab); }
+      else {
+        if (!state.isDataFull && state.ensureCategoryData) {
+          showToast(t('loading_retry') || '连接中，请稍候...');
+          await state.ensureCategoryData(state.tab);
+        }
+        renderCategory(state.tab);
+      }
     });
   });
 
@@ -548,7 +687,7 @@ function closeWenkuReader() {
   loadData();
 
   // Initialise the store's cached-URL set from the real Cache API (background, non-blocking)
-  initCachedUrls().catch(() => {});
+  initCachedUrls().catch(() => { });
 
   setInterval(saveState, 15000);
 
@@ -583,6 +722,9 @@ let loadAttempts = 0;
 const DATA_CACHE_VERSION = 4; // v4: server-side format resolution (Opus/MP3 decided server-side)
 const DATA_CACHE_KEY = 'pl-data-cache-v' + DATA_CACHE_VERSION;
 const DATA_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+const HOME_CACHE_VERSION = 1;
+const HOME_CACHE_KEY = 'pl-home-cache-v' + HOME_CACHE_VERSION;
+const HOME_CACHE_TTL = 10 * 60 * 1000;
 
 /** djb2-style hash for quick equality checks of serialised data. */
 function simpleHash(str) {
@@ -597,13 +739,89 @@ function getCachedHash() {
   } catch (e) { return null; }
 }
 
+function loadCachedHomeData() {
+  try {
+    const raw = localStorage.getItem(HOME_CACHE_KEY);
+    if (!raw) return null;
+    const { data, ts, version } = JSON.parse(raw);
+    if (version !== HOME_CACHE_VERSION) {
+      localStorage.removeItem(HOME_CACHE_KEY);
+      return null;
+    }
+    if (Date.now() - ts > HOME_CACHE_TTL) return null;
+    return data;
+  } catch (e) { return null; }
+}
+
+function saveCachedHomeData(data) {
+  try {
+    localStorage.setItem(HOME_CACHE_KEY, JSON.stringify({
+      data,
+      ts: Date.now(),
+      version: HOME_CACHE_VERSION,
+    }));
+  } catch (e) { /* ignore */ }
+}
+
+function needsImmediateFullData() {
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get('tab');
+  const playerState = storeGet('player');
+  return Boolean(
+    location.hash ||
+    params.get('series') ||
+    params.get('doc') ||
+    params.get('wenku') ||
+    (tab && !['home', 'ai', 'wenku'].includes(tab)) ||
+    (playerState?.seriesId && playerState.seriesId !== 'donglin-fohao')
+  );
+}
+
+function canRestoreFromCurrentData() {
+  const playerState = storeGet('player');
+  if (!playerState?.seriesId) return true;
+  return !!findSeriesInData(playerState.seriesId);
+}
+
+async function ensureFullData(options = {}) {
+  const { rerenderHome = true, restorePlayback = false } = options;
+  if (state.isDataFull) return state.data;
+  if (state.fullDataPromise) return state.fullDataPromise;
+
+  const promise = (async () => {
+    const fresh = await fetchCategoriesData();
+    applyLoadedData(fresh);
+    const freshHash = simpleHash(JSON.stringify(fresh));
+    saveCachedData(fresh, freshHash);
+    invalidateHomePage();
+    if (restorePlayback && state.epIdx < 0) {
+      restoreState(renderCategory, renderHomePage, renderMyPage);
+    }
+    if (rerenderHome && state.tab === 'home') {
+      renderHomePage();
+    }
+    return fresh;
+  })();
+
+  state.fullDataPromise = promise;
+  try {
+    return await promise;
+  } finally {
+    if (state.fullDataPromise === promise) state.fullDataPromise = null;
+  }
+}
+
+state.ensureFullData = ensureFullData;
+state.ensureCategoryData = ensureCategoryData;
+state.ensureSeriesDetail = ensureSeriesDetail;
+
 async function loadData() {
   const dom = getDOM();
   try {
     // Try localStorage cache first for instant render
     const cached = loadCachedData();
     if (cached) {
-      state.data = cached;
+      applyLoadedData(cached);
       dom.loader.style.display = 'none';
       if (state.tab === 'home') renderHomePage();
       else renderCategory(state.tab);
@@ -621,10 +839,40 @@ async function loadData() {
       checkAiDeepLink();
       return;
     }
-    // No cache: fetch fresh
-    const r = await fetch('/api/categories' + opusQueryParam());
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    state.data = await r.json();
+
+    const shouldBootstrapHome = !needsImmediateFullData();
+    const cachedHome = shouldBootstrapHome ? loadCachedHomeData() : null;
+    if (cachedHome) {
+      applyLoadedData(cachedHome);
+      dom.loader.style.display = 'none';
+      renderHomePage();
+      if (canRestoreFromCurrentData()) {
+        restoreState(renderCategory, renderHomePage, renderMyPage);
+        if (state.isFirstVisit && state.epIdx < 0) playDefaultTrack();
+      }
+      checkAiDeepLink();
+      return;
+    }
+
+    if (shouldBootstrapHome) {
+      const homeData = await fetchCategoriesData({ home: true });
+      applyLoadedData(homeData);
+      saveCachedHomeData(homeData);
+      dom.loader.style.display = 'none';
+      renderHomePage();
+      if (canRestoreFromCurrentData()) {
+        restoreState(renderCategory, renderHomePage, renderMyPage);
+        if (state.isFirstVisit && state.epIdx < 0) playDefaultTrack();
+      } else if (state.isFirstVisit && state.epIdx < 0) {
+        playDefaultTrack();
+      }
+      checkAiDeepLink();
+      return;
+    }
+
+    // No cache: fetch full data directly
+    const freshData = await fetchCategoriesData();
+    applyLoadedData(freshData);
     const initStr = JSON.stringify(state.data);
     const initHash = Array.from(initStr).reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0);
     saveCachedData(state.data, initHash);
@@ -707,14 +955,12 @@ function saveCachedData(data, hash) {
 
 async function fetchFreshData() {
   try {
-    const r = await fetch('/api/categories' + opusQueryParam());
-    if (!r.ok) return;
-    const fresh = await r.json();
+    const fresh = await fetchCategoriesData();
     // #16: Compare BEFORE saving — read cached hash first, then decide
     const freshHash = simpleHash(JSON.stringify(fresh));
     const cachedHash = getCachedHash();
     if (freshHash !== cachedHash || cachedHash === null) {
-      state.data = fresh;
+      applyLoadedData(fresh);
       saveCachedData(fresh, freshHash);
       // Invalidate cached home page so it rebuilds with updated data
       invalidateHomePage();
@@ -740,7 +986,7 @@ if ('serviceWorker' in navigator) {
       const freshHash = simpleHash(JSON.stringify(fresh));
       const cachedHash = getCachedHash();
       if (freshHash !== cachedHash) {
-        state.data = fresh;
+        applyLoadedData(fresh);
         saveCachedData(fresh, freshHash);
         invalidateHomePage();
         if (state.tab === 'home') renderHomePage();
@@ -891,5 +1137,12 @@ function handleTabDeepLink() {
   window.history.replaceState({}, '', window.location.pathname);
   if (tab === 'mypage') renderMyPage();
   else if (tab === 'home') renderHomePage();
-  else renderCategory(tab);
+  else {
+    const renderTab = () => renderCategory(tab);
+    if (!state.isDataFull && state.ensureCategoryData) {
+      state.ensureCategoryData(tab).then(renderTab).catch(renderTab);
+    } else {
+      renderTab();
+    }
+  }
 }

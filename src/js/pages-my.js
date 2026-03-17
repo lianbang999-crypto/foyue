@@ -271,10 +271,13 @@ function showHistorySubview() {
 
   // Wire up history item clicks
   listEl.querySelectorAll('.my-history-item').forEach(el => {
-    el.addEventListener('click', () => {
+    el.addEventListener('click', async () => {
       const idx = parseInt(el.dataset.hid);
       const h = getHistory()[idx];
       if (!h) return;
+      if (!state.isDataFull && state.ensureFullData) {
+        await state.ensureFullData({ rerenderHome: false });
+      }
       const cat = state.data.categories.find(c => c.id === h.catId);
       if (cat) {
         const sr = cat.series.find(s => s.id === h.seriesId);

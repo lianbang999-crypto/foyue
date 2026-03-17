@@ -116,7 +116,7 @@ self.addEventListener('fetch', event => {
   /* Data / API: stale-while-revalidate — serve cache immediately, update in background */
   if (isDataRequest(url)) {
     // ── Categories API: detect changes and notify page clients ──
-    if (url.pathname === '/api/categories') {
+    if (url.pathname === '/api/categories' && !url.searchParams.has('home')) {
       event.respondWith(
         caches.open(DATA_CACHE).then(async cache => {
           const cachedResp = await cache.match(event.request);

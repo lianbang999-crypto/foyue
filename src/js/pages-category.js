@@ -44,10 +44,27 @@ export function renderCategory(tabId) {
   dom.contentArea.appendChild(wrap);
 }
 
-export function showEpisodes(series, tabId) {
+export async function showEpisodes(series, tabId) {
   const dom = getDOM();
   dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
   state.seriesId = series.id;
+  let fullSeries = series;
+
+  if ((!series.episodes || !series.episodes.length) && state.ensureSeriesDetail) {
+    const loading = document.createElement('div');
+    loading.className = 'view active ep-view';
+    loading.innerHTML = `<div class="loader-text">${t('loading_retry') || '连接中，请稍候...'}</div>`;
+    dom.contentArea.appendChild(loading);
+    try {
+      fullSeries = await state.ensureSeriesDetail(series.id, tabId) || series;
+    } catch {
+      loading.innerHTML = `<div class="loader-text">${t('loading_fail') || '加载失败'}</div>`;
+      return;
+    }
+    loading.remove();
+  }
+
+  series = fullSeries;
   const unit = tabId === 'fohao' ? t('tracks') : t('episodes');
   const introHdr = series.intro ? `<div class="ep-header-intro">${escapeHtml(series.intro)}</div>` : '';
   const view = document.createElement('div');
@@ -78,11 +95,11 @@ export function showEpisodes(series, tabId) {
   dom.audio.addEventListener('play', updatePlayAllBtn);
   dom.audio.addEventListener('pause', updatePlayAllBtn);
   let cancelProbe = () => { };
-  let onTimeUpdate = () => {};
+  let onTimeUpdate = () => { };
 
   // Declared here so the MutationObserver cleanup closure can reference it; the real
   // implementation is assigned below once `ul` is available (it scopes queries to that element).
-  let updateHighlight = () => {};
+  let updateHighlight = () => { };
 
   const obs = new MutationObserver(() => {
     if (!view.parentNode) {

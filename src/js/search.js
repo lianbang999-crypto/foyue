@@ -31,6 +31,20 @@ function doKeywordSearch(q, showEpisodes, renderCategory, renderHomePage) {
     else if (renderCategory) renderCategory(state.tab);
     return;
   }
+  if (!state.isDataFull && state.ensureFullData) {
+    dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
+    const wrap = document.createElement('div');
+    wrap.className = 'view active';
+    wrap.innerHTML = `<div class="loader-text">${t('loading_retry') || '连接中，请稍候...'}</div>`;
+    dom.contentArea.appendChild(wrap);
+    const requestedQuery = q;
+    state.ensureFullData({ rerenderHome: false }).then(() => {
+      doKeywordSearch(requestedQuery, showEpisodes, renderCategory, renderHomePage);
+    }).catch(() => {
+      wrap.innerHTML = `<div class="loader-text">${t('loading_fail') || '加载失败'}</div>`;
+    });
+    return;
+  }
   dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
   const ql = q.toLowerCase();
   const seriesResults = [];
@@ -219,6 +233,19 @@ function renderSearchResults(q, container) {
   container.innerHTML = '';
   if (!q || !state.data) {
     container.innerHTML = `<div class="search-overlay-hint">${t('search_placeholder')}</div>`;
+    return;
+  }
+  if (!state.isDataFull && state.ensureFullData) {
+    container.innerHTML = `<div class="search-overlay-hint">${t('loading_retry') || '连接中，请稍候...'}</div>`;
+    const requestedQuery = q;
+    state.ensureFullData({ rerenderHome: false }).then(() => {
+      const input = searchOverlay?.querySelector('.search-overlay-input');
+      if (input && input.value.trim() === requestedQuery && activeTab === 'audio') {
+        renderSearchResults(requestedQuery, container);
+      }
+    }).catch(() => {
+      container.innerHTML = `<div class="search-overlay-hint">${t('loading_fail') || '加载失败'}</div>`;
+    });
     return;
   }
 
