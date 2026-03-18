@@ -94,7 +94,7 @@ async function requestWakeLock() {
 }
 function releaseWakeLock() {
   if (_wakeLock) {
-    _wakeLock.release().catch(() => {});
+    _wakeLock.release().catch(() => { });
     _wakeLock = null;
   }
 }
@@ -117,6 +117,7 @@ function migrateCustomKey(data) {
 
 function getCounterData() {
   let data = get('counter');
+  let shouldPersist = false;
 
   // Migrate from old flat structure or initialize fresh
   if (!data || !data.practices) {
@@ -155,24 +156,35 @@ function getCounterData() {
   }
 
   // Migrate old '自定义' key to '__custom__'
+  const beforePractice = data.practice;
+  const hadOldCustomKey = !!(data.practices && data.practices['自定义']);
   migrateCustomKey(data);
+  if (hadOldCustomKey || beforePractice !== data.practice) shouldPersist = true;
 
   // Ensure dailyLog exists
-  if (!data.dailyLog) data.dailyLog = {};
+  if (!data.dailyLog) {
+    data.dailyLog = {};
+    shouldPersist = true;
+  }
 
   // Ensure the current practice slot exists
   if (!data.practices[data.practice]) {
     data.practices[data.practice] = { total: 0, daily: 0, dailyDate: '', goal: 108 };
+    shouldPersist = true;
   }
 
   // Reset daily count if it's a new day
   const ps = getPracticeStats(data);
   if (checkAndResetDaily(ps)) {
-    patch('counter', data);
+    shouldPersist = true;
   }
 
   // Prune old log entries
+  const beforeLogKeys = Object.keys(data.dailyLog).length;
   pruneDailyLog(data);
+  if (Object.keys(data.dailyLog).length !== beforeLogKeys) shouldPersist = true;
+
+  if (shouldPersist) patch('counter', data);
 
   return data;
 }
@@ -180,7 +192,15 @@ function getCounterData() {
 /* ── Main render ── */
 export function openCounter() {
   // Remove existing counter view if present
-  document.querySelectorAll('.counter-view').forEach(el => el.remove());
+  document.querySelectorAll('.counter-view').forEach(el => {
+    if (typeof el.__counterCleanup === 'function') {
+      el.__counterCleanup({ skipAnimation: true, skipNavigation: true });
+    } else {
+      el.remove();
+    }
+  });
+
+  const sourceTab = document.querySelector('.tab.active')?.dataset.tab || 'mypage';
 
   // Push browser history state so back button works
   history.pushState({ counter: true }, '');
@@ -214,7 +234,7 @@ export function openCounter() {
   // Handle browser back button + Escape key
   const popHandler = (e) => {
     if (e.state && e.state.counter) return;
-    closeCounter(view, popHandler, escHandler, visHandler);
+    closeCounter(view, sourceTab, popHandler, escHandler, visHandler);
   };
   const escHandler = (e) => {
     if (e.key === 'Escape') {
@@ -223,6 +243,7 @@ export function openCounter() {
       history.back();
     }
   };
+  view.__counterCleanup = (options) => closeCounter(view, sourceTab, popHandler, escHandler, visHandler, options);
   window.addEventListener('popstate', popHandler);
   window.addEventListener('keydown', escHandler);
 }
@@ -321,17 +342,28 @@ function buildCounterHTML(data, session) {
   `;
 }
 
-function closeCounter(view, popHandler, escHandler, visHandler) {
+function closeCounter(view, sourceTab, popHandler, escHandler, visHandler, options = {}) {
+  if (!view || !view.isConnected) return;
+  const { skipAnimation = false, skipNavigation = false } = options;
   if (popHandler) window.removeEventListener('popstate', popHandler);
   if (escHandler) window.removeEventListener('keydown', escHandler);
   if (visHandler) document.removeEventListener('visibilitychange', visHandler);
+  delete view.__counterCleanup;
   releaseWakeLock();
-  view.classList.remove('counter-view--visible');
-  setTimeout(() => {
+  const finishClose = () => {
     view.remove();
-    const homeTab = document.querySelector('.tab[data-tab="home"]');
-    if (homeTab) homeTab.click();
-  }, 350);
+    if (skipNavigation) return;
+    const targetTab = document.querySelector(`.tab[data-tab="${sourceTab}"]`) || document.querySelector('.tab[data-tab="mypage"]');
+    if (targetTab) targetTab.click();
+  };
+
+  if (skipAnimation) {
+    finishClose();
+    return;
+  }
+
+  view.classList.remove('counter-view--visible');
+  setTimeout(finishClose, 350);
 }
 
 function wireCounterEvents(view, data, _session) {
@@ -434,6 +466,7 @@ function wireCounterEvents(view, data, _session) {
       haptic(30);
       session++;
       const ps = getPracticeStats(data);
+      checkAndResetDaily(ps);
       ps.total++;
       ps.daily++;
       ps.dailyDate = todayStr();
@@ -536,6 +569,7 @@ function wireCounterEvents(view, data, _session) {
       const goal = data.practices[p].goal || 108;
       data.practices[p] = { total: 0, daily: 0, dailyDate: todayStr(), goal };
     }
+    data.dailyLog = {};
     session = 0;
     patch('counter', data);
     haptic(30);

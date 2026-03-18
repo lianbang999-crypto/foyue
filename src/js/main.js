@@ -33,6 +33,7 @@ import {
 } from './player.js';
 import { renderHomePage, invalidateHomePage } from './pages-home.js';
 import { renderMyPage } from './pages-my.js';
+import { openAiChat, closeAiChat, isAiChatOpen, updateAiContext, checkAiDeepLink } from './ai-chat.js';
 // ✅ 修复代码分割警告：统一使用动态导入，避免静态和动态导入混用
 // import { renderCategory, showEpisodes } from './pages-category.js';
 import { doSearch, openSearchOverlay, closeSearchOverlay, isSearchOverlayOpen } from './search.js';
@@ -52,17 +53,6 @@ export function showEpisodes(...args) {
   return getCategoryModule().then(mod => mod.showEpisodes(...args));
 }
 import { initInstallPrompt, initBackGuard } from './pwa.js';
-// AI chat — lazy loaded for performance (14KB deferred until first use)
-let _aiChatModule = null;
-async function getAiChatModule() {
-  if (!_aiChatModule) _aiChatModule = await import('./ai-chat.js');
-  return _aiChatModule;
-}
-function openAiChat() { getAiChatModule().then(m => m.openAiChat()); }
-function closeAiChat() { getAiChatModule().then(m => m.closeAiChat()); }
-function isAiChatOpen() { return _aiChatModule ? _aiChatModule.isAiChatOpen() : false; }
-function updateAiContext(seriesId, epNum) { if (_aiChatModule) _aiChatModule.updateAiContext(seriesId, epNum); }
-function checkAiDeepLink() { getAiChatModule().then(m => m.checkAiDeepLink()); }
 import { appreciate } from './api.js';
 import { monitor } from './monitor.js';
 import { opusQueryParam } from './audio-url.js';
