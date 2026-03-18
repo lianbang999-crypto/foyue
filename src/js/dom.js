@@ -7,6 +7,7 @@ let refs = null;
 export function initDOM() {
   refs = {
     audio: $('audioEl'),
+    header: document.querySelector('.header'),
     contentArea: $('contentArea'),
     loader: $('loader'),
     playerBar: $('playerBar'),
@@ -35,6 +36,7 @@ export function initDOM() {
     centerPlayBtn: $('centerPlayBtn'),
     centerPlayIcon: $('centerPlayIcon'),
     centerRingFill: $('centerRingFill'),
+    navAudioIndicator: $('navAudioIndicator'),
     expSeriesInfo: $('expSeriesInfo'),
     expSeriesName: $('expSeriesName'),
     expSeriesSpeaker: $('expSeriesSpeaker'),
