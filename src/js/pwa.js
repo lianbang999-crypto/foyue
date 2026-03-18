@@ -4,23 +4,112 @@ import { t } from './i18n.js';
 import { showToast } from './utils.js';
 
 let deferredPrompt = null;
+let installPromptInitialized = false;
+let installListenersBound = false;
+
+const INSTALL_DISMISSED_KEY = 'pl-install-dismissed';
+const INSTALL_DISMISS_TTL = 3 * 24 * 60 * 60 * 1000;
 
 export function getDeferredPrompt() { return deferredPrompt; }
 export function clearDeferredPrompt() { deferredPrompt = null; }
 
+function isStandaloneMode() {
+  return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+}
+
+function isDismissedRecently() {
+  const dismissed = localStorage.getItem(INSTALL_DISMISSED_KEY);
+  if (!dismissed) return false;
+  const ts = parseInt(dismissed, 10);
+  return Number.isFinite(ts) && Date.now() - ts < INSTALL_DISMISS_TTL;
+}
+
+function rememberDismissed() {
+  localStorage.setItem(INSTALL_DISMISSED_KEY, String(Date.now()));
+}
+
+function clearDismissed() {
+  localStorage.removeItem(INSTALL_DISMISSED_KEY);
+}
+
+function getInstallBanner() {
+  return document.getElementById('installBanner');
+}
+
+function getIosGuide() {
+  return document.getElementById('iosGuide');
+}
+
+function hideInstallSurfaces() {
+  const banner = getInstallBanner();
+  const iosGuide = getIosGuide();
+  if (banner) banner.classList.remove('show');
+  if (iosGuide) iosGuide.classList.remove('show');
+}
+
+function updateInstallBannerVisibility() {
+  const banner = getInstallBanner();
+  if (!banner) return;
+  const shouldShow = !!deferredPrompt && !isStandaloneMode() && !isDismissedRecently();
+  banner.classList.toggle('show', shouldShow);
+}
+
+function bindInstallListeners() {
+  if (installListenersBound) return;
+  installListenersBound = true;
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    updateInstallBannerVisibility();
+  });
+
+  window.addEventListener('appinstalled', () => {
+    deferredPrompt = null;
+    clearDismissed();
+    hideInstallSurfaces();
+    showToast(t('install_success') || '安装成功！');
+  });
+}
+
+export async function promptInstall() {
+  if (deferredPrompt) {
+    const promptEvent = deferredPrompt;
+    deferredPrompt = null;
+    hideInstallSurfaces();
+    promptEvent.prompt();
+    const result = await promptEvent.userChoice;
+    if (result.outcome !== 'accepted') {
+      deferredPrompt = promptEvent;
+      rememberDismissed();
+      updateInstallBannerVisibility();
+    } else {
+      clearDismissed();
+    }
+    return result;
+  }
+
+  showManualInstallGuide();
+  return null;
+}
+
 export function initInstallPrompt() {
-  const banner = document.getElementById('installBanner');
-  const iosGuide = document.getElementById('iosGuide');
-  const dismissed = localStorage.getItem('pl-install-dismissed');
+  const banner = getInstallBanner();
+  const iosGuide = getIosGuide();
+  if (!banner || !iosGuide) return;
 
-  // ✅ 如果已经在standalone模式，不显示安装提示
-  if (window.matchMedia('(display-mode: standalone)').matches) return;
-  if (navigator.standalone) return;
+  bindInstallListeners();
 
-  // ✅ 检查是否在7天内被用户关闭过
-  if (dismissed) {
-    const ts = parseInt(dismissed, 10);
-    if (Date.now() - ts < 7 * 24 * 60 * 60 * 1000) return;
+  if (installPromptInitialized) {
+    updateInstallBannerVisibility();
+    return;
+  }
+  installPromptInitialized = true;
+
+  if (isStandaloneMode()) {
+    clearDismissed();
+    hideInstallSurfaces();
+    return;
   }
 
   const ua = navigator.userAgent;
@@ -30,56 +119,34 @@ export function initInstallPrompt() {
   const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|Chrome/.test(ua);
 
-  // ✅ iOS Safari特殊处理
+  // iOS Safari 没有 beforeinstallprompt，只能展示手动安装说明。
   if (isIOS && isSafari) {
-    setTimeout(() => { iosGuide.classList.add('show'); }, 2000);
+    if (!isDismissedRecently()) {
+      setTimeout(() => {
+        if (!isStandaloneMode() && !isDismissedRecently()) {
+          iosGuide.classList.add('show');
+        }
+      }, 2000);
+    }
     document.getElementById('iosGuideClose').addEventListener('click', () => {
       iosGuide.classList.remove('show');
-      localStorage.setItem('pl-install-dismissed', String(Date.now()));
+      rememberDismissed();
     });
     return;
   }
 
-  // ✅ 监听beforeinstallprompt事件
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    banner.classList.add('show');
-  });
-
-  // ✅ 安装按钮点击处理
   document.getElementById('installAccept').addEventListener('click', async () => {
-    if (deferredPrompt) {
-      // ✅ 浏览器支持自动安装
-      deferredPrompt.prompt();
-      const result = await deferredPrompt.userChoice;
-      deferredPrompt = null;
-      banner.classList.remove('show');
-      if (result.outcome === 'accepted') {
-        localStorage.setItem('pl-install-dismissed', String(Date.now()));
-        showToast(t('install_success') || '安装成功！');
-      }
-    } else {
-      // ✅ 浏览器不支持自动安装，显示手动安装引导
-      showManualInstallGuide();
-      banner.classList.remove('show');
-    }
+    await promptInstall();
   });
 
   document.getElementById('installDismiss').addEventListener('click', () => {
-    banner.classList.remove('show');
-    deferredPrompt = null;
-    localStorage.setItem('pl-install-dismissed', String(Date.now()));
+    hideInstallSurfaces();
+    rememberDismissed();
   });
 
-  window.addEventListener('appinstalled', () => {
-    banner.classList.remove('show');
-    localStorage.setItem('pl-install-dismissed', String(Date.now()));
-    showToast(t('install_success') || '安装成功！');
-  });
+  updateInstallBannerVisibility();
 }
 
-// ✅ 新增：显示手动安装引导
 function showManualInstallGuide() {
   const ua = navigator.userAgent;
   const isAndroid = /Android/.test(ua);
@@ -98,7 +165,7 @@ function showManualInstallGuide() {
   } else if (isFirefox) {
     guide = '请点击浏览器地址栏右侧的安装图标 🏠';
   } else {
-    guide = t('install_menu_hint') || '请点击浏览器菜单中的"添加到主屏幕"选项';
+    guide = t('install_menu_hint') || '如果浏览器没有显示安装按钮，请先确认已使用 HTTPS、未在应用内浏览器中打开，且浏览器尚未把本站视为已安装。';
   }
 
   showToast(guide);
@@ -107,11 +174,11 @@ function showManualInstallGuide() {
 /* ===== Back Navigation Guard ===== */
 export function initBackGuard(renderCategory, stateRef, { closeFullScreen, getPlaylistVisible, closePlaylist, renderHomePage }) {
   const dom = getDOM();
-  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  const isStandalone = isStandaloneMode();
 
   history.replaceState({ page: 'main' }, '');
   history.pushState({ page: 'guard' }, '');
-  
+
   window.addEventListener('popstate', (e) => {
     // Let wenku/reader navigation handle its own popstate (handled in main.js)
     const st = e.state;
@@ -148,14 +215,14 @@ export function initBackGuard(renderCategory, stateRef, { closeFullScreen, getPl
       history.pushState({ page: 'guard' }, '');
       return;
     }
-    
+
     // ✅ 修复：standalone模式下，在首页时阻止退出，保持guard状态
     if (isStandalone) {
       // 已在首页，重新push guard防止退出
       history.pushState({ page: 'guard' }, '');
       return;
     }
-    
+
     // 非standalone模式，允许正常返回
     history.pushState({ page: 'guard' }, '');
   });

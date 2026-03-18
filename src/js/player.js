@@ -6,7 +6,7 @@ import { t } from './i18n.js';
 import { fmt, showToast, seekAt, haptic, fmtCount, escapeHtml } from './utils.js';
 import { addHistory, syncHistoryProgress, getHistory } from './history.js';
 import { recordPlay, getAppreciateCount } from './api.js';
-import { cacheAudio, getCachedAudioUrl, isAudioCached } from './audio-cache.js';
+import { cacheAudio, getCachedAudioUrl, isAudioCached, isCachedSync } from './audio-cache.js';
 import { mp3FallbackUrl } from './audio-url.js';
 import { get, set, patch, saveNow } from './store.js';
 
@@ -17,6 +17,7 @@ let audioRetries = 0;
 let _dragging = false;
 // Prevents a second play() from racing while the first is still resolving (rapid-click guard)
 let _playPending = false;
+let _switchingTimeoutId = null;
 
 /* ===== Background Full-Load State ===== */
 // After playback starts, fetch the full audio file in the background.
@@ -70,7 +71,7 @@ function updateStallDetectInterval() {
 }
 
 /* ===== Buffering UI helper ===== */
-function setBuffering(on) {
+export function setBuffering(on) {
   const dom = getDOM();
   dom.playerTrack.classList.toggle('buffering', on);
   dom.centerPlayBtn.classList.toggle('buffering', on);
@@ -155,6 +156,10 @@ export function startStallWatch() {
   let lastTime = dom.audio.currentTime;
 
   stallTimer = setInterval(() => {
+    if (document.visibilityState === 'hidden') {
+      lastTime = dom.audio.currentTime;
+      return;
+    }
     if (dom.audio.paused || dom.audio.ended || !dom.audio.src) {
       clearStallWatch();
       return;
@@ -254,21 +259,26 @@ export function prepareList(episodes, idx, series, restoreTime) {
   if (!tr) return;
   const dom = getDOM();
   const capturedId = _playCurrentId; // guard against rapid calls overwriting each other
-  // ✅ Cache-first: check cache before setting src
-  getCachedAudioUrl(tr.url).then(cachedUrl => {
-    if (_playCurrentId !== capturedId) {
-      if (cachedUrl) URL.revokeObjectURL(cachedUrl); // revoke stale blob
-      return;
-    }
-    const srcUrl = cachedUrl || tr.url;
-    if (cachedUrl) dom.audio._cachedBlobUrl = cachedUrl;
-    dom.audio.src = srcUrl;
-    dom.audio.load();
-  }).catch(() => {
+  if (!isCachedSync(tr.url)) {
     if (_playCurrentId !== capturedId) return;
     dom.audio.src = tr.url;
     dom.audio.load();
-  });
+  } else {
+    getCachedAudioUrl(tr.url).then(cachedUrl => {
+      if (_playCurrentId !== capturedId) {
+        if (cachedUrl) URL.revokeObjectURL(cachedUrl);
+        return;
+      }
+      const srcUrl = cachedUrl || tr.url;
+      if (cachedUrl) dom.audio._cachedBlobUrl = cachedUrl;
+      dom.audio.src = srcUrl;
+      dom.audio.load();
+    }).catch(() => {
+      if (_playCurrentId !== capturedId) return;
+      dom.audio.src = tr.url;
+      dom.audio.load();
+    });
+  }
   updateUI(tr);
   highlightEp();
   updateMediaSession(tr);
@@ -292,6 +302,24 @@ function cleanupReadyListeners(dom) {
     clearTimeout(dom.audio._slowTimeout);
     dom.audio._slowTimeout = null;
   }
+}
+
+function clearSwitchingTimeout() {
+  if (_switchingTimeoutId) {
+    clearTimeout(_switchingTimeoutId);
+    _switchingTimeoutId = null;
+  }
+}
+
+function cancelPendingTrackLoad() {
+  if (!isSwitching) return;
+  const dom = getDOM();
+  _playCurrentId += 1;
+  clearSwitchingTimeout();
+  cleanupReadyListeners(dom);
+  isSwitching = false;
+  setBuffering(false);
+  renderPlaylistItems();
 }
 
 function playCurrent() {
@@ -342,7 +370,9 @@ function playCurrent() {
 
   // ✅ 优化：添加超时保护，防止isSwitching卡住（预加载时缩短到1.5秒）
   const switchTimeout = usePreloaded ? 1500 : 8000;
-  let switchingTimeout = setTimeout(() => {
+  clearSwitchingTimeout();
+  _switchingTimeoutId = setTimeout(() => {
+    _switchingTimeoutId = null;
     if (isSwitching && callId === _playCurrentId) {
       console.warn('[Player] isSwitching timeout, auto-reset');
       isSwitching = false;
@@ -360,7 +390,7 @@ function playCurrent() {
     if (seekTime > 0) dom.audio.currentTime = seekTime;
     dom.audio.play().then(() => {
       if (callId !== _playCurrentId) return; // ✅ Fix 5: guard stale resolution
-      clearTimeout(switchingTimeout);
+      clearSwitchingTimeout();
       isSwitching = false;
       setPlayState(true);
       renderPlaylistItems(); // Remove loading indicator from playlist item
@@ -368,7 +398,7 @@ function playCurrent() {
       if (_networkWeak) setNetworkWeak(false);
       startBgFullLoad(tr.url);
     }).catch(err => {
-      clearTimeout(switchingTimeout);
+      clearSwitchingTimeout();
       isSwitching = false;
       setBuffering(false);
       if (callId === _playCurrentId && err.name !== 'AbortError') {
@@ -393,7 +423,7 @@ function playCurrent() {
       if (seekTime > 0) dom.audio.currentTime = seekTime;
       dom.audio.play().then(() => {
         if (callId !== _playCurrentId) return; // ✅ Fix 5
-        clearTimeout(switchingTimeout);
+        clearSwitchingTimeout();
         isSwitching = false;
         setBuffering(false);
         setPlayState(true);
@@ -443,19 +473,21 @@ function playCurrent() {
     }
   }
 
-  // ✅ Fix 1: Cache-first — check cache BEFORE setting dom.audio.src
-  getCachedAudioUrl(tr.url).then(cachedUrl => {
-    if (callId !== _playCurrentId) {
-      if (cachedUrl) URL.revokeObjectURL(cachedUrl); // ✅ Fix 4: revoke stale blob
-      return;
-    }
-    if (cachedUrl) dom.audio._cachedBlobUrl = cachedUrl;
-    // Use cached blob URL (always needs load()). Skip load() only when using HTTP cache from preload.
-    const skipLoad = !cachedUrl && usePreloaded;
-    doLoad(cachedUrl || tr.url, skipLoad);
-  }).catch(() => {
+  if (!isCachedSync(tr.url)) {
     doLoad(tr.url, usePreloaded);
-  });
+  } else {
+    getCachedAudioUrl(tr.url).then(cachedUrl => {
+      if (callId !== _playCurrentId) {
+        if (cachedUrl) URL.revokeObjectURL(cachedUrl);
+        return;
+      }
+      if (cachedUrl) dom.audio._cachedBlobUrl = cachedUrl;
+      const skipLoad = !cachedUrl && usePreloaded;
+      doLoad(cachedUrl || tr.url, skipLoad);
+    }).catch(() => {
+      doLoad(tr.url, usePreloaded);
+    });
+  }
 
   updateUI(tr);
   highlightEp();
@@ -775,9 +807,7 @@ export function togglePlay() {
   } else {
     // If switching tracks, cancel the switch cleanly
     if (isSwitching) {
-      isSwitching = false;
-      cleanupReadyListeners(dom);
-      setBuffering(false);
+      cancelPendingTrackLoad();
     }
     dom.audio.pause();
     clearStallWatch();
@@ -786,9 +816,10 @@ export function togglePlay() {
 }
 
 let _skipDebounce = 0;
-const SKIP_DEBOUNCE_MS = 150;
+const SKIP_DEBOUNCE_MS = 80;
 
 function schedulePlayCurrent() {
+  cancelPendingTrackLoad();
   // Update UI immediately so user sees track title change
   const tr = state.playlist[state.epIdx];
   if (tr) updateUI(tr);

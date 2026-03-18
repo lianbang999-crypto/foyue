@@ -18,6 +18,7 @@ import { initDOM, getDOM } from './dom.js';
 import { initLang, applyI18n, t } from './i18n.js';
 import { initTheme } from './theme.js';
 import { seekCalc, seekUI, seekCommit, showToast, showFloatText, haptic } from './utils.js';
+import { seedCachedDurationsFromData, seedCachedDurationsFromEpisodes } from './duration-cache.js';
 import {
   playList, prepareList, togglePlay, prevTrack, nextTrack,
   cycleLoop, cycleSpeed, cycleSleepTimer,
@@ -27,7 +28,7 @@ import {
   togglePlaylist, closePlaylist, getPlaylistVisible, saveState, restoreState,
   getIsSwitching, setDragging, initPlaylistTabs, closeFullScreen,
   markAppreciated, updateAppreciateBtn, appreciateSuccess, updateAppreciateCount, isAppreciated,
-  retryPlayback, startStallWatch, clearStallWatch,
+  retryPlayback, startStallWatch, clearStallWatch, setBuffering,
   onVisibilityResume, setNetworkWeak,
 } from './player.js';
 import { renderHomePage, invalidateHomePage } from './pages-home.js';
@@ -124,11 +125,13 @@ function findSeriesInData(seriesId) {
 }
 
 function applyLoadedData(data) {
+  seedCachedDurationsFromData(data);
   state.data = data;
   state.isDataFull = data?.mode !== 'home';
 }
 
 function mergeCategoryIntoState(category) {
+  seedCachedDurationsFromData({ categories: [category] });
   if (!state.data) {
     state.data = { mode: 'partial', categories: [category] };
     state.isDataFull = false;
@@ -144,6 +147,7 @@ function mergeCategoryIntoState(category) {
 }
 
 function mergeSeriesIntoState(series) {
+  seedCachedDurationsFromEpisodes(series?.episodes);
   if (!state.data?.categories) return series;
   const categories = state.data.categories.map(cat => {
     if (cat.id !== series.categoryId) return cat;
@@ -616,8 +620,11 @@ async function ensureSeriesDetail(seriesId, categoryId) {
 
   // #4: Unified buffering indicator — 'waiting' shows, 'playing' clears
   // playCurrent() handles initial buffering via setBuffering(); these handle mid-playback buffer stalls
-  function showBufferingUI() { dom.playerTrack.classList.add('buffering'); dom.centerPlayBtn.classList.add('buffering'); dom.expPlay.classList.add('buffering'); }
-  function hideBufferingUI() { dom.playerTrack.classList.remove('buffering'); dom.centerPlayBtn.classList.remove('buffering'); dom.expPlay.classList.remove('buffering'); }
+  function showBufferingUI() {
+    if (!dom.audio.src || dom.audio.paused || dom.audio.ended || getIsSwitching()) return;
+    setBuffering(true);
+  }
+  function hideBufferingUI() { setBuffering(false); }
 
   dom.audio.addEventListener('waiting', showBufferingUI);
   dom.audio.addEventListener('playing', () => {
@@ -625,10 +632,13 @@ async function ensureSeriesDetail(seriesId, categoryId) {
     // Restart stall detection whenever playback resumes
     startStallWatch();
   });
-  dom.audio.addEventListener('pause', () => { clearStallWatch(); });
+  dom.audio.addEventListener('pause', () => {
+    clearStallWatch();
+    if (!getIsSwitching()) hideBufferingUI();
+  });
   // 'stalled' event: browser stopped receiving data mid-download (common with large R2 files)
   dom.audio.addEventListener('stalled', () => {
-    if (!dom.audio.paused && !dom.audio.ended && dom.audio.src) {
+    if (!getIsSwitching() && !dom.audio.paused && !dom.audio.ended && dom.audio.src) {
       console.log('[Audio] Stalled event — browser stopped receiving data');
       showBufferingUI();
     }
@@ -697,8 +707,15 @@ async function ensureSeriesDetail(seriesId, categoryId) {
     storeSaveNow(); // flush store to localStorage immediately
   };
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') handleSave();
-    else onVisibilityResume();
+    if (document.visibilityState === 'hidden') {
+      handleSave();
+      clearStallWatch();
+      return;
+    }
+    onVisibilityResume();
+    if (dom.audio.src && !dom.audio.paused && !dom.audio.ended) {
+      startStallWatch();
+    }
   });
   window.addEventListener('pagehide', handleSave);
   window.addEventListener('beforeunload', handleSave);

@@ -186,6 +186,23 @@ curl -X POST https://foyue.org/api/admin/embeddings/build \
   -H "X-Admin-Token: <ADMIN_TOKEN>"
 ```
 
+### Cloudflare 缓存规则清理脚本
+
+用于把音频缓存规则收敛成一组精确规则，避免 Cloudflare 后台出现重复或过宽匹配。
+
+```bash
+# 查看参数
+node scripts/cleanup-cloudflare-cache-rules.mjs --help
+
+# 仅预览，不写入 Cloudflare
+CLOUDFLARE_API_TOKEN=<token> \
+node scripts/cleanup-cloudflare-cache-rules.mjs --zone foyue.org --dry-run
+
+# 实际写入
+CLOUDFLARE_API_TOKEN=<token> \
+node scripts/cleanup-cloudflare-cache-rules.mjs --zone foyue.org
+```
+
 ---
 
 ## 开发规范

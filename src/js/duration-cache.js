@@ -18,6 +18,30 @@ export function getCachedDuration(url) {
   return (d && d[url] != null) ? d[url] : null;
 }
 
+function collectKnownDurations(episodes, target) {
+  if (!Array.isArray(episodes)) return target;
+  episodes.forEach(ep => {
+    if (!ep?.url || !ep.duration || !isFinite(ep.duration) || ep.duration <= 0) return;
+    target[ep.url] = Math.round(ep.duration);
+  });
+  return target;
+}
+
+export function seedCachedDurationsFromEpisodes(episodes) {
+  const next = collectKnownDurations(episodes, {});
+  if (Object.keys(next).length) patch('durations', next);
+}
+
+export function seedCachedDurationsFromData(data) {
+  const next = {};
+  const categories = Array.isArray(data?.categories) ? data.categories : [];
+  categories.forEach(cat => {
+    const seriesList = Array.isArray(cat?.series) ? cat.series : [];
+    seriesList.forEach(series => collectKnownDurations(series?.episodes, next));
+  });
+  if (Object.keys(next).length) patch('durations', next);
+}
+
 /**
  * Probe a single audio URL for its duration.
  * Returns a Promise<number|null> (duration in seconds or null on failure).
@@ -71,7 +95,7 @@ export function probeDurations(episodes, onDuration) {
       const d = durations[ep.url];
       if (d) onDuration(idx, d);
     });
-    return () => {};
+    return () => { };
   }
 
   // Immediately report cached durations; queue uncached episodes for probing
@@ -86,7 +110,7 @@ export function probeDurations(episodes, onDuration) {
   });
 
   // Nothing to probe
-  if (!queue.length) return () => {};
+  if (!queue.length) return () => { };
 
   let running = 0;
   let qi = 0;

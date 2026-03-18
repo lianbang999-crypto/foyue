@@ -5,7 +5,7 @@ import { getDOM } from './dom.js';
 import { toggleTheme, getTheme } from './theme.js';
 import { getHistory, clearHistory } from './history.js';
 import { playList } from './player.js';
-import { getDeferredPrompt, clearDeferredPrompt } from './pwa.js';
+import { promptInstall } from './pwa.js';
 import { showToast, escapeHtml } from './utils.js';
 import { renderMessageWall } from './message-wall.js';
 import { getCachedCount, getCachedSize, clearAudioCache } from './audio-cache.js';
@@ -211,15 +211,7 @@ export function renderMyPage() {
   const installBtn = page.querySelector('#myInstallBtn');
   if (installBtn) {
     installBtn.addEventListener('click', async () => {
-      const deferredPrompt = getDeferredPrompt();
-      if (deferredPrompt) {
-        deferredPrompt.prompt();
-        const result = await deferredPrompt.userChoice;
-        clearDeferredPrompt();
-        if (result.outcome === 'accepted') localStorage.setItem('pl-install-dismissed', String(Date.now()));
-      } else {
-        showToast(t('install_menu_hint'));
-      }
+      await promptInstall();
     });
   }
 
