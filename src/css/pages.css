@@ -1177,16 +1177,8 @@
     box-shadow: 0 4px 16px var(--accent-shadow), 0 1px 4px rgba(0,0,0,0.06);
 }
 
-.counter-lotus {
-    width: 48px;
-    height: 48px;
-    color: var(--accent);
-    margin-bottom: -4px;
-    opacity: 0.6;
-}
-
 .counter-number {
-    font-size: 2.4rem;
+    font-size: 2.8rem;
     font-weight: 700;
     color: var(--text);
     line-height: 1;
@@ -1200,17 +1192,18 @@
     transform: scale(1.12);
 }
 
+/* Practice name displayed outside the tap area */
 .counter-practice-name {
-    font-size: .7rem;
+    font-size: .88rem;
     color: var(--accent);
-    letter-spacing: .06em;
-    font-weight: 500;
-    margin-top: 4px;
+    letter-spacing: .1em;
+    font-weight: 600;
     max-width: 90%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     text-align: center;
+    flex-shrink: 0;
 }
 
 .counter-hint {

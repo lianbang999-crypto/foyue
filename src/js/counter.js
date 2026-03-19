@@ -268,6 +268,9 @@ function buildCounterHTML(data, session) {
     </div>
 
     <div class="counter-body">
+      <!-- Practice name (outside tap area for reverence) -->
+      <div class="counter-practice-name" id="counterPracticeName">${displayName}</div>
+
       <!-- Main tap button -->
       <div class="counter-tap-area" id="counterTapArea" role="button" tabindex="0"
            aria-label="${t('counter_tap_hint')}">
@@ -280,27 +283,10 @@ function buildCounterHTML(data, session) {
             stroke-dasharray="${Math.round(2 * Math.PI * 88)}"
             stroke-dashoffset="${Math.round(2 * Math.PI * 88 * (1 - beadPos / BEADS_PER_LOOP))}"/>
         </svg>
-        <!-- Inner lotus circle -->
+        <!-- Inner circle -->
         <div class="counter-lotus-wrap">
-          <!-- Lotus SVG motif -->
-          <svg class="counter-lotus" viewBox="0 0 80 80">
-            <g fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" opacity="0.55">
-              <!-- Petals -->
-              <path d="M40 40 C34 28 26 24 24 16 C32 18 38 26 40 40Z"/>
-              <path d="M40 40 C46 28 54 24 56 16 C48 18 42 26 40 40Z"/>
-              <path d="M40 40 C28 34 24 26 16 24 C18 32 26 38 40 40Z"/>
-              <path d="M40 40 C52 34 56 26 64 24 C62 32 54 38 40 40Z"/>
-              <path d="M40 40 C34 52 26 56 24 64 C32 62 38 54 40 40Z"/>
-              <path d="M40 40 C46 52 54 56 56 64 C48 62 42 54 40 40Z"/>
-              <path d="M40 40 C28 46 24 54 16 56 C18 48 26 42 40 40Z"/>
-              <path d="M40 40 C52 46 56 54 64 56 C62 48 54 42 40 40Z"/>
-              <!-- Center circle -->
-              <circle cx="40" cy="40" r="6"/>
-            </g>
-          </svg>
           <!-- Count number -->
           <div class="counter-number" id="counterNumber">${session}</div>
-          <div class="counter-practice-name" id="counterPracticeName">${displayName}</div>
           <div class="counter-hint" id="counterHint">${t('counter_tap_hint')}</div>
         </div>
         <!-- Ripple container -->
