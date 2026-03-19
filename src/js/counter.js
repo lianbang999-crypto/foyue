@@ -13,6 +13,19 @@ const PRACTICE_PRESETS = ['南无阿弥陀佛', '阿弥陀佛'];
 
 // HUIXIANG_TEXT and formatCount are imported from utils.js
 
+/** Standard daily practice goal presets (all have Buddhist significance) */
+const GOAL_PRESETS = [108, 216, 540, 1080, 3000, 10000];
+
+/** localStorage key for the user's last saved custom goal */
+const CUSTOM_GOAL_KEY = 'counter-custom-goal';
+
+function getSavedCustomGoal() {
+  try { return parseInt(localStorage.getItem(CUSTOM_GOAL_KEY)) || 0; } catch { return 0; }
+}
+function persistCustomGoal(val) {
+  try { localStorage.setItem(CUSTOM_GOAL_KEY, String(val)); } catch { }
+}
+
 /* ── Helpers ── */
 function todayStr() {
   const d = new Date();
@@ -591,8 +604,7 @@ function wireCounterEvents(view, data, _session) {
 
   /* ── 今日功课 (set goal) ── */
   view.querySelector('#counterSetGoal').addEventListener('click', () => {
-    const goals = [108, 216, 540, 1080, 3000, 10000, 0];
-    showGoalPicker(view, goals, data, () => updateUI());
+    showGoalPicker(view, data, () => updateUI());
   });
 
   /* ── Wake lock toggle ── */
@@ -879,11 +891,28 @@ async function submitToGongxiu(data, count, vowInfo) {
   return resp.json();
 }
 
-function showGoalPicker(parentView, goals, data, onDone) {
-  // Remove existing picker
+/**
+ * 每日功课目标选择器
+ *
+ * - 预设按钮：GOAL_PRESETS 列表（108 / 216 / 540 / 1080 / 3000 / 10000）
+ * - 「我的功课」快捷按钮：若用户曾保存过自定义数量且不在预设中，额外显示
+ * - 自定义输入框预填充上次保存的数量，便于快速修改
+ * - 确认后将自定义数量持久化到 localStorage（CUSTOM_GOAL_KEY）
+ */
+function showGoalPicker(parentView, data, onDone) {
   parentView.querySelectorAll('.counter-goal-sheet').forEach(el => el.remove());
 
   const ps = getPracticeStats(data);
+  const savedCustom = getSavedCustomGoal();
+  const isCustomCurrent = ps.goal > 0 && !GOAL_PRESETS.includes(ps.goal);
+
+  // If user has a saved custom goal not in standard presets, show it as extra button
+  const myGoal = isCustomCurrent ? ps.goal : (savedCustom > 0 && !GOAL_PRESETS.includes(savedCustom) ? savedCustom : 0);
+  const allBtns = myGoal ? [...GOAL_PRESETS, myGoal] : GOAL_PRESETS;
+
+  // Pre-fill input: current custom goal OR saved custom
+  const inputDefault = isCustomCurrent ? ps.goal : (savedCustom > 0 ? savedCustom : '');
+
   const sheet = document.createElement('div');
   sheet.className = 'counter-goal-sheet';
   sheet.innerHTML = `
@@ -891,11 +920,19 @@ function showGoalPicker(parentView, goals, data, onDone) {
     <div class="counter-goal-panel">
       <div class="counter-goal-panel-title">${t('counter_goal_hint')}</div>
       <div class="counter-goal-options">
-        ${goals.map(g => `<button class="counter-goal-opt${ps.goal === g ? ' counter-goal-opt--active' : ''}" data-goal="${g}">${g}</button>`).join('')}
+        ${GOAL_PRESETS.map(g => `
+          <button class="counter-goal-opt${ps.goal === g ? ' counter-goal-opt--active' : ''}" data-goal="${g}">${g}</button>
+        `).join('')}
+        ${myGoal ? `
+          <button class="counter-goal-opt counter-goal-opt--my${ps.goal === myGoal ? ' counter-goal-opt--active' : ''}" data-goal="${myGoal}" style="grid-column:1/-1" title="我的自定义功课">
+            我的：${formatCount(myGoal)} 声
+          </button>
+        ` : ''}
       </div>
+      <div class="counter-goal-section-label">自定义功课数量</div>
       <div class="counter-goal-custom-row">
         <input class="counter-goal-custom-input" id="goalCustomInput" type="number" min="1"
-               placeholder="${t('counter_goal_custom_hint')}">
+               value="${inputDefault}" placeholder="${t('counter_goal_custom_hint')}">
         <button class="counter-goal-custom-btn" id="goalCustomConfirm">${t('counter_goal_custom_save')}</button>
       </div>
       <button class="counter-goal-cancel" id="goalCancel">${t('cancel')}</button>
@@ -915,6 +952,8 @@ function showGoalPicker(parentView, goals, data, onDone) {
   sheet.querySelector('#goalCancel').addEventListener('click', close);
   const sheetEscHandler = (e) => { if (e.key === 'Escape') close(); };
   window.addEventListener('keydown', sheetEscHandler);
+
+  // Preset and custom-goal buttons
   sheet.querySelectorAll('.counter-goal-opt').forEach(btn => {
     btn.addEventListener('click', () => {
       ps.goal = parseInt(btn.dataset.goal);
@@ -925,7 +964,8 @@ function showGoalPicker(parentView, goals, data, onDone) {
     });
   });
 
-  sheet.querySelector('#goalCustomConfirm').addEventListener('click', () => {
+  // Custom input confirm — save number both to practice data and localStorage
+  const confirmCustom = () => {
     const input = sheet.querySelector('#goalCustomInput');
     const val = parseInt(input.value);
     if (isNaN(val) || val < 1) {
@@ -935,10 +975,16 @@ function showGoalPicker(parentView, goals, data, onDone) {
       return;
     }
     ps.goal = val;
+    persistCustomGoal(val); // remember for next time
     patch('counter', data);
     haptic(15);
     onDone();
     close();
+  };
+
+  sheet.querySelector('#goalCustomConfirm').addEventListener('click', confirmCustom);
+  sheet.querySelector('#goalCustomInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); confirmCustom(); }
   });
 }
 

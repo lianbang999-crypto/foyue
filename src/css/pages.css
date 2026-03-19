@@ -1946,6 +1946,32 @@
     color: var(--accent);
 }
 
+/* 「我的功课」快捷按钮 */
+.counter-goal-opt--my {
+    border-color: var(--border-active);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-family: var(--font-zh);
+    font-size: .84rem;
+    letter-spacing: .02em;
+}
+
+.counter-goal-opt--my.counter-goal-opt--active {
+    border-color: var(--accent);
+    background: var(--accent-glow);
+    color: var(--accent);
+}
+
+/* 分隔标签 */
+.counter-goal-section-label {
+    font-size: .70rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin-top: 4px;
+}
+
 .counter-goal-cancel {
     width: 100%;
     padding: 12px;
