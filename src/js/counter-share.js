@@ -11,7 +11,7 @@
  */
 
 import QRCode from 'qrcode';
-import { shareImageBlob } from './utils.js';
+import { shareImageBlob, formatCount } from './utils.js';
 
 const APP_URL = 'https://foyue.org';
 
@@ -27,13 +27,7 @@ const COLORS = {
   glow:     'rgba(131,106,50,0.06)',
 };
 
-/** Format a number: 10800 → "1.08万", 288000 → "28.8万", 1000000 → "100万" */
-function fmt(n) {
-  if (!n || n <= 0) return '0';
-  if (n >= 100000000) return (n / 100000000).toFixed(1).replace(/\.0$/, '') + '亿';
-  if (n >= 10000)     return (n / 10000).toFixed(1).replace(/\.0$/, '') + '万';
-  return n.toLocaleString ? n.toLocaleString('zh-CN') : String(n);
-}
+// formatCount is imported from utils.js
 
 /** Today's date in Chinese format: 2026年3月19日 */
 function todayCN() {
@@ -148,8 +142,8 @@ export async function generateSharePoster(stats) {
 
   // Stat values
   const statItems = [
-    { label: '今日', value: fmt(stats.daily) },
-    { label: '累计', value: fmt(stats.total) },
+    { label: '今日', value: formatCount(stats.daily) },
+    { label: '累计', value: formatCount(stats.total) },
     { label: '连续打卡', value: (stats.streak || 0) + ' 天' },
   ];
   const cellW = cardW / 3;

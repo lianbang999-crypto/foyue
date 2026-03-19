@@ -1,5 +1,39 @@
 /* ===== Utility Functions ===== */
 
+/**
+ * 莲池大师回向文（固定，所有模块共用此常量，不得各自定义）
+ * 以"同生极乐国"为一切功德的最终归宿。
+ */
+export const HUIXIANG_TEXT =
+  '愿以此功德，庄严佛净土，\n上报四重恩，下济三途苦，\n若有见闻者，悉发菩提心，\n尽此一报身，同生极乐国。';
+
+/**
+ * 格式化声数为易读字符串
+ * 10800 → "10,800" ｜ 12345 → "1.2万" ｜ 1e8 → "1亿"
+ */
+export function formatCount(n) {
+  if (!n || n <= 0) return '0';
+  if (n >= 100000000) return (n / 100000000).toFixed(1).replace(/\.0$/, '') + '亿';
+  if (n >= 10000)     return (n / 10000).toFixed(1).replace(/\.0$/, '') + '万';
+  return n.toLocaleString ? n.toLocaleString('zh-CN') : String(n);
+}
+
+/**
+ * 相对时间：ISO 字符串 → "刚刚 / X分钟前 / X小时前 / X天前 / M月D日"
+ */
+export function formatRelTime(isoStr) {
+  if (!isoStr) return '';
+  try {
+    const diff = (Date.now() - new Date(isoStr).getTime()) / 1000;
+    if (diff < 60)     return '刚刚';
+    if (diff < 3600)   return Math.floor(diff / 60) + '分钟前';
+    if (diff < 86400)  return Math.floor(diff / 3600) + '小时前';
+    if (diff < 604800) return Math.floor(diff / 86400) + '天前';
+    const d = new Date(isoStr);
+    return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+  } catch { return ''; }
+}
+
 export function fmt(s) {
   if (!s || !isFinite(s)) return '0:00';
   const m = Math.floor(s / 60);

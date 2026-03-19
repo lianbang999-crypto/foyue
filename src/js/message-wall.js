@@ -1,6 +1,6 @@
 /* ===== Message Wall / 留言墙 ===== */
 import { t } from './i18n.js';
-import { escapeHtml, showToast } from './utils.js';
+import { escapeHtml, showToast, formatRelTime } from './utils.js';
 
 const PAGE_SIZE = 20;
 let currentPage = 1;
@@ -205,21 +205,8 @@ function buildMessageCard(msg) {
   return div;
 }
 
-function formatRelativeTime(isoStr) {
-  if (!isoStr) return '';
-  try {
-    const d = new Date(isoStr);
-    const now = Date.now();
-    const diff = (now - d.getTime()) / 1000;
-    if (diff < 60) return t('time_just_now') || '刚刚';
-    if (diff < 3600) return Math.floor(diff / 60) + (t('time_min_ago') || '分钟前');
-    if (diff < 86400) return Math.floor(diff / 3600) + (t('time_hour_ago') || '小时前');
-    if (diff < 604800) return Math.floor(diff / 86400) + (t('time_day_ago') || '天前');
-    return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
-  } catch {
-    return '';
-  }
-}
+// formatRelativeTime is now formatRelTime from utils.js
+const formatRelativeTime = formatRelTime;
 
 function updateCount(section) {
   const el = section.querySelector('#msgWallCount');

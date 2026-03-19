@@ -1,7 +1,7 @@
 /* ===== 念佛计数器 (Buddhist Chanting Counter) ===== */
 import { t } from './i18n.js';
 import { get, patch } from './store.js';
-import { haptic, showToast, escapeHtml } from './utils.js';
+import { haptic, showToast, escapeHtml, formatCount, HUIXIANG_TEXT } from './utils.js';
 import { showSharePoster } from './counter-share.js';
 
 const BEADS_PER_LOOP = 108;
@@ -13,8 +13,7 @@ const MAX_CUSTOM_PRACTICES = 5;
 /** Built-in presets — always present, cannot be removed */
 const PRACTICE_PRESETS = ['南无阿弥陀佛', '阿弥陀佛'];
 
-/** Fixed standard dedication text (莲池大师回向文) — always appended, never editable */
-const HUIXIANG_TEXT = '愿以此功德，庄严佛净土，\n上报四重恩，下济三途苦，\n若有见闻者，悉发菩提心，\n尽此一报身，同生极乐国。';
+// HUIXIANG_TEXT and formatCount are imported from utils.js
 
 /* ── Helpers ── */
 function todayStr() {
@@ -1099,13 +1098,7 @@ function showPracticePicker(parentView, data, onDone) {
 }
 
 /* ===== History View ===== */
-
-/** Format a count number for compact display: 10800 → "10,800" / 12345 → "1.2万" */
-function formatCount(n) {
-  if (n >= 100000000) return (n / 100000000).toFixed(1).replace(/\.0$/, '') + '亿';
-  if (n >= 10000) return (n / 10000).toFixed(1).replace(/\.0$/, '') + '万';
-  return n.toLocaleString ? n.toLocaleString('zh-CN') : String(n);
-}
+// formatCount is imported from utils.js
 
 /** Format a YYYY-MM-DD date string into a human-readable label */
 function formatHistoryDate(dateStr) {

@@ -14,7 +14,7 @@
  */
 
 import { t } from './i18n.js';
-import { escapeHtml, showToast } from './utils.js';
+import { escapeHtml, showToast, formatCount, formatRelTime, HUIXIANG_TEXT } from './utils.js';
 import { get as storeGet } from './store.js';
 
 const GONGXIU_SUBMITTED_KEY = 'gongxiu-submitted-date';
@@ -29,13 +29,13 @@ const VOW_TYPES = {
   custom:    '自定义',
 };
 
-const HUIXIANG_TEXT =
-  '愿以此功德，庄严佛净土，\n上报四重恩，下济三途苦，\n若有见闻者，悉发菩提心，\n尽此一报身，同生极乐国。';
+// HUIXIANG_TEXT, formatCount, formatRelTime are imported from utils.js
 
 // ── Helpers ──────────────────────────────────────────────────
 
+/** UTC+8 today string for server-synced community date (Beijing time) */
 function todayStr() {
-  return new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10); // UTC+8
+  return new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
 }
 
 function hasSubmittedToday() {
@@ -54,23 +54,6 @@ function getSavedNickname() {
 
 function saveNickname(n) {
   try { localStorage.setItem(GONGXIU_NICKNAME_KEY, n.slice(0, 20)); } catch { }
-}
-
-function formatCount(n) {
-  if (n >= 100000000) return (n / 100000000).toFixed(1).replace(/\.0$/, '') + '亿';
-  if (n >= 10000)     return (n / 10000).toFixed(1).replace(/\.0$/, '') + '万';
-  return n.toLocaleString ? n.toLocaleString('zh-CN') : String(n);
-}
-
-function formatRelTime(iso) {
-  if (!iso) return '';
-  try {
-    const diff = (Date.now() - new Date(iso).getTime()) / 1000;
-    if (diff < 60)     return '刚刚';
-    if (diff < 3600)   return Math.floor(diff / 60) + '分钟前';
-    if (diff < 86400)  return Math.floor(diff / 3600) + '小时前';
-    return Math.floor(diff / 86400) + '天前';
-  } catch { return ''; }
 }
 
 function getVowLabel(entry) {

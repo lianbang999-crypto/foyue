@@ -1,7 +1,7 @@
 /* ===== AI 全屏聊天页 ===== */
 import { askQuestionStream } from './ai-client.js';
 import { t } from './i18n.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, shareContent } from './utils.js';
 
 let chatInstance = null;
 let aiContext = { seriesId: null, episodeNum: null };
@@ -109,13 +109,7 @@ function createChatPage() {
 
   page.querySelector('#aiFsShare').addEventListener('click', () => {
     const url = window.location.origin + '/?tab=ai';
-    if (navigator.share) {
-      navigator.share({ title: 'AI 问法 — 净土法音', url }).catch(() => { });
-    } else {
-      navigator.clipboard.writeText(url).then(() => {
-        import('./utils.js').then(m => m.showToast(t('link_copied') || '链接已复制'));
-      }).catch(() => { });
-    }
+    shareContent('AI 问法 — 净土法音', url);
   });
 
   function attachSuggestChips() {
