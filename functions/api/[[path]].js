@@ -8,7 +8,7 @@ import {
   retrieveDocuments, rerankResults, expandContextFromDocs,
   ragAnswer, buildRAGMessages, generateSummary,
   checkRateLimit, cleanupRateLimits, timingSafeCompare,
-  extractAIResponse, stripThinkTags, getAICallStats, logAICall,
+  extractAIResponse, stripThinkTags, getAICallStats, runAIWithLogging,
 } from '../lib/ai-utils.js';
 import { buildAudioUrl, OPUS_CATEGORIES } from '../lib/audio-utils.js';
 
@@ -148,29 +148,29 @@ export async function onRequest(context) {
 
     // POST /api/ai/ask — RAG 问答
     if (path === '/api/ai/ask' && method === 'POST') {
-      return await handleAiAsk(env, request, cors);
+      return await handleAiAsk(env, request, cors, context);
     }
 
     // POST /api/ai/ask-stream — RAG 问答（SSE 流式）
     if (path === '/api/ai/ask-stream' && method === 'POST') {
-      return await handleAiAskStream(env, request, cors);
+      return await handleAiAskStream(env, request, cors, context);
     }
 
     // GET /api/ai/summary/:id — 获取/生成集摘要
     const sumMatch = path.match(/^\/api\/ai\/summary\/([^/]+)$/);
     if (sumMatch && method === 'GET') {
-      return await handleAiSummary(env, sumMatch[1], request, cors);
+      return await handleAiSummary(env, sumMatch[1], request, cors, context);
     }
 
     // GET /api/ai/search?q= — 语义搜索
     if (path === '/api/ai/search' && method === 'GET') {
       const q = url.searchParams.get('q');
-      return await handleAiSearch(env, request, q, cors);
+      return await handleAiSearch(env, request, q, cors, context);
     }
 
     // GET /api/ai/daily-recommend — AI 每日推荐
     if (path === '/api/ai/daily-recommend' && method === 'GET') {
-      return await handleDailyRecommend(env, cors);
+      return await handleDailyRecommend(env, cors, context);
     }
 
     // POST /api/ai/voice-to-text — Whisper 语音识别
@@ -236,7 +236,7 @@ export async function onRequest(context) {
           if (!doc) return json({ error: 'No documents found' }, cors);
           const chunks = chunkText(doc.content, doc.id, { title: doc.title });
           const firstChunk = chunks[0];
-          const resp = await env.AI.run(AI_CONFIG.models.embedding, { text: [firstChunk.text] }, { gateway: GATEWAY_PROFILES.diagnostic });
+          const resp = await runAIWithLogging(env, AI_CONFIG.models.embedding, { text: [firstChunk.text] }, GATEWAY_PROFILES.diagnostic, 'diagnostic', context);
           return json({
             success: true,
             docId: doc.id,
@@ -249,7 +249,7 @@ export async function onRequest(context) {
         }
         // mode=simple: 简单文本测试
         const testText = '南无阿弥陀佛';
-        const resp = await env.AI.run(AI_CONFIG.models.embedding, { text: [testText] }, { gateway: GATEWAY_PROFILES.diagnostic });
+        const resp = await runAIWithLogging(env, AI_CONFIG.models.embedding, { text: [testText] }, GATEWAY_PROFILES.diagnostic, 'diagnostic', context);
         return json({
           success: true,
           model: '@cf/baai/bge-m3',
@@ -271,7 +271,8 @@ export async function onRequest(context) {
       const testPrompt = url.searchParams.get('q') || '请用一句话解释什么是净土宗。';
       const model = url.searchParams.get('model') || AI_CONFIG.models.chat;
       try {
-        const rawResponse = await env.AI.run(
+        const rawResponse = await runAIWithLogging(
+          env,
           model,
           {
             messages: [
@@ -281,7 +282,9 @@ export async function onRequest(context) {
             max_tokens: 200,
             temperature: 0.3,
           },
-          { gateway: GATEWAY_PROFILES.diagnostic }
+          GATEWAY_PROFILES.diagnostic,
+          'diagnostic',
+          context
         );
         return json({
           success: true,
@@ -1305,7 +1308,7 @@ async function handleIncrementalTranscribe(env, request, cors) {
  * POST /api/ai/ask — RAG 问答
  * Body: { question, series_id?, episode_id? }
  */
-async function handleAiAsk(env, request, cors) {
+async function handleAiAsk(env, request, cors, ctx) {
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
   const limit = await checkRateLimit(env, ip, 'ai_ask');
   if (!limit.allowed) {
@@ -1314,7 +1317,8 @@ async function handleAiAsk(env, request, cors) {
 
   let body;
   try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
-  const { question, series_id, history } = body;
+  const { question, series_id, episode_id, episode_num, history } = body;
+  const episodeNum = Number.parseInt(episode_num ?? episode_id, 10);
 
   if (!question || typeof question !== 'string' || question.length > 500) {
     return json({ error: '问题不能为空且不超过500字' }, cors, 400);
@@ -1322,7 +1326,7 @@ async function handleAiAsk(env, request, cors) {
 
   // 构建 Vectorize 过滤条件
   const filter = {};
-  if (series_id && typeof series_id === 'string') filter.series_id = series_id.slice(0, 100);
+  if (series_id && typeof series_id === 'string') filter.audio_series_id = series_id.slice(0, 100);
 
   // 语义搜索
   let matches = [];
@@ -1330,6 +1334,7 @@ async function handleAiAsk(env, request, cors) {
     matches = await semanticSearch(env, question, {
       topK: 5,
       filter: Object.keys(filter).length > 0 ? filter : undefined,
+      ctx,
     });
   } catch (err) {
     console.warn('Vectorize search failed, falling back to D1:', err.message);
@@ -1337,11 +1342,23 @@ async function handleAiAsk(env, request, cors) {
 
   // 重排序：使用 reranker 模型精排结果
   if (matches.length >= 2) {
-    matches = await rerankResults(env, question, matches, { topK: 5 });
+    matches = await rerankResults(env, question, matches, { topK: 5, ctx });
   }
 
   // 从 D1 检索源文档
   let docs = await retrieveDocuments(env, matches);
+
+  if (series_id && Number.isInteger(episodeNum) && episodeNum > 0) {
+    const exactDoc = await env.DB.prepare(
+      `SELECT id, title, content, category, series_name, audio_series_id, audio_episode_num
+       FROM documents
+       WHERE audio_series_id = ? AND audio_episode_num = ? AND content IS NOT NULL AND content != ''
+       LIMIT 1`
+    ).bind(series_id, episodeNum).first();
+    if (exactDoc && !docs.some(doc => doc.id === exactDoc.id)) {
+      docs = [exactDoc, ...docs];
+    }
+  }
 
   // 上下文扩展：从源文档中扩展匹配片段的上下文窗口
   if (matches.length > 0 && docs.length > 0) {
@@ -1389,6 +1406,7 @@ async function handleAiAsk(env, request, cors) {
     result = await ragAnswer(env, question, docs, {
       history: Array.isArray(history) ? history : [],
       vectorMatches: matches,
+      ctx,
     });
   } catch (err) {
     console.error('RAG answer failed:', err.message);
@@ -1442,7 +1460,7 @@ async function handleAiAsk(env, request, cors) {
  *   event: done\ndata: {"sources":[...],"disclaimer":"..."}  — 结束事件
  *   event: error\ndata: {"error":"..."}  — 错误事件
  */
-async function handleAiAskStream(env, request, cors) {
+async function handleAiAskStream(env, request, cors, ctx) {
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
   const limit = await checkRateLimit(env, ip, 'ai_ask');
   if (!limit.allowed) {
@@ -1451,7 +1469,8 @@ async function handleAiAskStream(env, request, cors) {
 
   let body;
   try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
-  const { question, series_id, history } = body;
+  const { question, series_id, episode_id, episode_num, history } = body;
+  const episodeNum = Number.parseInt(episode_num ?? episode_id, 10);
 
   if (!question || typeof question !== 'string' || question.length > 500) {
     return json({ error: '问题不能为空且不超过500字' }, cors, 400);
@@ -1459,13 +1478,14 @@ async function handleAiAskStream(env, request, cors) {
 
   // --- Retrieval phase (same as handleAiAsk) ---
   const filter = {};
-  if (series_id && typeof series_id === 'string') filter.series_id = series_id.slice(0, 100);
+  if (series_id && typeof series_id === 'string') filter.audio_series_id = series_id.slice(0, 100);
 
   let matches = [];
   try {
     matches = await semanticSearch(env, question, {
       topK: 5,
       filter: Object.keys(filter).length > 0 ? filter : undefined,
+      ctx,
     });
   } catch (err) {
     console.warn('Vectorize search failed, falling back to D1:', err.message);
@@ -1473,10 +1493,22 @@ async function handleAiAskStream(env, request, cors) {
 
   // 重排序
   if (matches.length >= 2) {
-    matches = await rerankResults(env, question, matches, { topK: 5 });
+    matches = await rerankResults(env, question, matches, { topK: 5, ctx });
   }
 
   let docs = await retrieveDocuments(env, matches);
+
+  if (series_id && Number.isInteger(episodeNum) && episodeNum > 0) {
+    const exactDoc = await env.DB.prepare(
+      `SELECT id, title, content, category, series_name, audio_series_id, audio_episode_num
+       FROM documents
+       WHERE audio_series_id = ? AND audio_episode_num = ? AND content IS NOT NULL AND content != ''
+       LIMIT 1`
+    ).bind(series_id, episodeNum).first();
+    if (exactDoc && !docs.some(doc => doc.id === exactDoc.id)) {
+      docs = [exactDoc, ...docs];
+    }
+  }
 
   // 上下文扩展
   if (matches.length > 0 && docs.length > 0) {
@@ -1542,18 +1574,24 @@ async function handleAiAskStream(env, request, cors) {
 
   let aiStream;
   try {
-    aiStream = await env.AI.run(
+    aiStream = await runAIWithLogging(
+      env,
       AI_CONFIG.models.chat,
       { messages, max_tokens: 500, temperature: 0.2, stream: true },
-      { gateway: GATEWAY_PROFILES.ragStream }
+      GATEWAY_PROFILES.ragStream,
+      'ragStream',
+      ctx
     );
   } catch (err) {
     console.warn('Primary chat model failed, using fallback:', err.message);
     try {
-      aiStream = await env.AI.run(
+      aiStream = await runAIWithLogging(
+        env,
         AI_CONFIG.models.chatFallback,
         { messages, max_tokens: 500, temperature: 0.2, stream: true },
-        { gateway: GATEWAY_PROFILES.ragStream }
+        GATEWAY_PROFILES.ragStream,
+        'ragStream',
+        ctx
       );
     } catch (err2) {
       return json({
@@ -1710,10 +1748,13 @@ async function handleAiAskStream(env, request, cors) {
       // If streaming produced zero tokens, attempt non-stream fallback
       if (tokenCount === 0) {
         try {
-          const fallbackResult = await env.AI.run(
+          const fallbackResult = await runAIWithLogging(
+            env,
             AI_CONFIG.models.chat,
             { messages, max_tokens: 500, temperature: 0.2 },
-            { gateway: GATEWAY_PROFILES.ragChat }
+            GATEWAY_PROFILES.ragChat,
+            'ragChat',
+            ctx
           );
           const answer = stripThinkTags(extractAIResponse(fallbackResult));
           if (answer) {
@@ -1723,10 +1764,13 @@ async function handleAiAskStream(env, request, cors) {
         } catch {
           // Try fallback model non-stream
           try {
-            const fallback2 = await env.AI.run(
+            const fallback2 = await runAIWithLogging(
+              env,
               AI_CONFIG.models.chatFallback,
               { messages, max_tokens: 500, temperature: 0.2 },
-              { gateway: GATEWAY_PROFILES.ragChat }
+              GATEWAY_PROFILES.ragChat,
+              'ragChat',
+              ctx
             );
             const answer2 = stripThinkTags(extractAIResponse(fallback2));
             if (answer2) {
@@ -1758,7 +1802,7 @@ async function handleAiAskStream(env, request, cors) {
 /**
  * GET /api/ai/summary/:documentId — 获取/生成内容摘要
  */
-async function handleAiSummary(env, documentId, request, cors) {
+async function handleAiSummary(env, documentId, request, cors, ctx) {
   // 限流保护
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
   const limit = await checkRateLimit(env, ip, 'ai_summary');
@@ -1807,7 +1851,7 @@ async function handleAiSummary(env, documentId, request, cors) {
   // 生成摘要
   let summary;
   try {
-    summary = await generateSummary(env, doc.title, doc.content);
+    summary = await generateSummary(env, doc.title, doc.content, { ctx });
   } catch (err) {
     console.error('generateSummary failed:', err.message);
     return json({ error: 'AI摘要服务暂时不可用，请稍后再试' }, cors, 503);
@@ -1833,7 +1877,7 @@ async function handleAiSummary(env, documentId, request, cors) {
 /**
  * GET /api/ai/search?q= — 语义搜索
  */
-async function handleAiSearch(env, request, query, cors) {
+async function handleAiSearch(env, request, query, cors, ctx) {
   if (!query || query.length < 2 || query.length > 200) {
     return json({ error: '搜索词长度应为2-200个字符' }, cors, 400);
   }
@@ -1844,11 +1888,11 @@ async function handleAiSearch(env, request, query, cors) {
     return json({ error: limit.reason }, cors, 429);
   }
 
-  let matches = await semanticSearch(env, query, { topK: 10 });
+  let matches = await semanticSearch(env, query, { topK: 10, ctx });
 
   // 重排序搜索结果
   if (matches.length >= 2) {
-    matches = await rerankResults(env, query, matches, { topK: 10 });
+    matches = await rerankResults(env, query, matches, { topK: 10, ctx });
   }
 
   const docs = await retrieveDocuments(env, matches);
@@ -1978,6 +2022,9 @@ async function handleBuildEmbeddings(env, request, cors) {
         title: doc.title,
         category: doc.category || '',
         series_name: doc.series_name || '',
+        audio_series_id: doc.audio_series_id || '',
+        audio_episode_num: doc.audio_episode_num || null,
+        series_id: doc.audio_series_id || '',
       });
 
       // 分批嵌入（每批最多 5 条，避免超 token 限制）
@@ -2138,7 +2185,7 @@ async function getEpisodeContext(db, seriesId, episodeNum) {
 /**
  * 一次 AI 调用为 3 集音频生成推荐语
  */
-async function generateRecommendIntros(env, episodes, contexts) {
+async function generateRecommendIntros(env, episodes, contexts, ctx) {
   const epDesc = episodes.map((ep, i) => {
     let d = `${i + 1}. 系列：${ep.series_title}\n`;
     d += `   系列简介：${ep.series_intro}\n`;
@@ -2173,14 +2220,14 @@ ${epDesc}
 
   let response;
   try {
-    response = await env.AI.run(AI_CONFIG.models.chat, {
+    response = await runAIWithLogging(env, AI_CONFIG.models.chat, {
       messages, max_tokens: 500, temperature: 0.6,
-    }, { gateway: GATEWAY_PROFILES.recommend });
+    }, GATEWAY_PROFILES.recommend, 'recommend', ctx);
   } catch (err) {
     console.warn('[DailyRec] Primary model failed, trying fallback:', err.message);
-    response = await env.AI.run(AI_CONFIG.models.chatFallback, {
+    response = await runAIWithLogging(env, AI_CONFIG.models.chatFallback, {
       messages, max_tokens: 500, temperature: 0.6,
-    }, { gateway: GATEWAY_PROFILES.recommend });
+    }, GATEWAY_PROFILES.recommend, 'recommend', ctx);
   }
 
   const text = extractAIResponse(response);
@@ -2199,7 +2246,7 @@ ${epDesc}
 /**
  * GET /api/ai/daily-recommend — 每日 AI 推荐
  */
-async function handleDailyRecommend(env, cors) {
+async function handleDailyRecommend(env, cors, ctx) {
   const db = env.DB;
   const dateKey = new Date().toISOString().slice(0, 10);
   const startMs = Date.now();
@@ -2243,7 +2290,7 @@ async function handleDailyRecommend(env, cors) {
     );
 
     // AI 生成推荐语
-    const intros = await generateRecommendIntros(env, episodes, contexts);
+    const intros = await generateRecommendIntros(env, episodes, contexts, ctx);
 
     // 合并推荐语
     const recommendations = episodes.map((ep, i) => {

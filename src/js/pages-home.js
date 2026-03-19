@@ -6,6 +6,7 @@ import { ICON_PLAY, ICON_PAUSE } from './icons.js';
 import { playList, togglePlay, getIsSwitching } from './player.js';
 import { getDailyRecommendation } from './ai-client.js';
 import { getHistory } from './history.js';
+import { renderMyPage } from './pages-my.js';
 
 /* ===== Home Page DOM Cache ===== */
 // Keep the home page element alive across tab switches to avoid full re-renders.
@@ -517,9 +518,7 @@ export function renderHomePage() {
     card.addEventListener('click', () => {
       const nav = card.dataset.nav;
       if (nav === 'wenku') {
-        import('./wenku.js').then(mod => mod.renderWenkuHome(() => {
-          import('./pages-my.js').then(m => m.renderMyPage());
-        }));
+        import('./wenku.js').then(mod => mod.renderWenkuHome(renderMyPage));
       } else if (nav === 'ai') {
         import('./ai-chat.js').then(m => m.openAiChat());
       } else {

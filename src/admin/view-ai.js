@@ -28,6 +28,7 @@ function fmtTtl(seconds) {
 const SCENARIO_LABELS = {
   embedding: '向量生成（构建）',
   searchEmbedding: '向量生成（搜索）',
+  reranker: '检索重排',
   ragChat: 'RAG 问答',
   ragStream: 'RAG 流式问答',
   summary: '文档摘要',
@@ -177,11 +178,13 @@ function renderOps(el) {
   const ops = [
     {
       id: 'embedding', title: 'Embedding 向量构建',
-      desc: '对未处理的文档生成向量，存入 Vectorize 索引',
+      desc: '对文档生成向量，存入 Vectorize 索引；支持续跑、失败重试和全量重建',
       endpoint: '/embeddings/build', method: 'post',
       params: [
         { key: 'limit', label: '每批数量', type: 'number', value: 3, min: 1, max: 10 },
         { key: 'offset', label: '偏移量', type: 'number', value: 0, min: 0 },
+        { key: 'retry', label: '仅重试失败任务', type: 'checkbox', checked: false },
+        { key: 'rebuild', label: '全量重建 metadata', type: 'checkbox', checked: false },
       ],
       queryMode: true,
     },
@@ -213,7 +216,9 @@ function renderOps(el) {
       <div class="adm-ai-op-params" id="params-${op.id}">
         ${op.params.map(p => `<div class="adm-form-group" style="display:inline-block;margin-right:12px">
           <label class="adm-form-label">${p.label}</label>
-          <input class="adm-input" style="width:100px" type="${p.type}" data-key="${p.key}" value="${p.value}" min="${p.min || ''}" max="${p.max || ''}">
+          ${p.type === 'checkbox'
+            ? `<label style="display:flex;align-items:center;gap:8px;height:38px"><input type="checkbox" data-key="${p.key}" ${p.checked ? 'checked' : ''}><span class="adm-text-muted">启用</span></label>`
+            : `<input class="adm-input" style="width:100px" type="${p.type}" data-key="${p.key}" value="${p.value}" min="${p.min || ''}" max="${p.max || ''}">`}
         </div>`).join('')}
       </div>
       <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
@@ -237,12 +242,15 @@ function renderOps(el) {
           if (op.queryMode) {
             // embedding build uses query params on POST
             const inputs = document.querySelectorAll(`#params-${op.id} input`);
-            const qs = Array.from(inputs).map(i => `${i.dataset.key}=${i.value}`).join('&');
+            const qs = Array.from(inputs).flatMap(i => {
+              if (i.type === 'checkbox') return i.checked ? [`${i.dataset.key}=true`] : [];
+              return [`${i.dataset.key}=${encodeURIComponent(i.value)}`];
+            }).join('&');
             result = await api.post(op.endpoint + '?' + qs, {});
           } else if (op.params.length) {
             const body = {};
             document.querySelectorAll(`#params-${op.id} input`).forEach(i => {
-              body[i.dataset.key] = i.type === 'number' ? parseInt(i.value, 10) : i.value;
+              body[i.dataset.key] = i.type === 'checkbox' ? i.checked : (i.type === 'number' ? parseInt(i.value, 10) : i.value);
             });
             result = await api.post(op.endpoint, body);
           } else {

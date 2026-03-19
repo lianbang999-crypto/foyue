@@ -201,11 +201,14 @@ export function chunkText(text, docId, metadata = {}) {
 // 生成嵌入向量
 // ============================================================
 export async function generateEmbeddings(env, texts, options = {}) {
-  const { gatewayProfile = 'embedding' } = options;
-  const response = await env.AI.run(
+  const { gatewayProfile = 'embedding', ctx = null } = options;
+  const response = await runAIWithLogging(
+    env,
     AI_CONFIG.models.embedding,
     { text: texts },
-    { gateway: GATEWAY_PROFILES[gatewayProfile] || GATEWAY_PROFILES.embedding }
+    GATEWAY_PROFILES[gatewayProfile] || GATEWAY_PROFILES.embedding,
+    gatewayProfile,
+    ctx
   );
   return response.data; // float[][] 每个 1024 维 (bge-m3 在 Workers AI 上输出 1024 维)
 }
@@ -218,9 +221,10 @@ export async function semanticSearch(env, query, options = {}) {
     topK = AI_CONFIG.vectorize.topK,
     filter = {},
     scoreThreshold = AI_CONFIG.vectorize.scoreThreshold,
+    ctx = null,
   } = options;
 
-  const [queryVector] = await generateEmbeddings(env, [query], { gatewayProfile: 'searchEmbedding' });
+  const [queryVector] = await generateEmbeddings(env, [query], { gatewayProfile: 'searchEmbedding', ctx });
 
   const queryOptions = { topK, returnMetadata: 'all' };
   if (Object.keys(filter).length > 0) {
@@ -235,17 +239,20 @@ export async function semanticSearch(env, query, options = {}) {
 // 重排序 — 使用 bge-reranker-base 对检索结果精排
 // ============================================================
 export async function rerankResults(env, query, matches, options = {}) {
-  const { topK } = options;
+  const { topK, ctx = null } = options;
   // 提取有文本的匹配项
   const withText = matches.filter(m => m.metadata?.text);
   if (withText.length < 2) return matches; // 不足 2 条无需重排
 
   const contexts = withText.map(m => ({ text: m.metadata.text }));
   try {
-    const result = await env.AI.run(
+    const result = await runAIWithLogging(
+      env,
       '@cf/baai/bge-reranker-base',
       { query, contexts, top_k: topK || contexts.length },
-      { gateway: GATEWAY_PROFILES.reranker }
+      GATEWAY_PROFILES.reranker,
+      'reranker',
+      ctx
     );
     // result.response = [{ id: index, score: float }]
     const ranked = (result.response || [])
@@ -355,7 +362,7 @@ export function stripThinkTags(text) {
 // RAG 问答 — 检索增强生成
 // ============================================================
 export async function ragAnswer(env, question, contextDocs, options = {}) {
-  const { maxContextLength = 10000, history = [], vectorMatches = [] } = options;
+  const { maxContextLength = 10000, history = [], vectorMatches = [], ctx = null } = options;
 
   // 优先使用 Vectorize 匹配到的 chunk 文本（更精准），而非从文档开头截断
   let context = '';
@@ -399,25 +406,31 @@ ${context}`;
 
   let response;
   try {
-    response = await env.AI.run(
+    response = await runAIWithLogging(
+      env,
       AI_CONFIG.models.chat,
       {
         messages,
         max_tokens: 500,
         temperature: 0.2,
       },
-      { gateway: GATEWAY_PROFILES.ragChat }
+      GATEWAY_PROFILES.ragChat,
+      'ragChat',
+      ctx
     );
   } catch (err) {
     console.warn('Primary chat model failed, using fallback:', err.message);
-    response = await env.AI.run(
+    response = await runAIWithLogging(
+      env,
       AI_CONFIG.models.chatFallback,
       {
         messages,
         max_tokens: 500,
         temperature: 0.2,
       },
-      { gateway: GATEWAY_PROFILES.ragChat }
+      GATEWAY_PROFILES.ragChat,
+      'ragChat',
+      ctx
     );
   }
 
@@ -473,7 +486,8 @@ ${context}`;
 // ============================================================
 // 生成内容摘要
 // ============================================================
-export async function generateSummary(env, title, content) {
+export async function generateSummary(env, title, content, options = {}) {
+  const { ctx = null } = options;
   const truncated = content.slice(0, 6000);
 
   const messages = [
@@ -491,17 +505,23 @@ export async function generateSummary(env, title, content) {
 
   let response;
   try {
-    response = await env.AI.run(
+    response = await runAIWithLogging(
+      env,
       AI_CONFIG.models.chat,
       { messages, max_tokens: 300, temperature: 0.2 },
-      { gateway: GATEWAY_PROFILES.summary }
+      GATEWAY_PROFILES.summary,
+      'summary',
+      ctx
     );
   } catch (err) {
     console.warn('Summary primary model failed, using fallback:', err.message);
-    response = await env.AI.run(
+    response = await runAIWithLogging(
+      env,
       AI_CONFIG.models.chatFallback,
       { messages, max_tokens: 300, temperature: 0.2 },
-      { gateway: GATEWAY_PROFILES.summary }
+      GATEWAY_PROFILES.summary,
+      'summary',
+      ctx
     );
   }
 

@@ -4,6 +4,7 @@ import { t } from './i18n.js';
 import { escapeHtml } from './utils.js';
 
 let chatInstance = null;
+let aiContext = { seriesId: null, episodeNum: null };
 const MAX_MESSAGES = 50;
 const MAX_PERSIST = 20; // max messages to persist
 const LS_KEY = 'ai-chat-history';
@@ -45,8 +46,8 @@ export function openAiChat() {
   chatInstance.show();
 }
 
-export function closeAiChat() {
-  if (chatInstance) chatInstance.hide();
+export function closeAiChat(options) {
+  if (chatInstance) chatInstance.hide(options);
 }
 
 export function isAiChatOpen() {
@@ -79,7 +80,13 @@ function createChatPage() {
     }
   }
 
-  page.querySelector('#aiFsBack').addEventListener('click', () => chatInstance.hide());
+  page.querySelector('#aiFsBack').addEventListener('click', () => {
+    if (window.history.state?.aiChat) {
+      window.history.back();
+      return;
+    }
+    chatInstance.hide();
+  });
 
   // Clear chat history button
   page.querySelector('#aiFsClear').addEventListener('click', () => {
@@ -103,11 +110,11 @@ function createChatPage() {
   page.querySelector('#aiFsShare').addEventListener('click', () => {
     const url = window.location.origin + '/?tab=ai';
     if (navigator.share) {
-      navigator.share({ title: 'AI 问法 — 净土法音', url }).catch(() => {});
+      navigator.share({ title: 'AI 问法 — 净土法音', url }).catch(() => { });
     } else {
       navigator.clipboard.writeText(url).then(() => {
         import('./utils.js').then(m => m.showToast(t('link_copied') || '链接已复制'));
-      }).catch(() => {});
+      }).catch(() => { });
     }
   });
 
@@ -196,6 +203,7 @@ function createChatPage() {
     if (welcomeWrap) welcomeWrap.remove();
 
     _lastQuestion = question;
+    const requestHistory = chatHistory.slice(-6);
     addMessage('user', question);
     chatHistory.push({ role: 'user', content: question });
     chatInput.value = '';
@@ -213,7 +221,11 @@ function createChatPage() {
 
       const finalData = await askQuestionStream(
         question,
-        { history: chatHistory.slice(-6) },
+        {
+          history: requestHistory,
+          series_id: aiContext.seriesId || undefined,
+          episode_num: aiContext.episodeNum || undefined,
+        },
         (token) => {
           // First token: remove typing dots, create streaming container
           if (!textEl) {
@@ -431,14 +443,14 @@ function createChatPage() {
       url.searchParams.set('tab', 'ai');
       window.history.pushState({ aiChat: true }, '', url);
     },
-    hide() {
+    hide({ fromPopState = false } = {}) {
       page.classList.remove('show');
       page.setAttribute('inert', '');
       page.setAttribute('aria-hidden', 'true');
       this.isOpen = false;
       document.removeEventListener('keydown', onKeydown);
       const url = new URL(window.location);
-      if (url.searchParams.get('tab') === 'ai') {
+      if (!fromPopState && url.searchParams.get('tab') === 'ai') {
         url.searchParams.delete('tab');
         const cleanUrl = url.pathname + (url.search || '') + url.hash;
         window.history.replaceState({}, '', cleanUrl || '/');
@@ -532,5 +544,10 @@ export function checkAiDeepLink() {
 }
 
 // Legacy compat — no-op
-export function updateAiContext() {}
-export function initAiChat() {}
+export function updateAiContext(seriesId, episodeNum) {
+  aiContext = {
+    seriesId: typeof seriesId === 'string' && seriesId ? seriesId : null,
+    episodeNum: Number.isFinite(Number(episodeNum)) && Number(episodeNum) > 0 ? Number(episodeNum) : null,
+  };
+}
+export function initAiChat() { }

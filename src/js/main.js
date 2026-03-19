@@ -65,6 +65,10 @@ function closeWenkuReader() {
   }
 }
 
+function renderWenkuBackToMyPage() {
+  renderMyPage();
+}
+
 function buildCategoriesUrl({ home = false } = {}) {
   const params = new URLSearchParams();
   if (home) params.set('home', '1');
@@ -544,26 +548,32 @@ async function ensureSeriesDetail(seriesId, categoryId) {
       }
     }
 
+    if (isAiChatOpen()) {
+      closeAiChat({ fromPopState: true });
+      return;
+    }
+
+    if (isSearchOverlayOpen()) {
+      closeSearchOverlay();
+      return;
+    }
+
     // Wenku reader is open — close it and route to correct wenku view
     if (readerOpen) {
       closeWenkuReader();
       activateMyTab();
       if (st && st.wenku) {
         if (st.wenku === 'home') {
-          import('./wenku.js').then(mod => mod.renderWenkuHome(() => {
-            import('./pages-my.js').then(m => m.renderMyPage());
-          }, { skipPush: true }));
+          import('./wenku.js').then(mod => mod.renderWenkuHome(renderWenkuBackToMyPage, { skipPush: true }));
         } else {
           import('./wenku.js').then(mod => mod.renderWenkuSeries(st.wenku, () => {
-            mod.renderWenkuHome(() => {
-              import('./pages-my.js').then(m => m.renderMyPage());
-            });
+            mod.renderWenkuHome(renderWenkuBackToMyPage);
           }, { skipPush: true }));
         }
         return;
       }
       // Reader was opened without wenku context (or state lost) — return to My page
-      import('./pages-my.js').then(m => m.renderMyPage());
+      renderMyPage();
       rePushGuard();
       return;
     }
@@ -577,32 +587,22 @@ async function ensureSeriesDetail(seriesId, categoryId) {
         activateMyTab();
         if (st.wenku === 'home') {
           // Going back TO wenku home (e.g. from series → home)
-          import('./wenku.js').then(mod => mod.renderWenkuHome(() => {
-            import('./pages-my.js').then(m => m.renderMyPage());
-          }, { skipPush: true }));
+          import('./wenku.js').then(mod => mod.renderWenkuHome(renderWenkuBackToMyPage, { skipPush: true }));
         } else {
           // Going back TO a specific series
           import('./wenku.js').then(mod => mod.renderWenkuSeries(st.wenku, () => {
-            mod.renderWenkuHome(() => {
-              import('./pages-my.js').then(m => m.renderMyPage());
-            });
+            mod.renderWenkuHome(renderWenkuBackToMyPage);
           }, { skipPush: true }));
         }
       } else {
         // Going back from wenku home → My page (no wenku state = pre-wenku page)
         activateMyTab();
-        import('./pages-my.js').then(m => m.renderMyPage());
+        renderMyPage();
         rePushGuard();
       }
       return;
     }
 
-    if (isSearchOverlayOpen()) {
-      closeSearchOverlay();
-    }
-    if (isAiChatOpen()) {
-      closeAiChat();
-    }
   });
 
   // Check for ?tab=ai deep link after data loads
@@ -1109,16 +1109,12 @@ function handleWenkuDeepLink() {
   } else if (wenkuSeries) {
     // Open wenku series view — URL already correct, skip pushState
     import('./wenku.js').then(mod => {
-      mod.renderWenkuSeries(wenkuSeries, () => {
-        import('./pages-my.js').then(m => m.renderMyPage());
-      }, { skipPush: true });
+      mod.renderWenkuSeries(wenkuSeries, renderWenkuBackToMyPage, { skipPush: true });
     });
   } else if (tab === 'wenku') {
     // Open wenku home — URL already correct, skip pushState
     import('./wenku.js').then(mod => {
-      mod.renderWenkuHome(() => {
-        import('./pages-my.js').then(m => m.renderMyPage());
-      }, { skipPush: true });
+      mod.renderWenkuHome(renderWenkuBackToMyPage, { skipPush: true });
     });
   }
 }

@@ -184,6 +184,8 @@ export function initBackGuard(renderCategory, stateRef, { closeFullScreen, getPl
     const st = e.state;
     if (st && (st.wenku || st.doc)) return;
     if (document.querySelector('.wenku-reader') || document.querySelector('.wenku-page')) return;
+    if (document.getElementById('aiFullscreen')?.classList.contains('show')) return;
+    if (document.getElementById('searchOverlay')?.classList.contains('show')) return;
 
     // Priority: close playlist first, then fullscreen player, then navigate back
     if (getPlaylistVisible()) {
