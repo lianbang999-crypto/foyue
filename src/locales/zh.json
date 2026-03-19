@@ -201,7 +201,7 @@
   "counter_practice_custom_save": "保存",
   "counter_practice_custom_edit": "编辑",
   "counter_goal_custom_save": "保存",
-  "counter_goal_invalid": "目标值必须在 1-99999 之间",
+  "counter_goal_invalid": "请输入有效的正整数",
   "counter_practice_custom_empty": "请输入圣号名称",
   "counter_practice_custom_too_long": "圣号名称不能超过 20 个字",
   "counter_streak": "连续打卡 {n} 天",

@@ -2,9 +2,9 @@
 import { t } from './i18n.js';
 import { get, patch } from './store.js';
 import { haptic, showToast, escapeHtml } from './utils.js';
+import { showSharePoster } from './counter-share.js';
 
 const BEADS_PER_LOOP = 108;
-const MAX_GOAL_VALUE = 99999;
 /** @deprecated Kept only for data migration from old single-custom format */
 const CUSTOM_KEY = '__custom__';
 const MAX_RIPPLES = 6;
@@ -86,7 +86,17 @@ function pruneDailyLog(data) {
 
 /* ── Wake Lock ── */
 let _wakeLock = null;
+const WAKELOCK_PREF_KEY = 'counter-wakelock-pref';
+
+function isWakeLockEnabled() {
+  try { return localStorage.getItem(WAKELOCK_PREF_KEY) !== 'off'; } catch { return true; }
+}
+function setWakeLockPref(on) {
+  try { localStorage.setItem(WAKELOCK_PREF_KEY, on ? 'on' : 'off'); } catch { }
+}
+
 async function requestWakeLock() {
+  if (!isWakeLockEnabled()) return;
   if (_wakeLock) return;
   try {
     if ('wakeLock' in navigator) {
@@ -267,12 +277,21 @@ function buildCounterHTML(data, session) {
   const displayName = escapeHtml(getPracticeDisplayName(data));
   const streak = getStreak(data);
 
+  const wakeLockOn = isWakeLockEnabled();
   return `
     <div class="counter-header">
       <button class="counter-back btn-icon" id="counterBack" aria-label="${t('wenku_back')}">
         <svg viewBox="0 0 24 24" width="20" height="20"><polyline points="15,18 9,12 15,6"/></svg>
       </button>
       <span class="counter-header-title">${t('counter_title')}</span>
+      <button class="btn-icon counter-wakelock-btn${wakeLockOn ? ' active' : ''}" id="counterWakeLockBtn"
+              aria-label="${wakeLockOn ? '屏幕保持点亮（点击关闭）' : '屏幕自动熄灭（点击开启）'}"
+              title="${wakeLockOn ? '屏幕常亮' : '屏幕自动熄灭'}">
+        ${wakeLockOn
+          ? `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`
+          : `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`
+        }
+      </button>
       <button class="btn-icon" id="counterHistoryBtn" aria-label="念佛历史" title="念佛历史">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="9"/>
@@ -573,6 +592,29 @@ function wireCounterEvents(view, data, _session) {
     showGoalPicker(view, goals, data, () => updateUI());
   });
 
+  /* ── Wake lock toggle ── */
+  const wakeLockBtn = view.querySelector('#counterWakeLockBtn');
+  if (wakeLockBtn) {
+    wakeLockBtn.addEventListener('click', () => {
+      const nowOn = !isWakeLockEnabled();
+      setWakeLockPref(nowOn);
+      if (nowOn) {
+        requestWakeLock();
+        showToast('屏幕常亮已开启');
+      } else {
+        releaseWakeLock();
+        showToast('屏幕自动熄灭');
+      }
+      // Update button appearance without full re-render
+      wakeLockBtn.classList.toggle('active', nowOn);
+      wakeLockBtn.setAttribute('title', nowOn ? '屏幕常亮' : '屏幕自动熄灭');
+      wakeLockBtn.innerHTML = nowOn
+        ? `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`
+        : `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
+      haptic(15);
+    });
+  }
+
   /* ── History button ── */
   const histBtn = view.querySelector('#counterHistoryBtn');
   if (histBtn) {
@@ -604,6 +646,10 @@ function showCounterMenu(parentView, data, onPracticeChange) {
     <div class="counter-goal-panel">
       <div class="counter-goal-panel-title">${t('more')}</div>
       <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="counter-action-btn" id="menuSharePoster" style="flex:none;width:100%;padding:14px 16px;border-radius:var(--radius-sm);justify-content:flex-start;gap:12px;font-size:.86rem">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          分享念佛海报
+        </button>
         <button class="counter-action-btn" id="menuSwitchPractice" style="flex:none;width:100%;padding:14px 16px;border-radius:var(--radius-sm);justify-content:flex-start;gap:12px;font-size:.86rem">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 3a3 3 0 0 0-3 3l-9 9a3 3 0 0 0 4.24 4.24l9-9A3 3 0 0 0 18 3z"/><line x1="3" y1="21" x2="6" y2="18"/></svg>
           ${t('counter_practice_title')}
@@ -625,6 +671,21 @@ function showCounterMenu(parentView, data, onPracticeChange) {
 
   sheet.querySelector('#menuBackdrop').addEventListener('click', close);
   sheet.querySelector('#menuCancel').addEventListener('click', close);
+
+  sheet.querySelector('#menuSharePoster').addEventListener('click', () => {
+    close();
+    setTimeout(() => {
+      // Collect stats for this practice
+      const ps = getPracticeStats(data);
+      const streak = getStreak(data);
+      showSharePoster(parentView, {
+        practice: getPracticeDisplayName(data),
+        daily: ps.daily || 0,
+        total: ps.total || 0,
+        streak,
+      });
+    }, 260);
+  });
 
   sheet.querySelector('#menuSwitchPractice').addEventListener('click', () => {
     close();
@@ -826,7 +887,7 @@ function showGoalPicker(parentView, goals, data, onDone) {
         ${goals.map(g => `<button class="counter-goal-opt${ps.goal === g ? ' counter-goal-opt--active' : ''}" data-goal="${g}">${g}</button>`).join('')}
       </div>
       <div class="counter-goal-custom-row">
-        <input class="counter-goal-custom-input" id="goalCustomInput" type="number" min="1" max="${MAX_GOAL_VALUE}"
+        <input class="counter-goal-custom-input" id="goalCustomInput" type="number" min="1"
                placeholder="${t('counter_goal_custom_hint')}">
         <button class="counter-goal-custom-btn" id="goalCustomConfirm">${t('counter_goal_custom_save')}</button>
       </div>
@@ -860,7 +921,7 @@ function showGoalPicker(parentView, goals, data, onDone) {
   sheet.querySelector('#goalCustomConfirm').addEventListener('click', () => {
     const input = sheet.querySelector('#goalCustomInput');
     const val = parseInt(input.value);
-    if (isNaN(val) || val < 1 || val > MAX_GOAL_VALUE) {
+    if (isNaN(val) || val < 1) {
       input.classList.add('counter-goal-custom-input--error');
       showToast(t('counter_goal_invalid'));
       setTimeout(() => input.classList.remove('counter-goal-custom-input--error'), 600);

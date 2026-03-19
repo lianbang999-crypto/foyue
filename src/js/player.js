@@ -3,7 +3,7 @@ import { state } from './state.js';
 import { getDOM, RING_CIRCUMFERENCE } from './dom.js';
 import { SVG, ICON_PLAY, ICON_PAUSE, ICON_PLAY_FILLED, ICON_PAUSE_FILLED, ICON_APPRECIATE, ICON_APPRECIATE_FILLED } from './icons.js';
 import { t } from './i18n.js';
-import { fmt, showToast, seekAt, haptic, fmtCount, escapeHtml } from './utils.js';
+import { fmt, showToast, seekAt, haptic, fmtCount, escapeHtml, shareContent } from './utils.js';
 import { addHistory, syncHistoryProgress, getHistory } from './history.js';
 import { recordPlay, getAppreciateCount } from './api.js';
 import { cacheAudio, getCachedAudioUrl, isAudioCached, isCachedSync } from './audio-cache.js';
@@ -896,28 +896,16 @@ export function cycleLoop() {
 /* ===== Share ===== */
 export function shareTrack(ep, series) {
   const title = '\u300A' + (series.title || '') + '\u300B' + (ep.title || ep.fileName);
-  const shareUrl = window.location.origin + '/share/' + encodeURIComponent(series.id) + '/' + ep.id;
-  if (navigator.share) {
-    navigator.share({ title, text: title, url: shareUrl }).catch(() => { });
-  } else {
-    navigator.clipboard.writeText(title + '\n' + shareUrl).then(() => {
-      showToast(t('link_copied'));
-    }).catch(() => { });
-  }
+  const url = window.location.origin + '/share/' + encodeURIComponent(series.id) + '/' + ep.id;
+  shareContent(title, url);
 }
 
 export function shareSeries(series) {
   const epCount = series.totalEpisodes || series.episodes?.length || 0;
   const unit = t('episodes') || '\u96C6';
   const title = '\u300A' + (series.title || '') + '\u300B' + (epCount ? '\u5171' + epCount + unit : '');
-  const shareUrl = window.location.origin + '/share/' + encodeURIComponent(series.id);
-  if (navigator.share) {
-    navigator.share({ title, text: title, url: shareUrl }).catch(() => { });
-  } else {
-    navigator.clipboard.writeText(title + '\n' + shareUrl).then(() => {
-      showToast(t('link_copied'));
-    }).catch(() => { });
-  }
+  const url = window.location.origin + '/share/' + encodeURIComponent(series.id);
+  shareContent(title, url);
 }
 
 /* ===== Speed Control ===== */

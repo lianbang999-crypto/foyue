@@ -101,3 +101,59 @@ export function haptic(ms = 15) {
     } catch (e) { /* silently fail */ }
   }
 }
+
+/**
+ * Universal share helper — deduplicates share logic across the codebase.
+ *
+ * On mobile: uses Web Share API (native sheet) with graceful AbortError handling.
+ * Fallback: copies "title\nurl" to clipboard and shows a toast.
+ *
+ * @param {string} title  — display title for the share sheet
+ * @param {string} url    — URL to share
+ * @param {string} [text] — optional longer description; defaults to title
+ */
+export function shareContent(title, url, text) {
+  const shareText = text || title;
+  if (navigator.share) {
+    navigator.share({ title, text: shareText, url }).catch(err => {
+      // AbortError = user cancelled the native share sheet — no fallback needed
+      if (err.name === 'AbortError') return;
+      // Any other error (e.g. unsupported content) → fall back to clipboard
+      _copyToClipboard(title + '\n' + url);
+    });
+    return;
+  }
+  _copyToClipboard(title + '\n' + url);
+}
+
+function _copyToClipboard(text) {
+  if (!navigator.clipboard) return;
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('\u94fe\u63a5\u5df2\u590d\u5236'); // 链接已复制
+  }).catch(() => { });
+}
+
+/**
+ * Share an image blob using Web Share Files API (mobile) or trigger a download (desktop).
+ * @param {Blob}   imageBlob — PNG/JPEG image blob
+ * @param {string} filename  — suggested filename
+ * @param {string} title     — share title
+ */
+export async function shareImageBlob(imageBlob, filename, title) {
+  const file = new File([imageBlob], filename, { type: imageBlob.type });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ title, files: [file] });
+      return;
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+    }
+  }
+  // Fallback: download the image
+  const url = URL.createObjectURL(imageBlob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
