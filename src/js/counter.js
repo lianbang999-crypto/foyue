@@ -315,17 +315,28 @@ function buildCounterHTML(data, session) {
 
     <!-- Bottom actions -->
     <div class="counter-actions">
-      <button class="counter-action-btn" id="counterResetSession">
-        <svg viewBox="0 0 24 24" width="18" height="18"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-        ${t('counter_reset_session')}
+      <button class="counter-action-btn counter-action-btn--clear" id="counterResetSession">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="23 4 23 10 17 10"/>
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+        </svg>
+        ${t('counter_clear')}
+      </button>
+      <button class="counter-action-btn counter-action-btn--huixiang" id="counterHuixiang">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10"/>
+          <path d="M16 12l4 4-4 4"/>
+          <path d="M20 16H9a4 4 0 0 1 0-8h2"/>
+        </svg>
+        ${t('counter_huixiang')}
       </button>
       <button class="counter-action-btn counter-action-btn--goal" id="counterSetGoal">
-        <svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>
-        ${t('counter_goal')}
-      </button>
-      <button class="counter-action-btn counter-action-btn--danger" id="counterResetAll">
-        <svg viewBox="0 0 24 24" width="18" height="18"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-        ${t('counter_reset_all')}
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <circle cx="12" cy="12" r="6"/>
+          <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/>
+        </svg>
+        ${t('counter_gongke')}
       </button>
     </div>
 
@@ -538,35 +549,18 @@ function wireCounterEvents(view, data, _session) {
     history.back();
   });
 
-  /* ── Reset session ── */
+  /* ── 清零 (reset session) ── */
   view.querySelector('#counterResetSession').addEventListener('click', () => {
     session = 0;
     updateUI();
     haptic(20);
-    showToast(t('counter_reset_session'));
+    showToast(t('counter_clear'));
   });
 
-  /* ── Set goal ── */
+  /* ── 今日功课 (set goal) ── */
   view.querySelector('#counterSetGoal').addEventListener('click', () => {
-    const goals = [108, 216, 540, 1080, 3000, 10000];
-    // Build a simple picker sheet
+    const goals = [108, 216, 540, 1080, 3000, 10000, 0];
     showGoalPicker(view, goals, data, () => updateUI());
-  });
-
-  /* ── Reset all ── */
-  view.querySelector('#counterResetAll').addEventListener('click', () => {
-    if (!window.confirm(t('counter_reset_confirm'))) return;
-    // Reset all practices (preserve goals)
-    for (const p of Object.keys(data.practices)) {
-      const goal = data.practices[p].goal || 108;
-      data.practices[p] = { total: 0, daily: 0, dailyDate: todayStr(), goal };
-    }
-    data.dailyLog = {};
-    session = 0;
-    patch('counter', data);
-    haptic(30);
-    updateUI();
-    showToast(t('counter_reset_all'));
   });
 
   /* ── History button ── */
@@ -575,10 +569,281 @@ function wireCounterEvents(view, data, _session) {
     histBtn.addEventListener('click', () => openHistory(view, data));
   }
 
-  /* ── Menu button → Practice picker ── */
+  /* ── 回向 button ── */
+  const huixiangBtn = view.querySelector('#counterHuixiang');
+  if (huixiangBtn) {
+    huixiangBtn.addEventListener('click', () => {
+      showHuixiangSheet(view, data, session);
+    });
+  }
+
+  /* ── Menu button → combined sheet: practice picker + reset all ── */
   view.querySelector('#counterMenu').addEventListener('click', () => {
-    showPracticePicker(view, data, () => { session = 0; updateUI(); });
+    showCounterMenu(view, data, () => { session = 0; updateUI(); });
   });
+}
+
+/* ── Counter menu sheet (practice + reset) ── */
+function showCounterMenu(parentView, data, onPracticeChange) {
+  parentView.querySelectorAll('.counter-menu-sheet').forEach(el => el.remove());
+
+  const sheet = document.createElement('div');
+  sheet.className = 'counter-goal-sheet counter-menu-sheet';
+  sheet.innerHTML = `
+    <div class="counter-goal-backdrop" id="menuBackdrop"></div>
+    <div class="counter-goal-panel">
+      <div class="counter-goal-panel-title">${t('more')}</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="counter-action-btn" id="menuSwitchPractice" style="flex:none;width:100%;padding:14px 16px;border-radius:var(--radius-sm);justify-content:flex-start;gap:12px;font-size:.86rem">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 3a3 3 0 0 0-3 3l-9 9a3 3 0 0 0 4.24 4.24l9-9A3 3 0 0 0 18 3z"/><line x1="3" y1="21" x2="6" y2="18"/></svg>
+          ${t('counter_practice_title')}
+        </button>
+        <button class="counter-action-btn counter-action-btn--danger" id="menuResetAll" style="flex:none;width:100%;padding:14px 16px;border-radius:var(--radius-sm);justify-content:flex-start;gap:12px;font-size:.86rem">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+          ${t('counter_reset_all')}
+        </button>
+      </div>
+      <button class="counter-goal-cancel" id="menuCancel">${t('cancel')}</button>
+    </div>`;
+  parentView.appendChild(sheet);
+  requestAnimationFrame(() => sheet.classList.add('counter-goal-sheet--visible'));
+
+  const close = () => {
+    sheet.classList.remove('counter-goal-sheet--visible');
+    setTimeout(() => sheet.remove(), 250);
+  };
+
+  sheet.querySelector('#menuBackdrop').addEventListener('click', close);
+  sheet.querySelector('#menuCancel').addEventListener('click', close);
+
+  sheet.querySelector('#menuSwitchPractice').addEventListener('click', () => {
+    close();
+    setTimeout(() => showPracticePicker(parentView, data, onPracticeChange), 260);
+  });
+
+  sheet.querySelector('#menuResetAll').addEventListener('click', () => {
+    close();
+    setTimeout(() => {
+      if (!window.confirm(t('counter_reset_confirm'))) return;
+      for (const p of Object.keys(data.practices)) {
+        const goal = data.practices[p].goal || 108;
+        data.practices[p] = { total: 0, daily: 0, dailyDate: todayStr(), goal };
+      }
+      data.dailyLog = {};
+      patch('counter', data);
+      haptic(30);
+      onPracticeChange();
+      showToast(t('counter_reset_all'));
+    }, 260);
+  });
+}
+
+/* ── 回向文展示（全屏沉浸式） ── */
+function showHuixiangDisplay(parentView, vowInfo) {
+  parentView.querySelectorAll('.huixiang-display').forEach(el => el.remove());
+
+  const display = document.createElement('div');
+  display.className = 'huixiang-display';
+
+  const customText = vowInfo && vowInfo.type === 'custom' && vowInfo.custom
+    ? escapeHtml(vowInfo.custom)
+    : null;
+
+  const dedicateLine = (() => {
+    if (!vowInfo) return '';
+    if (vowInfo.type === 'blessing' && vowInfo.target)
+      return `<div class="hd-dedicate">回向 ${escapeHtml(vowInfo.target)} 消灾吉祥</div>`;
+    if (vowInfo.type === 'rebirth' && vowInfo.target)
+      return `<div class="hd-dedicate">回向 ${escapeHtml(vowInfo.target)} 往生净土</div>`;
+    if (vowInfo.type === 'custom' && customText)
+      return `<div class="hd-dedicate">${customText}</div>`;
+    return '';
+  })();
+
+  display.innerHTML = `
+    <div class="hd-overlay">
+      <div class="hd-content">
+        <div class="hd-lotus">🪷</div>
+        <div class="hd-text">${t('counter_huixiang_text')}</div>
+        ${dedicateLine}
+        <div class="hd-namo">南无阿弥陀佛</div>
+        <div class="hd-hint">${t('counter_huixiang_done')}</div>
+      </div>
+    </div>`;
+  parentView.appendChild(display);
+  requestAnimationFrame(() => display.classList.add('huixiang-display--in'));
+
+  const close = () => {
+    display.classList.remove('huixiang-display--in');
+    setTimeout(() => display.remove(), 400);
+  };
+
+  // Auto-close after 4 seconds, or on tap
+  const autoClose = setTimeout(close, 4000);
+  display.addEventListener('click', () => { clearTimeout(autoClose); close(); });
+}
+
+/* ── 回向 sheet ── */
+function showHuixiangSheet(parentView, data, session) {
+  parentView.querySelectorAll('.huixiang-sheet').forEach(el => el.remove());
+
+  const ps = getPracticeStats(data);
+  const practiceName = escapeHtml(getPracticeDisplayName(data));
+  const dailyCount = ps.daily;
+
+  const sheet = document.createElement('div');
+  sheet.className = 'counter-goal-sheet huixiang-sheet';
+  sheet.innerHTML = `
+    <div class="counter-goal-backdrop" id="hxBackdrop"></div>
+    <div class="counter-goal-panel huixiang-panel">
+      <div class="hx-header">
+        <div class="hx-title">${t('counter_huixiang_title')}</div>
+        <div class="hx-stats">${practiceName} · 今日 <strong>${formatCount(dailyCount)}</strong> 声</div>
+      </div>
+
+      <div class="hx-vow-section">
+        <div class="hx-vow-label">${t('counter_huixiang_dedicate')}</div>
+        <div class="hx-vow-options">
+          <label class="hx-vow-opt hx-vow-opt--active" data-type="universal">
+            <input type="radio" name="vowType" value="universal" checked>
+            <span class="hx-vow-dot"></span>
+            <span>${t('counter_huixiang_universal')}</span>
+          </label>
+          <label class="hx-vow-opt" data-type="blessing">
+            <input type="radio" name="vowType" value="blessing">
+            <span class="hx-vow-dot"></span>
+            <span>${t('counter_huixiang_blessing')}</span>
+          </label>
+          <label class="hx-vow-opt" data-type="rebirth">
+            <input type="radio" name="vowType" value="rebirth">
+            <span class="hx-vow-dot"></span>
+            <span>${t('counter_huixiang_rebirth')}</span>
+          </label>
+          <label class="hx-vow-opt" data-type="custom">
+            <input type="radio" name="vowType" value="custom">
+            <span class="hx-vow-dot"></span>
+            <span>${t('counter_huixiang_custom')}</span>
+          </label>
+        </div>
+        <div class="hx-target-wrap hx-target--hidden" id="hxTargetWrap">
+          <input class="counter-goal-custom-input hx-target-input" id="hxTargetInput" type="text" maxlength="30"
+                 placeholder="${t('counter_huixiang_target_hint')}">
+        </div>
+        <div class="hx-custom-wrap hx-target--hidden" id="hxCustomWrap">
+          <textarea class="hx-custom-input" id="hxCustomInput" rows="2" maxlength="100"
+                    placeholder="${t('counter_huixiang_custom_hint')}"></textarea>
+        </div>
+      </div>
+
+      <div class="hx-gongxiu-row">
+        <label class="hx-gongxiu-label">
+          <input type="checkbox" id="hxJoinGongxiu" class="hx-checkbox">
+          <span class="hx-gongxiu-text">${t('counter_join_gongxiu')}</span>
+        </label>
+      </div>
+
+      <button class="hx-confirm-btn" id="hxConfirm">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        ${t('counter_huixiang_confirm')}
+      </button>
+      <button class="counter-goal-cancel" id="hxCancel">${t('counter_huixiang_skip')}</button>
+    </div>`;
+  parentView.appendChild(sheet);
+  requestAnimationFrame(() => sheet.classList.add('counter-goal-sheet--visible'));
+
+  const close = () => {
+    window.removeEventListener('keydown', hxEsc);
+    sheet.classList.remove('counter-goal-sheet--visible');
+    setTimeout(() => sheet.remove(), 250);
+  };
+  const hxEsc = (e) => { if (e.key === 'Escape') close(); };
+  window.addEventListener('keydown', hxEsc);
+
+  sheet.querySelector('#hxBackdrop').addEventListener('click', close);
+  sheet.querySelector('#hxCancel').addEventListener('click', close);
+
+  // Radio button: show/hide target input
+  const targetWrap = sheet.querySelector('#hxTargetWrap');
+  const customWrap = sheet.querySelector('#hxCustomWrap');
+  sheet.querySelectorAll('.hx-vow-opt').forEach(opt => {
+    opt.addEventListener('click', () => {
+      sheet.querySelectorAll('.hx-vow-opt').forEach(o => o.classList.remove('hx-vow-opt--active'));
+      opt.classList.add('hx-vow-opt--active');
+      const type = opt.dataset.type;
+      targetWrap.classList.toggle('hx-target--hidden', type !== 'blessing' && type !== 'rebirth');
+      customWrap.classList.toggle('hx-target--hidden', type !== 'custom');
+    });
+  });
+
+  // Confirm
+  sheet.querySelector('#hxConfirm').addEventListener('click', async () => {
+    const type = sheet.querySelector('input[name="vowType"]:checked')?.value || 'universal';
+    const target = sheet.querySelector('#hxTargetInput')?.value.trim() || '';
+    const custom = sheet.querySelector('#hxCustomInput')?.value.trim() || '';
+    const joinGongxiu = sheet.querySelector('#hxJoinGongxiu')?.checked;
+
+    if ((type === 'blessing' || type === 'rebirth') && !target) {
+      sheet.querySelector('#hxTargetInput').classList.add('counter-goal-custom-input--error');
+      showToast(t('counter_huixiang_target_required'));
+      setTimeout(() => sheet.querySelector('#hxTargetInput').classList.remove('counter-goal-custom-input--error'), 600);
+      return;
+    }
+    if (type === 'custom' && !custom) {
+      sheet.querySelector('#hxCustomInput').classList.add('counter-goal-custom-input--error');
+      showToast(t('counter_huixiang_custom_required'));
+      setTimeout(() => sheet.querySelector('#hxCustomInput').classList.remove('counter-goal-custom-input--error'), 600);
+      return;
+    }
+
+    const vowInfo = { type, target, custom };
+
+    // Submit to 共修社区 if requested
+    if (joinGongxiu && dailyCount > 0) {
+      try {
+        await submitToGongxiu(data, dailyCount, vowInfo);
+        showToast(t('gongxiu_submit_success'));
+      } catch (err) {
+        console.warn('[Gongxiu] Submit failed:', err);
+        // Don't block the 回向 experience if network fails
+      }
+    }
+
+    close();
+    setTimeout(() => showHuixiangDisplay(parentView, vowInfo), 260);
+  });
+}
+
+/* ── Submit to 共修社区 ── */
+async function submitToGongxiu(data, count, vowInfo) {
+  const savedNickname = (() => { try { return localStorage.getItem('gongxiu-nickname') || ''; } catch { return ''; } })();
+  const practice = getPracticeDisplayName(data);
+
+  const body = {
+    practice,
+    count: Math.min(count, 150000),
+    vow_type: vowInfo.type || 'universal',
+    vow_target: vowInfo.target || '',
+    vow_custom: vowInfo.custom || '',
+    nickname: savedNickname || '莲友',
+  };
+
+  const resp = await fetch('/api/gongxiu', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    throw new Error(data.error || 'HTTP ' + resp.status);
+  }
+
+  // Mark as submitted today
+  try {
+    localStorage.setItem('gongxiu-submitted-date', new Date().toDateString());
+  } catch { /* ignore */ }
+
+  return resp.json();
 }
 
 function showGoalPicker(parentView, goals, data, onDone) {

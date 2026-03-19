@@ -7,7 +7,7 @@ import { getHistory, clearHistory } from './history.js';
 import { playList } from './player.js';
 import { promptInstall } from './pwa.js';
 import { showToast, escapeHtml } from './utils.js';
-import { renderMessageWall } from './message-wall.js';
+// renderMessageWall is kept for backward-compat but community page uses gongxiu.js
 import { getCachedCount, getCachedSize, clearAudioCache } from './audio-cache.js';
 import { get as storeGet } from './store.js';
 
@@ -129,11 +129,15 @@ export function renderMyPage() {
           </div>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
-        <div class="my-item" id="myMessagesCard">
-          <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <div class="my-item" id="myGongxiuCard">
+          <svg class="my-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M8 12c0-2.2 1.8-4 4-4s4 1.8 4 4-1.8 4-4 4"/>
+            <path d="M12 16v2M12 6v2"/>
+          </svg>
           <div class="my-item-body">
-            <span class="my-item-label">${t('my_messages')}</span>
-            <span class="my-item-desc">${t('my_messages_desc')}</span>
+            <span class="my-item-label">${t('my_gongxiu')}</span>
+            <span class="my-item-desc">${t('my_gongxiu_desc')}</span>
           </div>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
@@ -183,7 +187,7 @@ export function renderMyPage() {
   page.querySelector('#myWenkuCard').addEventListener('click', () => {
     import('./wenku.js').then(mod => mod.renderWenkuHome(() => renderMyPage()));
   });
-  page.querySelector('#myMessagesCard').addEventListener('click', () => showMessageWallSubview());
+  page.querySelector('#myGongxiuCard').addEventListener('click', () => showGongxiuSubview());
 
   // Prefetch wenku series data in background to speed up first open of 文库
   // Uses idle callback (or fallback timeout) so it doesn't compete with primary page rendering
@@ -302,27 +306,43 @@ function showHistorySubview() {
   }
 }
 
-function showMessageWallSubview() {
+function showGongxiuSubview() {
   const dom = getDOM();
-  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
 
-  const view = document.createElement('div');
-  view.className = 'view active';
-
-  view.innerHTML = `<div class="ep-header">
-    <button class="btn-back" id="msgBackBtn"><svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg></button>
-    <div class="ep-header-info">
-      <div class="ep-header-title">${t('my_messages')}</div>
-      <div class="ep-header-sub">${t('my_messages_desc')}</div>
+  // Full-screen slide-in panel
+  document.querySelectorAll('.gx-fullscreen').forEach(el => el.remove());
+  const panel = document.createElement('div');
+  panel.className = 'gx-fullscreen';
+  panel.innerHTML = `
+    <div class="gx-fs-header">
+      <button class="btn-icon" id="gxFsBack" aria-label="返回">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,18 9,12 15,6"/></svg>
+      </button>
+      <span class="gx-fs-title">${t('my_gongxiu')}</span>
+      <div style="width:44px;flex-shrink:0"></div>
     </div>
-  </div>
-  <div id="msgWallContainer"></div>`;
+    <div class="gx-view-wrap" style="flex:1;overflow:hidden;position:relative">
+      <div id="gxContent" style="height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch"></div>
+    </div>`;
 
-  dom.contentArea.appendChild(view);
+  document.getElementById('app').appendChild(panel);
+  requestAnimationFrame(() => panel.classList.add('gx-fullscreen--in'));
 
-  // Back button
-  view.querySelector('#msgBackBtn').addEventListener('click', () => renderMyPage());
+  // Open counter shortcut
+  const openCounter = () => {
+    panel.classList.remove('gx-fullscreen--in');
+    setTimeout(() => {
+      panel.remove();
+      import('./counter.js').then(mod => mod.openCounter());
+    }, 320);
+  };
 
-  // Render message wall into container
-  renderMessageWall(view.querySelector('#msgWallContainer'));
+  import('./gongxiu.js').then(mod => {
+    mod.renderGongxiu(panel.querySelector('#gxContent'), openCounter);
+  });
+
+  panel.querySelector('#gxFsBack').addEventListener('click', () => {
+    panel.classList.remove('gx-fullscreen--in');
+    setTimeout(() => panel.remove(), 320);
+  });
 }

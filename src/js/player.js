@@ -19,6 +19,13 @@ let _dragging = false;
 let _playPending = false;
 let _switchingTimeoutId = null;
 
+/**
+ * Tracks explicit user intent: true when user pressed pause themselves.
+ * Guards all auto-resume paths (stall recovery, bg-load swap) so they never
+ * restart playback against the user's will.
+ */
+let _userPaused = false;
+
 /* ===== Background Full-Load State ===== */
 // After playback starts, fetch the full audio file in the background.
 // Once downloaded, switch <audio> to a Blob URL so all subsequent playback is local.
@@ -125,6 +132,12 @@ function onStallDetected() {
     dom.audio.addEventListener('loadeddata', function onLoad() {
       dom.audio.removeEventListener('loadeddata', onLoad);
       if (currentTime > 0) dom.audio.currentTime = currentTime;
+      // Guard: if user explicitly paused during this recovery, do NOT auto-resume
+      if (_userPaused) {
+        setBuffering(false);
+        setPlayState(false);
+        return;
+      }
       dom.audio.play().then(() => {
         setBuffering(false);
       }).catch(() => {
@@ -138,7 +151,7 @@ function onStallDetected() {
     setTimeout(() => {
       if (dom.audio.paused && !dom.audio.ended) {
         setBuffering(false);
-        setErrorState(t('error_stall_tap'));
+        if (!_userPaused) setErrorState(t('error_stall_tap'));
         setPlayState(false);
       }
     }, 20000);
@@ -241,6 +254,7 @@ export function setDragging(v) { _dragging = v; }
 
 export function playList(episodes, idx, series, restoreTime) {
   cleanupPreload();
+  _userPaused = false; // User is explicitly requesting playback of a new track
   // #8: Always rebuild playlist — even for same series, episodes data may have been refreshed
   state.playlist = episodes.map(ep => ({ ...ep, seriesId: series.id, seriesTitle: series.title, speaker: series.speaker }));
   state.epIdx = idx;
@@ -793,6 +807,7 @@ export function togglePlay() {
   if (dom.audio.paused && dom.audio.src) {
     if (_playPending) return; // play() already in-flight, ignore duplicate tap
     _playPending = true;
+    _userPaused = false; // User explicitly wants to play
     // If audio reached the end, restart from the beginning
     if (dom.audio.ended) dom.audio.currentTime = 0;
     setPlayState(true);
@@ -809,6 +824,7 @@ export function togglePlay() {
     if (isSwitching) {
       cancelPendingTrackLoad();
     }
+    _userPaused = true; // User explicitly paused — block all auto-resume paths
     dom.audio.pause();
     clearStallWatch();
     setPlayState(false);
@@ -1322,8 +1338,16 @@ function updateMediaSession(tr) {
   });
   try {
     const dom = getDOM();
-    navigator.mediaSession.setActionHandler('play', () => dom.audio.play());
-    navigator.mediaSession.setActionHandler('pause', () => dom.audio.pause());
+    // Route media-key play/pause through the same state management as the UI buttons,
+    // so _userPaused is correctly maintained when the user operates lock-screen controls.
+    navigator.mediaSession.setActionHandler('play', () => {
+      _userPaused = false;
+      if (dom.audio.paused && dom.audio.src) { dom.audio.play(); setPlayState(true); startStallWatch(); }
+    });
+    navigator.mediaSession.setActionHandler('pause', () => {
+      _userPaused = true;
+      dom.audio.pause(); clearStallWatch(); setPlayState(false);
+    });
     navigator.mediaSession.setActionHandler('previoustrack', prevTrack);
     navigator.mediaSession.setActionHandler('nexttrack', nextTrack);
     navigator.mediaSession.setActionHandler('seekbackward', () => { if (dom.audio.duration) dom.audio.currentTime = Math.max(0, dom.audio.currentTime - 10); });

@@ -201,6 +201,18 @@ export async function onRequest(context) {
       return await handlePostMessage(db, request, cors);
     }
 
+    // ==================== 共修社区路由 ====================
+
+    // GET /api/gongxiu — 获取今日共修统计 + 最新条目
+    if (path === '/api/gongxiu' && method === 'GET') {
+      return await handleGetGongxiu(db, url, cors);
+    }
+
+    // POST /api/gongxiu — 提交共修回向记录
+    if (path === '/api/gongxiu' && method === 'POST') {
+      return await handlePostGongxiu(db, request, cors);
+    }
+
     // ==================== 管理员路由 ====================
 
     // POST /api/admin/embeddings/build — 批量构建向量
@@ -2499,6 +2511,132 @@ async function handlePostMessage(db, request, cors) {
       pinned: 0,
       created_at: new Date().toISOString(),
     },
+  }, cors, 201, 'no-store');
+}
+
+// ============================================================
+// 共修社区处理器
+// ============================================================
+
+/** 获取北京时间当日日期字符串 YYYY-MM-DD */
+function getTodayBeijing() {
+  const now = new Date(Date.now() + 8 * 3600000); // UTC+8
+  return now.toISOString().slice(0, 10);
+}
+
+/** 对 IP 进行不可逆哈希（隐私保护，仅用于去重） */
+async function hashIP(ip) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode('gongxiu-salt:' + (ip || ''));
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hash)).slice(0, 8).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * GET /api/gongxiu
+ * 返回今日统计 + 最近30条记录 + 历史累计总数
+ */
+async function handleGetGongxiu(db, url, cors) {
+  const today = getTodayBeijing();
+  const limit = Math.min(parseInt(url.searchParams.get('limit') || '30'), 50);
+
+  // 今日统计（先查缓存表，否则实时聚合）
+  let todayStat = await db.prepare(
+    'SELECT total_count, participant_count FROM gongxiu_daily_stats WHERE date = ?'
+  ).bind(today).first().catch(() => null);
+
+  if (!todayStat) {
+    todayStat = await db.prepare(
+      `SELECT COALESCE(SUM(count),0) AS total_count, COUNT(*) AS participant_count
+       FROM gongxiu_entries WHERE date = ?`
+    ).bind(today).first().catch(() => ({ total_count: 0, participant_count: 0 }));
+  }
+
+  // 历史累计总声数
+  const allTime = await db.prepare(
+    'SELECT COALESCE(SUM(count),0) AS grand_total, COUNT(*) AS grand_participants FROM gongxiu_entries'
+  ).first().catch(() => ({ grand_total: 0, grand_participants: 0 }));
+
+  // 最近 N 条记录（含今日及历史，按时间倒序）
+  const { results: entries } = await db.prepare(
+    `SELECT id, date, nickname, practice, count, vow_type, vow_target, vow_custom, created_at
+     FROM gongxiu_entries ORDER BY id DESC LIMIT ?`
+  ).bind(limit).all().catch(() => ({ results: [] }));
+
+  return json({
+    today: today,
+    today_total: Number(todayStat.total_count) || 0,
+    today_participants: Number(todayStat.participant_count) || 0,
+    grand_total: Number(allTime.grand_total) || 0,
+    grand_participants: Number(allTime.grand_participants) || 0,
+    entries: entries || [],
+  }, cors, 200, 'public, max-age=30, s-maxage=60');
+}
+
+/**
+ * POST /api/gongxiu
+ * 提交一条共修回向记录。
+ * 每个 IP 每天最多提交 3 次（防刷，不限每次的不同法门）
+ */
+async function handlePostGongxiu(db, request, cors) {
+  const today = getTodayBeijing();
+  const ip = request.headers.get('CF-Connecting-IP') ||
+             request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() || '';
+  const ipHash = await hashIP(ip);
+
+  // 解析请求体
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'Invalid JSON' }, cors, 400);
+  }
+
+  const nickname = String(body.nickname || '莲友').trim().slice(0, 20) || '莲友';
+  const practice = String(body.practice || '南无阿弥陀佛').trim().slice(0, 40);
+  const count    = parseInt(body.count);
+  const vowType  = ['universal', 'blessing', 'rebirth', 'custom'].includes(body.vow_type)
+                   ? body.vow_type : 'universal';
+  const vowTarget = String(body.vow_target || '').trim().slice(0, 30);
+  const vowCustom = String(body.vow_custom || '').trim().slice(0, 100);
+
+  if (!count || count < 1 || count > 150000) {
+    return json({ error: 'count must be 1–150000' }, cors, 400);
+  }
+  if (!practice) {
+    return json({ error: 'practice required' }, cors, 400);
+  }
+
+  // 每日 IP 限流（每天最多 3 条）
+  const { count: ipCount } = await db.prepare(
+    'SELECT COUNT(*) as count FROM gongxiu_entries WHERE ip_hash = ? AND date = ?'
+  ).bind(ipHash, today).first().catch(() => ({ count: 0 }));
+
+  if (ipCount >= 3) {
+    return json({ error: '今日共修已记录，明日再续精进', alreadySubmitted: true }, cors, 429);
+  }
+
+  // 插入记录
+  const { meta } = await db.prepare(
+    `INSERT INTO gongxiu_entries (date, nickname, practice, count, vow_type, vow_target, vow_custom, ip_hash)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(today, nickname, practice, count, vowType, vowTarget, vowCustom, ipHash).run();
+
+  // 更新每日聚合缓存（upsert）
+  await db.prepare(
+    `INSERT INTO gongxiu_daily_stats (date, total_count, participant_count, updated_at)
+     VALUES (?, ?, 1, datetime('now'))
+     ON CONFLICT(date) DO UPDATE SET
+       total_count = total_count + excluded.total_count,
+       participant_count = participant_count + 1,
+       updated_at = excluded.updated_at`
+  ).bind(today, count).run().catch(() => { /* cache update failure is non-fatal */ });
+
+  // 保存昵称建议（返回给前端，由前端存 localStorage）
+  return json({
+    ok: true,
+    id: meta.last_row_id,
+    entry: { id: meta.last_row_id, date: today, nickname, practice, count, vow_type: vowType, vow_target: vowTarget, vow_custom: vowCustom, created_at: new Date().toISOString() },
   }, cors, 201, 'no-store');
 }
 
