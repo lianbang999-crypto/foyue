@@ -12,6 +12,10 @@ Thumbs.db
 # Node
 node_modules/
 
+# Python
+__pycache__/
+*.pyc
+
 # Build output
 dist/
 
@@ -33,4 +37,5 @@ credentials.json
 secrets.json
 cloudflare_*.py
 setup_cloudflare.sh
-scripts/
+# 仅忽略项目根目录的 scripts，保留技能内的 scripts
+/scripts/
