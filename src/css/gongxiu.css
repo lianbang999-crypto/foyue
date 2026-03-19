@@ -1,0 +1,600 @@
+/* ===== 共修社区 ===== */
+
+/* 全屏容器（从 my-page 导航进入） */
+.gx-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform .32s cubic-bezier(.22, 1, .36, 1);
+    overflow: hidden;
+}
+
+.gx-fullscreen--in {
+    transform: translateX(0);
+}
+
+.gx-fs-header {
+    display: flex;
+    align-items: center;
+    padding: 8px 4px;
+    padding-top: calc(12px + env(safe-area-inset-top, 0px));
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    background: var(--bg-header);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+}
+
+.gx-fs-title {
+    flex: 1;
+    text-align: center;
+    font-size: .92rem;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: .04em;
+}
+
+.gx-view {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 20px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ── 功德池 ─────────────────────────────────────────── */
+.gx-merit-pool {
+    background: linear-gradient(145deg, var(--accent-glow), var(--bg-card));
+    border: 1px solid var(--border-active);
+    border-radius: var(--radius-lg);
+    padding: 22px 20px 16px;
+    margin-bottom: 20px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.gx-merit-pool::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--hero-radial, radial-gradient(ellipse at 50% 0%, rgba(212,175,55,.14) 0%, transparent 60%));
+    pointer-events: none;
+}
+
+.gx-pool-inner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    position: relative;
+}
+
+.gx-pool-today,
+.gx-pool-all {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.gx-pool-divider {
+    width: 1px;
+    height: 40px;
+    background: var(--border-active);
+    opacity: .5;
+    flex-shrink: 0;
+    margin: 0 8px;
+}
+
+.gx-pool-num {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--accent);
+    font-family: var(--font-en);
+    line-height: 1;
+    letter-spacing: -.02em;
+}
+
+.gx-pool-num--sm {
+    font-size: 1.4rem;
+}
+
+.gx-pool-lbl {
+    font-size: .7rem;
+    color: var(--text-muted);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    font-weight: 500;
+}
+
+.gx-pool-participants {
+    font-size: .76rem;
+    color: var(--text-secondary);
+    margin-top: 12px;
+    position: relative;
+}
+
+.gx-pool-participants strong {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.gx-pool-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 24px 0;
+    color: var(--text-muted);
+    font-size: .82rem;
+}
+
+.gx-pool-spinner {
+    width: 20px;
+    height: 20px;
+    animation: gx-spin .9s linear infinite;
+    stroke: var(--accent);
+}
+
+@keyframes gx-spin { to { transform: rotate(360deg); } }
+
+.gx-error {
+    text-align: center;
+    padding: 20px;
+    color: var(--text-muted);
+    font-size: .82rem;
+}
+
+/* ── 回向文横幅 ─────────────────────────────────────── */
+.gx-banner {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    margin-bottom: 24px;
+}
+
+.gx-banner-text {
+    font-size: .9rem;
+    font-family: var(--font-serif);
+    color: var(--text);
+    line-height: 2;
+    letter-spacing: .06em;
+}
+
+.gx-banner-attr {
+    font-size: .74rem;
+    color: var(--accent);
+    margin-top: 8px;
+    text-align: right;
+    letter-spacing: .04em;
+    opacity: .8;
+}
+
+/* ── Section ─────────────────────────────────────────── */
+.gx-section {
+    margin-bottom: 28px;
+}
+
+.gx-section-title {
+    font-size: .76rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.gx-section-title::before {
+    content: '';
+    display: inline-block;
+    width: 3px;
+    height: 12px;
+    background: var(--accent);
+    border-radius: 2px;
+    opacity: .7;
+    flex-shrink: 0;
+}
+
+/* ── 已提交横幅 ─────────────────────────────────────── */
+.gx-submitted-banner {
+    background: var(--accent-glow);
+    border: 1px solid var(--border-active);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.gx-submitted-icon {
+    font-size: 1.6rem;
+    flex-shrink: 0;
+}
+
+.gx-submitted-text {
+    font-size: .86rem;
+    color: var(--text);
+    line-height: 1.6;
+    font-weight: 500;
+}
+
+.gx-submitted-text span {
+    font-size: .76rem;
+    color: var(--text-secondary);
+    font-weight: 400;
+}
+
+/* ── 参与表单 ───────────────────────────────────────── */
+.gx-submit-section {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.gx-submit-hint {
+    font-size: .84rem;
+    color: var(--text-secondary);
+    padding: 10px 14px;
+    background: var(--bg-card);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+}
+
+.gx-submit-hint strong {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.gx-field-label {
+    font-size: .72rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+
+/* Vow picker */
+.gx-vow-picker {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.gx-vow-opts {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.gx-vow-opt {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: .84rem;
+    color: var(--text-secondary);
+    transition: background .15s;
+    border: 1px solid transparent;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.gx-vow-opt input[type="radio"] { display: none; }
+
+.gx-vow-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border);
+    flex-shrink: 0;
+    transition: all .15s;
+}
+
+.gx-vow-opt--active {
+    background: var(--accent-glow);
+    border-color: var(--border-active);
+    color: var(--accent);
+}
+
+.gx-vow-opt--active .gx-vow-dot {
+    border-color: var(--accent);
+    background: var(--accent);
+    box-shadow: 0 0 0 2px var(--bg-card), 0 0 0 4px var(--accent-dim);
+}
+
+.gx-target-wrap,
+.gx-custom-wrap {
+    margin-top: 2px;
+}
+
+.gx-hidden { display: none; }
+
+.gx-nickname-row {
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+}
+
+.gx-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    border-radius: var(--radius-sm);
+    font-size: .84rem;
+    color: var(--text);
+    font-family: var(--font-zh);
+    outline: none;
+    transition: border-color .15s;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+}
+
+.gx-input:focus { border-color: var(--accent-dim); }
+
+.gx-textarea { resize: none; }
+
+/* 参与按钮 */
+.gx-join-btn {
+    -webkit-appearance: none;
+    appearance: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: var(--text-inverse);
+    font-size: .9rem;
+    font-weight: 600;
+    font-family: var(--font-zh);
+    cursor: pointer;
+    letter-spacing: .04em;
+    transition: opacity .15s, transform .1s;
+}
+
+.gx-join-btn:hover { opacity: .88; }
+.gx-join-btn:active { transform: scale(0.98); }
+.gx-join-btn:disabled { opacity: .5; pointer-events: none; }
+
+.gx-counter-link-btn {
+    -webkit-appearance: none;
+    appearance: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 13px;
+    border: 1px solid var(--border-active);
+    border-radius: var(--radius-sm);
+    background: var(--accent-glow);
+    color: var(--accent);
+    font-size: .86rem;
+    font-weight: 500;
+    font-family: var(--font-zh);
+    cursor: pointer;
+    transition: background .15s;
+}
+
+.gx-counter-link-btn:hover { background: var(--border-active); }
+
+/* ── 条目流 ─────────────────────────────────────────── */
+.gx-entries {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.gx-entry {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    transition: background .15s;
+}
+
+.gx-entry:last-child { border-bottom: none; }
+.gx-entry:hover { background: var(--bg-card-hover); }
+
+.gx-entry-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: var(--accent-glow);
+    border: 1px solid var(--border-active);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .9rem;
+    font-weight: 600;
+    color: var(--accent);
+    flex-shrink: 0;
+    font-family: var(--font-zh);
+}
+
+.gx-entry-body { flex: 1; min-width: 0; }
+
+.gx-entry-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+}
+
+.gx-entry-name {
+    font-size: .82rem;
+    font-weight: 500;
+    color: var(--text);
+}
+
+.gx-entry-today {
+    font-size: .64rem;
+    background: var(--accent);
+    color: var(--text-inverse);
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-weight: 600;
+    letter-spacing: .02em;
+}
+
+.gx-entry-time {
+    font-size: .72rem;
+    color: var(--text-muted);
+    margin-left: auto;
+}
+
+.gx-entry-practice {
+    font-size: .82rem;
+    color: var(--text-secondary);
+    margin-bottom: 3px;
+}
+
+.gx-entry-practice strong {
+    color: var(--accent);
+    font-weight: 600;
+    font-family: var(--font-en);
+}
+
+.gx-entry-vow {
+    font-size: .74rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.gx-empty {
+    text-align: center;
+    padding: 32px 20px;
+    color: var(--text-muted);
+    font-size: .84rem;
+    line-height: 1.8;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+/* ── 页脚 ──────────────────────────────────────────── */
+.gx-footer {
+    text-align: center;
+    font-size: .8rem;
+    color: var(--accent);
+    letter-spacing: .16em;
+    padding: 8px 0 4px;
+    opacity: .5;
+    font-family: var(--font-serif);
+}
+
+/* ── 回向文全屏展示 ─────────────────────────────────── */
+.gx-huixiang-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: var(--bg);
+    opacity: 0;
+    transition: opacity .4s ease;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 40px 32px;
+}
+
+.gx-huixiang-screen--in {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.gx-hd-content {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 22px;
+    max-width: 340px;
+}
+
+.gx-hd-lotus {
+    font-size: 3rem;
+    line-height: 1;
+    animation: gx-lotus-pulse 2s ease-in-out infinite;
+}
+
+@keyframes gx-lotus-pulse {
+    0%, 100% { opacity: .7; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.1); }
+}
+
+.gx-hd-text {
+    font-size: 1.05rem;
+    font-family: var(--font-serif);
+    color: var(--text);
+    line-height: 2.1;
+    letter-spacing: .07em;
+}
+
+.gx-hd-dedicate {
+    font-size: .84rem;
+    color: var(--accent);
+    letter-spacing: .06em;
+    font-family: var(--font-zh);
+    border-top: 1px solid var(--border);
+    padding-top: 14px;
+    width: 100%;
+    text-align: center;
+}
+
+.gx-hd-namo {
+    font-size: 1rem;
+    color: var(--accent);
+    font-weight: 500;
+    letter-spacing: .2em;
+    font-family: var(--font-serif);
+}
+
+.gx-hd-hint {
+    font-size: .7rem;
+    color: var(--text-muted);
+    letter-spacing: .04em;
+}
+
+/* ── Dark/Ink theme adjustments ─────────────────────── */
+[data-theme="dark"] .gx-merit-pool,
+[data-theme="ink"] .gx-merit-pool {
+    background: linear-gradient(145deg, var(--accent-glow), var(--bg-card));
+}
+
+[data-theme="dark"] .gx-vow-picker,
+[data-theme="ink"] .gx-vow-picker {
+    background: var(--bg-secondary);
+}
+
+/* Responsive — wider screens */
+@media (min-width: 500px) {
+    .gx-pool-num { font-size: 2.4rem; }
+    .gx-pool-num--sm { font-size: 1.6rem; }
+}

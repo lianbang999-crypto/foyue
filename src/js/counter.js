@@ -2,13 +2,19 @@
 import { t } from './i18n.js';
 import { get, patch } from './store.js';
 import { haptic, showToast, escapeHtml } from './utils.js';
+import { showSharePoster } from './counter-share.js';
 
 const BEADS_PER_LOOP = 108;
-const MAX_GOAL_VALUE = 99999;
+/** @deprecated Kept only for data migration from old single-custom format */
 const CUSTOM_KEY = '__custom__';
 const MAX_RIPPLES = 6;
+const MAX_CUSTOM_PRACTICES = 5;
 
+/** Built-in presets — always present, cannot be removed */
 const PRACTICE_PRESETS = ['南无阿弥陀佛', '阿弥陀佛'];
+
+/** Fixed standard dedication text (莲池大师回向文) — always appended, never editable */
+const HUIXIANG_TEXT = '愿以此功德，庄严佛净土，\n上报四重恩，下济三途苦，\n若有见闻者，悉发菩提心，\n尽此一报身，同生极乐国。';
 
 /* ── Helpers ── */
 function todayStr() {
@@ -35,12 +41,9 @@ function checkAndResetDaily(ps) {
   return false;
 }
 
-/* Return the display name for the current practice */
+/* Return the display name for the current practice (data.practice IS the name now) */
 function getPracticeDisplayName(data) {
-  if (data.practice === CUSTOM_KEY) {
-    return data.customPractice || t('counter_goal_custom');
-  }
-  return data.practice;
+  return data.practice || '南无阿弥陀佛';
 }
 
 /* ── Daily log helpers ── */
@@ -83,7 +86,17 @@ function pruneDailyLog(data) {
 
 /* ── Wake Lock ── */
 let _wakeLock = null;
+const WAKELOCK_PREF_KEY = 'counter-wakelock-pref';
+
+function isWakeLockEnabled() {
+  try { return localStorage.getItem(WAKELOCK_PREF_KEY) !== 'off'; } catch { return true; }
+}
+function setWakeLockPref(on) {
+  try { localStorage.setItem(WAKELOCK_PREF_KEY, on ? 'on' : 'off'); } catch { }
+}
+
 async function requestWakeLock() {
+  if (!isWakeLockEnabled()) return;
   if (_wakeLock) return;
   try {
     if ('wakeLock' in navigator) {
@@ -99,73 +112,84 @@ function releaseWakeLock() {
   }
 }
 
-/* ── Data migration for CUSTOM_KEY change ── */
-function migrateCustomKey(data) {
-  // Migrate old '自定义' key to '__custom__'
-  const OLD_KEY = '自定义';
-  if (data.practices && data.practices[OLD_KEY]) {
-    if (!data.practices[CUSTOM_KEY] || data.practices[CUSTOM_KEY].total === 0) {
-      data.practices[CUSTOM_KEY] = data.practices[OLD_KEY];
+/**
+ * Migrate legacy single-custom-practice format to the new customPractices array.
+ * Also upgrades old '自定义' and '__custom__' keys to actual practice names.
+ */
+function migrateToCustomPractices(data) {
+  let changed = false;
+
+  // 1. Migrate very old '自定义' key (pre-CUSTOM_KEY era)
+  if (data.practices && data.practices['自定义']) {
+    const name = data.customPractice || '自定义';
+    if (!data.practices[name] || data.practices[name].total === 0) {
+      data.practices[name] = data.practices['自定义'];
     }
-    delete data.practices[OLD_KEY];
+    delete data.practices['自定义'];
+    if (data.practice === '自定义') data.practice = name;
+    changed = true;
   }
-  if (data.practice === OLD_KEY) {
-    data.practice = CUSTOM_KEY;
+
+  // 2. Migrate CUSTOM_KEY ('__custom__') to actual practice name
+  if (data.practices && data.practices[CUSTOM_KEY] && data.customPractice) {
+    if (!data.practices[data.customPractice] || data.practices[data.customPractice].total === 0) {
+      data.practices[data.customPractice] = data.practices[CUSTOM_KEY];
+    }
+    delete data.practices[CUSTOM_KEY];
+    changed = true;
+  } else if (data.practices && data.practices[CUSTOM_KEY]) {
+    // No customPractice name saved — just drop the orphan key
+    delete data.practices[CUSTOM_KEY];
+    changed = true;
   }
-  return data;
+  if (data.practice === CUSTOM_KEY) {
+    data.practice = data.customPractice || PRACTICE_PRESETS[0];
+    changed = true;
+  }
+
+  // 3. Migrate from single customPractice string to customPractices array
+  if (!Array.isArray(data.customPractices)) {
+    data.customPractices = [];
+    if (data.customPractice && !PRACTICE_PRESETS.includes(data.customPractice)) {
+      data.customPractices.push(data.customPractice);
+    }
+    changed = true;
+  }
+
+  return changed;
 }
 
 function getCounterData() {
   let data = get('counter');
   let shouldPersist = false;
 
-  // Migrate from old flat structure or initialize fresh
+  // Initialize fresh data structure
   if (!data || !data.practices) {
     const old = data || {};
-    data = { practice: '南无阿弥陀佛', customPractice: '', practices: {}, dailyLog: {} };
-
-    // Initialize all preset practices with empty stats
-    for (const p of [...PRACTICE_PRESETS, CUSTOM_KEY]) {
+    data = { practice: '南无阿弥陀佛', customPractice: '', customPractices: [], practices: {}, dailyLog: {} };
+    for (const p of PRACTICE_PRESETS) {
       data.practices[p] = { total: 0, daily: 0, dailyDate: '', goal: 108 };
     }
-
-    // Carry over existing data to the matching practice slot
     if (old.total !== undefined) {
-      if (PRACTICE_PRESETS.includes(old.practice)) {
-        data.practice = old.practice;
-        data.practices[old.practice] = {
-          total: old.total || 0, daily: old.daily || 0,
-          dailyDate: old.dailyDate || '', goal: old.goal || 108,
-        };
-      } else if (old.practice) {
-        // Old practice was a custom preset – migrate to custom slot
-        data.practice = CUSTOM_KEY;
-        data.customPractice = old.practice;
-        data.practices[CUSTOM_KEY] = {
-          total: old.total || 0, daily: old.daily || 0,
-          dailyDate: old.dailyDate || '', goal: old.goal || 108,
-        };
-      } else {
-        data.practices['南无阿弥陀佛'] = {
-          total: old.total || 0, daily: old.daily || 0,
-          dailyDate: old.dailyDate || '', goal: old.goal || 108,
-        };
+      const name = PRACTICE_PRESETS.includes(old.practice) ? old.practice : (old.practice || '南无阿弥陀佛');
+      data.practice = name;
+      if (!PRACTICE_PRESETS.includes(name)) {
+        data.customPractice = name;
+        data.customPractices = [name];
       }
+      data.practices[name] = { total: old.total || 0, daily: old.daily || 0, dailyDate: old.dailyDate || '', goal: old.goal || 108 };
     }
     patch('counter', data);
   }
 
-  // Migrate old '自定义' key to '__custom__'
-  const beforePractice = data.practice;
-  const hadOldCustomKey = !!(data.practices && data.practices['自定义']);
-  migrateCustomKey(data);
-  if (hadOldCustomKey || beforePractice !== data.practice) shouldPersist = true;
+  // Run all migrations
+  if (migrateToCustomPractices(data)) shouldPersist = true;
 
   // Ensure dailyLog exists
-  if (!data.dailyLog) {
-    data.dailyLog = {};
-    shouldPersist = true;
-  }
+  if (!data.dailyLog) { data.dailyLog = {}; shouldPersist = true; }
+
+  // Ensure customPractices array exists
+  if (!Array.isArray(data.customPractices)) { data.customPractices = []; shouldPersist = true; }
 
   // Ensure the current practice slot exists
   if (!data.practices[data.practice]) {
@@ -175,9 +199,7 @@ function getCounterData() {
 
   // Reset daily count if it's a new day
   const ps = getPracticeStats(data);
-  if (checkAndResetDaily(ps)) {
-    shouldPersist = true;
-  }
+  if (checkAndResetDaily(ps)) shouldPersist = true;
 
   // Prune old log entries
   const beforeLogKeys = Object.keys(data.dailyLog).length;
@@ -185,7 +207,6 @@ function getCounterData() {
   if (Object.keys(data.dailyLog).length !== beforeLogKeys) shouldPersist = true;
 
   if (shouldPersist) patch('counter', data);
-
   return data;
 }
 
@@ -256,12 +277,27 @@ function buildCounterHTML(data, session) {
   const displayName = escapeHtml(getPracticeDisplayName(data));
   const streak = getStreak(data);
 
+  const wakeLockOn = isWakeLockEnabled();
   return `
     <div class="counter-header">
       <button class="counter-back btn-icon" id="counterBack" aria-label="${t('wenku_back')}">
         <svg viewBox="0 0 24 24" width="20" height="20"><polyline points="15,18 9,12 15,6"/></svg>
       </button>
       <span class="counter-header-title">${t('counter_title')}</span>
+      <button class="btn-icon counter-wakelock-btn${wakeLockOn ? ' active' : ''}" id="counterWakeLockBtn"
+              aria-label="${wakeLockOn ? '屏幕保持点亮（点击关闭）' : '屏幕自动熄灭（点击开启）'}"
+              title="${wakeLockOn ? '屏幕常亮' : '屏幕自动熄灭'}">
+        ${wakeLockOn
+          ? `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`
+          : `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`
+        }
+      </button>
+      <button class="btn-icon" id="counterHistoryBtn" aria-label="念佛历史" title="念佛历史">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/>
+          <polyline points="12,7 12,12 15.5,14"/>
+        </svg>
+      </button>
       <button class="counter-menu btn-icon" id="counterMenu" aria-label="${t('more')}">
         <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="5" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="19" r="1.5" fill="currentColor"/></svg>
       </button>
@@ -309,17 +345,28 @@ function buildCounterHTML(data, session) {
 
     <!-- Bottom actions -->
     <div class="counter-actions">
-      <button class="counter-action-btn" id="counterResetSession">
-        <svg viewBox="0 0 24 24" width="18" height="18"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-        ${t('counter_reset_session')}
+      <button class="counter-action-btn counter-action-btn--clear" id="counterResetSession">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="23 4 23 10 17 10"/>
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+        </svg>
+        ${t('counter_clear')}
+      </button>
+      <button class="counter-action-btn counter-action-btn--huixiang" id="counterHuixiang">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10"/>
+          <path d="M16 12l4 4-4 4"/>
+          <path d="M20 16H9a4 4 0 0 1 0-8h2"/>
+        </svg>
+        ${t('counter_huixiang')}
       </button>
       <button class="counter-action-btn counter-action-btn--goal" id="counterSetGoal">
-        <svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>
-        ${t('counter_goal')}
-      </button>
-      <button class="counter-action-btn counter-action-btn--danger" id="counterResetAll">
-        <svg viewBox="0 0 24 24" width="18" height="18"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-        ${t('counter_reset_all')}
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <circle cx="12" cy="12" r="6"/>
+          <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/>
+        </svg>
+        ${t('counter_gongke')}
       </button>
     </div>
 
@@ -457,9 +504,8 @@ function wireCounterEvents(view, data, _session) {
       ps.daily++;
       ps.dailyDate = todayStr();
 
-      // Record to daily log
-      const practiceKey = data.practice === CUSTOM_KEY ? (data.customPractice || CUSTOM_KEY) : data.practice;
-      recordDailyLog(data, practiceKey, 1);
+      // Record to daily log — data.practice is now always the actual display name
+      recordDailyLog(data, data.practice, 1);
 
       patch('counter', data);
 
@@ -532,41 +578,298 @@ function wireCounterEvents(view, data, _session) {
     history.back();
   });
 
-  /* ── Reset session ── */
+  /* ── 清零 (reset session) ── */
   view.querySelector('#counterResetSession').addEventListener('click', () => {
     session = 0;
     updateUI();
     haptic(20);
-    showToast(t('counter_reset_session'));
+    showToast(t('counter_clear'));
   });
 
-  /* ── Set goal ── */
+  /* ── 今日功课 (set goal) ── */
   view.querySelector('#counterSetGoal').addEventListener('click', () => {
-    const goals = [108, 216, 540, 1080, 3000, 10000];
-    // Build a simple picker sheet
+    const goals = [108, 216, 540, 1080, 3000, 10000, 0];
     showGoalPicker(view, goals, data, () => updateUI());
   });
 
-  /* ── Reset all ── */
-  view.querySelector('#counterResetAll').addEventListener('click', () => {
-    if (!window.confirm(t('counter_reset_confirm'))) return;
-    // Reset all practices (preserve goals)
-    for (const p of Object.keys(data.practices)) {
-      const goal = data.practices[p].goal || 108;
-      data.practices[p] = { total: 0, daily: 0, dailyDate: todayStr(), goal };
-    }
-    data.dailyLog = {};
-    session = 0;
-    patch('counter', data);
-    haptic(30);
-    updateUI();
-    showToast(t('counter_reset_all'));
+  /* ── Wake lock toggle ── */
+  const wakeLockBtn = view.querySelector('#counterWakeLockBtn');
+  if (wakeLockBtn) {
+    wakeLockBtn.addEventListener('click', () => {
+      const nowOn = !isWakeLockEnabled();
+      setWakeLockPref(nowOn);
+      if (nowOn) {
+        requestWakeLock();
+        showToast('屏幕常亮已开启');
+      } else {
+        releaseWakeLock();
+        showToast('屏幕自动熄灭');
+      }
+      // Update button appearance without full re-render
+      wakeLockBtn.classList.toggle('active', nowOn);
+      wakeLockBtn.setAttribute('title', nowOn ? '屏幕常亮' : '屏幕自动熄灭');
+      wakeLockBtn.innerHTML = nowOn
+        ? `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`
+        : `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
+      haptic(15);
+    });
+  }
+
+  /* ── History button ── */
+  const histBtn = view.querySelector('#counterHistoryBtn');
+  if (histBtn) {
+    histBtn.addEventListener('click', () => openHistory(view, data));
+  }
+
+  /* ── 回向 button ── */
+  const huixiangBtn = view.querySelector('#counterHuixiang');
+  if (huixiangBtn) {
+    huixiangBtn.addEventListener('click', () => {
+      showHuixiangSheet(view, data, session);
+    });
+  }
+
+  /* ── Menu button → combined sheet: practice picker + reset all ── */
+  view.querySelector('#counterMenu').addEventListener('click', () => {
+    showCounterMenu(view, data, () => { session = 0; updateUI(); });
+  });
+}
+
+/* ── Counter menu sheet (practice + reset) ── */
+function showCounterMenu(parentView, data, onPracticeChange) {
+  parentView.querySelectorAll('.counter-menu-sheet').forEach(el => el.remove());
+
+  const sheet = document.createElement('div');
+  sheet.className = 'counter-goal-sheet counter-menu-sheet';
+  sheet.innerHTML = `
+    <div class="counter-goal-backdrop" id="menuBackdrop"></div>
+    <div class="counter-goal-panel">
+      <div class="counter-goal-panel-title">${t('more')}</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="counter-action-btn" id="menuSharePoster" style="flex:none;width:100%;padding:14px 16px;border-radius:var(--radius-sm);justify-content:flex-start;gap:12px;font-size:.86rem">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          分享念佛海报
+        </button>
+        <button class="counter-action-btn" id="menuSwitchPractice" style="flex:none;width:100%;padding:14px 16px;border-radius:var(--radius-sm);justify-content:flex-start;gap:12px;font-size:.86rem">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 3a3 3 0 0 0-3 3l-9 9a3 3 0 0 0 4.24 4.24l9-9A3 3 0 0 0 18 3z"/><line x1="3" y1="21" x2="6" y2="18"/></svg>
+          ${t('counter_practice_title')}
+        </button>
+        <button class="counter-action-btn counter-action-btn--danger" id="menuResetAll" style="flex:none;width:100%;padding:14px 16px;border-radius:var(--radius-sm);justify-content:flex-start;gap:12px;font-size:.86rem">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+          ${t('counter_reset_all')}
+        </button>
+      </div>
+      <button class="counter-goal-cancel" id="menuCancel">${t('cancel')}</button>
+    </div>`;
+  parentView.appendChild(sheet);
+  requestAnimationFrame(() => sheet.classList.add('counter-goal-sheet--visible'));
+
+  const close = () => {
+    sheet.classList.remove('counter-goal-sheet--visible');
+    setTimeout(() => sheet.remove(), 250);
+  };
+
+  sheet.querySelector('#menuBackdrop').addEventListener('click', close);
+  sheet.querySelector('#menuCancel').addEventListener('click', close);
+
+  sheet.querySelector('#menuSharePoster').addEventListener('click', () => {
+    close();
+    setTimeout(() => {
+      // Collect stats for this practice
+      const ps = getPracticeStats(data);
+      const streak = getStreak(data);
+      showSharePoster(parentView, {
+        practice: getPracticeDisplayName(data),
+        daily: ps.daily || 0,
+        total: ps.total || 0,
+        streak,
+      });
+    }, 260);
   });
 
-  /* ── Menu button → Practice picker ── */
-  view.querySelector('#counterMenu').addEventListener('click', () => {
-    showPracticePicker(view, data, () => { session = 0; updateUI(); });
+  sheet.querySelector('#menuSwitchPractice').addEventListener('click', () => {
+    close();
+    setTimeout(() => showPracticePicker(parentView, data, onPracticeChange), 260);
   });
+
+  sheet.querySelector('#menuResetAll').addEventListener('click', () => {
+    close();
+    setTimeout(() => {
+      if (!window.confirm(t('counter_reset_confirm'))) return;
+      for (const p of Object.keys(data.practices)) {
+        const goal = data.practices[p].goal || 108;
+        data.practices[p] = { total: 0, daily: 0, dailyDate: todayStr(), goal };
+      }
+      data.dailyLog = {};
+      patch('counter', data);
+      haptic(30);
+      onPracticeChange();
+      showToast(t('counter_reset_all'));
+    }, 260);
+  });
+}
+
+/**
+ * 回向文沉浸展示（全屏）
+ *
+ * 莲池大师大回向文始终完整展示，以"同生极乐国"作为一切功德的最终归宿。
+ * 用户的"另愿"附于大回向文之后，作为个人愿心的补充。
+ */
+function showHuixiangDisplay(parentView, anotherVow) {
+  parentView.querySelectorAll('.huixiang-display').forEach(el => el.remove());
+
+  const display = document.createElement('div');
+  display.className = 'huixiang-display';
+
+  const anotherLine = anotherVow
+    ? `<div class="hd-another">另愿：${escapeHtml(anotherVow)}</div>`
+    : '';
+
+  display.innerHTML = `
+    <div class="hd-overlay">
+      <div class="hd-content">
+        <div class="hd-lotus">🪷</div>
+        <div class="hd-main-text">${HUIXIANG_TEXT.replace(/\n/g, '<br>')}</div>
+        ${anotherLine}
+        <div class="hd-namo">南无阿弥陀佛</div>
+        <div class="hd-hint">点击关闭</div>
+      </div>
+    </div>`;
+  parentView.appendChild(display);
+  requestAnimationFrame(() => display.classList.add('huixiang-display--in'));
+
+  const close = () => {
+    display.classList.remove('huixiang-display--in');
+    setTimeout(() => display.remove(), 400);
+  };
+  const autoClose = setTimeout(close, 6000);
+  display.addEventListener('click', () => { clearTimeout(autoClose); close(); });
+}
+
+/**
+ * 回向 sheet
+ *
+ * 佛法依据（莲池大师西方发愿文）：
+ *   - 大回向文是修行的庄严结尾，以"同生极乐国"为最终归宿，不可省略
+ *   - "另愿"为行者个人的愿心补充，附于大回向文之后
+ *     例：愿父母消灾延寿 · 愿XXX早日往生净土 · 愿一切众生皆得解脱
+ *   - 大回向文不因个人愿文而改变，所有功德仍归于"庄严佛净土，同生极乐国"
+ */
+function showHuixiangSheet(parentView, data, _session) {
+  parentView.querySelectorAll('.huixiang-sheet').forEach(el => el.remove());
+
+  const ps = getPracticeStats(data);
+  const practiceName = escapeHtml(getPracticeDisplayName(data));
+  const dailyCount = ps.daily;
+  const savedVow = (() => { try { return localStorage.getItem('hx-another-vow') || ''; } catch { return ''; } })();
+
+  const sheet = document.createElement('div');
+  sheet.className = 'counter-goal-sheet huixiang-sheet';
+  sheet.innerHTML = `
+    <div class="counter-goal-backdrop" id="hxBackdrop"></div>
+    <div class="counter-goal-panel huixiang-panel">
+
+      <div class="hx-header">
+        <div class="hx-title">合掌回向</div>
+        <div class="hx-stats">${practiceName} · 今日 <strong>${formatCount(dailyCount)}</strong> 声</div>
+      </div>
+
+      <!-- 大回向文（固定展示，莲池大师，始终以"同生极乐国"为终归） -->
+      <div class="hx-huixiang-preview">
+        <div class="hx-section-label">大回向文</div>
+        <div class="hx-huixiang-text">${HUIXIANG_TEXT.replace(/\n/g, '<br>')}</div>
+        <div class="hx-huixiang-attr">— 莲池大师</div>
+      </div>
+
+      <!-- 另愿（用户个人愿心，附于大回向文之后） -->
+      <div class="hx-another-section">
+        <div class="hx-section-label">
+          另愿
+          <span class="hx-optional">可选</span>
+        </div>
+        <textarea class="hx-custom-input" id="hxAnotherVow" rows="2" maxlength="80"
+                  placeholder="例：愿父母消灾延寿 · 愿XXX早日往生净土">${escapeHtml(savedVow)}</textarea>
+        <div class="hx-another-hint">个人愿文将附于大回向文之后</div>
+      </div>
+
+      <div class="hx-gongxiu-row">
+        <label class="hx-gongxiu-label">
+          <input type="checkbox" id="hxJoinGongxiu" class="hx-checkbox">
+          <span class="hx-gongxiu-text">${t('counter_join_gongxiu')}</span>
+        </label>
+      </div>
+
+      <button class="hx-confirm-btn" id="hxConfirm">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        ${t('counter_huixiang_confirm')}
+      </button>
+      <button class="counter-goal-cancel" id="hxCancel">${t('counter_huixiang_skip')}</button>
+    </div>`;
+
+  parentView.appendChild(sheet);
+  requestAnimationFrame(() => sheet.classList.add('counter-goal-sheet--visible'));
+
+  const close = () => {
+    window.removeEventListener('keydown', hxEsc);
+    sheet.classList.remove('counter-goal-sheet--visible');
+    setTimeout(() => sheet.remove(), 250);
+  };
+  const hxEsc = (e) => { if (e.key === 'Escape') close(); };
+  window.addEventListener('keydown', hxEsc);
+  sheet.querySelector('#hxBackdrop').addEventListener('click', close);
+  sheet.querySelector('#hxCancel').addEventListener('click', close);
+
+  sheet.querySelector('#hxConfirm').addEventListener('click', async () => {
+    const anotherVow = sheet.querySelector('#hxAnotherVow')?.value.trim() || '';
+    const joinGongxiu = sheet.querySelector('#hxJoinGongxiu')?.checked;
+
+    try { localStorage.setItem('hx-another-vow', anotherVow); } catch { }
+
+    if (joinGongxiu && dailyCount > 0) {
+      try {
+        await submitToGongxiu(data, dailyCount, { anotherVow });
+        showToast(t('gongxiu_submit_success'));
+      } catch (err) {
+        console.warn('[Gongxiu] Submit failed:', err);
+      }
+    }
+
+    close();
+    setTimeout(() => showHuixiangDisplay(parentView, anotherVow), 260);
+  });
+}
+
+/* ── Submit to 共修社区 ── */
+async function submitToGongxiu(data, count, vowInfo) {
+  const savedNickname = (() => { try { return localStorage.getItem('gongxiu-nickname') || ''; } catch { return ''; } })();
+  const practice = getPracticeDisplayName(data);
+
+  const body = {
+    practice,
+    count: Math.min(count, 150000),
+    vow_type: 'universal', // 大回向文始终为"法界一切众生"（往生极乐）
+    vow_target: '',
+    vow_custom: vowInfo?.anotherVow || '', // 另愿（用户个人附加愿心）
+    nickname: savedNickname || '莲友',
+  };
+
+  const resp = await fetch('/api/gongxiu', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    throw new Error(data.error || 'HTTP ' + resp.status);
+  }
+
+  // Mark as submitted today
+  try {
+    localStorage.setItem('gongxiu-submitted-date', new Date().toDateString());
+  } catch { /* ignore */ }
+
+  return resp.json();
 }
 
 function showGoalPicker(parentView, goals, data, onDone) {
@@ -584,7 +887,7 @@ function showGoalPicker(parentView, goals, data, onDone) {
         ${goals.map(g => `<button class="counter-goal-opt${ps.goal === g ? ' counter-goal-opt--active' : ''}" data-goal="${g}">${g}</button>`).join('')}
       </div>
       <div class="counter-goal-custom-row">
-        <input class="counter-goal-custom-input" id="goalCustomInput" type="number" min="1" max="${MAX_GOAL_VALUE}"
+        <input class="counter-goal-custom-input" id="goalCustomInput" type="number" min="1"
                placeholder="${t('counter_goal_custom_hint')}">
         <button class="counter-goal-custom-btn" id="goalCustomConfirm">${t('counter_goal_custom_save')}</button>
       </div>
@@ -618,7 +921,7 @@ function showGoalPicker(parentView, goals, data, onDone) {
   sheet.querySelector('#goalCustomConfirm').addEventListener('click', () => {
     const input = sheet.querySelector('#goalCustomInput');
     const val = parseInt(input.value);
-    if (isNaN(val) || val < 1 || val > MAX_GOAL_VALUE) {
+    if (isNaN(val) || val < 1) {
       input.classList.add('counter-goal-custom-input--error');
       showToast(t('counter_goal_invalid'));
       setTimeout(() => input.classList.remove('counter-goal-custom-input--error'), 600);
@@ -632,47 +935,64 @@ function showGoalPicker(parentView, goals, data, onDone) {
   });
 }
 
-function showPracticePicker(parentView, data, onDone) {
-  // Remove existing picker
-  parentView.querySelectorAll('.counter-practice-sheet').forEach(el => el.remove());
+/** Build a single practice-item row HTML */
+function _buildPracticeItemHTML(name, isActive, isPreset) {
+  const delBtn = isPreset ? '' :
+    `<button class="practice-item-del" data-name="${escapeHtml(name)}" aria-label="删除">
+       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+     </button>`;
+  return `
+    <div class="practice-item${isActive ? ' practice-item--active' : ''}" data-name="${escapeHtml(name)}">
+      <div class="practice-item-body">
+        <span class="practice-item-name">${escapeHtml(name)}</span>
+        ${isActive ? '<span class="practice-item-badge">当前</span>' : ''}
+      </div>
+      ${delBtn}
+    </div>`;
+}
 
-  const customLabel = escapeHtml(data.customPractice || t('counter_goal_custom'));
-  const isCustomActive = data.practice === CUSTOM_KEY;
-  // If customPractice exists, the button acts as a direct selector;
-  // input is hidden by default and only revealed via the Edit button.
-  // If no customPractice yet, show the input immediately so the user can set one.
-  const hasCustom = !!data.customPractice;
+function showPracticePicker(parentView, data, onDone) {
+  parentView.querySelectorAll('.counter-practice-sheet').forEach(el => el.remove());
 
   const sheet = document.createElement('div');
   sheet.className = 'counter-practice-sheet';
-  sheet.innerHTML = `
-    <div class="counter-practice-backdrop" id="practiceBackdrop"></div>
-    <div class="counter-practice-panel">
-      <div class="counter-practice-panel-title">${t('counter_practice_title')}</div>
-      <div class="counter-practice-options">
-        ${PRACTICE_PRESETS.map(name => `
-          <button class="counter-practice-opt${data.practice === name ? ' counter-practice-opt--active' : ''}"
-                  data-name="${name}">${name}</button>
-        `).join('')}
-      </div>
-      <div class="counter-practice-custom-row">
-        <button class="counter-practice-opt counter-practice-opt--custom${isCustomActive ? ' counter-practice-opt--active' : ''}"
-                id="practiceCustomOpt" data-name="${CUSTOM_KEY}">${customLabel}</button>
-        ${hasCustom ? `<button class="counter-practice-custom-edit" id="practiceCustomEdit">${t('counter_practice_custom_edit')}</button>` : ''}
-      </div>
-      <div class="counter-custom-input-wrap${hasCustom ? ' counter-custom-input-wrap--hidden' : ''}" id="customInputWrap">
-        <div class="counter-goal-custom-row">
-          <input class="counter-goal-custom-input" id="customPracticeInput" type="text"
-                 maxlength="20" placeholder="${t('counter_custom_practice_hint')}"
-                 value="${escapeHtml(data.customPractice || '')}">
-          <button class="counter-goal-custom-btn" id="customPracticeConfirm">${t('counter_practice_custom_save')}</button>
-        </div>
-      </div>
-      <button class="counter-goal-cancel" id="practiceCancel">${t('cancel')}</button>
-    </div>
-  `;
-  parentView.appendChild(sheet);
 
+  const renderSheetContent = () => {
+    const canAdd = data.customPractices.length < MAX_CUSTOM_PRACTICES;
+    const allPractices = [
+      ...PRACTICE_PRESETS.map(n => ({ name: n, isPreset: true })),
+      ...data.customPractices.map(n => ({ name: n, isPreset: false })),
+    ];
+    return `
+      <div class="counter-practice-backdrop" id="practiceBackdrop"></div>
+      <div class="counter-practice-panel practice-picker-panel">
+        <div class="counter-practice-panel-title">${t('counter_practice_title')}</div>
+
+        <div class="practice-picker-list" id="practicePickerList">
+          ${allPractices.map(({ name, isPreset }) =>
+            _buildPracticeItemHTML(name, data.practice === name, isPreset)
+          ).join('')}
+        </div>
+
+        ${canAdd ? `
+        <div class="practice-add-section" id="practiceAddSection">
+          <div class="practice-add-input-row" id="practiceAddRow" style="display:none">
+            <input class="counter-goal-custom-input" id="practiceNewInput" type="text"
+                   maxlength="20" placeholder="${t('counter_custom_practice_hint')}">
+            <button class="counter-goal-custom-btn" id="practiceNewConfirm">${t('counter_practice_custom_save')}</button>
+          </div>
+          <button class="practice-add-btn" id="practiceAddBtn">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            添加自定义功课（还可添加 ${MAX_CUSTOM_PRACTICES - data.customPractices.length} 个）
+          </button>
+        </div>` : `<div class="practice-add-hint">自定义功课已达上限（${MAX_CUSTOM_PRACTICES} 个）</div>`}
+
+        <button class="counter-goal-cancel" id="practiceCancel">${t('cancel')}</button>
+      </div>`;
+  };
+
+  sheet.innerHTML = renderSheetContent();
+  parentView.appendChild(sheet);
   requestAnimationFrame(() => sheet.classList.add('counter-practice-sheet--visible'));
 
   const close = () => {
@@ -680,91 +1000,395 @@ function showPracticePicker(parentView, data, onDone) {
     sheet.classList.remove('counter-practice-sheet--visible');
     setTimeout(() => sheet.remove(), 250);
   };
-
-  sheet.querySelector('#practiceBackdrop').addEventListener('click', close);
-  sheet.querySelector('#practiceCancel').addEventListener('click', close);
   const practiceEscHandler = (e) => { if (e.key === 'Escape') close(); };
   window.addEventListener('keydown', practiceEscHandler);
 
-  // Preset option buttons
-  sheet.querySelectorAll('.counter-practice-opt[data-name]:not(#practiceCustomOpt)').forEach(btn => {
-    btn.addEventListener('click', () => {
-      data.practice = btn.dataset.name;
-      if (!data.practices[data.practice]) {
-        data.practices[data.practice] = { total: 0, daily: 0, dailyDate: todayStr(), goal: 108 };
-      }
-      checkAndResetDaily(getPracticeStats(data));
-      patch('counter', data);
-      haptic(15);
-      onDone();
-      showToast(t('counter_practice_changed').replace('{name}', data.practice));
-      close();
-    });
-  });
-
-  // Custom option: direct select if customPractice exists, else show input
-  const customOpt = sheet.querySelector('#practiceCustomOpt');
-  const customWrap = sheet.querySelector('#customInputWrap');
-  customOpt.addEventListener('click', () => {
-    if (data.customPractice) {
-      // Directly select the existing custom practice
-      data.practice = CUSTOM_KEY;
-      if (!data.practices[CUSTOM_KEY]) {
-        data.practices[CUSTOM_KEY] = { total: 0, daily: 0, dailyDate: todayStr(), goal: 108 };
-      }
-      checkAndResetDaily(getPracticeStats(data));
-      patch('counter', data);
-      haptic(15);
-      onDone();
-      showToast(t('counter_practice_changed').replace('{name}', data.customPractice));
-      close();
-    } else {
-      // No custom practice yet — show input row
-      customWrap.classList.remove('counter-custom-input-wrap--hidden');
-      sheet.querySelector('#customPracticeInput').focus();
-    }
-  });
-
-  // Edit button: reveal input row to modify the custom practice name
-  const editBtn = sheet.querySelector('#practiceCustomEdit');
-  if (editBtn) {
-    editBtn.addEventListener('click', () => {
-      customWrap.classList.remove('counter-custom-input-wrap--hidden');
-      sheet.querySelector('#customPracticeInput').focus();
-    });
-  }
-
-  // Confirm custom practice name
-  const confirmCustom = () => {
-    const input = sheet.querySelector('#customPracticeInput');
-    const val = input.value.trim();
-    if (!val) {
-      showToast(t('counter_practice_custom_empty'));
-      input.classList.add('counter-goal-custom-input--error');
-      setTimeout(() => input.classList.remove('counter-goal-custom-input--error'), 600);
-      return;
-    }
-    if (val.length > 20) {
-      showToast(t('counter_practice_custom_too_long'));
-      input.classList.add('counter-goal-custom-input--error');
-      setTimeout(() => input.classList.remove('counter-goal-custom-input--error'), 600);
-      return;
-    }
-    data.customPractice = val;
-    data.practice = CUSTOM_KEY;
-    if (!data.practices[CUSTOM_KEY]) {
-      data.practices[CUSTOM_KEY] = { total: 0, daily: 0, dailyDate: todayStr(), goal: 108 };
+  const selectPractice = (name) => {
+    data.practice = name;
+    if (!data.practices[name]) {
+      data.practices[name] = { total: 0, daily: 0, dailyDate: todayStr(), goal: 108 };
     }
     checkAndResetDaily(getPracticeStats(data));
     patch('counter', data);
     haptic(15);
     onDone();
-    showToast(t('counter_practice_changed').replace('{name}', val));
+    showToast(t('counter_practice_changed').replace('{name}', name));
     close();
   };
 
-  sheet.querySelector('#customPracticeConfirm').addEventListener('click', confirmCustom);
-  sheet.querySelector('#customPracticeInput').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); confirmCustom(); }
+  const wireSheet = () => {
+    const panel = sheet.querySelector('.counter-practice-panel');
+
+    panel.querySelector('#practiceBackdrop')?.addEventListener('click', close);
+    panel.querySelector('#practiceCancel')?.addEventListener('click', close);
+
+    // Select a practice
+    panel.querySelectorAll('.practice-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        if (e.target.closest('.practice-item-del')) return;
+        selectPractice(item.dataset.name);
+      });
+    });
+
+    // Delete a custom practice
+    panel.querySelectorAll('.practice-item-del').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const name = btn.dataset.name;
+        if (!window.confirm(`删除「${name}」？其历史数据将保留。`)) return;
+        data.customPractices = data.customPractices.filter(n => n !== name);
+        if (data.practice === name) data.practice = PRACTICE_PRESETS[0];
+        patch('counter', data);
+        haptic(15);
+        // Re-render sheet
+        sheet.innerHTML = renderSheetContent();
+        wireSheet();
+        requestAnimationFrame(() => sheet.classList.add('counter-practice-sheet--visible'));
+      });
+    });
+
+    // Add button
+    const addBtn = panel.querySelector('#practiceAddBtn');
+    const addRow = panel.querySelector('#practiceAddRow');
+    if (addBtn && addRow) {
+      addBtn.addEventListener('click', () => {
+        addBtn.style.display = 'none';
+        addRow.style.display = 'flex';
+        panel.querySelector('#practiceNewInput')?.focus();
+      });
+    }
+
+    // Confirm new custom practice
+    const confirmNew = () => {
+      const input = panel.querySelector('#practiceNewInput');
+      if (!input) return;
+      const val = input.value.trim();
+      if (!val) {
+        showToast(t('counter_practice_custom_empty'));
+        input.classList.add('counter-goal-custom-input--error');
+        setTimeout(() => input.classList.remove('counter-goal-custom-input--error'), 600);
+        return;
+      }
+      if (val.length > 20) {
+        showToast(t('counter_practice_custom_too_long'));
+        input.classList.add('counter-goal-custom-input--error');
+        setTimeout(() => input.classList.remove('counter-goal-custom-input--error'), 600);
+        return;
+      }
+      if ([...PRACTICE_PRESETS, ...data.customPractices].includes(val)) {
+        showToast('该功课已存在');
+        return;
+      }
+      if (data.customPractices.length >= MAX_CUSTOM_PRACTICES) {
+        showToast(`自定义功课最多 ${MAX_CUSTOM_PRACTICES} 个`);
+        return;
+      }
+      data.customPractices.push(val);
+      data.customPractice = val; // keep legacy field in sync
+      patch('counter', data);
+      selectPractice(val);
+    };
+
+    panel.querySelector('#practiceNewConfirm')?.addEventListener('click', confirmNew);
+    panel.querySelector('#practiceNewInput')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); confirmNew(); }
+    });
+  };
+
+  wireSheet();
+}
+
+/* ===== History View ===== */
+
+/** Format a count number for compact display: 10800 → "10,800" / 12345 → "1.2万" */
+function formatCount(n) {
+  if (n >= 100000000) return (n / 100000000).toFixed(1).replace(/\.0$/, '') + '亿';
+  if (n >= 10000) return (n / 10000).toFixed(1).replace(/\.0$/, '') + '万';
+  return n.toLocaleString ? n.toLocaleString('zh-CN') : String(n);
+}
+
+/** Format a YYYY-MM-DD date string into a human-readable label */
+function formatHistoryDate(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diff = Math.round((today - date) / 86400000);
+  if (diff === 0) return t('time_today') || '今天';
+  if (diff === 1) return t('time_yesterday') || '昨天';
+  const wds = ['日', '一', '二', '三', '四', '五', '六'];
+  return `${m}月${d}日 周${wds[date.getDay()]}`;
+}
+
+/**
+ * Return the goal value for the given practice tab key.
+ * Tab keys: 'all' | preset name | data.customPractice
+ */
+function goalForTab(data, tabKey) {
+  if (tabKey === 'all') {
+    return (data.practices && data.practices[data.practice] && data.practices[data.practice].goal) || 108;
+  }
+  // All practices (presets + custom) are now stored directly by their name
+  return (data.practices && data.practices[tabKey] && data.practices[tabKey].goal) || 108;
+}
+
+/**
+ * Compute aggregate stats for the history view.
+ * tabKey = 'all' | practice name (as stored in dailyLog)
+ */
+function computeHistoryStats(data, tabKey) {
+  const log = data.dailyLog || {};
+  const entries = [];
+  for (const [date, dayData] of Object.entries(log)) {
+    let count = 0;
+    if (tabKey === 'all') {
+      count = Object.values(dayData).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
+    } else {
+      count = (typeof dayData[tabKey] === 'number') ? dayData[tabKey] : 0;
+    }
+    if (count > 0) entries.push({ date, count });
+  }
+  entries.sort((a, b) => a.date.localeCompare(b.date));
+
+  const total = entries.reduce((s, e) => s + e.count, 0);
+  const best  = entries.length > 0 ? Math.max(...entries.map(e => e.count)) : 0;
+  const avg   = entries.length > 0 ? Math.round(total / entries.length) : 0;
+  const goal  = goalForTab(data, tabKey);
+
+  return { total, best, avg, activeDays: entries.length, streak: getStreak(data), entries, goal };
+}
+
+/**
+ * Build an array of 91 cell descriptors for a Mon→Sun heatmap grid
+ * covering the 13 weeks that end on the Sunday on-or-after today.
+ */
+function buildHeatmapCells(data, tabKey, goal) {
+  const log  = data.dailyLog || {};
+  const now  = new Date();
+  now.setHours(0, 0, 0, 0);
+  const todayDow = (now.getDay() + 6) % 7; // 0=Mon … 6=Sun
+
+  // Advance to Sunday to close out the last column
+  const gridEnd = new Date(now);
+  gridEnd.setDate(gridEnd.getDate() + (6 - todayDow));
+
+  // 91 cells = exactly 13 weeks
+  const gridStart = new Date(gridEnd);
+  gridStart.setDate(gridStart.getDate() - 90);
+
+  const mkDateStr = d =>
+    d.getFullYear() + '-' +
+    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+    String(d.getDate()).padStart(2, '0');
+
+  const todayStr = mkDateStr(now);
+  const cells = [];
+
+  for (let d = new Date(gridStart); d <= gridEnd; d.setDate(d.getDate() + 1)) {
+    const dateStr = mkDateStr(d);
+    const isFuture = d > now;
+    const isToday  = dateStr === todayStr;
+
+    if (isFuture) { cells.push({ type: 'future' }); continue; }
+
+    let count = 0;
+    if (log[dateStr]) {
+      if (tabKey === 'all') {
+        count = Object.values(log[dateStr]).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
+      } else {
+        count = (typeof log[dateStr][tabKey] === 'number') ? log[dateStr][tabKey] : 0;
+      }
+    }
+
+    let level = 0;
+    if (count > 0) {
+      if (goal > 0) {
+        if      (count >= goal)           level = 4;
+        else if (count >= goal * 0.5)     level = 3;
+        else if (count >= goal * 0.25)    level = 2;
+        else                              level = 1;
+      } else {
+        level = 2;
+      }
+    }
+    cells.push({ type: 'day', dateStr, count, level, isToday });
+  }
+  return cells;
+}
+
+/** Render heatmap cell HTML */
+function renderHeatmapCells(cells) {
+  return cells.map(cell => {
+    if (cell.type === 'future') return `<div class="ch-cell ch-cell--future"></div>`;
+    const classes = ['ch-cell'];
+    if (cell.isToday) classes.push('ch-cell--today');
+    const title = cell.count > 0 ? `${cell.dateStr}: ${formatCount(cell.count)}声` : cell.dateStr;
+    return `<div class="${classes.join(' ')}" data-level="${cell.level}" data-count="${cell.count}" title="${title}"></div>`;
+  }).join('');
+}
+
+/** Render a single day-item row */
+function renderDayItem(e, tabKey, goal, dailyLog) {
+  const goalDone = goal > 0 && e.count >= goal;
+  const partial  = !goalDone && e.count > 0;
+  let sub = '';
+  if (tabKey === 'all' && dailyLog && dailyLog[e.date]) {
+    sub = Object.entries(dailyLog[e.date])
+      .filter(([, v]) => v > 0)
+      .map(([k, v]) => `${k} ${formatCount(v)}声`)
+      .join(' · ');
+  }
+  return `<div class="ch-day-item">
+    <div class="ch-day-dot ${goalDone ? 'ch-day-dot--done' : partial ? 'ch-day-dot--partial' : ''}"></div>
+    <div class="ch-day-info">
+      <div class="ch-day-date">${formatHistoryDate(e.date)}</div>
+      ${sub ? `<div class="ch-day-sub">${escapeHtml(sub)}</div>` : ''}
+    </div>
+    <div class="ch-day-count ${goalDone ? 'ch-day-count--done' : ''}">${formatCount(e.count)}</div>
+  </div>`;
+}
+
+/** Build the complete HTML for the history panel */
+function buildHistoryHTML(data, tabKey) {
+  const stats = computeHistoryStats(data, tabKey);
+  const cells = buildHeatmapCells(data, tabKey, stats.goal);
+
+  // Practice tabs: 全部 + presets + all custom practices
+  const tabs = [{ key: 'all', label: '全部' }];
+  PRACTICE_PRESETS.forEach(p => tabs.push({ key: p, label: p }));
+  (data.customPractices || []).forEach(p => tabs.push({ key: p, label: p }));
+
+  const practiceTabsHtml = tabs.map(({ key, label }) =>
+    `<button class="ch-practice-tab${key === tabKey ? ' active' : ''}" data-tab="${escapeHtml(key)}">${escapeHtml(label)}</button>`
+  ).join('');
+
+  // Milestone banner (show "next milestone" progress)
+  const MILESTONES = [10000, 50000, 100000, 500000, 1000000, 5000000, 10000000];
+  const nextM = MILESTONES.find(m => m > stats.total);
+  const milestoneHtml = nextM && stats.total > 0 ? `
+    <div class="ch-milestone">
+      <div class="ch-milestone-icon">🙏</div>
+      <div class="ch-milestone-text">
+        已念 <strong>${formatCount(stats.total)}</strong> 声，
+        距 <strong>${formatCount(nextM)}</strong> 声还差
+        <strong>${formatCount(nextM - stats.total)}</strong> 声
+      </div>
+    </div>` : '';
+
+  // Daily list (newest first, up to 60 days)
+  const sorted = stats.entries.slice().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 60);
+  const listHtml = sorted.length === 0
+    ? `<div class="ch-empty">暂无记录<br><span style="font-size:.74rem">开始念佛后，每日记录将展示在这里</span></div>`
+    : sorted.map(e => renderDayItem(e, tabKey, stats.goal, data.dailyLog)).join('');
+
+  const dayLabels = ['一', '二', '三', '四', '五', '六', '日'];
+
+  return `
+    <div class="ch-header">
+      <button class="btn-icon" id="chBack" aria-label="返回">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,18 9,12 15,6"/></svg>
+      </button>
+      <span class="ch-title">念佛历史</span>
+      <div style="width:44px;flex-shrink:0"></div>
+    </div>
+
+    <div class="ch-body" id="chBody">
+      <!-- Stats 2×2 grid -->
+      <div class="ch-stats">
+        <div class="ch-stat-card">
+          <div class="ch-stat-val">${formatCount(stats.total)}</div>
+          <div class="ch-stat-lbl">累计声数</div>
+        </div>
+        <div class="ch-stat-card">
+          <div class="ch-stat-val">${stats.streak}</div>
+          <div class="ch-stat-lbl">连续打卡（天）</div>
+        </div>
+        <div class="ch-stat-card">
+          <div class="ch-stat-val">${formatCount(stats.best)}</div>
+          <div class="ch-stat-lbl">单日最高</div>
+        </div>
+        <div class="ch-stat-card">
+          <div class="ch-stat-val">${stats.activeDays}</div>
+          <div class="ch-stat-lbl">有记录天数</div>
+        </div>
+      </div>
+
+      ${milestoneHtml}
+
+      <!-- Practice filter tabs -->
+      <div class="ch-practice-tabs" id="chPracticeTabs">${practiceTabsHtml}</div>
+
+      <!-- Heatmap -->
+      <div class="ch-section">
+        <div class="ch-section-title">近90天记录</div>
+        <div class="ch-heatmap-labels">
+          ${dayLabels.map(d => `<div class="ch-heatmap-label">${d}</div>`).join('')}
+        </div>
+        <div class="ch-heatmap" id="chHeatmap">${renderHeatmapCells(cells)}</div>
+        <div class="ch-heatmap-legend">
+          <span class="ch-legend-label">少</span>
+          ${[1, 2, 3, 4].map(l => {
+            const op = [.22, .45, .72, 1][l - 1];
+            return `<div class="ch-legend-cell" style="opacity:${op}"></div>`;
+          }).join('')}
+          <span class="ch-legend-label">多</span>
+        </div>
+      </div>
+
+      <!-- Daily list -->
+      <div class="ch-section">
+        <div class="ch-section-title">每日记录</div>
+        <div class="ch-list" id="chList">${listHtml}</div>
+      </div>
+    </div>`;
+}
+
+/** Open / refresh the history slide-in panel inside the counter view */
+export function openHistory(counterView, data) {
+  // Remove existing
+  counterView.querySelectorAll('.counter-history').forEach(el => el.remove());
+
+  let activeTab = 'all';
+  const hist = document.createElement('div');
+  hist.className = 'counter-history';
+  hist.innerHTML = buildHistoryHTML(data, activeTab);
+  counterView.appendChild(hist);
+
+  // Animate in
+  requestAnimationFrame(() => hist.classList.add('counter-history--in'));
+
+  /* ── Back button ── */
+  hist.querySelector('#chBack').addEventListener('click', () => {
+    hist.classList.remove('counter-history--in');
+    setTimeout(() => hist.remove(), 320);
+  });
+
+  /* ── Practice tab switching (event delegation) ── */
+  hist.querySelector('#chPracticeTabs').addEventListener('click', e => {
+    const btn = e.target.closest('.ch-practice-tab');
+    if (!btn) return;
+    const newTab = btn.dataset.tab;
+    if (newTab === activeTab) return;
+    activeTab = newTab;
+
+    const stats = computeHistoryStats(data, activeTab);
+    const cells = buildHeatmapCells(data, activeTab, stats.goal);
+
+    // Update active tab highlight
+    hist.querySelectorAll('.ch-practice-tab').forEach(t =>
+      t.classList.toggle('active', t.dataset.tab === activeTab));
+
+    // Re-render heatmap
+    const heatmapEl = hist.querySelector('#chHeatmap');
+    if (heatmapEl) heatmapEl.innerHTML = renderHeatmapCells(cells);
+
+    // Re-render list
+    const listEl = hist.querySelector('#chList');
+    if (listEl) {
+      const sorted = stats.entries.slice().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 60);
+      listEl.innerHTML = sorted.length === 0
+        ? `<div class="ch-empty">暂无记录<br><span style="font-size:.74rem">开始念佛后，每日记录将展示在这里</span></div>`
+        : sorted.map(e => renderDayItem(e, activeTab, stats.goal, data.dailyLog)).join('');
+    }
   });
 }

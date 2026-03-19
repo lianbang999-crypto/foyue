@@ -10,6 +10,7 @@ import '../css/pages.css';
 import '../css/components.css';
 import '../css/ai.css';
 import '../css/message-wall.css';
+import '../css/gongxiu.css';
 import '../css/wenku.css';
 
 // Module imports

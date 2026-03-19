@@ -1,6 +1,6 @@
 /* ===== Wenku Immersive Reader ===== */
 /* v2: WeChat-read style topbar, continuous scroll, tap-zones, auto dark mode */
-import { escapeHtml, debounce, showToast } from './utils.js';
+import { escapeHtml, debounce, showToast, shareContent } from './utils.js';
 import { getWenkuDocument, recordWenkuRead } from './wenku-api.js';
 import { saveBookmark, getBookmark } from './wenku.js';
 import { t } from './i18n.js';
@@ -336,20 +336,7 @@ function wireEvents(prevId, nextId, doc) {
     const title = docTitle ? `《${docTitle}》` : '净土法音文库';
     const shareText = seriesName ? `${title} — ${seriesName}` : title;
     const url = `${window.location.origin}/?doc=${encodeURIComponent(currentDocId)}`;
-    if (navigator.share) {
-      try { await navigator.share({ title: docTitle || '净土法音文库', text: shareText, url }); } catch { /* cancelled */ }
-    } else {
-      const copyText = shareText + '\n' + url;
-      try {
-        await navigator.clipboard.writeText(copyText);
-        showToast(t('link_copied') || '链接已复制');
-      } catch {
-        const inp = document.createElement('input');
-        inp.value = copyText; document.body.appendChild(inp);
-        inp.select(); document.execCommand('copy'); inp.remove();
-        showToast(t('link_copied') || '链接已复制');
-      }
-    }
+    shareContent(shareText, url);
   });
 
   // Settings action

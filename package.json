@@ -13,5 +13,8 @@
   "devDependencies": {
     "vite": "^6.0.0",
     "wrangler": "^4.74.0"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
   }
 }
