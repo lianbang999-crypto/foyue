@@ -113,8 +113,8 @@
   "my_history_empty_desc": "No records",
   "my_wenku": "Dharma Library",
   "my_wenku_desc": "Read transcripts & notes",
-  "my_messages": "Message Wall",
-  "my_messages_desc": "Share your thoughts",
+  "my_messages": "Community Square",
+  "my_messages_desc": "Practice together, aspire together",
   "time_just_now": "Just now",
   "time_min_ago": " min ago",
   "time_hour_ago": " hours ago",
@@ -222,6 +222,6 @@
   "counter_huixiang_done": "Tap to close",
   "counter_join_gongxiu": "Also join today's community practice",
   "gongxiu_submit_success": "Rejoice! Merit added to the pool",
-  "my_gongxiu": "Community Practice",
-  "my_gongxiu_desc": "Practice together with fellow practitioners"
+  "my_gongxiu": "Community Square",
+  "my_gongxiu_desc": "Practice together, aspire for Pure Land"
 }

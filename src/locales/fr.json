@@ -114,8 +114,8 @@
   "my_history_empty_desc": "Aucun enregistrement",
   "my_wenku": "Bibliothèque du Dharma",
   "my_wenku_desc": "Lire les transcriptions",
-  "my_messages": "Mur de messages",
-  "my_messages_desc": "Partagez vos réflexions",
+  "my_messages": "Place Communautaire",
+  "my_messages_desc": "Pratiquer ensemble, aspirer ensemble",
   "time_just_now": "À l'instant",
   "time_min_ago": " min",
   "time_hour_ago": " heures",
@@ -223,6 +223,6 @@
   "counter_huixiang_done": "Toucher pour fermer",
   "counter_join_gongxiu": "Rejoindre la pratique communautaire",
   "gongxiu_submit_success": "Réjouissons-nous ! Les mérites ont été ajoutés",
-  "my_gongxiu": "Pratique commune",
-  "my_gongxiu_desc": "Pratiquer ensemble avec les compagnons"
+  "my_gongxiu": "Place Communautaire",
+  "my_gongxiu_desc": "Pratiquer ensemble, aspirer à la Terre Pure"
 }

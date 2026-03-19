@@ -840,7 +840,7 @@ function showHuixiangSheet(parentView, data, _session) {
   });
 }
 
-/* ── Submit to 共修社区 ── */
+/* ── Submit to 共修广场 ── */
 async function submitToGongxiu(data, count, vowInfo) {
   const savedNickname = (() => { try { return localStorage.getItem('gongxiu-nickname') || ''; } catch { return ''; } })();
   const practice = getPracticeDisplayName(data);
