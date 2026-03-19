@@ -1650,7 +1650,7 @@
     font-weight: 600;
 }
 
-/* 大回向文预览（固定展示） */
+/* 回向文预览（固定展示） */
 .hx-huixiang-preview {
     background: linear-gradient(135deg, var(--accent-glow), var(--bg-secondary));
     border: 1px solid var(--border-active);
@@ -1824,7 +1824,7 @@
     50% { opacity: 1; transform: scale(1.1); }
 }
 
-/* 大回向文（主体，始终展示） */
+/* 回向文（主体，始终展示） */
 .hd-main-text {
     font-size: 1.02rem;
     font-family: var(--font-serif);
@@ -1833,7 +1833,7 @@
     letter-spacing: .07em;
 }
 
-/* 另愿（附于大回向文之后） */
+/* 另愿（附于回向文之后） */
 .hd-another {
     font-size: .82rem;
     color: var(--accent);

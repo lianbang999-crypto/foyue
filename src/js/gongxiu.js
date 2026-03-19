@@ -234,9 +234,11 @@ function buildSubmitSection(counterData, submitted) {
                     placeholder="自定义回向文（最多100字）"></textarea>
         </div>
         <div class="gx-nickname-row">
-          <div class="gx-field-label">法名 / 昵称</div>
+          <div class="gx-field-label">法名</div>
           <input class="gx-input" id="gxNickname" type="text" maxlength="20"
-                 placeholder="莲友（选填）" value="${escapeHtml(getSavedNickname())}">
+                 placeholder="如：净空、妙莲、法喜…"
+                 value="${escapeHtml(getSavedNickname())}">
+          <div class="gx-field-hint">法名将作为您在共修广场的长期身份</div>
         </div>
       </div>
       <button class="gx-join-btn" id="gxJoinBtn">
@@ -289,6 +291,18 @@ export function renderGongxiu(container, onOpenCounter) {
         <div class="gx-entries" id="gxEntries">
           <div class="gx-pool-loading">加载中…</div>
         </div>
+      </div>
+
+      <!-- 统一回向（用户手动触发） -->
+      <div class="gx-section">
+        <button class="gx-huixiang-btn" id="gxHuixiangBtn">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10"/>
+            <path d="M16 12l4 4-4 4"/><path d="M20 16H9a4 4 0 0 1 0-8h2"/>
+          </svg>
+          今日统一回向
+        </button>
+        <div class="gx-huixiang-hint">合掌，将今日共修功德回向法界一切众生</div>
       </div>
 
       <div class="gx-footer">南无阿弥陀佛</div>
@@ -359,6 +373,16 @@ function renderData(view, data, onOpenCounter) {
     } else {
       entriesEl.innerHTML = entries.map(e => buildEntryCard(e, e.date === today)).join('');
     }
+  }
+
+  // 统一回向按钮 — 用户手动触发，合掌回向今日共修功德
+  const huixiangBtn = view.querySelector('#gxHuixiangBtn');
+  if (huixiangBtn) {
+    huixiangBtn.addEventListener('click', () => {
+      // Show the full 回向文 ceremony with today's community total
+      const gxFullscreen = view.closest('.gx-fullscreen') || view.parentElement;
+      showHuixiangScreen(gxFullscreen, null); // null = universal dedication
+    });
   }
 }
 

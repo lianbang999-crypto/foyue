@@ -512,7 +512,6 @@ function wireCounterEvents(view, data, _session) {
     let touchHandled = false;
 
     const doCount = (cx, cy) => {
-      haptic(30);
       session++;
       const ps = getPracticeStats(data);
       checkAndResetDaily(ps);
@@ -528,9 +527,25 @@ function wireCounterEvents(view, data, _session) {
       // Spawn ripple at tap position
       spawnRipple(cx, cy);
 
+      // ── 印光大师十念法 3-3-4 触觉反馈 ──
+      // 念念专注，以触觉代替数数，收摄身心。
+      // 每 10 声一组：前3 / 中3 / 后4，各有不同手感。
+      const pos10 = session % 10; // 0 = 第10声（完成一遍）
+      if (pos10 === 0) {
+        // 第10声：完成一遍，较强双弹（庄严感）
+        navigator.vibrate && navigator.vibrate([40, 20, 40]);
+      } else if (pos10 === 3 || pos10 === 6) {
+        // 第3声、第6声：组间分隔，轻双弹（节奏感）
+        navigator.vibrate && navigator.vibrate([18, 8, 18]);
+      } else {
+        // 其余：轻触（专注继续）
+        haptic(12);
+      }
+
       const justCompletedLoop = ps.total % BEADS_PER_LOOP === 0;
       if (justCompletedLoop) {
-        haptic(60);
+        // 一串念珠完成（108声），特别振动已足够，不再叠加十念法振动
+        navigator.vibrate && navigator.vibrate([60, 30, 60, 30, 60]);
         showToast(t('counter_loop_done'));
         updateUI(true);
         return;
@@ -538,7 +553,7 @@ function wireCounterEvents(view, data, _session) {
 
       const goalJustDone = ps.goal > 0 && ps.daily === ps.goal;
       if (goalJustDone) {
-        haptic(80);
+        navigator.vibrate && navigator.vibrate([80, 40, 80]);
         showToast(t('counter_daily_done'));
         updateUI(true);
         return;
@@ -731,8 +746,8 @@ function showCounterMenu(parentView, data, onPracticeChange) {
 /**
  * 回向文沉浸展示（全屏）
  *
- * 莲池大师大回向文始终完整展示，以"同生极乐国"作为一切功德的最终归宿。
- * 用户的"另愿"附于大回向文之后，作为个人愿心的补充。
+ * 莲池大师回向文始终完整展示，以"同生极乐国"作为一切功德的最终归宿。
+ * 用户的"另愿"附于回向文之后，作为个人愿心的补充。
  */
 function showHuixiangDisplay(parentView, anotherVow) {
   parentView.querySelectorAll('.huixiang-display').forEach(el => el.remove());
@@ -769,10 +784,10 @@ function showHuixiangDisplay(parentView, anotherVow) {
  * 回向 sheet
  *
  * 佛法依据（莲池大师西方发愿文）：
- *   - 大回向文是修行的庄严结尾，以"同生极乐国"为最终归宿，不可省略
- *   - "另愿"为行者个人的愿心补充，附于大回向文之后
+ *   - 回向文是修行的庄严结尾，以"同生极乐国"为最终归宿，不可省略
+ *   - "另愿"为行者个人的愿心补充，附于回向文之后
  *     例：愿父母消灾延寿 · 愿XXX早日往生净土 · 愿一切众生皆得解脱
- *   - 大回向文不因个人愿文而改变，所有功德仍归于"庄严佛净土，同生极乐国"
+ *   - 回向文不因个人愿文而改变，所有功德仍归于"庄严佛净土，同生极乐国"
  */
 function showHuixiangSheet(parentView, data, _session) {
   parentView.querySelectorAll('.huixiang-sheet').forEach(el => el.remove());
@@ -793,14 +808,14 @@ function showHuixiangSheet(parentView, data, _session) {
         <div class="hx-stats">${practiceName} · 今日 <strong>${formatCount(dailyCount)}</strong> 声</div>
       </div>
 
-      <!-- 大回向文（固定展示，莲池大师，始终以"同生极乐国"为终归） -->
+      <!-- 回向文（固定展示，莲池大师，始终以"同生极乐国"为终归） -->
       <div class="hx-huixiang-preview">
-        <div class="hx-section-label">大回向文</div>
+        <div class="hx-section-label">回向文</div>
         <div class="hx-huixiang-text">${HUIXIANG_TEXT.replace(/\n/g, '<br>')}</div>
         <div class="hx-huixiang-attr">— 莲池大师</div>
       </div>
 
-      <!-- 另愿（用户个人愿心，附于大回向文之后） -->
+      <!-- 另愿（用户个人愿心，附于回向文之后） -->
       <div class="hx-another-section">
         <div class="hx-section-label">
           另愿
@@ -808,7 +823,7 @@ function showHuixiangSheet(parentView, data, _session) {
         </div>
         <textarea class="hx-custom-input" id="hxAnotherVow" rows="2" maxlength="80"
                   placeholder="例：愿父母消灾延寿 · 愿XXX早日往生净土">${escapeHtml(savedVow)}</textarea>
-        <div class="hx-another-hint">个人愿文将附于大回向文之后</div>
+        <div class="hx-another-hint">个人愿文将附于回向文之后</div>
       </div>
 
       <div class="hx-gongxiu-row">
@@ -866,7 +881,7 @@ async function submitToGongxiu(data, count, vowInfo) {
   const body = {
     practice,
     count: Math.min(count, 150000),
-    vow_type: 'universal', // 大回向文始终为"法界一切众生"（往生极乐）
+    vow_type: 'universal', // 回向文始终为"法界一切众生"（往生极乐）
     vow_target: '',
     vow_custom: vowInfo?.anotherVow || '', // 另愿（用户个人附加愿心）
     nickname: savedNickname || '莲友',
