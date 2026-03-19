@@ -208,6 +208,13 @@ export async function onRequest(context) {
       return await handleBuildEmbeddings(env, request, cors);
     }
 
+    // GET /api/admin/embeddings/status — 查看向量构建状态
+    if (path === '/api/admin/embeddings/status' && method === 'GET') {
+      const authErr = requireAdmin();
+      if (authErr) return authErr;
+      return await handleEmbeddingStatus(db, cors);
+    }
+
     // POST /api/admin/chapters/generate — 生成章节标记
     if (path === '/api/admin/chapters/generate' && method === 'POST') {
       return await handleGenerateChapters(env, request, cors);
@@ -2077,6 +2084,64 @@ async function handleBuildEmbeddings(env, request, cors) {
     hint: remaining > 0 ? `还有 ${remaining} 个文档待处理，请继续调用此 API` : '全部完成',
     errors: errors.length > 0 ? errors : undefined,
   }, cors);
+}
+
+async function handleEmbeddingStatus(db, cors) {
+  try {
+    const totalDocs = await db.prepare(
+      `SELECT COUNT(*) AS c
+       FROM documents
+       WHERE content IS NOT NULL AND content != ''`
+    ).first();
+
+    const statusRows = await db.prepare(
+      `SELECT status, COUNT(*) AS count
+       FROM ai_embedding_jobs
+       GROUP BY status`
+    ).all();
+
+    const latestCompleted = await db.prepare(
+      `SELECT j.document_id, j.chunks_count, j.completed_at, d.title, d.series_name
+       FROM ai_embedding_jobs j
+       LEFT JOIN documents d ON d.id = j.document_id
+       WHERE j.status = 'completed'
+       ORDER BY j.completed_at DESC, j.id DESC
+       LIMIT 5`
+    ).all();
+
+    const latestFailed = await db.prepare(
+      `SELECT j.document_id, j.error, j.created_at, d.title, d.series_name
+       FROM ai_embedding_jobs j
+       LEFT JOIN documents d ON d.id = j.document_id
+       WHERE j.status = 'failed'
+       ORDER BY j.id DESC
+       LIMIT 5`
+    ).all();
+
+    const counts = { completed: 0, failed: 0, pending: 0 };
+    for (const row of (statusRows.results || [])) {
+      counts[row.status] = row.count || 0;
+    }
+
+    const total = totalDocs?.c || 0;
+    const processed = counts.completed + counts.failed;
+    const remaining = Math.max(total - counts.completed, 0);
+
+    return json({
+      success: true,
+      totalDocuments: total,
+      completed: counts.completed,
+      failed: counts.failed,
+      pending: counts.pending,
+      processed,
+      remaining,
+      completionRate: total > 0 ? Number((counts.completed / total * 100).toFixed(1)) : 0,
+      latestCompleted: latestCompleted.results || [],
+      latestFailed: latestFailed.results || [],
+    }, cors, 200, 'no-store');
+  } catch (err) {
+    return json({ success: false, error: err.message }, cors, 500);
+  }
 }
 
 // ============================================================

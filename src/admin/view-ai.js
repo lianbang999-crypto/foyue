@@ -25,6 +25,11 @@ function fmtTtl(seconds) {
   return seconds + '秒';
 }
 
+function fmtProgress(done, total) {
+  if (!total) return '--';
+  return `${done}/${total} (${fmtPct(done, total)})`;
+}
+
 const SCENARIO_LABELS = {
   embedding: '向量生成（构建）',
   searchEmbedding: '向量生成（搜索）',
@@ -175,6 +180,18 @@ async function renderStats(el) {
 function renderOps(el) {
   el.innerHTML = '';
 
+  const statusCard = document.createElement('div');
+  statusCard.className = 'adm-section';
+  statusCard.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <div>
+        <div class="adm-section-title">Embedding 构建状态</div>
+        <p class="adm-text-muted" style="margin:0">查看当前已完成、失败和剩余待构建文档，便于安全续跑和全量重建</p>
+      </div>
+      <button class="adm-btn adm-btn-sm" id="refresh-embedding-status">刷新状态</button>
+    </div>
+    <div id="embedding-status-body" class="adm-loading" style="margin-top:12px">加载中...</div>`;
+  el.appendChild(statusCard);
+
   const ops = [
     {
       id: 'embedding', title: 'Embedding 向量构建',
@@ -269,6 +286,45 @@ function renderOps(el) {
       }
     });
   });
+
+  loadEmbeddingStatus();
+
+  async function loadEmbeddingStatus() {
+    const body = document.getElementById('embedding-status-body');
+    const refreshBtn = document.getElementById('refresh-embedding-status');
+    refreshBtn.disabled = true;
+    body.innerHTML = '<div class="adm-loading">加载中...</div>';
+    try {
+      const data = await api.get('/embeddings/status');
+      if (!data?.success) {
+        body.innerHTML = `<div class="adm-empty">${esc(data?.error || '加载失败')}</div>`;
+        return;
+      }
+
+      const latestCompleted = data.latestCompleted || [];
+      const latestFailed = data.latestFailed || [];
+      body.innerHTML = `<div class="adm-metrics" style="margin-bottom:16px">
+          <div class="adm-metric"><div class="adm-metric-label">总文档</div><div class="adm-metric-value">${data.totalDocuments}</div></div>
+          <div class="adm-metric"><div class="adm-metric-label">已完成</div><div class="adm-metric-value">${fmtProgress(data.completed, data.totalDocuments)}</div></div>
+          <div class="adm-metric"><div class="adm-metric-label">失败</div><div class="adm-metric-value">${data.failed}</div></div>
+          <div class="adm-metric"><div class="adm-metric-label">剩余</div><div class="adm-metric-value">${data.remaining}</div></div>
+        </div>
+        <div class="adm-table-wrap" style="margin-bottom:16px"><table class="adm-table">
+          <thead><tr><th colspan="4">最近完成</th></tr><tr><th>文档</th><th>系列</th><th>Chunks</th><th>完成时间</th></tr></thead>
+          <tbody>${latestCompleted.length ? latestCompleted.map(row => `<tr class="no-click"><td>${esc(row.title || row.document_id)}</td><td>${esc(row.series_name || '--')}</td><td>${row.chunks_count || 0}</td><td>${esc(row.completed_at || '--')}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center">暂无完成记录</td></tr>'}</tbody>
+        </table></div>
+        <div class="adm-table-wrap"><table class="adm-table">
+          <thead><tr><th colspan="4">最近失败</th></tr><tr><th>文档</th><th>系列</th><th>失败时间</th><th>错误</th></tr></thead>
+          <tbody>${latestFailed.length ? latestFailed.map(row => `<tr class="no-click"><td>${esc(row.title || row.document_id)}</td><td>${esc(row.series_name || '--')}</td><td>${esc(row.created_at || '--')}</td><td>${esc(row.error || '--')}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center">暂无失败记录</td></tr>'}</tbody>
+        </table></div>`;
+    } catch (err) {
+      body.innerHTML = `<div class="adm-empty">${esc(err.message)}</div>`;
+    } finally {
+      refreshBtn.disabled = false;
+    }
+  }
+
+  document.getElementById('refresh-embedding-status').addEventListener('click', loadEmbeddingStatus);
 }
 
 /* ── Tab 3: 模型诊断 ── */
