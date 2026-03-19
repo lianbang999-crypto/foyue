@@ -3,6 +3,7 @@
 # Pages Functions (functions/ 目录) 会自动使用此配置
 
 name = "amituofo"
+account_id = "26421038b798983a846d930404453652"
 compatibility_date = "2025-01-01"
 
 [[d1_databases]]
