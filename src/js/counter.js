@@ -2,8 +2,6 @@
 import { t } from './i18n.js';
 import { get, patch } from './store.js';
 import { haptic, showToast, escapeHtml, formatCount, HUIXIANG_TEXT } from './utils.js';
-import { showSharePoster } from './counter-share.js';
-
 const BEADS_PER_LOOP = 108;
 /** @deprecated Kept only for data migration from old single-custom format */
 const CUSTOM_KEY = '__custom__';
@@ -677,11 +675,15 @@ function showCounterMenu(parentView, data, onPracticeChange) {
       // Collect stats for this practice
       const ps = getPracticeStats(data);
       const streak = getStreak(data);
-      showSharePoster(parentView, {
-        practice: getPracticeDisplayName(data),
-        daily: ps.daily || 0,
-        total: ps.total || 0,
-        streak,
+      // Lazy-load counter-share.js + qrcode only when user actually wants to share,
+      // so counter.js module itself loads quickly (qrcode is ~60 KB gzipped).
+      import('./counter-share.js').then(mod => {
+        mod.showSharePoster(parentView, {
+          practice: getPracticeDisplayName(data),
+          daily: ps.daily || 0,
+          total: ps.total || 0,
+          streak,
+        });
       });
     }, 260);
   });

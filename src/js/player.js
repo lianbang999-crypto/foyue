@@ -69,9 +69,10 @@ const MAX_STALL_RETRIES = 3;
 let STALL_DETECT_MS = 12000; // 默认12s without progress → stalled
 
 function updateStallDetectInterval() {
-  // 根据网络质量动态调整检测间隔
+  // On a weak network the browser takes longer to buffer, so give it more time
+  // before declaring a stall (shorter threshold → more false positives, not fewer).
   if (_networkWeak) {
-    STALL_DETECT_MS = 8000; // 网络弱时缩短到8秒
+    STALL_DETECT_MS = 25000; // 网络弱时延长到25秒，避免把正常缓冲误判为卡顿
   } else {
     STALL_DETECT_MS = 12000; // 正常情况12秒
   }
@@ -140,6 +141,7 @@ function onStallDetected() {
       }
       dom.audio.play().then(() => {
         setBuffering(false);
+        startStallWatch(); // Resume stall detection after successful recovery
       }).catch(() => {
         setBuffering(false);
         setErrorState(t('error_stall_tap'));
@@ -207,7 +209,7 @@ export function retryPlayback() {
   dom.audio.play().then(() => {
     setBuffering(false);
     setPlayState(true);
-    // ✅ seek操作由playCurrent()中的pendingSeek机制处理，避免竞态
+    startStallWatch(); // Resume stall detection after manual retry
   }).catch(() => {
     // Fall back to waiting for canplay
     dom.audio.addEventListener('canplay', function onReady() {
@@ -218,7 +220,10 @@ export function retryPlayback() {
         dom.audio.currentTime = pendingSeek;
         pendingSeek = 0; // 清除pendingSeek
       }
-      dom.audio.play().then(() => setPlayState(true)).catch(() => {
+      dom.audio.play().then(() => {
+        setPlayState(true);
+        startStallWatch(); // Resume stall detection after canplay retry
+      }).catch(() => {
         setBuffering(false);
         setErrorState(t('error_tap_retry'));
         setPlayState(false);
@@ -342,6 +347,9 @@ function playCurrent() {
 
   // A new track is starting — clear any pending play lock from a previous togglePlay() call
   _playPending = false;
+  // Any track switch (next/prev/direct click) counts as a fresh play intent.
+  // Reset _userPaused so stall recovery auto-resumes on the new track.
+  _userPaused = false;
 
   // ✅ 修复Blob URL内存泄漏：在切换音频前释放旧的Blob URL
   const oldBlobUrl = dom.audio._cachedBlobUrl;

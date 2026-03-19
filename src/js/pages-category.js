@@ -258,11 +258,19 @@ export async function showEpisodes(series, tabId) {
     }
   });
 
+  // Track the highest play count we've seen to prevent a stale getPlayCount response
+  // from overwriting a fresher value delivered by the playcount:updated event.
+  // Race scenario: getPlayCount (GET) is initiated before a play is recorded; if
+  // recordPlay (POST) resolves first and fires the event, the GET response may arrive
+  // later with an old value and clobber the already-correct display.
+  let _highWaterPlayCount = 0;
+
   // Fetch live play counts from API (non-blocking)
   getPlayCount(series.id).then(data => {
     if (!data || data.error) return;
     const countSpan = view.querySelector('#epPlayCount');
-    if (countSpan && data.totalPlayCount > 0) {
+    if (countSpan && data.totalPlayCount > 0 && data.totalPlayCount > _highWaterPlayCount) {
+      _highWaterPlayCount = data.totalPlayCount;
       countSpan.textContent = ` \u00B7 ${fmtCount(data.totalPlayCount)}${t('play_count_unit') || '\u6B21'}`;
     }
   });
@@ -270,8 +278,11 @@ export async function showEpisodes(series, tabId) {
   // Update play count display when a new play is recorded for this series
   const onPlayCountUpdated = (e) => {
     if (e.detail?.seriesId !== series.id || !e.detail?.playCount) return;
-    const countSpan = view.querySelector('#epPlayCount');
-    if (countSpan) countSpan.textContent = ` \u00B7 ${fmtCount(e.detail.playCount)}${t('play_count_unit') || '\u6B21'}`;
+    if (e.detail.playCount > _highWaterPlayCount) {
+      _highWaterPlayCount = e.detail.playCount;
+      const countSpan = view.querySelector('#epPlayCount');
+      if (countSpan) countSpan.textContent = ` \u00B7 ${fmtCount(e.detail.playCount)}${t('play_count_unit') || '\u6B21'}`;
+    }
   };
   window.addEventListener('playcount:updated', onPlayCountUpdated);
   // Store cleanup so MutationObserver can remove listener when view is removed
