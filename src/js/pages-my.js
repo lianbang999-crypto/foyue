@@ -39,7 +39,7 @@ export function renderMyPage() {
   dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
   const page = document.createElement('div');
   page.className = 'my-page active';
-  const themeText = { light: t('theme_light'), dark: t('theme_dark'), terracotta: t('theme_terracotta') }[getTheme()] || t('theme_light');
+  const themeText = { light: t('theme_light'), dark: t('theme_dark'), terracotta: t('theme_terracotta'), ink: t('theme_ink') }[getTheme()] || t('theme_light');
   const langText = { zh: '中文', en: 'English', fr: 'Fran\u00E7ais' }[lang] || '中文';
 
   // Feature card subtitles
@@ -149,7 +149,7 @@ export function renderMyPage() {
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
         <div class="my-item" id="myThemeItem">
-          <svg class="my-item-icon" viewBox="0 0 24 24">${getTheme() === 'dark' ? '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>' : getTheme() === 'terracotta' ? '<path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.7-.8 1.7-1.7 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.8-1.7 1.7-1.7H16c3.3 0 6-2.7 6-6 0-5.5-4.5-9.6-10-9.6z"/><circle cx="6.5" cy="11.5" r="1.5"/><circle cx="10" cy="7.5" r="1.5"/><circle cx="14" cy="7.5" r="1.5"/><circle cx="17.5" cy="11.5" r="1.5"/>' : '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'}</svg>
+          <svg class="my-item-icon" viewBox="0 0 24 24">${getTheme() === 'dark' ? '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>' : getTheme() === 'terracotta' ? '<path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.7-.8 1.7-1.7 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.8-1.7 1.7-1.7H16c3.3 0 6-2.7 6-6 0-5.5-4.5-9.6-10-9.6z"/><circle cx="6.5" cy="11.5" r="1.5"/><circle cx="10" cy="7.5" r="1.5"/><circle cx="14" cy="7.5" r="1.5"/><circle cx="17.5" cy="11.5" r="1.5"/>' : getTheme() === 'ink' ? '<path d="M18 3a3 3 0 0 0-3 3l-9 9a3 3 0 0 0 0 4.24 3 3 0 0 0 4.24 0l9-9A3 3 0 0 0 21 6a3 3 0 0 0-3-3z"/><line x1="3" y1="21" x2="6" y2="18"/>' : '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'}</svg>
           <span class="my-item-label" data-i18n="my_theme">${t('my_theme')}</span>
           <span class="my-item-value" id="myThemeValue">${themeText}</span>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>

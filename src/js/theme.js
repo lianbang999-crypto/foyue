@@ -1,4 +1,4 @@
-const THEMES = ['light', 'dark', 'terracotta'];
+const THEMES = ['light', 'dark', 'terracotta', 'ink'];
 let theme = 'light';
 
 export function getTheme() {
@@ -6,7 +6,7 @@ export function getTheme() {
 }
 
 export function isDark() {
-  return theme === 'dark';
+  return theme === 'dark' || theme === 'ink';
 }
 
 export function applyTheme() {
@@ -14,7 +14,7 @@ export function applyTheme() {
   document.documentElement.removeAttribute('data-color');
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) {
-    const colors = { light: '#FAF9F6', dark: '#0F0F0F', terracotta: '#F7F2EA' };
+    const colors = { light: '#FAF9F6', dark: '#0F0F0F', terracotta: '#F7F2EA', ink: '#0E0F14' };
     meta.content = colors[theme] || colors.light;
   }
   localStorage.setItem('pl-theme', theme);
