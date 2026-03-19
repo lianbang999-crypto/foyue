@@ -5,10 +5,16 @@ import { haptic, showToast, escapeHtml } from './utils.js';
 
 const BEADS_PER_LOOP = 108;
 const MAX_GOAL_VALUE = 99999;
+/** @deprecated Kept only for data migration from old single-custom format */
 const CUSTOM_KEY = '__custom__';
 const MAX_RIPPLES = 6;
+const MAX_CUSTOM_PRACTICES = 5;
 
+/** Built-in presets — always present, cannot be removed */
 const PRACTICE_PRESETS = ['南无阿弥陀佛', '阿弥陀佛'];
+
+/** Fixed standard dedication text (莲池大师回向文) — always appended, never editable */
+const HUIXIANG_TEXT = '愿以此功德，庄严佛净土，\n上报四重恩，下济三途苦，\n若有见闻者，悉发菩提心，\n尽此一报身，同生极乐国。';
 
 /* ── Helpers ── */
 function todayStr() {
@@ -35,12 +41,9 @@ function checkAndResetDaily(ps) {
   return false;
 }
 
-/* Return the display name for the current practice */
+/* Return the display name for the current practice (data.practice IS the name now) */
 function getPracticeDisplayName(data) {
-  if (data.practice === CUSTOM_KEY) {
-    return data.customPractice || t('counter_goal_custom');
-  }
-  return data.practice;
+  return data.practice || '南无阿弥陀佛';
 }
 
 /* ── Daily log helpers ── */
@@ -99,73 +102,84 @@ function releaseWakeLock() {
   }
 }
 
-/* ── Data migration for CUSTOM_KEY change ── */
-function migrateCustomKey(data) {
-  // Migrate old '自定义' key to '__custom__'
-  const OLD_KEY = '自定义';
-  if (data.practices && data.practices[OLD_KEY]) {
-    if (!data.practices[CUSTOM_KEY] || data.practices[CUSTOM_KEY].total === 0) {
-      data.practices[CUSTOM_KEY] = data.practices[OLD_KEY];
+/**
+ * Migrate legacy single-custom-practice format to the new customPractices array.
+ * Also upgrades old '自定义' and '__custom__' keys to actual practice names.
+ */
+function migrateToCustomPractices(data) {
+  let changed = false;
+
+  // 1. Migrate very old '自定义' key (pre-CUSTOM_KEY era)
+  if (data.practices && data.practices['自定义']) {
+    const name = data.customPractice || '自定义';
+    if (!data.practices[name] || data.practices[name].total === 0) {
+      data.practices[name] = data.practices['自定义'];
     }
-    delete data.practices[OLD_KEY];
+    delete data.practices['自定义'];
+    if (data.practice === '自定义') data.practice = name;
+    changed = true;
   }
-  if (data.practice === OLD_KEY) {
-    data.practice = CUSTOM_KEY;
+
+  // 2. Migrate CUSTOM_KEY ('__custom__') to actual practice name
+  if (data.practices && data.practices[CUSTOM_KEY] && data.customPractice) {
+    if (!data.practices[data.customPractice] || data.practices[data.customPractice].total === 0) {
+      data.practices[data.customPractice] = data.practices[CUSTOM_KEY];
+    }
+    delete data.practices[CUSTOM_KEY];
+    changed = true;
+  } else if (data.practices && data.practices[CUSTOM_KEY]) {
+    // No customPractice name saved — just drop the orphan key
+    delete data.practices[CUSTOM_KEY];
+    changed = true;
   }
-  return data;
+  if (data.practice === CUSTOM_KEY) {
+    data.practice = data.customPractice || PRACTICE_PRESETS[0];
+    changed = true;
+  }
+
+  // 3. Migrate from single customPractice string to customPractices array
+  if (!Array.isArray(data.customPractices)) {
+    data.customPractices = [];
+    if (data.customPractice && !PRACTICE_PRESETS.includes(data.customPractice)) {
+      data.customPractices.push(data.customPractice);
+    }
+    changed = true;
+  }
+
+  return changed;
 }
 
 function getCounterData() {
   let data = get('counter');
   let shouldPersist = false;
 
-  // Migrate from old flat structure or initialize fresh
+  // Initialize fresh data structure
   if (!data || !data.practices) {
     const old = data || {};
-    data = { practice: '南无阿弥陀佛', customPractice: '', practices: {}, dailyLog: {} };
-
-    // Initialize all preset practices with empty stats
-    for (const p of [...PRACTICE_PRESETS, CUSTOM_KEY]) {
+    data = { practice: '南无阿弥陀佛', customPractice: '', customPractices: [], practices: {}, dailyLog: {} };
+    for (const p of PRACTICE_PRESETS) {
       data.practices[p] = { total: 0, daily: 0, dailyDate: '', goal: 108 };
     }
-
-    // Carry over existing data to the matching practice slot
     if (old.total !== undefined) {
-      if (PRACTICE_PRESETS.includes(old.practice)) {
-        data.practice = old.practice;
-        data.practices[old.practice] = {
-          total: old.total || 0, daily: old.daily || 0,
-          dailyDate: old.dailyDate || '', goal: old.goal || 108,
-        };
-      } else if (old.practice) {
-        // Old practice was a custom preset – migrate to custom slot
-        data.practice = CUSTOM_KEY;
-        data.customPractice = old.practice;
-        data.practices[CUSTOM_KEY] = {
-          total: old.total || 0, daily: old.daily || 0,
-          dailyDate: old.dailyDate || '', goal: old.goal || 108,
-        };
-      } else {
-        data.practices['南无阿弥陀佛'] = {
-          total: old.total || 0, daily: old.daily || 0,
-          dailyDate: old.dailyDate || '', goal: old.goal || 108,
-        };
+      const name = PRACTICE_PRESETS.includes(old.practice) ? old.practice : (old.practice || '南无阿弥陀佛');
+      data.practice = name;
+      if (!PRACTICE_PRESETS.includes(name)) {
+        data.customPractice = name;
+        data.customPractices = [name];
       }
+      data.practices[name] = { total: old.total || 0, daily: old.daily || 0, dailyDate: old.dailyDate || '', goal: old.goal || 108 };
     }
     patch('counter', data);
   }
 
-  // Migrate old '自定义' key to '__custom__'
-  const beforePractice = data.practice;
-  const hadOldCustomKey = !!(data.practices && data.practices['自定义']);
-  migrateCustomKey(data);
-  if (hadOldCustomKey || beforePractice !== data.practice) shouldPersist = true;
+  // Run all migrations
+  if (migrateToCustomPractices(data)) shouldPersist = true;
 
   // Ensure dailyLog exists
-  if (!data.dailyLog) {
-    data.dailyLog = {};
-    shouldPersist = true;
-  }
+  if (!data.dailyLog) { data.dailyLog = {}; shouldPersist = true; }
+
+  // Ensure customPractices array exists
+  if (!Array.isArray(data.customPractices)) { data.customPractices = []; shouldPersist = true; }
 
   // Ensure the current practice slot exists
   if (!data.practices[data.practice]) {
@@ -175,9 +189,7 @@ function getCounterData() {
 
   // Reset daily count if it's a new day
   const ps = getPracticeStats(data);
-  if (checkAndResetDaily(ps)) {
-    shouldPersist = true;
-  }
+  if (checkAndResetDaily(ps)) shouldPersist = true;
 
   // Prune old log entries
   const beforeLogKeys = Object.keys(data.dailyLog).length;
@@ -185,7 +197,6 @@ function getCounterData() {
   if (Object.keys(data.dailyLog).length !== beforeLogKeys) shouldPersist = true;
 
   if (shouldPersist) patch('counter', data);
-
   return data;
 }
 
@@ -474,9 +485,8 @@ function wireCounterEvents(view, data, _session) {
       ps.daily++;
       ps.dailyDate = todayStr();
 
-      // Record to daily log
-      const practiceKey = data.practice === CUSTOM_KEY ? (data.customPractice || CUSTOM_KEY) : data.practice;
-      recordDailyLog(data, practiceKey, 1);
+      // Record to daily log — data.practice is now always the actual display name
+      recordDailyLog(data, data.practice, 1);
 
       patch('counter', data);
 
@@ -638,36 +648,30 @@ function showCounterMenu(parentView, data, onPracticeChange) {
   });
 }
 
-/* ── 回向文展示（全屏沉浸式） ── */
-function showHuixiangDisplay(parentView, vowInfo) {
+/**
+ * 回向文沉浸展示（全屏）
+ *
+ * 莲池大师大回向文始终完整展示，以"同生极乐国"作为一切功德的最终归宿。
+ * 用户的"另愿"附于大回向文之后，作为个人愿心的补充。
+ */
+function showHuixiangDisplay(parentView, anotherVow) {
   parentView.querySelectorAll('.huixiang-display').forEach(el => el.remove());
 
   const display = document.createElement('div');
   display.className = 'huixiang-display';
 
-  const customText = vowInfo && vowInfo.type === 'custom' && vowInfo.custom
-    ? escapeHtml(vowInfo.custom)
-    : null;
-
-  const dedicateLine = (() => {
-    if (!vowInfo) return '';
-    if (vowInfo.type === 'blessing' && vowInfo.target)
-      return `<div class="hd-dedicate">回向 ${escapeHtml(vowInfo.target)} 消灾吉祥</div>`;
-    if (vowInfo.type === 'rebirth' && vowInfo.target)
-      return `<div class="hd-dedicate">回向 ${escapeHtml(vowInfo.target)} 往生净土</div>`;
-    if (vowInfo.type === 'custom' && customText)
-      return `<div class="hd-dedicate">${customText}</div>`;
-    return '';
-  })();
+  const anotherLine = anotherVow
+    ? `<div class="hd-another">另愿：${escapeHtml(anotherVow)}</div>`
+    : '';
 
   display.innerHTML = `
     <div class="hd-overlay">
       <div class="hd-content">
         <div class="hd-lotus">🪷</div>
-        <div class="hd-text">${t('counter_huixiang_text')}</div>
-        ${dedicateLine}
+        <div class="hd-main-text">${HUIXIANG_TEXT.replace(/\n/g, '<br>')}</div>
+        ${anotherLine}
         <div class="hd-namo">南无阿弥陀佛</div>
-        <div class="hd-hint">${t('counter_huixiang_done')}</div>
+        <div class="hd-hint">点击关闭</div>
       </div>
     </div>`;
   parentView.appendChild(display);
@@ -677,62 +681,54 @@ function showHuixiangDisplay(parentView, vowInfo) {
     display.classList.remove('huixiang-display--in');
     setTimeout(() => display.remove(), 400);
   };
-
-  // Auto-close after 4 seconds, or on tap
-  const autoClose = setTimeout(close, 4000);
+  const autoClose = setTimeout(close, 6000);
   display.addEventListener('click', () => { clearTimeout(autoClose); close(); });
 }
 
-/* ── 回向 sheet ── */
-function showHuixiangSheet(parentView, data, session) {
+/**
+ * 回向 sheet
+ *
+ * 佛法依据（莲池大师西方发愿文）：
+ *   - 大回向文是修行的庄严结尾，以"同生极乐国"为最终归宿，不可省略
+ *   - "另愿"为行者个人的愿心补充，附于大回向文之后
+ *     例：愿父母消灾延寿 · 愿XXX早日往生净土 · 愿一切众生皆得解脱
+ *   - 大回向文不因个人愿文而改变，所有功德仍归于"庄严佛净土，同生极乐国"
+ */
+function showHuixiangSheet(parentView, data, _session) {
   parentView.querySelectorAll('.huixiang-sheet').forEach(el => el.remove());
 
   const ps = getPracticeStats(data);
   const practiceName = escapeHtml(getPracticeDisplayName(data));
   const dailyCount = ps.daily;
+  const savedVow = (() => { try { return localStorage.getItem('hx-another-vow') || ''; } catch { return ''; } })();
 
   const sheet = document.createElement('div');
   sheet.className = 'counter-goal-sheet huixiang-sheet';
   sheet.innerHTML = `
     <div class="counter-goal-backdrop" id="hxBackdrop"></div>
     <div class="counter-goal-panel huixiang-panel">
+
       <div class="hx-header">
-        <div class="hx-title">${t('counter_huixiang_title')}</div>
+        <div class="hx-title">合掌回向</div>
         <div class="hx-stats">${practiceName} · 今日 <strong>${formatCount(dailyCount)}</strong> 声</div>
       </div>
 
-      <div class="hx-vow-section">
-        <div class="hx-vow-label">${t('counter_huixiang_dedicate')}</div>
-        <div class="hx-vow-options">
-          <label class="hx-vow-opt hx-vow-opt--active" data-type="universal">
-            <input type="radio" name="vowType" value="universal" checked>
-            <span class="hx-vow-dot"></span>
-            <span>${t('counter_huixiang_universal')}</span>
-          </label>
-          <label class="hx-vow-opt" data-type="blessing">
-            <input type="radio" name="vowType" value="blessing">
-            <span class="hx-vow-dot"></span>
-            <span>${t('counter_huixiang_blessing')}</span>
-          </label>
-          <label class="hx-vow-opt" data-type="rebirth">
-            <input type="radio" name="vowType" value="rebirth">
-            <span class="hx-vow-dot"></span>
-            <span>${t('counter_huixiang_rebirth')}</span>
-          </label>
-          <label class="hx-vow-opt" data-type="custom">
-            <input type="radio" name="vowType" value="custom">
-            <span class="hx-vow-dot"></span>
-            <span>${t('counter_huixiang_custom')}</span>
-          </label>
+      <!-- 大回向文（固定展示，莲池大师，始终以"同生极乐国"为终归） -->
+      <div class="hx-huixiang-preview">
+        <div class="hx-section-label">大回向文</div>
+        <div class="hx-huixiang-text">${HUIXIANG_TEXT.replace(/\n/g, '<br>')}</div>
+        <div class="hx-huixiang-attr">— 莲池大师</div>
+      </div>
+
+      <!-- 另愿（用户个人愿心，附于大回向文之后） -->
+      <div class="hx-another-section">
+        <div class="hx-section-label">
+          另愿
+          <span class="hx-optional">可选</span>
         </div>
-        <div class="hx-target-wrap hx-target--hidden" id="hxTargetWrap">
-          <input class="counter-goal-custom-input hx-target-input" id="hxTargetInput" type="text" maxlength="30"
-                 placeholder="${t('counter_huixiang_target_hint')}">
-        </div>
-        <div class="hx-custom-wrap hx-target--hidden" id="hxCustomWrap">
-          <textarea class="hx-custom-input" id="hxCustomInput" rows="2" maxlength="100"
-                    placeholder="${t('counter_huixiang_custom_hint')}"></textarea>
-        </div>
+        <textarea class="hx-custom-input" id="hxAnotherVow" rows="2" maxlength="80"
+                  placeholder="例：愿父母消灾延寿 · 愿XXX早日往生净土">${escapeHtml(savedVow)}</textarea>
+        <div class="hx-another-hint">个人愿文将附于大回向文之后</div>
       </div>
 
       <div class="hx-gongxiu-row">
@@ -748,6 +744,7 @@ function showHuixiangSheet(parentView, data, session) {
       </button>
       <button class="counter-goal-cancel" id="hxCancel">${t('counter_huixiang_skip')}</button>
     </div>`;
+
   parentView.appendChild(sheet);
   requestAnimationFrame(() => sheet.classList.add('counter-goal-sheet--visible'));
 
@@ -758,58 +755,26 @@ function showHuixiangSheet(parentView, data, session) {
   };
   const hxEsc = (e) => { if (e.key === 'Escape') close(); };
   window.addEventListener('keydown', hxEsc);
-
   sheet.querySelector('#hxBackdrop').addEventListener('click', close);
   sheet.querySelector('#hxCancel').addEventListener('click', close);
 
-  // Radio button: show/hide target input
-  const targetWrap = sheet.querySelector('#hxTargetWrap');
-  const customWrap = sheet.querySelector('#hxCustomWrap');
-  sheet.querySelectorAll('.hx-vow-opt').forEach(opt => {
-    opt.addEventListener('click', () => {
-      sheet.querySelectorAll('.hx-vow-opt').forEach(o => o.classList.remove('hx-vow-opt--active'));
-      opt.classList.add('hx-vow-opt--active');
-      const type = opt.dataset.type;
-      targetWrap.classList.toggle('hx-target--hidden', type !== 'blessing' && type !== 'rebirth');
-      customWrap.classList.toggle('hx-target--hidden', type !== 'custom');
-    });
-  });
-
-  // Confirm
   sheet.querySelector('#hxConfirm').addEventListener('click', async () => {
-    const type = sheet.querySelector('input[name="vowType"]:checked')?.value || 'universal';
-    const target = sheet.querySelector('#hxTargetInput')?.value.trim() || '';
-    const custom = sheet.querySelector('#hxCustomInput')?.value.trim() || '';
+    const anotherVow = sheet.querySelector('#hxAnotherVow')?.value.trim() || '';
     const joinGongxiu = sheet.querySelector('#hxJoinGongxiu')?.checked;
 
-    if ((type === 'blessing' || type === 'rebirth') && !target) {
-      sheet.querySelector('#hxTargetInput').classList.add('counter-goal-custom-input--error');
-      showToast(t('counter_huixiang_target_required'));
-      setTimeout(() => sheet.querySelector('#hxTargetInput').classList.remove('counter-goal-custom-input--error'), 600);
-      return;
-    }
-    if (type === 'custom' && !custom) {
-      sheet.querySelector('#hxCustomInput').classList.add('counter-goal-custom-input--error');
-      showToast(t('counter_huixiang_custom_required'));
-      setTimeout(() => sheet.querySelector('#hxCustomInput').classList.remove('counter-goal-custom-input--error'), 600);
-      return;
-    }
+    try { localStorage.setItem('hx-another-vow', anotherVow); } catch { }
 
-    const vowInfo = { type, target, custom };
-
-    // Submit to 共修社区 if requested
     if (joinGongxiu && dailyCount > 0) {
       try {
-        await submitToGongxiu(data, dailyCount, vowInfo);
+        await submitToGongxiu(data, dailyCount, { anotherVow });
         showToast(t('gongxiu_submit_success'));
       } catch (err) {
         console.warn('[Gongxiu] Submit failed:', err);
-        // Don't block the 回向 experience if network fails
       }
     }
 
     close();
-    setTimeout(() => showHuixiangDisplay(parentView, vowInfo), 260);
+    setTimeout(() => showHuixiangDisplay(parentView, anotherVow), 260);
   });
 }
 
@@ -821,9 +786,9 @@ async function submitToGongxiu(data, count, vowInfo) {
   const body = {
     practice,
     count: Math.min(count, 150000),
-    vow_type: vowInfo.type || 'universal',
-    vow_target: vowInfo.target || '',
-    vow_custom: vowInfo.custom || '',
+    vow_type: 'universal', // 大回向文始终为"法界一切众生"（往生极乐）
+    vow_target: '',
+    vow_custom: vowInfo?.anotherVow || '', // 另愿（用户个人附加愿心）
     nickname: savedNickname || '莲友',
   };
 
@@ -909,47 +874,64 @@ function showGoalPicker(parentView, goals, data, onDone) {
   });
 }
 
-function showPracticePicker(parentView, data, onDone) {
-  // Remove existing picker
-  parentView.querySelectorAll('.counter-practice-sheet').forEach(el => el.remove());
+/** Build a single practice-item row HTML */
+function _buildPracticeItemHTML(name, isActive, isPreset) {
+  const delBtn = isPreset ? '' :
+    `<button class="practice-item-del" data-name="${escapeHtml(name)}" aria-label="删除">
+       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+     </button>`;
+  return `
+    <div class="practice-item${isActive ? ' practice-item--active' : ''}" data-name="${escapeHtml(name)}">
+      <div class="practice-item-body">
+        <span class="practice-item-name">${escapeHtml(name)}</span>
+        ${isActive ? '<span class="practice-item-badge">当前</span>' : ''}
+      </div>
+      ${delBtn}
+    </div>`;
+}
 
-  const customLabel = escapeHtml(data.customPractice || t('counter_goal_custom'));
-  const isCustomActive = data.practice === CUSTOM_KEY;
-  // If customPractice exists, the button acts as a direct selector;
-  // input is hidden by default and only revealed via the Edit button.
-  // If no customPractice yet, show the input immediately so the user can set one.
-  const hasCustom = !!data.customPractice;
+function showPracticePicker(parentView, data, onDone) {
+  parentView.querySelectorAll('.counter-practice-sheet').forEach(el => el.remove());
 
   const sheet = document.createElement('div');
   sheet.className = 'counter-practice-sheet';
-  sheet.innerHTML = `
-    <div class="counter-practice-backdrop" id="practiceBackdrop"></div>
-    <div class="counter-practice-panel">
-      <div class="counter-practice-panel-title">${t('counter_practice_title')}</div>
-      <div class="counter-practice-options">
-        ${PRACTICE_PRESETS.map(name => `
-          <button class="counter-practice-opt${data.practice === name ? ' counter-practice-opt--active' : ''}"
-                  data-name="${name}">${name}</button>
-        `).join('')}
-      </div>
-      <div class="counter-practice-custom-row">
-        <button class="counter-practice-opt counter-practice-opt--custom${isCustomActive ? ' counter-practice-opt--active' : ''}"
-                id="practiceCustomOpt" data-name="${CUSTOM_KEY}">${customLabel}</button>
-        ${hasCustom ? `<button class="counter-practice-custom-edit" id="practiceCustomEdit">${t('counter_practice_custom_edit')}</button>` : ''}
-      </div>
-      <div class="counter-custom-input-wrap${hasCustom ? ' counter-custom-input-wrap--hidden' : ''}" id="customInputWrap">
-        <div class="counter-goal-custom-row">
-          <input class="counter-goal-custom-input" id="customPracticeInput" type="text"
-                 maxlength="20" placeholder="${t('counter_custom_practice_hint')}"
-                 value="${escapeHtml(data.customPractice || '')}">
-          <button class="counter-goal-custom-btn" id="customPracticeConfirm">${t('counter_practice_custom_save')}</button>
-        </div>
-      </div>
-      <button class="counter-goal-cancel" id="practiceCancel">${t('cancel')}</button>
-    </div>
-  `;
-  parentView.appendChild(sheet);
 
+  const renderSheetContent = () => {
+    const canAdd = data.customPractices.length < MAX_CUSTOM_PRACTICES;
+    const allPractices = [
+      ...PRACTICE_PRESETS.map(n => ({ name: n, isPreset: true })),
+      ...data.customPractices.map(n => ({ name: n, isPreset: false })),
+    ];
+    return `
+      <div class="counter-practice-backdrop" id="practiceBackdrop"></div>
+      <div class="counter-practice-panel practice-picker-panel">
+        <div class="counter-practice-panel-title">${t('counter_practice_title')}</div>
+
+        <div class="practice-picker-list" id="practicePickerList">
+          ${allPractices.map(({ name, isPreset }) =>
+            _buildPracticeItemHTML(name, data.practice === name, isPreset)
+          ).join('')}
+        </div>
+
+        ${canAdd ? `
+        <div class="practice-add-section" id="practiceAddSection">
+          <div class="practice-add-input-row" id="practiceAddRow" style="display:none">
+            <input class="counter-goal-custom-input" id="practiceNewInput" type="text"
+                   maxlength="20" placeholder="${t('counter_custom_practice_hint')}">
+            <button class="counter-goal-custom-btn" id="practiceNewConfirm">${t('counter_practice_custom_save')}</button>
+          </div>
+          <button class="practice-add-btn" id="practiceAddBtn">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            添加自定义功课（还可添加 ${MAX_CUSTOM_PRACTICES - data.customPractices.length} 个）
+          </button>
+        </div>` : `<div class="practice-add-hint">自定义功课已达上限（${MAX_CUSTOM_PRACTICES} 个）</div>`}
+
+        <button class="counter-goal-cancel" id="practiceCancel">${t('cancel')}</button>
+      </div>`;
+  };
+
+  sheet.innerHTML = renderSheetContent();
+  parentView.appendChild(sheet);
   requestAnimationFrame(() => sheet.classList.add('counter-practice-sheet--visible'));
 
   const close = () => {
@@ -957,93 +939,102 @@ function showPracticePicker(parentView, data, onDone) {
     sheet.classList.remove('counter-practice-sheet--visible');
     setTimeout(() => sheet.remove(), 250);
   };
-
-  sheet.querySelector('#practiceBackdrop').addEventListener('click', close);
-  sheet.querySelector('#practiceCancel').addEventListener('click', close);
   const practiceEscHandler = (e) => { if (e.key === 'Escape') close(); };
   window.addEventListener('keydown', practiceEscHandler);
 
-  // Preset option buttons
-  sheet.querySelectorAll('.counter-practice-opt[data-name]:not(#practiceCustomOpt)').forEach(btn => {
-    btn.addEventListener('click', () => {
-      data.practice = btn.dataset.name;
-      if (!data.practices[data.practice]) {
-        data.practices[data.practice] = { total: 0, daily: 0, dailyDate: todayStr(), goal: 108 };
-      }
-      checkAndResetDaily(getPracticeStats(data));
-      patch('counter', data);
-      haptic(15);
-      onDone();
-      showToast(t('counter_practice_changed').replace('{name}', data.practice));
-      close();
-    });
-  });
-
-  // Custom option: direct select if customPractice exists, else show input
-  const customOpt = sheet.querySelector('#practiceCustomOpt');
-  const customWrap = sheet.querySelector('#customInputWrap');
-  customOpt.addEventListener('click', () => {
-    if (data.customPractice) {
-      // Directly select the existing custom practice
-      data.practice = CUSTOM_KEY;
-      if (!data.practices[CUSTOM_KEY]) {
-        data.practices[CUSTOM_KEY] = { total: 0, daily: 0, dailyDate: todayStr(), goal: 108 };
-      }
-      checkAndResetDaily(getPracticeStats(data));
-      patch('counter', data);
-      haptic(15);
-      onDone();
-      showToast(t('counter_practice_changed').replace('{name}', data.customPractice));
-      close();
-    } else {
-      // No custom practice yet — show input row
-      customWrap.classList.remove('counter-custom-input-wrap--hidden');
-      sheet.querySelector('#customPracticeInput').focus();
-    }
-  });
-
-  // Edit button: reveal input row to modify the custom practice name
-  const editBtn = sheet.querySelector('#practiceCustomEdit');
-  if (editBtn) {
-    editBtn.addEventListener('click', () => {
-      customWrap.classList.remove('counter-custom-input-wrap--hidden');
-      sheet.querySelector('#customPracticeInput').focus();
-    });
-  }
-
-  // Confirm custom practice name
-  const confirmCustom = () => {
-    const input = sheet.querySelector('#customPracticeInput');
-    const val = input.value.trim();
-    if (!val) {
-      showToast(t('counter_practice_custom_empty'));
-      input.classList.add('counter-goal-custom-input--error');
-      setTimeout(() => input.classList.remove('counter-goal-custom-input--error'), 600);
-      return;
-    }
-    if (val.length > 20) {
-      showToast(t('counter_practice_custom_too_long'));
-      input.classList.add('counter-goal-custom-input--error');
-      setTimeout(() => input.classList.remove('counter-goal-custom-input--error'), 600);
-      return;
-    }
-    data.customPractice = val;
-    data.practice = CUSTOM_KEY;
-    if (!data.practices[CUSTOM_KEY]) {
-      data.practices[CUSTOM_KEY] = { total: 0, daily: 0, dailyDate: todayStr(), goal: 108 };
+  const selectPractice = (name) => {
+    data.practice = name;
+    if (!data.practices[name]) {
+      data.practices[name] = { total: 0, daily: 0, dailyDate: todayStr(), goal: 108 };
     }
     checkAndResetDaily(getPracticeStats(data));
     patch('counter', data);
     haptic(15);
     onDone();
-    showToast(t('counter_practice_changed').replace('{name}', val));
+    showToast(t('counter_practice_changed').replace('{name}', name));
     close();
   };
 
-  sheet.querySelector('#customPracticeConfirm').addEventListener('click', confirmCustom);
-  sheet.querySelector('#customPracticeInput').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); confirmCustom(); }
-  });
+  const wireSheet = () => {
+    const panel = sheet.querySelector('.counter-practice-panel');
+
+    panel.querySelector('#practiceBackdrop')?.addEventListener('click', close);
+    panel.querySelector('#practiceCancel')?.addEventListener('click', close);
+
+    // Select a practice
+    panel.querySelectorAll('.practice-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        if (e.target.closest('.practice-item-del')) return;
+        selectPractice(item.dataset.name);
+      });
+    });
+
+    // Delete a custom practice
+    panel.querySelectorAll('.practice-item-del').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const name = btn.dataset.name;
+        if (!window.confirm(`删除「${name}」？其历史数据将保留。`)) return;
+        data.customPractices = data.customPractices.filter(n => n !== name);
+        if (data.practice === name) data.practice = PRACTICE_PRESETS[0];
+        patch('counter', data);
+        haptic(15);
+        // Re-render sheet
+        sheet.innerHTML = renderSheetContent();
+        wireSheet();
+        requestAnimationFrame(() => sheet.classList.add('counter-practice-sheet--visible'));
+      });
+    });
+
+    // Add button
+    const addBtn = panel.querySelector('#practiceAddBtn');
+    const addRow = panel.querySelector('#practiceAddRow');
+    if (addBtn && addRow) {
+      addBtn.addEventListener('click', () => {
+        addBtn.style.display = 'none';
+        addRow.style.display = 'flex';
+        panel.querySelector('#practiceNewInput')?.focus();
+      });
+    }
+
+    // Confirm new custom practice
+    const confirmNew = () => {
+      const input = panel.querySelector('#practiceNewInput');
+      if (!input) return;
+      const val = input.value.trim();
+      if (!val) {
+        showToast(t('counter_practice_custom_empty'));
+        input.classList.add('counter-goal-custom-input--error');
+        setTimeout(() => input.classList.remove('counter-goal-custom-input--error'), 600);
+        return;
+      }
+      if (val.length > 20) {
+        showToast(t('counter_practice_custom_too_long'));
+        input.classList.add('counter-goal-custom-input--error');
+        setTimeout(() => input.classList.remove('counter-goal-custom-input--error'), 600);
+        return;
+      }
+      if ([...PRACTICE_PRESETS, ...data.customPractices].includes(val)) {
+        showToast('该功课已存在');
+        return;
+      }
+      if (data.customPractices.length >= MAX_CUSTOM_PRACTICES) {
+        showToast(`自定义功课最多 ${MAX_CUSTOM_PRACTICES} 个`);
+        return;
+      }
+      data.customPractices.push(val);
+      data.customPractice = val; // keep legacy field in sync
+      patch('counter', data);
+      selectPractice(val);
+    };
+
+    panel.querySelector('#practiceNewConfirm')?.addEventListener('click', confirmNew);
+    panel.querySelector('#practiceNewInput')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); confirmNew(); }
+    });
+  };
+
+  wireSheet();
 }
 
 /* ===== History View ===== */
@@ -1074,16 +1065,10 @@ function formatHistoryDate(dateStr) {
  */
 function goalForTab(data, tabKey) {
   if (tabKey === 'all') {
-    // Use current active practice's goal
     return (data.practices && data.practices[data.practice] && data.practices[data.practice].goal) || 108;
   }
-  // Preset practice?
-  if (data.practices && data.practices[tabKey]) return data.practices[tabKey].goal || 108;
-  // Custom practice (tabKey === data.customPractice)?
-  if (data.customPractice && tabKey === data.customPractice) {
-    return (data.practices && data.practices[CUSTOM_KEY] && data.practices[CUSTOM_KEY].goal) || 108;
-  }
-  return 108;
+  // All practices (presets + custom) are now stored directly by their name
+  return (data.practices && data.practices[tabKey] && data.practices[tabKey].goal) || 108;
 }
 
 /**
@@ -1207,10 +1192,10 @@ function buildHistoryHTML(data, tabKey) {
   const stats = computeHistoryStats(data, tabKey);
   const cells = buildHeatmapCells(data, tabKey, stats.goal);
 
-  // Practice tabs: 全部 + presets + custom (if set)
+  // Practice tabs: 全部 + presets + all custom practices
   const tabs = [{ key: 'all', label: '全部' }];
   PRACTICE_PRESETS.forEach(p => tabs.push({ key: p, label: p }));
-  if (data.customPractice) tabs.push({ key: data.customPractice, label: data.customPractice });
+  (data.customPractices || []).forEach(p => tabs.push({ key: p, label: p }));
 
   const practiceTabsHtml = tabs.map(({ key, label }) =>
     `<button class="ch-practice-tab${key === tabKey ? ' active' : ''}" data-tab="${escapeHtml(key)}">${escapeHtml(label)}</button>`

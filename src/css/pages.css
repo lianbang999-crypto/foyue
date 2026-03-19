@@ -1474,6 +1474,139 @@
     color: rgba(200, 60, 60, 0.8);
 }
 
+/* ── 功课选择器 — 列表式 ── */
+.practice-picker-panel {
+    gap: 12px;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.practice-picker-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+.practice-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 14px;
+    background: var(--bg-card);
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    transition: background .15s;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.practice-item:last-child { border-bottom: none; }
+.practice-item:hover { background: var(--bg-card-hover); }
+
+.practice-item--active {
+    background: var(--accent-glow);
+}
+
+.practice-item-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.practice-item-name {
+    font-size: .88rem;
+    color: var(--text);
+    font-family: var(--font-zh);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.practice-item--active .practice-item-name {
+    color: var(--accent);
+    font-weight: 500;
+}
+
+.practice-item-badge {
+    font-size: .62rem;
+    background: var(--accent);
+    color: var(--text-inverse);
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.practice-item-del {
+    -webkit-appearance: none;
+    appearance: none;
+    background: none;
+    border: none;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    cursor: pointer;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    transition: all .15s;
+}
+
+.practice-item-del:hover {
+    background: rgba(200, 60, 60, 0.1);
+    color: rgba(200, 60, 60, 0.8);
+}
+
+.practice-add-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.practice-add-input-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.practice-add-btn {
+    -webkit-appearance: none;
+    appearance: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 10px;
+    border: 1px dashed var(--border-active);
+    background: transparent;
+    border-radius: var(--radius-sm);
+    font-size: .80rem;
+    color: var(--accent);
+    cursor: pointer;
+    font-family: var(--font-zh);
+    transition: background .15s;
+    opacity: .8;
+}
+
+.practice-add-btn:hover {
+    background: var(--accent-glow);
+    opacity: 1;
+}
+
+.practice-add-hint {
+    text-align: center;
+    font-size: .74rem;
+    color: var(--text-muted);
+    padding: 6px 0;
+}
+
 /* ── 回向 sheet panel ── */
 .huixiang-panel {
     gap: 14px;
@@ -1481,14 +1614,14 @@
 
 .hx-header {
     text-align: center;
-    padding-bottom: 4px;
+    padding-bottom: 2px;
 }
 
 .hx-title {
-    font-size: .92rem;
+    font-size: .96rem;
     font-weight: 600;
     color: var(--text);
-    letter-spacing: .04em;
+    letter-spacing: .06em;
     font-family: var(--font-serif);
 }
 
@@ -1503,75 +1636,65 @@
     font-weight: 600;
 }
 
-.hx-vow-section {
-    background: var(--bg-secondary);
+/* 大回向文预览（固定展示） */
+.hx-huixiang-preview {
+    background: linear-gradient(135deg, var(--accent-glow), var(--bg-secondary));
+    border: 1px solid var(--border-active);
+    border-left: 3px solid var(--accent);
     border-radius: var(--radius-sm);
-    padding: 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+    padding: 14px 16px 12px;
 }
 
-.hx-vow-label {
-    font-size: .72rem;
+.hx-section-label {
+    font-size: .68rem;
     font-weight: 600;
     color: var(--text-muted);
+    letter-spacing: .10em;
     text-transform: uppercase;
-    letter-spacing: .08em;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
-.hx-vow-options {
+.hx-optional {
+    font-weight: 400;
+    font-size: .64rem;
+    background: var(--border);
+    padding: 1px 6px;
+    border-radius: 8px;
+    letter-spacing: .04em;
+    text-transform: none;
+}
+
+.hx-huixiang-text {
+    font-size: .88rem;
+    font-family: var(--font-serif);
+    color: var(--text);
+    line-height: 1.95;
+    letter-spacing: .06em;
+}
+
+.hx-huixiang-attr {
+    font-size: .70rem;
+    color: var(--accent);
+    text-align: right;
+    margin-top: 8px;
+    opacity: .75;
+    letter-spacing: .04em;
+}
+
+/* 另愿输入区 */
+.hx-another-section {
     display: flex;
     flex-direction: column;
     gap: 6px;
 }
 
-.hx-vow-opt {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 9px 12px;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    font-size: .84rem;
-    color: var(--text-secondary);
-    transition: background .15s;
-    border: 1px solid transparent;
-}
-
-.hx-vow-opt input[type="radio"] {
-    display: none;
-}
-
-.hx-vow-dot {
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    border: 1.5px solid var(--border);
-    flex-shrink: 0;
-    transition: all .15s;
-    position: relative;
-}
-
-.hx-vow-opt--active {
-    background: var(--accent-glow);
-    border-color: var(--border-active);
-    color: var(--accent);
-}
-
-.hx-vow-opt--active .hx-vow-dot {
-    border-color: var(--accent);
-    background: var(--accent);
-    box-shadow: 0 0 0 2px var(--bg-card), 0 0 0 4px var(--accent-dim);
-}
-
-.hx-target-wrap,
-.hx-custom-wrap {
+.hx-another-hint {
+    font-size: .70rem;
+    color: var(--text-muted);
     margin-top: 2px;
-}
-
-.hx-target--hidden {
-    display: none;
 }
 
 .hx-custom-input {
@@ -1632,28 +1755,22 @@
     color: var(--text-inverse);
     font-size: .9rem;
     font-weight: 600;
-    font-family: var(--font-zh);
+    font-family: var(--font-serif);
     cursor: pointer;
-    letter-spacing: .04em;
+    letter-spacing: .06em;
     transition: opacity .15s;
 }
 
-.hx-confirm-btn:hover {
-    opacity: .88;
-}
+.hx-confirm-btn:hover { opacity: .88; }
+.hx-confirm-btn:active { transform: scale(0.98); transition: transform .05s; }
 
-.hx-confirm-btn:active {
-    transform: scale(0.98);
-    transition: transform .05s;
-}
-
-/* ── 回向文沉浸展示 ── */
+/* ── 回向文沉浸展示（全屏）── */
 .huixiang-display {
     position: absolute;
     inset: 0;
     z-index: 10;
     opacity: 0;
-    transition: opacity .4s ease;
+    transition: opacity .45s ease;
     pointer-events: none;
 }
 
@@ -1678,50 +1795,53 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 20px;
+    gap: 22px;
+    max-width: 300px;
 }
 
 .hd-lotus {
-    font-size: 2.8rem;
+    font-size: 2.6rem;
     line-height: 1;
-    animation: hd-lotus-pulse 2s ease-in-out infinite;
+    animation: hd-lotus-pulse 2.5s ease-in-out infinite;
 }
 
 @keyframes hd-lotus-pulse {
-    0%, 100% { opacity: .7; transform: scale(1); }
-    50% { opacity: 1; transform: scale(1.08); }
+    0%, 100% { opacity: .6; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.1); }
 }
 
-.hd-text {
-    font-size: 1.05rem;
+/* 大回向文（主体，始终展示） */
+.hd-main-text {
+    font-size: 1.02rem;
     font-family: var(--font-serif);
     color: var(--text);
-    line-height: 2;
-    letter-spacing: .06em;
-    max-width: 280px;
+    line-height: 2.1;
+    letter-spacing: .07em;
 }
 
-.hd-dedicate {
-    font-size: .84rem;
+/* 另愿（附于大回向文之后） */
+.hd-another {
+    font-size: .82rem;
     color: var(--accent);
-    letter-spacing: .06em;
+    letter-spacing: .05em;
     font-family: var(--font-zh);
     border-top: 1px solid var(--border);
     padding-top: 14px;
     width: 100%;
     text-align: center;
+    opacity: .9;
 }
 
 .hd-namo {
     font-size: 1rem;
     color: var(--accent);
     font-weight: 500;
-    letter-spacing: .18em;
+    letter-spacing: .22em;
     font-family: var(--font-serif);
 }
 
 .hd-hint {
-    font-size: .72rem;
+    font-size: .70rem;
     color: var(--text-muted);
     letter-spacing: .04em;
 }
