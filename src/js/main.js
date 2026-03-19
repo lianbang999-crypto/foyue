@@ -92,9 +92,16 @@ function buildSeriesUrl(seriesId) {
 }
 
 async function fetchCategoriesData({ home = false } = {}) {
-  const response = await fetch(buildCategoriesUrl({ home }));
-  if (!response.ok) throw new Error('HTTP ' + response.status);
-  return response.json();
+  try {
+    const response = await fetch(buildCategoriesUrl({ home }));
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return response.json();
+  } catch (error) {
+    // Fallback to mock data for local development
+    console.warn('[DEV] Using mock data:', error.message);
+    const { mockCategoriesData } = await import('./mock-data.js');
+    return mockCategoriesData;
+  }
 }
 
 async function fetchCategoryData(categoryId) {
