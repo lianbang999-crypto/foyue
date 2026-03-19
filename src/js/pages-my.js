@@ -182,7 +182,10 @@ export function renderMyPage() {
   // Feature card clicks
   page.querySelector('#myHistoryCard').addEventListener('click', () => showHistorySubview());
   page.querySelector('#myCounterCard').addEventListener('click', () => {
-    import('./counter.js').then(mod => mod.openCounter());
+    import('./counter.js').then(mod => mod.openCounter()).catch(err => {
+      console.error('[Counter] load failed:', err);
+      showToast('计数器加载失败，请刷新页面重试');
+    });
   });
   page.querySelector('#myWenkuCard').addEventListener('click', () => {
     import('./wenku.js').then(mod => mod.renderWenkuHome(() => renderMyPage()));

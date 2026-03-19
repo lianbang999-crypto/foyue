@@ -34,11 +34,13 @@ export default defineConfig({
             './src/js/audio-cache.js',
             './src/js/audio-url.js'
           ],
-          // 将页面模块分离
+          // 将页面模块分离（含计数器，避免微信内置浏览器动态import失败）
           'pages': [
             './src/js/pages-home.js',
             './src/js/pages-category.js',
-            './src/js/pages-my.js'
+            './src/js/pages-my.js',
+            './src/js/counter.js',
+            './src/js/gongxiu.js',
           ],
           // 文库模块分离（按需加载）
           'wenku': [

@@ -59,7 +59,7 @@ function roundRect(ctx, x, y, w, h, r) {
  * @returns {Promise<Blob>}
  */
 export async function generateSharePoster(stats) {
-  const W = 375, H = 580;
+  const W = 375, H = 660; // taller to accommodate full 回向文
   const canvas = document.createElement('canvas');
   // Retina-quality output
   const dpr = Math.min(window.devicePixelRatio || 1, 3);
@@ -107,18 +107,18 @@ export async function generateSharePoster(stats) {
   ctx.stroke();
 
   // ── Lotus ──
-  ctx.font = '42px serif';
+  ctx.font = '36px serif';
   ctx.textAlign = 'center';
-  ctx.fillText('🪷', W / 2, 108);
+  ctx.fillText('🪷', W / 2, 96);
 
   // ── Practice name ──
   ctx.fillStyle = COLORS.accent;
-  ctx.font = '500 28px "Noto Serif SC", serif';
+  ctx.font = '500 26px "Noto Serif SC", serif';
   ctx.textAlign = 'center';
-  ctx.fillText(stats.practice || '南无阿弥陀佛', W / 2, 158);
+  ctx.fillText(stats.practice || '南无阿弥陀佛', W / 2, 142);
 
   // ── Stats card ──
-  const cardX = 24, cardY = 180, cardW = W - 48, cardH = 140;
+  const cardX = 24, cardY = 162, cardW = W - 48, cardH = 118;
   roundRect(ctx, cardX, cardY, cardW, cardH, 16);
   ctx.fillStyle = COLORS.glow;
   ctx.fill();
@@ -162,7 +162,7 @@ export async function generateSharePoster(stats) {
   });
 
   // ── Divider with decoration ──
-  const divY = cardY + cardH + 28;
+  const divY = cardY + cardH + 22;
   ctx.beginPath();
   ctx.moveTo(24, divY);
   ctx.lineTo(W - 24, divY);
@@ -178,17 +178,38 @@ export async function generateSharePoster(stats) {
   ctx.fillRect(-4, -4, 8, 8);
   ctx.restore();
 
-  // ── 回向文尾句 ──
+  // ── 完整回向文（莲池大师）——逐行绘制 ──
+  const huixiangLines = [
+    '愿以此功德，庄严佛净土，',
+    '上报四重恩，下济三途苦，',
+    '若有见闻者，悉发菩提心，',
+    '尽此一报身，同生极乐国。',
+  ];
+  const lineH = 28;
+  const textStartY = divY + 30;
   ctx.fillStyle = COLORS.textSec;
   ctx.font = '400 14px "Noto Serif SC", serif';
   ctx.textAlign = 'center';
-  ctx.fillText('尽此一报身，同生极乐国。', W / 2, divY + 34);
+  huixiangLines.forEach((line, i) => {
+    ctx.fillText(line, W / 2, textStartY + i * lineH);
+  });
 
+  const attrY = textStartY + huixiangLines.length * lineH + 10;
   ctx.fillStyle = COLORS.textMut;
   ctx.font = '400 11px "Noto Serif SC", serif';
-  ctx.fillText('— 莲池大师 回向文', W / 2, divY + 54);
+  ctx.fillText('— 莲池大师 回向文', W / 2, attrY);
 
-  // ── QR code ──
+  // Second thin divider before footer
+  const div2Y = attrY + 18;
+  ctx.beginPath();
+  ctx.moveTo(24, div2Y);
+  ctx.lineTo(W - 24, div2Y);
+  ctx.strokeStyle = COLORS.border;
+  ctx.lineWidth = 0.5;
+  ctx.stroke();
+
+  // ── QR code (positioned below the second divider) ──
+  const qrTopY = div2Y + 14;
   let qrImageUrl = null;
   try {
     qrImageUrl = await QRCode.toDataURL(APP_URL, {
@@ -210,8 +231,9 @@ export async function generateSharePoster(stats) {
       qrImg.onerror = reject;
       qrImg.src = qrImageUrl;
     });
-    const qrSize = 72, qrX = W - 24 - qrSize, qrY = H - 24 - qrSize - 18;
-    ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
+    const qrSize = 64;
+    const qrX = W - 24 - qrSize;
+    ctx.drawImage(qrImg, qrX, qrTopY, qrSize, qrSize);
   }
 
   // ── Bottom: URL + Namo ──

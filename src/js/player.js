@@ -1337,6 +1337,12 @@ function updateMediaSession(tr) {
     // Route media-key play/pause through the same state management as the UI buttons,
     // so _userPaused is correctly maintained when the user operates lock-screen controls.
     navigator.mediaSession.setActionHandler('play', () => {
+      // If the chanting counter is open and audio is paused, block system-initiated
+      // play events (wake-lock resume, Bluetooth auto-play, OS audio-session restart)
+      // that would override the user's deliberate pause mid-session.
+      // The user can still explicitly resume via our UI play button (which calls
+      // togglePlay() directly and bypasses this guard).
+      if (document.body.hasAttribute('data-counter-active') && dom.audio.paused) return;
       _userPaused = false;
       if (dom.audio.paused && dom.audio.src) { dom.audio.play(); setPlayState(true); startStallWatch(); }
     });
