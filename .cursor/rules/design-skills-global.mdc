@@ -1,0 +1,14 @@
+---
+description: 当用户请求重新设计网站、优化 UI/UX、改版界面时，必须使用 frontend-design、Impeccable、ui-ux-pro-max 技能，并先读取 .impeccable.md
+alwaysApply: false
+---
+
+# 设计技能调用规则
+
+当用户提出以下类型的请求时，必须：
+
+1. **先读取** `.impeccable.md` 获取设计上下文
+2. **激活** frontend-design、Impeccable、ui-ux-pro-max 技能
+3. **遵循** 技能中的设计准则，避免 AI 通用美学
+
+触发关键词：重新设计、改版、UI/UX 优化、界面设计、样式改造、frontend-design、Impeccable
