@@ -1833,17 +1833,37 @@
     letter-spacing: .07em;
 }
 
-/* 另愿（附于回向文之后） */
-.hd-another {
-    font-size: .82rem;
-    color: var(--accent);
-    letter-spacing: .05em;
+/* 个人回向（先于主回向文展示） */
+.hd-personal {
+    font-size: .88rem;
+    color: var(--text-secondary);
+    letter-spacing: .04em;
     font-family: var(--font-zh);
-    border-top: 1px solid var(--border);
-    padding-top: 14px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 16px;
     width: 100%;
     text-align: center;
-    opacity: .9;
+    line-height: 1.8;
+}
+
+/* 参与共修广场按钮 */
+.hd-gongxiu-btn {
+    -webkit-appearance: none;
+    appearance: none;
+    background: none;
+    border: 1px solid var(--border-active);
+    border-radius: 20px;
+    padding: 8px 20px;
+    font-family: var(--font-zh);
+    font-size: .80rem;
+    color: var(--accent);
+    cursor: pointer;
+    transition: background .15s;
+    letter-spacing: .04em;
+}
+
+.hd-gongxiu-btn:hover {
+    background: var(--accent-glow);
 }
 
 .hd-namo {

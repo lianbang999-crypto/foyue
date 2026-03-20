@@ -512,6 +512,7 @@ function wireCounterEvents(view, data, _session) {
     let touchHandled = false;
 
     const doCount = (cx, cy) => {
+      haptic(30);
       session++;
       const ps = getPracticeStats(data);
       checkAndResetDaily(ps);
@@ -527,25 +528,9 @@ function wireCounterEvents(view, data, _session) {
       // Spawn ripple at tap position
       spawnRipple(cx, cy);
 
-      // ── 印光大师十念法 3-3-4 触觉反馈 ──
-      // 念念专注，以触觉代替数数，收摄身心。
-      // 每 10 声一组：前3 / 中3 / 后4，各有不同手感。
-      const pos10 = session % 10; // 0 = 第10声（完成一遍）
-      if (pos10 === 0) {
-        // 第10声：完成一遍，较强双弹（庄严感）
-        navigator.vibrate && navigator.vibrate([40, 20, 40]);
-      } else if (pos10 === 3 || pos10 === 6) {
-        // 第3声、第6声：组间分隔，轻双弹（节奏感）
-        navigator.vibrate && navigator.vibrate([18, 8, 18]);
-      } else {
-        // 其余：轻触（专注继续）
-        haptic(12);
-      }
-
       const goalJustDone = ps.goal > 0 && ps.daily === ps.goal;
       if (goalJustDone) {
-        // 功课圆满 — 稍强双弹
-        navigator.vibrate && navigator.vibrate([40, 20, 40]);
+        haptic(60);
         showToast(t('counter_daily_done'));
         updateUI(true);
         return;
@@ -741,24 +726,34 @@ function showCounterMenu(parentView, data, onPracticeChange) {
  * 莲池大师回向文始终完整展示，以"同生极乐国"作为一切功德的最终归宿。
  * 用户的"另愿"附于回向文之后，作为个人愿心的补充。
  */
-function showHuixiangDisplay(parentView, anotherVow) {
+/**
+ * 回向文沉浸展示（全屏）
+ *
+ * 次序（先个人愿心，再总回向作庄严收尾）：
+ *   1. 个人回向（若有）
+ *   2. 莲池大师回向文（以"同生极乐国"作总结）
+ *   3. 南无阿弥陀佛
+ *   4. 「参与共修广场」可选
+ */
+function showHuixiangDisplay(parentView, anotherVow, counterData, dailyCount) {
   parentView.querySelectorAll('.huixiang-display').forEach(el => el.remove());
 
   const display = document.createElement('div');
   display.className = 'huixiang-display';
 
-  const anotherLine = anotherVow
-    ? `<div class="hd-another">另愿：${escapeHtml(anotherVow)}</div>`
+  const personalLine = anotherVow
+    ? `<div class="hd-personal">${escapeHtml(anotherVow)}</div>`
     : '';
 
   display.innerHTML = `
     <div class="hd-overlay">
       <div class="hd-content">
         <div class="hd-lotus">🪷</div>
+        ${personalLine}
         <div class="hd-main-text">${HUIXIANG_TEXT.replace(/\n/g, '<br>')}</div>
-        ${anotherLine}
         <div class="hd-namo">南无阿弥陀佛</div>
-        <div class="hd-hint">点击关闭</div>
+        <button class="hd-gongxiu-btn" id="hdGongxiuBtn">参与共修广场</button>
+        <div class="hd-hint">点击其他区域关闭</div>
       </div>
     </div>`;
   parentView.appendChild(display);
@@ -768,8 +763,23 @@ function showHuixiangDisplay(parentView, anotherVow) {
     display.classList.remove('huixiang-display--in');
     setTimeout(() => display.remove(), 400);
   };
-  const autoClose = setTimeout(close, 6000);
-  display.addEventListener('click', () => { clearTimeout(autoClose); close(); });
+  const autoClose = setTimeout(close, 8000);
+
+  display.querySelector('.hd-overlay').addEventListener('click', (e) => {
+    if (e.target.closest('#hdGongxiuBtn')) return;
+    clearTimeout(autoClose);
+    close();
+  });
+
+  display.querySelector('#hdGongxiuBtn').addEventListener('click', () => {
+    clearTimeout(autoClose);
+    if (counterData && dailyCount > 0) {
+      submitToGongxiu(counterData, dailyCount, { anotherVow: anotherVow || '' }).catch(() => { });
+    }
+    close();
+    try { sessionStorage.setItem('counter:goto-gongxiu', '1'); } catch { }
+    setTimeout(() => history.back(), 420);
+  });
 }
 
 /**
@@ -800,29 +810,21 @@ function showHuixiangSheet(parentView, data, _session) {
         <div class="hx-stats">${practiceName} · 今日 <strong>${formatCount(dailyCount)}</strong> 声</div>
       </div>
 
-      <!-- 回向文（固定展示，莲池大师，始终以"同生极乐国"为终归） -->
-      <div class="hx-huixiang-preview">
-        <div class="hx-section-label">回向文</div>
-        <div class="hx-huixiang-text">${HUIXIANG_TEXT.replace(/\n/g, '<br>')}</div>
-        <div class="hx-huixiang-attr">— 莲池大师</div>
-      </div>
-
-      <!-- 另愿（用户个人愿心，附于回向文之后） -->
+      <!-- 1. 个人回向（先填写，可选） -->
       <div class="hx-another-section">
         <div class="hx-section-label">
-          另愿
+          回向
           <span class="hx-optional">可选</span>
         </div>
         <textarea class="hx-custom-input" id="hxAnotherVow" rows="2" maxlength="80"
                   placeholder="例：愿父母消灾延寿 · 愿XXX早日往生净土">${escapeHtml(savedVow)}</textarea>
-        <div class="hx-another-hint">个人愿文将附于回向文之后</div>
       </div>
 
-      <div class="hx-gongxiu-row">
-        <label class="hx-gongxiu-label">
-          <input type="checkbox" id="hxJoinGongxiu" class="hx-checkbox">
-          <span class="hx-gongxiu-text">${t('counter_join_gongxiu')}</span>
-        </label>
+      <!-- 2. 回向文（固定，莲池大师，以"同生极乐国"作庄严收尾） -->
+      <div class="hx-huixiang-preview">
+        <div class="hx-section-label">回向文</div>
+        <div class="hx-huixiang-text">${HUIXIANG_TEXT.replace(/\n/g, '<br>')}</div>
+        <div class="hx-huixiang-attr">— 莲池大师</div>
       </div>
 
       <button class="hx-confirm-btn" id="hxConfirm">
@@ -845,23 +847,11 @@ function showHuixiangSheet(parentView, data, _session) {
   sheet.querySelector('#hxBackdrop').addEventListener('click', close);
   sheet.querySelector('#hxCancel').addEventListener('click', close);
 
-  sheet.querySelector('#hxConfirm').addEventListener('click', async () => {
+  sheet.querySelector('#hxConfirm').addEventListener('click', () => {
     const anotherVow = sheet.querySelector('#hxAnotherVow')?.value.trim() || '';
-    const joinGongxiu = sheet.querySelector('#hxJoinGongxiu')?.checked;
-
     try { localStorage.setItem('hx-another-vow', anotherVow); } catch { }
-
-    if (joinGongxiu && dailyCount > 0) {
-      try {
-        await submitToGongxiu(data, dailyCount, { anotherVow });
-        showToast(t('gongxiu_submit_success'));
-      } catch (err) {
-        console.warn('[Gongxiu] Submit failed:', err);
-      }
-    }
-
     close();
-    setTimeout(() => showHuixiangDisplay(parentView, anotherVow), 260);
+    setTimeout(() => showHuixiangDisplay(parentView, anotherVow, data, dailyCount), 260);
   });
 }
 

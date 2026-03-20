@@ -37,6 +37,14 @@ export function renderMyPage() {
   const dom = getDOM();
   const lang = getLang();
   dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
+
+  // Auto-open 共修广场 if redirected from counter 回向
+  try {
+    if (sessionStorage.getItem('counter:goto-gongxiu')) {
+      sessionStorage.removeItem('counter:goto-gongxiu');
+      setTimeout(() => showGongxiuSubview(), 350);
+    }
+  } catch { }
   const page = document.createElement('div');
   page.className = 'my-page active';
   const themeText = { light: t('theme_light'), dark: t('theme_dark'), terracotta: t('theme_terracotta'), ink: t('theme_ink') }[getTheme()] || t('theme_light');
@@ -146,6 +154,15 @@ export function renderMyPage() {
     <div class="my-section">
       <div class="my-section-title" data-i18n="my_settings">${t('my_settings')}</div>
       <div class="my-list">
+        <div class="my-item" id="myDharmaNameItem">
+          <svg class="my-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          <div class="my-item-body">
+            <span class="my-item-label">法名</span>
+            <span class="my-item-desc" style="font-size:.72rem;color:var(--text-muted)">共修广场中的长期身份</span>
+          </div>
+          <span class="my-item-value" id="myDharmaNameValue">${((() => { try { return localStorage.getItem('gongxiu-nickname') || ''; } catch { return ''; } })()) || '未设置'}</span>
+          <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
+        </div>
         <div class="my-item" id="myLangItem">
           <svg class="my-item-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
           <span class="my-item-label" data-i18n="my_lang">${t('my_lang')}</span>
@@ -234,6 +251,9 @@ export function renderMyPage() {
   }
 
   // Wire up settings items
+  page.querySelector('#myDharmaNameItem').addEventListener('click', () => {
+    showDharmaNameSheet(page);
+  });
   page.querySelector('#myLangItem').addEventListener('click', () => {
     const langs = ['zh', 'en', 'fr'];
     const i = (langs.indexOf(getLang()) + 1) % langs.length;
@@ -347,5 +367,56 @@ function showGongxiuSubview() {
   panel.querySelector('#gxFsBack').addEventListener('click', () => {
     panel.classList.remove('gx-fullscreen--in');
     setTimeout(() => panel.remove(), 320);
+  });
+}
+
+/** 法名设置 sheet —— 简洁输入框，与共修广场共用同一 localStorage key */
+function showDharmaNameSheet(parentPage) {
+  document.querySelectorAll('.dharma-name-sheet').forEach(el => el.remove());
+
+  const saved = (() => { try { return localStorage.getItem('gongxiu-nickname') || ''; } catch { return ''; } })();
+  const sheet = document.createElement('div');
+  sheet.className = 'counter-goal-sheet dharma-name-sheet';
+  sheet.innerHTML = `
+    <div class="counter-goal-backdrop" id="dnBackdrop"></div>
+    <div class="counter-goal-panel" style="gap:14px">
+      <div class="counter-goal-panel-title">设定法名</div>
+      <div style="font-size:.78rem;color:var(--text-secondary);line-height:1.6;margin-bottom:2px">
+        法名是您在共修广场的长期身份，回向时也会以法名记录。<br>
+        <span style="color:var(--text-muted)">如：净空、妙莲、法喜、法缘…</span>
+      </div>
+      <div class="counter-goal-custom-row">
+        <input class="counter-goal-custom-input" id="dnInput" type="text" maxlength="20"
+               placeholder="请输入法名" value="${escapeHtml(saved)}" autocomplete="off">
+        <button class="counter-goal-custom-btn" id="dnConfirm">保存</button>
+      </div>
+      <button class="counter-goal-cancel" id="dnCancel">取消</button>
+    </div>`;
+
+  document.getElementById('app').appendChild(sheet);
+  requestAnimationFrame(() => sheet.classList.add('counter-goal-sheet--visible'));
+
+  const close = () => {
+    sheet.classList.remove('counter-goal-sheet--visible');
+    setTimeout(() => sheet.remove(), 250);
+  };
+
+  sheet.querySelector('#dnBackdrop').addEventListener('click', close);
+  sheet.querySelector('#dnCancel').addEventListener('click', close);
+  sheet.querySelector('#dnInput').focus();
+
+  const save = () => {
+    const val = sheet.querySelector('#dnInput').value.trim();
+    try { localStorage.setItem('gongxiu-nickname', val.slice(0, 20)); } catch { }
+    // Update display in my-page
+    const el = parentPage.querySelector('#myDharmaNameValue');
+    if (el) el.textContent = val || '未设置';
+    showToast(val ? `法名已设为：${val}` : '法名已清除');
+    close();
+  };
+
+  sheet.querySelector('#dnConfirm').addEventListener('click', save);
+  sheet.querySelector('#dnInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); save(); }
   });
 }
