@@ -121,19 +121,19 @@ export function renderMyPage() {
           </div>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
-        <div class="my-item" id="myCounterCard">
-          <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2z"/><path d="M12 6v6l4 2"/><path d="M8 2.5C5.4 3.9 3.5 6.3 3 9"/></svg>
-          <div class="my-item-body">
-            <span class="my-item-label">${t('my_counter')}</span>
-            <span class="my-item-desc">${counterDesc}</span>
-          </div>
-          <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
-        </div>
         <div class="my-item" id="myWenkuCard">
           <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
           <div class="my-item-body">
             <span class="my-item-label">${t('my_wenku')}</span>
             <span class="my-item-desc">${t('my_wenku_desc')}</span>
+          </div>
+          <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
+        </div>
+        <div class="my-item" id="myCounterCard">
+          <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2z"/><path d="M12 6v6l4 2"/><path d="M8 2.5C5.4 3.9 3.5 6.3 3 9"/></svg>
+          <div class="my-item-body">
+            <span class="my-item-label">${t('my_counter')}</span>
+            <span class="my-item-desc">${counterDesc}</span>
           </div>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
