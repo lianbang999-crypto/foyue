@@ -547,7 +547,11 @@ async function ensureSeriesDetail(seriesId, categoryId) {
   initInstallPrompt();
 
   // Back navigation guard (extended to handle AI chat)
-  initBackGuard(renderCategory, state, { closeFullScreen, getPlaylistVisible, closePlaylist, renderHomePage });
+  initBackGuard((tabId) => {
+    if (tabId === 'faying') renderMergedCategory();
+    else if (tabId === 'xiuxing') renderPracticePage();
+    else renderCategory(tabId);
+  }, state, { closeFullScreen, getPlaylistVisible, closePlaylist, renderHomePage });
 
   // Handle browser back button for wenku, search overlay, and AI chat
   window.addEventListener('popstate', (e) => {
