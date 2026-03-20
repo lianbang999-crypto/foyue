@@ -2791,3 +2791,183 @@
 }
 
 .chi-dot.done { background: var(--accent); }
+
+/* ===== 日历视图 (chi-cal-*) ===== */
+
+/* 月导航 */
+.chi-month-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 0 14px;
+}
+
+.chi-month-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+}
+
+.chi-month-nav-lbl {
+    font-size: .92rem;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: .04em;
+}
+
+.chi-month-nav-total {
+    font-size: .74rem;
+    color: var(--accent);
+    font-family: var(--font-en);
+    font-weight: 600;
+    min-height: 1em;
+}
+
+.chi-nav-btn {
+    -webkit-appearance: none;
+    appearance: none;
+    background: none;
+    border: none;
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: background .15s;
+}
+
+.chi-nav-btn:hover { background: var(--bg-card-hover); }
+.chi-nav-btn--disabled { color: var(--text-muted); opacity: .35; cursor: default; }
+
+/* 日历 */
+.chi-cal-wrap {
+    margin-bottom: 16px;
+}
+
+.chi-cal-wdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    margin-bottom: 4px;
+}
+
+.chi-cal-wday {
+    text-align: center;
+    font-size: .70rem;
+    color: var(--text-muted);
+    padding: 2px 0;
+    font-weight: 500;
+}
+
+.chi-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+}
+
+.chi-cal-pad {
+    aspect-ratio: 1;
+}
+
+.chi-cal-cell {
+    aspect-ratio: 1;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    background: var(--bg-secondary);
+    cursor: default;
+    transition: transform .1s;
+    position: relative;
+    overflow: hidden;
+}
+
+/* 无记录 */
+.chi-cal-cell {
+    background: var(--bg-secondary);
+}
+
+/* 有记录但未达标 */
+.chi-cal-cell--active {
+    background: var(--accent-glow);
+    border: 1px solid var(--border-active);
+}
+
+/* 达标 */
+.chi-cal-cell--goal {
+    background: var(--accent);
+    border: none;
+}
+
+/* 今天 */
+.chi-cal-cell--today {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+/* 未来 */
+.chi-cal-cell--future {
+    opacity: .25;
+}
+
+.chi-cal-day {
+    font-size: .80rem;
+    font-weight: 500;
+    color: var(--text);
+    line-height: 1;
+    font-family: var(--font-en);
+}
+
+.chi-cal-cell--active .chi-cal-day {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.chi-cal-cell--goal .chi-cal-day {
+    color: var(--text-inverse);
+    font-weight: 600;
+}
+
+.chi-cal-count {
+    font-size: .60rem;
+    color: var(--accent-dim);
+    font-family: var(--font-en);
+    line-height: 1;
+    letter-spacing: -.01em;
+}
+
+.chi-cal-cell--goal .chi-cal-count {
+    color: rgba(255,255,255,.8);
+}
+
+/* 图例 */
+.chi-legend {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 4px;
+    padding: 8px 0;
+}
+
+.chi-legend-lbl {
+    font-size: .68rem;
+    color: var(--text-muted);
+    margin-right: 8px;
+}
+
+.chi-legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 4px;
+}
+
+.chi-legend-dot--none    { background: var(--bg-secondary); border: 1px solid var(--border); }
+.chi-legend-dot--partial { background: var(--accent-glow); border: 1px solid var(--border-active); }
+.chi-legend-dot--goal    { background: var(--accent); }

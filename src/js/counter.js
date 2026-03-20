@@ -1148,7 +1148,7 @@ function showPracticePicker(parentView, data, onDone) {
   wireSheet();
 }
 
-/* ===== History View — 极简版 ===== */
+/* ===== History View — 日历视图 ===== */
 // formatCount is imported from utils.js
 
 const WDS = ['日', '一', '二', '三', '四', '五', '六'];
@@ -1159,124 +1159,88 @@ function mkDateStr(d) {
     String(d.getDate()).padStart(2, '0');
 }
 
-/** 获取今天的 YYYY-MM-DD */
-function todayDateStr() {
-  return mkDateStr(new Date());
+function todayDateStr() { return mkDateStr(new Date()); }
+
+/** 日历格中声数的紧凑格式（需在小格子里显示） */
+function fmtCalCount(n) {
+  if (!n || n <= 0) return '';
+  if (n >= 10000) return (n / 10000).toFixed(1).replace(/\.0$/, '') + '万';
+  if (n >= 1000)  return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+  return String(n);
 }
 
-/** 对日期字符串生成易读标签 */
-function fmtHistDate(dateStr, todayStr) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  const diff = Math.round((new Date(todayStr) - date) / 86400000);
-  if (diff === 0) return { main: `${m}月${d}日`, sub: '今天' };
-  if (diff === 1) return { main: `${m}月${d}日`, sub: '昨天' };
-  return { main: `${m}月${d}日`, sub: `周${WDS[date.getDay()]}` };
+/** 计算某月的总声数 */
+function calcMonthTotal(log, year, month) {
+  let total = 0;
+  const days = new Date(year, month, 0).getDate();
+  for (let d = 1; d <= days; d++) {
+    const ds = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dayData = log[ds] || {};
+    total += Object.values(dayData).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
+  }
+  return total;
 }
 
-/** 构建 lastDays 天的完整日期列表（含空记录），按从今天往前排 */
-function buildDayList(data, lastDays = 180) {
+/** 构建某年月的日历格 HTML */
+function buildCalendarGrid(data, year, month) {
   const log = data.dailyLog || {};
-  const goal = (data.practices && data.practices[data.practice] && data.practices[data.practice].goal) || 108;
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const todayStr = mkDateStr(today);
-  const days = [];
-
-  for (let i = 0; i < lastDays; i++) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const dateStr = mkDateStr(d);
-    const dayData = log[dateStr] || {};
-    const total = Object.values(dayData).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
-    // Breakdown string: "南无阿弥陀佛 1,080 · 阿弥陀佛 200"
-    const breakdown = Object.entries(dayData)
-      .filter(([, v]) => v > 0)
-      .map(([k, v]) => `${k} ${formatCount(v)}`)
-      .join(' · ');
-    days.push({ dateStr, date: d, total, breakdown, goal });
-  }
-  return days;
-}
-
-/** 按年月分组 */
-function groupDaysByMonth(days) {
-  const groups = [];
-  let cur = null;
-  for (const day of days) {
-    const mk = day.dateStr.slice(0, 7);
-    if (!cur || cur.key !== mk) {
-      cur = { key: mk, label: `${day.date.getFullYear()}年${day.date.getMonth() + 1}月`, days: [], total: 0 };
-      groups.push(cur);
-    }
-    cur.days.push(day);
-    cur.total += day.total;
-  }
-  return groups;
-}
-
-/** 渲染单日行 */
-function renderHistDayRow(day, todayStr) {
-  const { main, sub } = fmtHistDate(day.dateStr, todayStr);
-  const goalDone = day.goal > 0 && day.total >= day.goal;
-  const hasRecord = day.total > 0;
-  return `
-    <div class="chi-row${hasRecord ? '' : ' chi-row--empty'}">
-      <div class="chi-date">
-        <span class="chi-date-main">${main}</span>
-        <span class="chi-date-sub">${sub}</span>
-      </div>
-      <div class="chi-content">
-        ${hasRecord
-          ? `<span class="chi-breakdown">${escapeHtml(day.breakdown)}</span>`
-          : `<span class="chi-no-record">─</span>`
-        }
-      </div>
-      <div class="chi-right">
-        ${hasRecord
-          ? `<span class="chi-count${goalDone ? ' done' : ''}">${formatCount(day.total)}</span>
-             <span class="chi-dot${goalDone ? ' done' : ''}"></span>`
-          : ''
-        }
-      </div>
-    </div>`;
-}
-
-/** 构建完整历史面板 HTML */
-function buildHistoryHTML(data) {
+  const goal = (data.practices?.[data.practice]?.goal) || 108;
   const todayStr = todayDateStr();
-  const log = data.dailyLog || {};
-  const ps = (data.practices && data.practices[data.practice]) || { total: 0, daily: 0 };
-  const streak = getStreak(data);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
 
-  // 累计总声数（所有功课）
-  let grandTotal = 0;
-  for (const dayData of Object.values(log)) {
-    grandTotal += Object.values(dayData).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
+  const firstDay = new Date(year, month - 1, 1);
+  const totalDays = new Date(year, month, 0).getDate();
+  const startDow = firstDay.getDay(); // 0=Sun
+
+  const cells = [];
+  // Leading empty cells
+  for (let i = 0; i < startDow; i++) cells.push({ type: 'pad' });
+
+  for (let d = 1; d <= totalDays; d++) {
+    const ds = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isFuture = ds > todayStr;
+    const isToday  = ds === todayStr;
+    const dayData  = log[ds] || {};
+    const total    = Object.values(dayData).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
+    cells.push({ type: 'day', d, ds, total, isFuture, isToday, goalDone: goal > 0 && total >= goal });
   }
-  // 今日
-  const todayData = log[todayStr] || {};
+
+  return cells.map(c => {
+    if (c.type === 'pad') return `<div class="chi-cal-pad"></div>`;
+    const cls = ['chi-cal-cell'];
+    if (c.total > 0) cls.push('chi-cal-cell--active');
+    if (c.goalDone)  cls.push('chi-cal-cell--goal');
+    if (c.isToday)   cls.push('chi-cal-cell--today');
+    if (c.isFuture)  cls.push('chi-cal-cell--future');
+    return `<div class="${cls.join(' ')}" data-date="${c.ds}">
+      <span class="chi-cal-day">${c.d}</span>
+      ${c.total > 0 ? `<span class="chi-cal-count">${fmtCalCount(c.total)}</span>` : ''}
+    </div>`;
+  }).join('');
+}
+
+/** 构建完整历史面板 HTML（日历视图） */
+function buildHistoryHTML(data, year, month) {
+  const todayStr  = todayDateStr();
+  const log       = data.dailyLog || {};
+  const streak    = getStreak(data);
+
+  // 累计总声数
+  let grandTotal = 0;
+  for (const dd of Object.values(log)) {
+    grandTotal += Object.values(dd).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
+  }
+  const todayData  = log[todayStr] || {};
   const todayTotal = Object.values(todayData).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
 
-  // 月分组日列表
-  const days = buildDayList(data, 180);
-  const months = groupDaysByMonth(days);
+  const monthTotal  = calcMonthTotal(log, year, month);
+  const monthLabel  = `${year}年${month}月`;
 
-  const monthsHtml = months.map(month => {
-    // 当前月显示全部天，过去月只显示有记录的天（节省空间）
-    const isCurrentMonth = month.key === todayStr.slice(0, 7);
-    const rowDays = isCurrentMonth ? month.days : month.days.filter(d => d.total > 0);
-    if (rowDays.length === 0) return '';
-    return `
-      <div class="chi-month">
-        <div class="chi-month-hdr">
-          <span class="chi-month-lbl">${month.label}</span>
-          ${month.total > 0 ? `<span class="chi-month-total">${formatCount(month.total)} 声</span>` : ''}
-        </div>
-        ${rowDays.map(d => renderHistDayRow(d, todayStr)).join('')}
-      </div>`;
-  }).filter(Boolean).join('');
+  const now = new Date();
+  const canGoNext = !(year === now.getFullYear() && month === now.getMonth() + 1);
 
-  const emptyHtml = `<div class="ch-empty">尚无记录<br><span style="font-size:.74rem">开始念佛后，每日功课将展示在这里</span></div>`;
+  const gridHtml = buildCalendarGrid(data, year, month);
+  const dayHdrs  = WDS.map(w => `<div class="chi-cal-wday">${w}</div>`).join('');
 
   return `
     <div class="ch-header">
@@ -1293,28 +1257,50 @@ function buildHistoryHTML(data) {
       </button>
     </div>
 
-    <div class="ch-body" id="chBody">
-      <!-- 精简三格统计 -->
+    <div class="ch-body">
+      <!-- 三格统计 -->
       <div class="chi-top-stats">
         <div class="chi-top-item">
-          <div class="chi-top-val">${formatCount(grandTotal)}</div>
+          <div class="chi-top-val" id="chiGrand">${formatCount(grandTotal)}</div>
           <div class="chi-top-lbl">累计</div>
         </div>
         <div class="chi-top-divider"></div>
         <div class="chi-top-item">
-          <div class="chi-top-val">${formatCount(todayTotal)}</div>
+          <div class="chi-top-val" id="chiToday">${formatCount(todayTotal)}</div>
           <div class="chi-top-lbl">今日</div>
         </div>
         <div class="chi-top-divider"></div>
         <div class="chi-top-item">
-          <div class="chi-top-val">${streak}</div>
+          <div class="chi-top-val" id="chiStreak">${streak}</div>
           <div class="chi-top-lbl">连续</div>
         </div>
       </div>
 
-      <!-- 月分组日列表 -->
-      <div id="chiMonthList">
-        ${months.some(m => m.total > 0) ? monthsHtml : emptyHtml}
+      <!-- 月导航 -->
+      <div class="chi-month-nav">
+        <button class="chi-nav-btn" id="chPrevMonth" aria-label="上月">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15,18 9,12 15,6"/></svg>
+        </button>
+        <div class="chi-month-info">
+          <span class="chi-month-nav-lbl" id="chiMonthLabel">${monthLabel}</span>
+          ${monthTotal > 0 ? `<span class="chi-month-nav-total" id="chiMonthTotal">${formatCount(monthTotal)} 声</span>` : `<span class="chi-month-nav-total" id="chiMonthTotal"></span>`}
+        </div>
+        <button class="chi-nav-btn${canGoNext ? '' : ' chi-nav-btn--disabled'}" id="chNextMonth" aria-label="下月" ${canGoNext ? '' : 'disabled'}>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9,18 15,12 9,6"/></svg>
+        </button>
+      </div>
+
+      <!-- 日历格 -->
+      <div class="chi-cal-wrap">
+        <div class="chi-cal-wdays">${dayHdrs}</div>
+        <div class="chi-cal-grid" id="chiCalGrid">${gridHtml}</div>
+      </div>
+
+      <!-- 图例 -->
+      <div class="chi-legend">
+        <span class="chi-legend-dot chi-legend-dot--none"></span><span class="chi-legend-lbl">无记录</span>
+        <span class="chi-legend-dot chi-legend-dot--partial"></span><span class="chi-legend-lbl">已念</span>
+        <span class="chi-legend-dot chi-legend-dot--goal"></span><span class="chi-legend-lbl">达标</span>
       </div>
     </div>`;
 }
@@ -1422,50 +1408,52 @@ function showBuluSheet(parentView, data, onDone) {
   });
 }
 
-/** Open / refresh the history slide-in panel inside the counter view */
+/** Open / refresh the history slide-in panel (calendar view) */
 export function openHistory(counterView, data) {
   counterView.querySelectorAll('.counter-history').forEach(el => el.remove());
 
+  const now = new Date();
+  let curYear  = now.getFullYear();
+  let curMonth = now.getMonth() + 1;
+
   const hist = document.createElement('div');
   hist.className = 'counter-history';
-  hist.innerHTML = buildHistoryHTML(data);
+  hist.innerHTML = buildHistoryHTML(data, curYear, curMonth);
   counterView.appendChild(hist);
-
   requestAnimationFrame(() => hist.classList.add('counter-history--in'));
 
-  const rebuildList = () => {
-    const listEl = hist.querySelector('#chiMonthList');
-    if (!listEl) return;
-    const todayStr = todayDateStr();
-    const days = buildDayList(data, 180);
-    const months = groupDaysByMonth(days);
-    const monthsHtml = months.map(month => {
-      const isCurrentMonth = month.key === todayStr.slice(0, 7);
-      const rowDays = isCurrentMonth ? month.days : month.days.filter(d => d.total > 0);
-      if (rowDays.length === 0) return '';
-      return `
-        <div class="chi-month">
-          <div class="chi-month-hdr">
-            <span class="chi-month-lbl">${month.label}</span>
-            ${month.total > 0 ? `<span class="chi-month-total">${formatCount(month.total)} 声</span>` : ''}
-          </div>
-          ${rowDays.map(d => renderHistDayRow(d, todayStr)).join('')}
-        </div>`;
-    }).filter(Boolean).join('');
-    listEl.innerHTML = monthsHtml || `<div class="ch-empty">尚无记录</div>`;
+  /** Re-render just the calendar grid + month header after data changes */
+  const refreshCalendar = () => {
+    const grid = hist.querySelector('#chiCalGrid');
+    if (grid) grid.innerHTML = buildCalendarGrid(data, curYear, curMonth);
 
-    // Update top stats
+    const monthTotal = calcMonthTotal(data.dailyLog || {}, curYear, curMonth);
+    const totalEl = hist.querySelector('#chiMonthTotal');
+    if (totalEl) totalEl.textContent = monthTotal > 0 ? `${formatCount(monthTotal)} 声` : '';
+
+    // Refresh top stats
     const log = data.dailyLog || {};
     let grand = 0;
     for (const dd of Object.values(log)) {
       grand += Object.values(dd).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
     }
-    const todayD = log[todayStr] || {};
-    const todayT = Object.values(todayD).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
-    const topVals = hist.querySelectorAll('.chi-top-val');
-    if (topVals[0]) topVals[0].textContent = formatCount(grand);
-    if (topVals[1]) topVals[1].textContent = formatCount(todayT);
-    if (topVals[2]) topVals[2].textContent = getStreak(data);
+    const ts = todayDateStr();
+    const td = Object.values(log[ts] || {}).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
+    const gEl = hist.querySelector('#chiGrand');   if (gEl) gEl.textContent = formatCount(grand);
+    const tEl = hist.querySelector('#chiToday');   if (tEl) tEl.textContent = formatCount(td);
+    const sEl = hist.querySelector('#chiStreak');  if (sEl) sEl.textContent = getStreak(data);
+  };
+
+  /** Navigate to a different month and re-render */
+  const goToMonth = (y, m) => {
+    curYear = y; curMonth = m;
+    const now2 = new Date();
+    const canNext = !(y === now2.getFullYear() && m === now2.getMonth() + 1);
+    const lbl = hist.querySelector('#chiMonthLabel');
+    if (lbl) lbl.textContent = `${y}年${m}月`;
+    const nextBtn = hist.querySelector('#chNextMonth');
+    if (nextBtn) { nextBtn.disabled = !canNext; nextBtn.classList.toggle('chi-nav-btn--disabled', !canNext); }
+    refreshCalendar();
   };
 
   hist.querySelector('#chBack').addEventListener('click', () => {
@@ -1474,6 +1462,20 @@ export function openHistory(counterView, data) {
   });
 
   hist.querySelector('#chBuluBtn').addEventListener('click', () => {
-    showBuluSheet(hist, data, rebuildList);
+    showBuluSheet(hist, data, refreshCalendar);
+  });
+
+  hist.querySelector('#chPrevMonth').addEventListener('click', () => {
+    let y = curYear, m = curMonth - 1;
+    if (m < 1) { m = 12; y--; }
+    goToMonth(y, m);
+  });
+
+  hist.querySelector('#chNextMonth').addEventListener('click', () => {
+    const now2 = new Date();
+    if (curYear === now2.getFullYear() && curMonth === now2.getMonth() + 1) return;
+    let y = curYear, m = curMonth + 1;
+    if (m > 12) { m = 1; y++; }
+    goToMonth(y, m);
   });
 }
