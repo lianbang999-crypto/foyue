@@ -542,18 +542,10 @@ function wireCounterEvents(view, data, _session) {
         haptic(12);
       }
 
-      const justCompletedLoop = ps.total % BEADS_PER_LOOP === 0;
-      if (justCompletedLoop) {
-        // 一串念珠完成（108声），特别振动已足够，不再叠加十念法振动
-        navigator.vibrate && navigator.vibrate([60, 30, 60, 30, 60]);
-        showToast(t('counter_loop_done'));
-        updateUI(true);
-        return;
-      }
-
       const goalJustDone = ps.goal > 0 && ps.daily === ps.goal;
       if (goalJustDone) {
-        navigator.vibrate && navigator.vibrate([80, 40, 80]);
+        // 功课圆满 — 稍强双弹
+        navigator.vibrate && navigator.vibrate([40, 20, 40]);
         showToast(t('counter_daily_done'));
         updateUI(true);
         return;
