@@ -1,7 +1,7 @@
 /* ===== 念佛计数器 (Buddhist Chanting Counter) ===== */
 import { t } from './i18n.js';
 import { get, patch } from './store.js';
-import { haptic, showToast, escapeHtml, formatCount, HUIXIANG_TEXT } from './utils.js';
+import { haptic, showToast, escapeHtml, formatCount, HUIXIANG_TEXT, localTodayStr, HUIXIANG_DISPLAY_AUTO_MS } from './utils.js';
 const BEADS_PER_LOOP = 108;
 /** @deprecated Kept only for data migration from old single-custom format */
 const CUSTOM_KEY = '__custom__';
@@ -27,11 +27,6 @@ function persistCustomGoal(val) {
 }
 
 /* ── Helpers ── */
-function todayStr() {
-  const d = new Date();
-  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-}
-
 /* Return the per-practice stats object for the current practice */
 function getPracticeStats(data) {
   if (!data.practices[data.practice]) {
@@ -42,7 +37,7 @@ function getPracticeStats(data) {
 
 /* Reset daily count if it's a new day; returns true if reset occurred */
 function checkAndResetDaily(ps) {
-  const today = todayStr();
+  const today = localTodayStr();
   if (ps.dailyDate !== today) {
     ps.daily = 0;
     ps.dailyDate = today;
@@ -59,7 +54,7 @@ function getPracticeDisplayName(data) {
 /* ── Daily log helpers ── */
 function recordDailyLog(data, practice, count) {
   if (!data.dailyLog) data.dailyLog = {};
-  const today = todayStr();
+  const today = localTodayStr();
   if (!data.dailyLog[today]) data.dailyLog[today] = {};
   if (!data.dailyLog[today][practice]) data.dailyLog[today][practice] = 0;
   data.dailyLog[today][practice] += count;
@@ -404,6 +399,17 @@ function closeCounter(view, sourceTab, popHandler, escHandler, visHandler, optio
     if (skipNavigation) return;
     const targetTab = document.querySelector(`.tab[data-tab="${sourceTab}"]`) || document.querySelector('.tab[data-tab="mypage"]');
     if (targetTab) targetTab.click();
+    try {
+      if (sessionStorage.getItem('counter:goto-gongxiu')) {
+        sessionStorage.removeItem('counter:goto-gongxiu');
+        sessionStorage.setItem('gongxiu:scroll-to-submit', '1');
+        setTimeout(() => {
+          import('./pages-my.js').then(m => {
+            if (typeof m.showGongxiuSubview === 'function') m.showGongxiuSubview();
+          }).catch(() => { });
+        }, 380);
+      }
+    } catch { /* ignore */ }
   };
 
   if (skipAnimation) {
@@ -518,7 +524,7 @@ function wireCounterEvents(view, data, _session) {
       checkAndResetDaily(ps);
       ps.total++;
       ps.daily++;
-      ps.dailyDate = todayStr();
+      ps.dailyDate = localTodayStr();
 
       // Record to daily log — data.practice is now always the actual display name
       recordDailyLog(data, data.practice, 1);
@@ -671,10 +677,14 @@ function showCounterMenu(parentView, data, onPracticeChange) {
   parentView.appendChild(sheet);
   requestAnimationFrame(() => sheet.classList.add('counter-goal-sheet--visible'));
 
+  let menuEsc;
   const close = () => {
+    window.removeEventListener('keydown', menuEsc);
     sheet.classList.remove('counter-goal-sheet--visible');
     setTimeout(() => sheet.remove(), 250);
   };
+  menuEsc = (e) => { if (e.key === 'Escape') close(); };
+  window.addEventListener('keydown', menuEsc);
 
   sheet.querySelector('#menuBackdrop').addEventListener('click', close);
   sheet.querySelector('#menuCancel').addEventListener('click', close);
@@ -709,7 +719,7 @@ function showCounterMenu(parentView, data, onPracticeChange) {
       if (!window.confirm(t('counter_reset_confirm'))) return;
       for (const p of Object.keys(data.practices)) {
         const goal = data.practices[p].goal || 108;
-        data.practices[p] = { total: 0, daily: 0, dailyDate: todayStr(), goal };
+        data.practices[p] = { total: 0, daily: 0, dailyDate: localTodayStr(), goal };
       }
       data.dailyLog = {};
       patch('counter', data);
@@ -763,7 +773,7 @@ function showHuixiangDisplay(parentView, anotherVow, counterData, dailyCount) {
     display.classList.remove('huixiang-display--in');
     setTimeout(() => display.remove(), 400);
   };
-  const autoClose = setTimeout(close, 8000);
+  const autoClose = setTimeout(close, HUIXIANG_DISPLAY_AUTO_MS);
 
   display.querySelector('.hd-overlay').addEventListener('click', (e) => {
     if (e.target.closest('#hdGongxiuBtn')) return;
@@ -884,6 +894,10 @@ async function submitToGongxiu(data, count, vowInfo) {
   try {
     localStorage.setItem('gongxiu-submitted-date', new Date().toDateString());
   } catch { /* ignore */ }
+
+  if (!savedNickname.trim()) {
+    showToast('可在「我的」中设置法名，便于在共修广场显示');
+  }
 
   return resp.json();
 }
@@ -1056,7 +1070,7 @@ function showPracticePicker(parentView, data, onDone) {
   const selectPractice = (name) => {
     data.practice = name;
     if (!data.practices[name]) {
-      data.practices[name] = { total: 0, daily: 0, dailyDate: todayStr(), goal: 108 };
+      data.practices[name] = { total: 0, daily: 0, dailyDate: localTodayStr(), goal: 108 };
     }
     checkAndResetDaily(getPracticeStats(data));
     patch('counter', data);
