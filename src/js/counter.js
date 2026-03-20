@@ -1148,184 +1148,135 @@ function showPracticePicker(parentView, data, onDone) {
   wireSheet();
 }
 
-/* ===== History View ===== */
+/* ===== History View — 极简版 ===== */
 // formatCount is imported from utils.js
 
-/** Format a YYYY-MM-DD date string into a human-readable label */
-function formatHistoryDate(dateStr) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const diff = Math.round((today - date) / 86400000);
-  if (diff === 0) return t('time_today') || '今天';
-  if (diff === 1) return t('time_yesterday') || '昨天';
-  const wds = ['日', '一', '二', '三', '四', '五', '六'];
-  return `${m}月${d}日 周${wds[date.getDay()]}`;
-}
+const WDS = ['日', '一', '二', '三', '四', '五', '六'];
 
-/**
- * Return the goal value for the given practice tab key.
- * Tab keys: 'all' | preset name | data.customPractice
- */
-function goalForTab(data, tabKey) {
-  if (tabKey === 'all') {
-    return (data.practices && data.practices[data.practice] && data.practices[data.practice].goal) || 108;
-  }
-  // All practices (presets + custom) are now stored directly by their name
-  return (data.practices && data.practices[tabKey] && data.practices[tabKey].goal) || 108;
-}
-
-/**
- * Compute aggregate stats for the history view.
- * tabKey = 'all' | practice name (as stored in dailyLog)
- */
-function computeHistoryStats(data, tabKey) {
-  const log = data.dailyLog || {};
-  const entries = [];
-  for (const [date, dayData] of Object.entries(log)) {
-    let count = 0;
-    if (tabKey === 'all') {
-      count = Object.values(dayData).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
-    } else {
-      count = (typeof dayData[tabKey] === 'number') ? dayData[tabKey] : 0;
-    }
-    if (count > 0) entries.push({ date, count });
-  }
-  entries.sort((a, b) => a.date.localeCompare(b.date));
-
-  const total = entries.reduce((s, e) => s + e.count, 0);
-  const best  = entries.length > 0 ? Math.max(...entries.map(e => e.count)) : 0;
-  const avg   = entries.length > 0 ? Math.round(total / entries.length) : 0;
-  const goal  = goalForTab(data, tabKey);
-
-  return { total, best, avg, activeDays: entries.length, streak: getStreak(data), entries, goal };
-}
-
-/**
- * Build an array of 91 cell descriptors for a Mon→Sun heatmap grid
- * covering the 13 weeks that end on the Sunday on-or-after today.
- */
-function buildHeatmapCells(data, tabKey, goal) {
-  const log  = data.dailyLog || {};
-  const now  = new Date();
-  now.setHours(0, 0, 0, 0);
-  const todayDow = (now.getDay() + 6) % 7; // 0=Mon … 6=Sun
-
-  // Advance to Sunday to close out the last column
-  const gridEnd = new Date(now);
-  gridEnd.setDate(gridEnd.getDate() + (6 - todayDow));
-
-  // 91 cells = exactly 13 weeks
-  const gridStart = new Date(gridEnd);
-  gridStart.setDate(gridStart.getDate() - 90);
-
-  const mkDateStr = d =>
-    d.getFullYear() + '-' +
+function mkDateStr(d) {
+  return d.getFullYear() + '-' +
     String(d.getMonth() + 1).padStart(2, '0') + '-' +
     String(d.getDate()).padStart(2, '0');
+}
 
-  const todayStr = mkDateStr(now);
-  const cells = [];
+/** 获取今天的 YYYY-MM-DD */
+function todayDateStr() {
+  return mkDateStr(new Date());
+}
 
-  for (let d = new Date(gridStart); d <= gridEnd; d.setDate(d.getDate() + 1)) {
+/** 对日期字符串生成易读标签 */
+function fmtHistDate(dateStr, todayStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const diff = Math.round((new Date(todayStr) - date) / 86400000);
+  if (diff === 0) return { main: `${m}月${d}日`, sub: '今天' };
+  if (diff === 1) return { main: `${m}月${d}日`, sub: '昨天' };
+  return { main: `${m}月${d}日`, sub: `周${WDS[date.getDay()]}` };
+}
+
+/** 构建 lastDays 天的完整日期列表（含空记录），按从今天往前排 */
+function buildDayList(data, lastDays = 180) {
+  const log = data.dailyLog || {};
+  const goal = (data.practices && data.practices[data.practice] && data.practices[data.practice].goal) || 108;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const todayStr = mkDateStr(today);
+  const days = [];
+
+  for (let i = 0; i < lastDays; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
     const dateStr = mkDateStr(d);
-    const isFuture = d > now;
-    const isToday  = dateStr === todayStr;
-
-    if (isFuture) { cells.push({ type: 'future' }); continue; }
-
-    let count = 0;
-    if (log[dateStr]) {
-      if (tabKey === 'all') {
-        count = Object.values(log[dateStr]).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
-      } else {
-        count = (typeof log[dateStr][tabKey] === 'number') ? log[dateStr][tabKey] : 0;
-      }
-    }
-
-    let level = 0;
-    if (count > 0) {
-      if (goal > 0) {
-        if      (count >= goal)           level = 4;
-        else if (count >= goal * 0.5)     level = 3;
-        else if (count >= goal * 0.25)    level = 2;
-        else                              level = 1;
-      } else {
-        level = 2;
-      }
-    }
-    cells.push({ type: 'day', dateStr, count, level, isToday });
-  }
-  return cells;
-}
-
-/** Render heatmap cell HTML */
-function renderHeatmapCells(cells) {
-  return cells.map(cell => {
-    if (cell.type === 'future') return `<div class="ch-cell ch-cell--future"></div>`;
-    const classes = ['ch-cell'];
-    if (cell.isToday) classes.push('ch-cell--today');
-    const title = cell.count > 0 ? `${cell.dateStr}: ${formatCount(cell.count)}声` : cell.dateStr;
-    return `<div class="${classes.join(' ')}" data-level="${cell.level}" data-count="${cell.count}" title="${title}"></div>`;
-  }).join('');
-}
-
-/** Render a single day-item row */
-function renderDayItem(e, tabKey, goal, dailyLog) {
-  const goalDone = goal > 0 && e.count >= goal;
-  const partial  = !goalDone && e.count > 0;
-  let sub = '';
-  if (tabKey === 'all' && dailyLog && dailyLog[e.date]) {
-    sub = Object.entries(dailyLog[e.date])
+    const dayData = log[dateStr] || {};
+    const total = Object.values(dayData).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
+    // Breakdown string: "南无阿弥陀佛 1,080 · 阿弥陀佛 200"
+    const breakdown = Object.entries(dayData)
       .filter(([, v]) => v > 0)
-      .map(([k, v]) => `${k} ${formatCount(v)}声`)
+      .map(([k, v]) => `${k} ${formatCount(v)}`)
       .join(' · ');
+    days.push({ dateStr, date: d, total, breakdown, goal });
   }
-  return `<div class="ch-day-item">
-    <div class="ch-day-dot ${goalDone ? 'ch-day-dot--done' : partial ? 'ch-day-dot--partial' : ''}"></div>
-    <div class="ch-day-info">
-      <div class="ch-day-date">${formatHistoryDate(e.date)}</div>
-      ${sub ? `<div class="ch-day-sub">${escapeHtml(sub)}</div>` : ''}
-    </div>
-    <div class="ch-day-count ${goalDone ? 'ch-day-count--done' : ''}">${formatCount(e.count)}</div>
-  </div>`;
+  return days;
 }
 
-/** Build the complete HTML for the history panel */
-function buildHistoryHTML(data, tabKey) {
-  const stats = computeHistoryStats(data, tabKey);
-  const cells = buildHeatmapCells(data, tabKey, stats.goal);
+/** 按年月分组 */
+function groupDaysByMonth(days) {
+  const groups = [];
+  let cur = null;
+  for (const day of days) {
+    const mk = day.dateStr.slice(0, 7);
+    if (!cur || cur.key !== mk) {
+      cur = { key: mk, label: `${day.date.getFullYear()}年${day.date.getMonth() + 1}月`, days: [], total: 0 };
+      groups.push(cur);
+    }
+    cur.days.push(day);
+    cur.total += day.total;
+  }
+  return groups;
+}
 
-  // Practice tabs: 全部 + presets + all custom practices
-  const tabs = [{ key: 'all', label: '全部' }];
-  PRACTICE_PRESETS.forEach(p => tabs.push({ key: p, label: p }));
-  (data.customPractices || []).forEach(p => tabs.push({ key: p, label: p }));
-
-  const practiceTabsHtml = tabs.map(({ key, label }) =>
-    `<button class="ch-practice-tab${key === tabKey ? ' active' : ''}" data-tab="${escapeHtml(key)}">${escapeHtml(label)}</button>`
-  ).join('');
-
-  // Milestone banner (show "next milestone" progress)
-  const MILESTONES = [10000, 50000, 100000, 500000, 1000000, 5000000, 10000000];
-  const nextM = MILESTONES.find(m => m > stats.total);
-  const milestoneHtml = nextM && stats.total > 0 ? `
-    <div class="ch-milestone">
-      <div class="ch-milestone-icon">🙏</div>
-      <div class="ch-milestone-text">
-        已念 <strong>${formatCount(stats.total)}</strong> 声，
-        距 <strong>${formatCount(nextM)}</strong> 声还差
-        <strong>${formatCount(nextM - stats.total)}</strong> 声
+/** 渲染单日行 */
+function renderHistDayRow(day, todayStr) {
+  const { main, sub } = fmtHistDate(day.dateStr, todayStr);
+  const goalDone = day.goal > 0 && day.total >= day.goal;
+  const hasRecord = day.total > 0;
+  return `
+    <div class="chi-row${hasRecord ? '' : ' chi-row--empty'}">
+      <div class="chi-date">
+        <span class="chi-date-main">${main}</span>
+        <span class="chi-date-sub">${sub}</span>
       </div>
-    </div>` : '';
+      <div class="chi-content">
+        ${hasRecord
+          ? `<span class="chi-breakdown">${escapeHtml(day.breakdown)}</span>`
+          : `<span class="chi-no-record">─</span>`
+        }
+      </div>
+      <div class="chi-right">
+        ${hasRecord
+          ? `<span class="chi-count${goalDone ? ' done' : ''}">${formatCount(day.total)}</span>
+             <span class="chi-dot${goalDone ? ' done' : ''}"></span>`
+          : ''
+        }
+      </div>
+    </div>`;
+}
 
-  // Daily list (newest first, up to 60 days)
-  const sorted = stats.entries.slice().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 60);
-  const listHtml = sorted.length === 0
-    ? `<div class="ch-empty">暂无记录<br><span style="font-size:.74rem">开始念佛后，每日记录将展示在这里</span></div>`
-    : sorted.map(e => renderDayItem(e, tabKey, stats.goal, data.dailyLog)).join('');
+/** 构建完整历史面板 HTML */
+function buildHistoryHTML(data) {
+  const todayStr = todayDateStr();
+  const log = data.dailyLog || {};
+  const ps = (data.practices && data.practices[data.practice]) || { total: 0, daily: 0 };
+  const streak = getStreak(data);
 
-  const dayLabels = ['一', '二', '三', '四', '五', '六', '日'];
+  // 累计总声数（所有功课）
+  let grandTotal = 0;
+  for (const dayData of Object.values(log)) {
+    grandTotal += Object.values(dayData).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
+  }
+  // 今日
+  const todayData = log[todayStr] || {};
+  const todayTotal = Object.values(todayData).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
+
+  // 月分组日列表
+  const days = buildDayList(data, 180);
+  const months = groupDaysByMonth(days);
+
+  const monthsHtml = months.map(month => {
+    // 当前月显示全部天，过去月只显示有记录的天（节省空间）
+    const isCurrentMonth = month.key === todayStr.slice(0, 7);
+    const rowDays = isCurrentMonth ? month.days : month.days.filter(d => d.total > 0);
+    if (rowDays.length === 0) return '';
+    return `
+      <div class="chi-month">
+        <div class="chi-month-hdr">
+          <span class="chi-month-lbl">${month.label}</span>
+          ${month.total > 0 ? `<span class="chi-month-total">${formatCount(month.total)} 声</span>` : ''}
+        </div>
+        ${rowDays.map(d => renderHistDayRow(d, todayStr)).join('')}
+      </div>`;
+  }).filter(Boolean).join('');
+
+  const emptyHtml = `<div class="ch-empty">尚无记录<br><span style="font-size:.74rem">开始念佛后，每日功课将展示在这里</span></div>`;
 
   return `
     <div class="ch-header">
@@ -1333,106 +1284,196 @@ function buildHistoryHTML(data, tabKey) {
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,18 9,12 15,6"/></svg>
       </button>
       <span class="ch-title">念佛历史</span>
-      <div style="width:44px;flex-shrink:0"></div>
+      <button class="btn-icon" id="chBuluBtn" title="补录" aria-label="补录过去的念佛声数">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/>
+          <line x1="12" y1="8" x2="12" y2="16"/>
+          <line x1="8" y1="12" x2="16" y2="12"/>
+        </svg>
+      </button>
     </div>
 
     <div class="ch-body" id="chBody">
-      <!-- Stats 2×2 grid -->
-      <div class="ch-stats">
-        <div class="ch-stat-card">
-          <div class="ch-stat-val">${formatCount(stats.total)}</div>
-          <div class="ch-stat-lbl">累计声数</div>
+      <!-- 精简三格统计 -->
+      <div class="chi-top-stats">
+        <div class="chi-top-item">
+          <div class="chi-top-val">${formatCount(grandTotal)}</div>
+          <div class="chi-top-lbl">累计</div>
         </div>
-        <div class="ch-stat-card">
-          <div class="ch-stat-val">${stats.streak}</div>
-          <div class="ch-stat-lbl">连续打卡（天）</div>
+        <div class="chi-top-divider"></div>
+        <div class="chi-top-item">
+          <div class="chi-top-val">${formatCount(todayTotal)}</div>
+          <div class="chi-top-lbl">今日</div>
         </div>
-        <div class="ch-stat-card">
-          <div class="ch-stat-val">${formatCount(stats.best)}</div>
-          <div class="ch-stat-lbl">单日最高</div>
-        </div>
-        <div class="ch-stat-card">
-          <div class="ch-stat-val">${stats.activeDays}</div>
-          <div class="ch-stat-lbl">有记录天数</div>
+        <div class="chi-top-divider"></div>
+        <div class="chi-top-item">
+          <div class="chi-top-val">${streak}</div>
+          <div class="chi-top-lbl">连续</div>
         </div>
       </div>
 
-      ${milestoneHtml}
-
-      <!-- Practice filter tabs -->
-      <div class="ch-practice-tabs" id="chPracticeTabs">${practiceTabsHtml}</div>
-
-      <!-- Heatmap -->
-      <div class="ch-section">
-        <div class="ch-section-title">近90天记录</div>
-        <div class="ch-heatmap-labels">
-          ${dayLabels.map(d => `<div class="ch-heatmap-label">${d}</div>`).join('')}
-        </div>
-        <div class="ch-heatmap" id="chHeatmap">${renderHeatmapCells(cells)}</div>
-        <div class="ch-heatmap-legend">
-          <span class="ch-legend-label">少</span>
-          ${[1, 2, 3, 4].map(l => {
-            const op = [.22, .45, .72, 1][l - 1];
-            return `<div class="ch-legend-cell" style="opacity:${op}"></div>`;
-          }).join('')}
-          <span class="ch-legend-label">多</span>
-        </div>
-      </div>
-
-      <!-- Daily list -->
-      <div class="ch-section">
-        <div class="ch-section-title">每日记录</div>
-        <div class="ch-list" id="chList">${listHtml}</div>
+      <!-- 月分组日列表 -->
+      <div id="chiMonthList">
+        ${months.some(m => m.total > 0) ? monthsHtml : emptyHtml}
       </div>
     </div>`;
 }
 
+/** 补录 sheet — 为过去某日追加念佛声数 */
+function showBuluSheet(parentView, data, onDone) {
+  parentView.querySelectorAll('.bulu-sheet').forEach(el => el.remove());
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  // 选项：今天 ~ 30天前
+  const dateOptions = Array.from({ length: 31 }, (_, i) => {
+    const d = new Date(today); d.setDate(d.getDate() - i);
+    const ds = mkDateStr(d);
+    const label = i === 0 ? '今天' : i === 1 ? '昨天' : `${d.getMonth()+1}月${d.getDate()}日`;
+    return { dateStr: ds, label };
+  });
+
+  // All configured practices
+  const practices = [...PRACTICE_PRESETS, ...(data.customPractices || [])];
+
+  const sheet = document.createElement('div');
+  sheet.className = 'counter-goal-sheet bulu-sheet';
+  sheet.innerHTML = `
+    <div class="counter-goal-backdrop" id="buluBackdrop"></div>
+    <div class="counter-goal-panel" style="gap:14px">
+      <div class="counter-goal-panel-title">补录念佛</div>
+      <div style="font-size:.76rem;color:var(--text-muted);margin-bottom:2px">为过去未记录的日子补充声数</div>
+
+      <div>
+        <div class="counter-goal-section-label">日期</div>
+        <select class="counter-goal-custom-input" id="buluDate" style="cursor:pointer">
+          ${dateOptions.map(o => `<option value="${o.dateStr}">${o.label}</option>`).join('')}
+        </select>
+      </div>
+
+      <div>
+        <div class="counter-goal-section-label">功课</div>
+        <select class="counter-goal-custom-input" id="buluPractice" style="cursor:pointer">
+          ${practices.map(p => `<option value="${escapeHtml(p)}"${p === data.practice ? ' selected' : ''}>${escapeHtml(p)}</option>`).join('')}
+        </select>
+      </div>
+
+      <div>
+        <div class="counter-goal-section-label">声数</div>
+        <div class="counter-goal-custom-row">
+          <input class="counter-goal-custom-input" id="buluCount" type="number" min="1"
+                 placeholder="请输入声数">
+          <button class="counter-goal-custom-btn" id="buluConfirm">保存</button>
+        </div>
+      </div>
+
+      <button class="counter-goal-cancel" id="buluCancel">${t('cancel')}</button>
+    </div>`;
+
+  parentView.appendChild(sheet);
+  requestAnimationFrame(() => sheet.classList.add('counter-goal-sheet--visible'));
+
+  const close = () => {
+    sheet.classList.remove('counter-goal-sheet--visible');
+    setTimeout(() => sheet.remove(), 250);
+  };
+
+  sheet.querySelector('#buluBackdrop').addEventListener('click', close);
+  sheet.querySelector('#buluCancel').addEventListener('click', close);
+  sheet.querySelector('#buluCount').focus();
+
+  const confirm = () => {
+    const dateStr = sheet.querySelector('#buluDate').value;
+    const practice = sheet.querySelector('#buluPractice').value;
+    const count = parseInt(sheet.querySelector('#buluCount').value);
+    if (isNaN(count) || count < 1) {
+      sheet.querySelector('#buluCount').classList.add('counter-goal-custom-input--error');
+      showToast('请输入有效的正整数');
+      setTimeout(() => sheet.querySelector('#buluCount').classList.remove('counter-goal-custom-input--error'), 600);
+      return;
+    }
+
+    // Add to daily log
+    if (!data.dailyLog) data.dailyLog = {};
+    if (!data.dailyLog[dateStr]) data.dailyLog[dateStr] = {};
+    data.dailyLog[dateStr][practice] = (data.dailyLog[dateStr][practice] || 0) + count;
+
+    // Update practice total (all-time cumulative)
+    if (!data.practices[practice]) {
+      data.practices[practice] = { total: 0, daily: 0, dailyDate: '', goal: 108 };
+    }
+    data.practices[practice].total += count;
+
+    // If it's today, also update daily count
+    if (dateStr === todayDateStr()) {
+      data.practices[practice].daily = (data.practices[practice].daily || 0) + count;
+      data.practices[practice].dailyDate = dateStr;
+    }
+
+    patch('counter', data);
+    haptic(15);
+    showToast(`${practice} ${formatCount(count)}声 已补录`);
+    close();
+    onDone();
+  };
+
+  sheet.querySelector('#buluConfirm').addEventListener('click', confirm);
+  sheet.querySelector('#buluCount').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); confirm(); }
+  });
+}
+
 /** Open / refresh the history slide-in panel inside the counter view */
 export function openHistory(counterView, data) {
-  // Remove existing
   counterView.querySelectorAll('.counter-history').forEach(el => el.remove());
 
-  let activeTab = 'all';
   const hist = document.createElement('div');
   hist.className = 'counter-history';
-  hist.innerHTML = buildHistoryHTML(data, activeTab);
+  hist.innerHTML = buildHistoryHTML(data);
   counterView.appendChild(hist);
 
-  // Animate in
   requestAnimationFrame(() => hist.classList.add('counter-history--in'));
 
-  /* ── Back button ── */
+  const rebuildList = () => {
+    const listEl = hist.querySelector('#chiMonthList');
+    if (!listEl) return;
+    const todayStr = todayDateStr();
+    const days = buildDayList(data, 180);
+    const months = groupDaysByMonth(days);
+    const monthsHtml = months.map(month => {
+      const isCurrentMonth = month.key === todayStr.slice(0, 7);
+      const rowDays = isCurrentMonth ? month.days : month.days.filter(d => d.total > 0);
+      if (rowDays.length === 0) return '';
+      return `
+        <div class="chi-month">
+          <div class="chi-month-hdr">
+            <span class="chi-month-lbl">${month.label}</span>
+            ${month.total > 0 ? `<span class="chi-month-total">${formatCount(month.total)} 声</span>` : ''}
+          </div>
+          ${rowDays.map(d => renderHistDayRow(d, todayStr)).join('')}
+        </div>`;
+    }).filter(Boolean).join('');
+    listEl.innerHTML = monthsHtml || `<div class="ch-empty">尚无记录</div>`;
+
+    // Update top stats
+    const log = data.dailyLog || {};
+    let grand = 0;
+    for (const dd of Object.values(log)) {
+      grand += Object.values(dd).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
+    }
+    const todayD = log[todayStr] || {};
+    const todayT = Object.values(todayD).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
+    const topVals = hist.querySelectorAll('.chi-top-val');
+    if (topVals[0]) topVals[0].textContent = formatCount(grand);
+    if (topVals[1]) topVals[1].textContent = formatCount(todayT);
+    if (topVals[2]) topVals[2].textContent = getStreak(data);
+  };
+
   hist.querySelector('#chBack').addEventListener('click', () => {
     hist.classList.remove('counter-history--in');
     setTimeout(() => hist.remove(), 320);
   });
 
-  /* ── Practice tab switching (event delegation) ── */
-  hist.querySelector('#chPracticeTabs').addEventListener('click', e => {
-    const btn = e.target.closest('.ch-practice-tab');
-    if (!btn) return;
-    const newTab = btn.dataset.tab;
-    if (newTab === activeTab) return;
-    activeTab = newTab;
-
-    const stats = computeHistoryStats(data, activeTab);
-    const cells = buildHeatmapCells(data, activeTab, stats.goal);
-
-    // Update active tab highlight
-    hist.querySelectorAll('.ch-practice-tab').forEach(t =>
-      t.classList.toggle('active', t.dataset.tab === activeTab));
-
-    // Re-render heatmap
-    const heatmapEl = hist.querySelector('#chHeatmap');
-    if (heatmapEl) heatmapEl.innerHTML = renderHeatmapCells(cells);
-
-    // Re-render list
-    const listEl = hist.querySelector('#chList');
-    if (listEl) {
-      const sorted = stats.entries.slice().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 60);
-      listEl.innerHTML = sorted.length === 0
-        ? `<div class="ch-empty">暂无记录<br><span style="font-size:.74rem">开始念佛后，每日记录将展示在这里</span></div>`
-        : sorted.map(e => renderDayItem(e, activeTab, stats.goal, data.dailyLog)).join('');
-    }
+  hist.querySelector('#chBuluBtn').addEventListener('click', () => {
+    showBuluSheet(hist, data, rebuildList);
   });
 }

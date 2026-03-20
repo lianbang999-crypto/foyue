@@ -2637,3 +2637,157 @@
 }
 
 .csm-btn--secondary:hover { background: var(--bg-card-hover); }
+
+/* ===== 极简历史页样式 (chi-*) ===== */
+
+/* 顶部三格统计 */
+.chi-top-stats {
+    display: flex;
+    align-items: center;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 0;
+    margin-bottom: 22px;
+}
+
+.chi-top-item {
+    flex: 1;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.chi-top-val {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent);
+    font-family: var(--font-en);
+    line-height: 1;
+    letter-spacing: -.02em;
+}
+
+.chi-top-lbl {
+    font-size: .68rem;
+    color: var(--text-muted);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+
+.chi-top-divider {
+    width: 1px;
+    height: 36px;
+    background: var(--border);
+    flex-shrink: 0;
+}
+
+/* 月分组 */
+.chi-month {
+    margin-bottom: 24px;
+}
+
+.chi-month-hdr {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 0 0 10px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 2px;
+}
+
+.chi-month-lbl {
+    font-size: .78rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    letter-spacing: .06em;
+}
+
+.chi-month-total {
+    font-size: .76rem;
+    color: var(--accent);
+    font-family: var(--font-en);
+    font-weight: 600;
+    letter-spacing: -.01em;
+}
+
+/* 日行 */
+.chi-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border);
+    min-height: 42px;
+}
+
+.chi-row:last-child { border-bottom: none; }
+
+.chi-row--empty {
+    opacity: .45;
+}
+
+.chi-date {
+    width: 58px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.chi-date-main {
+    font-size: .82rem;
+    color: var(--text);
+    font-weight: 400;
+    font-family: var(--font-en);
+}
+
+.chi-date-sub {
+    font-size: .68rem;
+    color: var(--text-muted);
+}
+
+.chi-content {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chi-breakdown {
+    font-size: .78rem;
+    color: var(--text-secondary);
+}
+
+.chi-no-record {
+    font-size: .78rem;
+    color: var(--text-muted);
+}
+
+.chi-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.chi-count {
+    font-size: .88rem;
+    font-weight: 600;
+    color: var(--text);
+    font-family: var(--font-en);
+    letter-spacing: -.01em;
+}
+
+.chi-count.done { color: var(--accent); }
+
+.chi-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--border);
+    flex-shrink: 0;
+}
+
+.chi-dot.done { background: var(--accent); }
