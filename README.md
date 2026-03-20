@@ -69,7 +69,7 @@ foyue/
 │   │   ├── dom.js              #   DOM 元素引用（延迟初始化）
 │   │   ├── i18n.js             #   国际化
 │   │   ├── theme.js            #   主题管理
-│   │   ├── icons.js            #   SVG 图标常量
+│   │   ├── icons.js            #   SVG 图标库（播放器 / 分类 / 首页推荐）
 │   │   ├── utils.js            #   工具函数
 │   │   ├── player.js           #   播放器核心
 │   │   ├── history.js          #   播放历史
