@@ -1122,6 +1122,7 @@ function _doBgFullLoad(url) {
 export function onVisibilityResume() {
   const dom = getDOM();
   if (!dom.audio.src || dom.audio.paused || dom.audio.ended) return;
+  if (document.body.hasAttribute('data-counter-active')) return;
 
   // Check if buffer is running low
   const ct = dom.audio.currentTime;

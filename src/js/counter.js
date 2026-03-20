@@ -240,11 +240,13 @@ export function openCounter() {
   view.innerHTML = buildCounterHTML(data, session);
   document.getElementById('app').appendChild(view);
 
-  // Mark counter as active — player.js uses this to block system-initiated
-  // MediaSession 'play' events that would override the user's explicit pause.
   document.body.setAttribute('data-counter-active', '1');
 
-  // Request wake lock to keep screen on during chanting
+  const audioEl = document.getElementById('audioEl');
+  if (audioEl && !audioEl.paused) {
+    audioEl.pause();
+  }
+
   requestWakeLock();
 
   // Re-acquire wake lock if it was released (e.g. after tab switch)
@@ -286,100 +288,65 @@ function buildCounterHTML(data, session) {
   const displayName = escapeHtml(getPracticeDisplayName(data));
   const streak = getStreak(data);
 
-  const wakeLockOn = isWakeLockEnabled();
   return `
     <div class="counter-header">
       <button class="counter-back btn-icon" id="counterBack" aria-label="${t('wenku_back')}">
         <svg viewBox="0 0 24 24" width="20" height="20"><polyline points="15,18 9,12 15,6"/></svg>
       </button>
       <span class="counter-header-title">${t('counter_title')}</span>
-      <button class="btn-icon counter-wakelock-btn${wakeLockOn ? ' active' : ''}" id="counterWakeLockBtn"
-              aria-label="${wakeLockOn ? '屏幕保持点亮（点击关闭）' : '屏幕将按系统设置自动熄灭（点击开启常亮）'}"
-              title="${wakeLockOn ? '屏幕常亮' : '屏幕按系统设置自动熄灭'}">
-        ${wakeLockOn
-          ? `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`
-          : `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`
-        }
-      </button>
-      <button class="btn-icon" id="counterHistoryBtn" aria-label="念佛历史" title="念佛历史">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="9"/>
-          <polyline points="12,7 12,12 15.5,14"/>
-        </svg>
-      </button>
       <button class="counter-menu btn-icon" id="counterMenu" aria-label="${t('more')}">
         <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="5" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="19" r="1.5" fill="currentColor"/></svg>
       </button>
     </div>
 
     <div class="counter-body">
-      <!-- Practice name (outside tap area for reverence) -->
-      <div class="counter-practice-name" id="counterPracticeName">${displayName}</div>
-
-      <!-- Main tap button -->
       <div class="counter-tap-area" id="counterTapArea" role="button" tabindex="0"
            aria-label="${t('counter_tap_hint')}">
-        <!-- Outer ring glow -->
         <div class="counter-ring counter-ring--outer"></div>
-        <!-- Bead progress ring -->
         <svg class="counter-progress-svg" viewBox="0 0 200 200" id="counterProgressSvg">
           <circle class="counter-progress-bg" cx="100" cy="100" r="88"/>
           <circle class="counter-progress-fill" id="counterProgressFill" cx="100" cy="100" r="88"
             stroke-dasharray="${Math.round(2 * Math.PI * 88)}"
             stroke-dashoffset="${Math.round(2 * Math.PI * 88 * (1 - beadPos / BEADS_PER_LOOP))}"/>
         </svg>
-        <!-- Inner circle -->
         <div class="counter-lotus-wrap">
-          <!-- Count number -->
           <div class="counter-number" id="counterNumber">${session}</div>
-          <div class="counter-hint" id="counterHint">${t('counter_tap_hint')}</div>
+          <div class="counter-practice-name" id="counterPracticeName">${displayName}</div>
         </div>
-        <!-- Ripple container -->
         <div class="counter-ripples" id="counterRipples"></div>
       </div>
 
-      <!-- Daily progress bar -->
-      <div class="counter-daily-wrap">
-        <div class="counter-daily-row">
-          <span class="counter-daily-lbl">${t('counter_daily')}: <strong id="ctrDaily">${ps.daily}</strong></span>
-          <span class="counter-daily-goal" id="ctrGoalLabel">${goalDone ? '&#10003; ' : ''}${t('counter_goal')}: <span id="ctrGoalVal">${ps.goal}</span></span>
+      <div class="counter-stats" id="counterStats">
+        <div class="counter-stat">
+          <div class="counter-stat-val" id="ctrDaily">${ps.daily}</div>
+          <div class="counter-stat-lbl">${t('counter_daily')}</div>
         </div>
-        <div class="counter-progress-bar">
-          <div class="counter-progress-bar-fill${goalDone ? ' counter-progress-bar-fill--done' : ''}"
-               id="ctrGoalBar" style="width:${goalPct}%"></div>
+        <div class="counter-stat">
+          <div class="counter-stat-val">${formatCount(ps.total)}</div>
+          <div class="counter-stat-lbl">${t('counter_total')}</div>
         </div>
-        ${streak > 1 ? `<div class="counter-streak" id="counterStreak">${t('counter_streak').replace('{n}', streak)}</div>` : '<div class="counter-streak" id="counterStreak" style="display:none"></div>'}
+        <div class="counter-stat counter-stat--accent">
+          <div class="counter-stat-val" id="ctrGoalVal">${ps.goal}</div>
+          <div class="counter-stat-lbl">${goalDone ? '✓ ' : ''}${t('counter_goal')}</div>
+        </div>
       </div>
+
+      <div class="counter-progress-bar" style="margin:0 auto;max-width:360px;width:100%">
+        <div class="counter-progress-bar-fill${goalDone ? ' counter-progress-bar-fill--done' : ''}"
+             id="ctrGoalBar" style="width:${goalPct}%"></div>
+      </div>
+      ${streak > 1 ? `<div class="counter-streak" id="counterStreak">${t('counter_streak').replace('{n}', streak)}</div>` : '<div class="counter-streak" id="counterStreak" style="display:none"></div>'}
     </div>
 
-    <!-- Bottom actions -->
     <div class="counter-actions">
-      <button class="counter-action-btn counter-action-btn--clear" id="counterResetSession">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="23 4 23 10 17 10"/>
-          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-        </svg>
-        ${t('counter_clear')}
-      </button>
       <button class="counter-action-btn counter-action-btn--huixiang" id="counterHuixiang">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10"/>
-          <path d="M16 12l4 4-4 4"/>
-          <path d="M20 16H9a4 4 0 0 1 0-8h2"/>
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7z"/>
         </svg>
         ${t('counter_huixiang')}
       </button>
-      <button class="counter-action-btn counter-action-btn--goal" id="counterSetGoal">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/>
-          <circle cx="12" cy="12" r="6"/>
-          <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/>
-        </svg>
-        ${t('counter_gongke')}
-      </button>
     </div>
 
-    <!-- Namo footer -->
     <div class="counter-namo">${t('counter_namo')}</div>
   `;
 }
@@ -424,15 +391,12 @@ function closeCounter(view, sourceTab, popHandler, escHandler, visHandler, optio
 function wireCounterEvents(view, data, _session) {
   let session = _session;
 
-  /* ── Cache all DOM references once ── */
   const els = {
     number: view.querySelector('#counterNumber'),
     daily: view.querySelector('#ctrDaily'),
     bar: view.querySelector('#ctrGoalBar'),
-    goalLabel: view.querySelector('#ctrGoalLabel'),
     goalVal: view.querySelector('#ctrGoalVal'),
     progressFill: view.querySelector('#counterProgressFill'),
-    hint: view.querySelector('#counterHint'),
     practice: view.querySelector('#counterPracticeName'),
     ripples: view.querySelector('#counterRipples'),
     streak: view.querySelector('#counterStreak'),
@@ -456,9 +420,8 @@ function wireCounterEvents(view, data, _session) {
     }
     if (els.daily) els.daily.textContent = ps.daily;
     if (els.bar) { els.bar.style.width = goalPct + '%'; els.bar.classList.toggle('counter-progress-bar-fill--done', goalDone); }
-    if (els.goalLabel && els.goalVal) { els.goalLabel.firstChild.textContent = (goalDone ? '\u2713 ' : '') + t('counter_goal') + ': '; els.goalVal.textContent = ps.goal; }
+    if (els.goalVal) els.goalVal.textContent = ps.goal;
     if (els.progressFill) els.progressFill.style.strokeDashoffset = offset;
-    if (els.hint) els.hint.style.display = session > 0 ? 'none' : '';
     if (els.practice) els.practice.textContent = getPracticeDisplayName(data);
 
     // Update streak display
@@ -493,7 +456,6 @@ function wireCounterEvents(view, data, _session) {
       const goalPct = ps.goal > 0 ? Math.min(100, Math.round(ps.daily / ps.goal * 100)) : 0;
       els.bar.style.width = goalPct + '%';
     }
-    if (els.hint && session === 1) els.hint.style.display = 'none';
   }
 
   /* ── Ripple effect (pooled, max count limited) ── */
@@ -592,48 +554,6 @@ function wireCounterEvents(view, data, _session) {
     history.back();
   });
 
-  /* ── 清零 (reset session) ── */
-  view.querySelector('#counterResetSession').addEventListener('click', () => {
-    session = 0;
-    updateUI();
-    haptic(20);
-    showToast(t('counter_clear'));
-  });
-
-  /* ── 今日功课 (set goal) ── */
-  view.querySelector('#counterSetGoal').addEventListener('click', () => {
-    showGoalPicker(view, data, () => updateUI());
-  });
-
-  /* ── Wake lock toggle ── */
-  const wakeLockBtn = view.querySelector('#counterWakeLockBtn');
-  if (wakeLockBtn) {
-    wakeLockBtn.addEventListener('click', () => {
-      const nowOn = !isWakeLockEnabled();
-      setWakeLockPref(nowOn);
-      if (nowOn) {
-        requestWakeLock();
-        showToast('屏幕常亮已开启');
-      } else {
-        releaseWakeLock();
-        showToast('屏幕将按系统设置自动熄灭');
-      }
-      // Update button appearance without full re-render
-      wakeLockBtn.classList.toggle('active', nowOn);
-      wakeLockBtn.setAttribute('title', nowOn ? '屏幕常亮' : '屏幕自动熄灭');
-      wakeLockBtn.innerHTML = nowOn
-        ? `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`
-        : `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
-      haptic(15);
-    });
-  }
-
-  /* ── History button ── */
-  const histBtn = view.querySelector('#counterHistoryBtn');
-  if (histBtn) {
-    histBtn.addEventListener('click', () => openHistory(view, data));
-  }
-
   /* ── 回向 button ── */
   const huixiangBtn = view.querySelector('#counterHuixiang');
   if (huixiangBtn) {
@@ -652,23 +572,40 @@ function wireCounterEvents(view, data, _session) {
 function showCounterMenu(parentView, data, onPracticeChange) {
   parentView.querySelectorAll('.counter-menu-sheet').forEach(el => el.remove());
 
+  const wakeLockOn = isWakeLockEnabled();
   const sheet = document.createElement('div');
   sheet.className = 'counter-goal-sheet counter-menu-sheet';
   sheet.innerHTML = `
     <div class="counter-goal-backdrop" id="menuBackdrop"></div>
     <div class="counter-goal-panel">
       <div class="counter-goal-panel-title">${t('more')}</div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        <button class="counter-action-btn" id="menuSharePoster" style="flex:none;width:100%;padding:14px 16px;border-radius:var(--radius-sm);justify-content:flex-start;gap:12px;font-size:.86rem">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-          分享念佛海报
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button class="counter-action-btn" id="menuClearSession" style="flex:none;width:100%;padding:13px 16px;border-radius:var(--radius-sm);justify-content:flex-start;gap:12px;font-size:.86rem">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          ${t('counter_clear')}
         </button>
-        <button class="counter-action-btn" id="menuSwitchPractice" style="flex:none;width:100%;padding:14px 16px;border-radius:var(--radius-sm);justify-content:flex-start;gap:12px;font-size:.86rem">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 3a3 3 0 0 0-3 3l-9 9a3 3 0 0 0 4.24 4.24l9-9A3 3 0 0 0 18 3z"/><line x1="3" y1="21" x2="6" y2="18"/></svg>
+        <button class="counter-action-btn" id="menuSetGoal" style="flex:none;width:100%;padding:13px 16px;border-radius:var(--radius-sm);justify-content:flex-start;gap:12px;font-size:.86rem">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/></svg>
+          ${t('counter_gongke')}
+        </button>
+        <button class="counter-action-btn" id="menuHistory" style="flex:none;width:100%;padding:13px 16px;border-radius:var(--radius-sm);justify-content:flex-start;gap:12px;font-size:.86rem">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+          念佛历史
+        </button>
+        <button class="counter-action-btn" id="menuWakeLock" style="flex:none;width:100%;padding:13px 16px;border-radius:var(--radius-sm);justify-content:flex-start;gap:12px;font-size:.86rem">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${wakeLockOn ? '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>' : '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>'}</svg>
+          ${wakeLockOn ? '屏幕常亮：开' : '屏幕常亮：关'}
+        </button>
+        <button class="counter-action-btn" id="menuSwitchPractice" style="flex:none;width:100%;padding:13px 16px;border-radius:var(--radius-sm);justify-content:flex-start;gap:12px;font-size:.86rem">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><polyline points="17,1 21,5 17,9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7,23 3,19 7,15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
           ${t('counter_practice_title')}
         </button>
-        <button class="counter-action-btn counter-action-btn--danger" id="menuResetAll" style="flex:none;width:100%;padding:14px 16px;border-radius:var(--radius-sm);justify-content:flex-start;gap:12px;font-size:.86rem">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+        <button class="counter-action-btn" id="menuSharePoster" style="flex:none;width:100%;padding:13px 16px;border-radius:var(--radius-sm);justify-content:flex-start;gap:12px;font-size:.86rem">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          分享念佛海报
+        </button>
+        <button class="counter-action-btn counter-action-btn--danger" id="menuResetAll" style="flex:none;width:100%;padding:13px 16px;border-radius:var(--radius-sm);justify-content:flex-start;gap:12px;font-size:.86rem">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
           ${t('counter_reset_all')}
         </button>
       </div>
@@ -688,6 +625,31 @@ function showCounterMenu(parentView, data, onPracticeChange) {
 
   sheet.querySelector('#menuBackdrop').addEventListener('click', close);
   sheet.querySelector('#menuCancel').addEventListener('click', close);
+
+  sheet.querySelector('#menuClearSession').addEventListener('click', () => {
+    close();
+    onPracticeChange();
+    haptic(20);
+    showToast(t('counter_clear'));
+  });
+
+  sheet.querySelector('#menuSetGoal').addEventListener('click', () => {
+    close();
+    setTimeout(() => showGoalPicker(parentView, data, onPracticeChange), 260);
+  });
+
+  sheet.querySelector('#menuHistory').addEventListener('click', () => {
+    close();
+    setTimeout(() => openHistory(parentView, data), 260);
+  });
+
+  sheet.querySelector('#menuWakeLock').addEventListener('click', () => {
+    const nowOn = !isWakeLockEnabled();
+    setWakeLockPref(nowOn);
+    if (nowOn) { requestWakeLock(); showToast('屏幕常亮已开启'); }
+    else { releaseWakeLock(); showToast('屏幕自动熄灭'); }
+    close();
+  });
 
   sheet.querySelector('#menuSharePoster').addEventListener('click', () => {
     close();
