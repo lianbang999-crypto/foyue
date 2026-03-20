@@ -1090,6 +1090,12 @@ function buildHistoryHTML(data, year, month) {
   const gridHtml = buildCalendarGrid(data, year, month);
   const dayHdrs  = WDS.map(w => `<div class="chi-cal-wday">${w}</div>`).join('');
 
+  const psProg = getPracticeStats(data);
+  const progGoal = psProg.goal > 0 ? psProg.goal : 108;
+  const progPct = progGoal > 0 ? Math.min(100, Math.round(psProg.daily / progGoal * 100)) : 0;
+  const progDone = progGoal > 0 && psProg.daily >= progGoal;
+  const progName = escapeHtml(getPracticeDisplayName(data));
+
   return `
     <div class="ch-header">
       <button class="btn-icon" id="chBack" aria-label="返回">
@@ -1121,6 +1127,22 @@ function buildHistoryHTML(data, year, month) {
         <div class="chi-top-item">
           <div class="chi-top-val" id="chiStreak">${streak}</div>
           <div class="chi-top-lbl">${t('counter_consecutive_label')}</div>
+        </div>
+      </div>
+
+      <!-- 当前法门 · 今日功课进度（仅在此面板展示，首页保持极简） -->
+      <div class="chi-practice-card" id="chiPracticeProgress">
+        <div class="chi-practice-card-label">${t('counter_honor_caption')}</div>
+        <div class="chi-practice-card-name" id="chiProgName">${progName}</div>
+        <div class="chi-practice-card-stats">
+          <span class="chi-practice-stat">${t('counter_daily')} <strong id="chiProgDaily">${formatCount(psProg.daily)}</strong></span>
+          <span class="chi-practice-stat chi-practice-stat--goal">
+            <span id="chiProgCheck" class="chi-practice-check" aria-hidden="true">${progDone ? '\u2713 ' : ''}</span>
+            ${t('counter_goal')} <strong id="chiProgGoal">${formatCount(progGoal)}</strong>
+          </span>
+        </div>
+        <div class="chi-practice-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progPct}" aria-label="${t('counter_tool_goal')}">
+          <div class="chi-practice-bar-fill${progDone ? ' chi-practice-bar-fill--done' : ''}" id="chiProgBar" style="width:${progPct}%"></div>
         </div>
       </div>
 
@@ -1349,6 +1371,28 @@ export function openHistory(counterView, data, hooks = {}) {
     const gEl = hist.querySelector('#chiGrand');   if (gEl) gEl.textContent = formatCount(grand);
     const tEl = hist.querySelector('#chiToday');   if (tEl) tEl.textContent = formatCount(td);
     const sEl = hist.querySelector('#chiStreak');  if (sEl) sEl.textContent = getStreak(data);
+
+    const ps = getPracticeStats(data);
+    const g = ps.goal > 0 ? ps.goal : 108;
+    const pct = g > 0 ? Math.min(100, Math.round(ps.daily / g * 100)) : 0;
+    const done = g > 0 && ps.daily >= g;
+    const nEl = hist.querySelector('#chiProgName');
+    if (nEl) nEl.textContent = getPracticeDisplayName(data);
+    const dEl = hist.querySelector('#chiProgDaily');
+    if (dEl) dEl.textContent = formatCount(ps.daily);
+    const goalEl = hist.querySelector('#chiProgGoal');
+    if (goalEl) goalEl.textContent = formatCount(g);
+    const chk = hist.querySelector('#chiProgCheck');
+    if (chk) chk.textContent = done ? '\u2713 ' : '';
+    const bar = hist.querySelector('#chiProgBar');
+    if (bar) {
+      bar.style.width = pct + '%';
+      bar.classList.toggle('chi-practice-bar-fill--done', done);
+    }
+    const barWrap = hist.querySelector('#chiPracticeProgress .chi-practice-bar');
+    if (barWrap) {
+      barWrap.setAttribute('aria-valuenow', String(pct));
+    }
   };
 
   /** Navigate to a different month and re-render */

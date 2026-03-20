@@ -2669,6 +2669,83 @@
     flex-shrink: 0;
 }
 
+/* 功课记录 — 当前法门今日进度 */
+.chi-practice-card {
+    margin-bottom: 22px;
+    padding: 16px 16px 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    box-shadow: 0 8px 28px -18px rgba(0, 0, 0, 0.12);
+}
+
+.chi-practice-card-label {
+    font-size: .62rem;
+    font-weight: 600;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+.chi-practice-card-name {
+    font-size: .95rem;
+    font-weight: 500;
+    font-family: var(--font-serif);
+    color: var(--accent);
+    letter-spacing: .12em;
+    line-height: 1.5;
+    margin-bottom: 12px;
+    text-wrap: balance;
+}
+
+.chi-practice-card-stats {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+    font-size: .78rem;
+    color: var(--text-secondary);
+}
+
+.chi-practice-stat strong {
+    font-family: var(--font-en);
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -.02em;
+}
+
+.chi-practice-stat--goal {
+    text-align: right;
+}
+
+.chi-practice-check {
+    display: inline;
+    color: #4caf50;
+    font-weight: 600;
+    margin-right: 2px;
+}
+
+.chi-practice-bar {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--border);
+    overflow: hidden;
+}
+
+.chi-practice-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--accent);
+    transition: width .35s ease;
+    min-width: 0;
+}
+
+.chi-practice-bar-fill--done {
+    background: #4caf50;
+}
+
 /* 月分组 */
 .chi-month {
     margin-bottom: 24px;
