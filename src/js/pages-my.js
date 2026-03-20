@@ -115,7 +115,7 @@ export function renderMyPage() {
     <div class="my-section">
       <div class="my-list">
         <div class="my-item" id="myWenkuCard">
-          <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
           <div class="my-item-body">
             <span class="my-item-label">${t('my_wenku')}</span>
             <span class="my-item-desc">${t('my_wenku_desc')}</span>
@@ -123,7 +123,7 @@ export function renderMyPage() {
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
         <div class="my-item" id="myCounterCard">
-          <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2z"/><path d="M12 6v6l4 2"/><path d="M8 2.5C5.4 3.9 3.5 6.3 3 9"/></svg>
+          <svg class="my-item-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           <div class="my-item-body">
             <span class="my-item-label">${t('my_counter')}</span>
             <span class="my-item-desc">${counterDesc}</span>
@@ -131,11 +131,7 @@ export function renderMyPage() {
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
         <div class="my-item" id="myGongxiuCard">
-          <svg class="my-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="9"/>
-            <path d="M8 12c0-2.2 1.8-4 4-4s4 1.8 4 4-1.8 4-4 4"/>
-            <path d="M12 16v2M12 6v2"/>
-          </svg>
+          <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           <div class="my-item-body">
             <span class="my-item-label">${t('my_gongxiu')}</span>
             <span class="my-item-desc">${t('my_gongxiu_desc')}</span>
@@ -143,7 +139,7 @@ export function renderMyPage() {
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
         <div class="my-item" id="myHistoryCard">
-          <svg class="my-item-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
           <div class="my-item-body">
             <span class="my-item-label">${t('my_history')}</span>
             <span class="my-item-desc">${histDesc}</span>
@@ -156,7 +152,7 @@ export function renderMyPage() {
       <div class="my-section-title" data-i18n="my_settings">${t('my_settings')}</div>
       <div class="my-list">
         <div class="my-item" id="myDharmaNameItem">
-          <svg class="my-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           <div class="my-item-body">
             <span class="my-item-label">法名</span>
             <span class="my-item-desc" style="font-size:.72rem;color:var(--text-muted)">共修广场中的长期身份</span>
@@ -165,24 +161,24 @@ export function renderMyPage() {
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
         <div class="my-item" id="myLangItem">
-          <svg class="my-item-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          <svg class="my-item-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
           <span class="my-item-label" data-i18n="my_lang">${t('my_lang')}</span>
           <span class="my-item-value" id="myLangValue">${langText}</span>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
         <div class="my-item" id="myThemeItem">
-          <svg class="my-item-icon" viewBox="0 0 24 24">${getTheme() === 'dark' ? '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>' : getTheme() === 'terracotta' ? '<path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.7-.8 1.7-1.7 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.8-1.7 1.7-1.7H16c3.3 0 6-2.7 6-6 0-5.5-4.5-9.6-10-9.6z"/><circle cx="6.5" cy="11.5" r="1.5"/><circle cx="10" cy="7.5" r="1.5"/><circle cx="14" cy="7.5" r="1.5"/><circle cx="17.5" cy="11.5" r="1.5"/>' : getTheme() === 'ink' ? '<path d="M18 3a3 3 0 0 0-3 3l-9 9a3 3 0 0 0 0 4.24 3 3 0 0 0 4.24 0l9-9A3 3 0 0 0 21 6a3 3 0 0 0-3-3z"/><line x1="3" y1="21" x2="6" y2="18"/>' : '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'}</svg>
+          <svg class="my-item-icon" viewBox="0 0 24 24">${getTheme() === 'dark' || getTheme() === 'ink' ? '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>' : '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>'}</svg>
           <span class="my-item-label" data-i18n="my_theme">${t('my_theme')}</span>
           <span class="my-item-value" id="myThemeValue">${themeText}</span>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
         <div class="my-item" id="myAboutItem">
-          <svg class="my-item-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <svg class="my-item-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
           <span class="my-item-label" data-i18n="my_about">${t('my_about')}</span>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
         <div class="my-item my-item-subtle" id="myCacheItem">
-          <svg class="my-item-icon" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
           <span class="my-item-label" data-i18n="my_clear_cache">${t('my_clear_cache')}</span>
           <span class="my-item-value" id="myCacheSize">…</span>
         </div>
