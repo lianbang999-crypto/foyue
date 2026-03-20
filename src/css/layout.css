@@ -190,6 +190,7 @@
   border: none;
   background: var(--accent);
   border-radius: 50%;
+  color: var(--text-inverse);
   cursor: pointer;
   display: flex;
   align-items: center;
