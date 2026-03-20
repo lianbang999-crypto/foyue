@@ -42,6 +42,7 @@ export function renderMyPage() {
   try {
     if (sessionStorage.getItem('counter:goto-gongxiu')) {
       sessionStorage.removeItem('counter:goto-gongxiu');
+      try { sessionStorage.setItem('gongxiu:scroll-to-submit', '1'); } catch { /* ignore */ }
       setTimeout(() => showGongxiuSubview(), 350);
     }
   } catch { }
@@ -329,7 +330,7 @@ function showHistorySubview() {
   }
 }
 
-function showGongxiuSubview() {
+export function showGongxiuSubview() {
   const dom = getDOM();
 
   // Full-screen slide-in panel

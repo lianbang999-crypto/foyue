@@ -7,6 +7,15 @@
 export const HUIXIANG_TEXT =
   '愿以此功德，庄严佛净土，\n上报四重恩，下济三途苦，\n若有见闻者，悉发菩提心，\n尽此一报身，同生极乐国。';
 
+/** 本地日历「今日」YYYY-MM-DD，与念佛计数器写入的 dailyDate 口径一致 */
+export function localTodayStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+/** 全屏回向文自动收起时长（毫秒），计数器与共修广场统一 */
+export const HUIXIANG_DISPLAY_AUTO_MS = 8000;
+
 /**
  * 格式化声数为易读字符串
  * 10800 → "10,800" ｜ 12345 → "1.2万" ｜ 1e8 → "1亿"

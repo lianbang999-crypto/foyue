@@ -124,6 +124,63 @@
     font-weight: 600;
 }
 
+.gx-data-context {
+    font-size: .74rem;
+    color: var(--text-secondary);
+    line-height: 1.55;
+    margin: -6px 0 20px;
+    padding: 0 2px;
+}
+
+.gx-data-context strong {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.gx-submitted-merge {
+    font-size: .78rem;
+    color: var(--text-secondary);
+    text-align: center;
+    margin-top: 12px;
+    line-height: 1.5;
+}
+
+.gx-submitted-merge strong {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.gx-submitted-name-hint {
+    font-size: .72rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: var(--bg-card);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+}
+
+.gx-section--flash {
+    animation: gx-section-flash 1.2s ease-out;
+}
+
+@keyframes gx-section-flash {
+    0% { box-shadow: 0 0 0 0 transparent; }
+    20% { box-shadow: 0 0 0 3px rgba(var(--accent-rgb, 193, 154, 107), 0.35); }
+    100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+@keyframes gx-pool-pulse {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+.gx-pool-num.gx-pool-num--pulse {
+    animation: gx-pool-pulse .45s ease-out;
+}
+
 .gx-pool-loading {
     display: flex;
     align-items: center;

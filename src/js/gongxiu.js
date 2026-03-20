@@ -14,7 +14,7 @@
  */
 
 import { t } from './i18n.js';
-import { escapeHtml, showToast, formatCount, formatRelTime, HUIXIANG_TEXT } from './utils.js';
+import { escapeHtml, showToast, formatCount, formatRelTime, HUIXIANG_TEXT, localTodayStr, HUIXIANG_DISPLAY_AUTO_MS } from './utils.js';
 import { get as storeGet } from './store.js';
 
 const GONGXIU_SUBMITTED_KEY = 'gongxiu-submitted-date';
@@ -71,11 +71,11 @@ function getCounterData() {
   if (!data || !data.practices) return null;
   const ps = data.practices[data.practice];
   if (!ps) return null;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localTodayStr();
   const daily = (ps.dailyDate === today) ? (ps.daily || 0) : 0;
   const practiceName = data.practice === '__custom__'
     ? (data.customPractice || '念佛')
-    : data.practice;
+    : (data.practice || '南无阿弥陀佛');
   return { daily, practiceName, total: ps.total || 0 };
 }
 
@@ -179,7 +179,7 @@ function showHuixiangScreen(container, vowInfo) {
     screen.classList.remove('gx-huixiang-screen--in');
     setTimeout(() => screen.remove(), 400);
   };
-  const autoClose = setTimeout(close, 5000);
+  const autoClose = setTimeout(close, HUIXIANG_DISPLAY_AUTO_MS);
   screen.addEventListener('click', () => { clearTimeout(autoClose); close(); });
 }
 
@@ -187,11 +187,20 @@ function showHuixiangScreen(container, vowInfo) {
 
 function buildSubmitSection(counterData, submitted) {
   if (submitted) {
+    const noName = !getSavedNickname().trim();
+    const mergeLine = counterData && counterData.daily > 0
+      ? `<div class="gx-submitted-merge">您今日念佛 <strong>${formatCount(counterData.daily)}</strong> 声已汇入共修功德。</div>`
+      : '';
+    const nameHint = noName
+      ? `<div class="gx-submitted-name-hint">当前以「莲友」显示。可在「我的 → 法名」设定称呼，莲友共修流中更易相认。</div>`
+      : '';
     return `
       <div class="gx-submitted-banner">
         <div class="gx-submitted-icon">🙏</div>
         <div class="gx-submitted-text">今日已参与共修<br><span>明日继续精进，随喜赞叹！</span></div>
-      </div>`;
+      </div>
+      ${mergeLine}
+      ${nameHint}`;
   }
 
   const countHint = counterData
@@ -270,6 +279,7 @@ export function renderGongxiu(container, onOpenCounter) {
           加载中…
         </div>
       </div>
+      <p class="gx-data-context" role="note">参与共修时提交的声数，与您在本设备念佛计数器中的<strong>今日</strong>记录一致；下方可补充回向与法名。</p>
 
       <!-- 共修说明 -->
       <div class="gx-banner">
@@ -278,7 +288,7 @@ export function renderGongxiu(container, onOpenCounter) {
       </div>
 
       <!-- 参与共修 -->
-      <div class="gx-section">
+      <div class="gx-section" id="gxParticipateSection">
         <div class="gx-section-title">参与今日共修</div>
         <div id="gxSubmitArea">
           <div class="gx-pool-loading">加载中…</div>
@@ -384,6 +394,20 @@ function renderData(view, data, onOpenCounter) {
       showHuixiangScreen(gxFullscreen, null); // null = universal dedication
     });
   }
+
+  try {
+    if (sessionStorage.getItem('gongxiu:scroll-to-submit')) {
+      sessionStorage.removeItem('gongxiu:scroll-to-submit');
+      requestAnimationFrame(() => {
+        const el = view.querySelector('#gxParticipateSection');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          el.classList.add('gx-section--flash');
+          setTimeout(() => el.classList.remove('gx-section--flash'), 1400);
+        }
+      });
+    }
+  } catch { /* ignore */ }
 }
 
 function wireSubmitSection(view, submitArea, data, counterData, onOpenCounter) {
@@ -417,7 +441,8 @@ function wireSubmitSection(view, submitArea, data, counterData, onOpenCounter) {
     const type    = submitArea.querySelector('input[name="gxVow"]:checked')?.value || 'universal';
     const target  = submitArea.querySelector('#gxTargetInput')?.value.trim() || '';
     const custom  = submitArea.querySelector('#gxCustomInput')?.value.trim() || '';
-    const nickname = submitArea.querySelector('#gxNickname')?.value.trim() || '莲友';
+    const nicknameInput = submitArea.querySelector('#gxNickname')?.value.trim() || '';
+    const nickname = nicknameInput || '莲友';
 
     if ((type === 'blessing' || type === 'rebirth') && !target) {
       showToast('请填写回向对象'); return;
@@ -439,7 +464,7 @@ function wireSubmitSection(view, submitArea, data, counterData, onOpenCounter) {
         nickname,
       });
 
-      if (nickname) saveNickname(nickname);
+      if (nicknameInput) saveNickname(nicknameInput);
       markSubmittedToday();
       invalidateCache();
 
@@ -448,7 +473,7 @@ function wireSubmitSection(view, submitArea, data, counterData, onOpenCounter) {
       showHuixiangScreen(gxView, { type, target, custom });
 
       // Replace submit section with "already submitted" banner
-      submitArea.innerHTML = buildSubmitSection(null, true);
+      submitArea.innerHTML = buildSubmitSection(counterData, true);
 
       // Refresh entry list after a moment
       setTimeout(async () => {
@@ -461,7 +486,12 @@ function wireSubmitSection(view, submitArea, data, counterData, onOpenCounter) {
           if (entriesEl) entriesEl.innerHTML = (fresh.entries || []).map(e => buildEntryCard(e, e.date === today)).join('');
           if (pool) {
             const pNum = pool.querySelector('.gx-pool-today .gx-pool-num');
-            if (pNum) pNum.textContent = formatCount(fresh.today_total || 0);
+            if (pNum) {
+              pNum.classList.remove('gx-pool-num--pulse');
+              void pNum.offsetWidth;
+              pNum.classList.add('gx-pool-num--pulse');
+              pNum.textContent = formatCount(fresh.today_total || 0);
+            }
             const pPart = pool.querySelector('.gx-pool-participants strong');
             if (pPart) pPart.textContent = fresh.today_participants || 0;
           }
@@ -473,7 +503,7 @@ function wireSubmitSection(view, submitArea, data, counterData, onOpenCounter) {
       joinBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> 合掌参与共修`;
       if (err.alreadySubmitted) {
         markSubmittedToday();
-        submitArea.innerHTML = buildSubmitSection(null, true);
+        submitArea.innerHTML = buildSubmitSection(getCounterData(), true);
         showToast('今日已参与共修，明日继续精进');
       } else {
         showToast(err.message || '提交失败，请稍后重试');
