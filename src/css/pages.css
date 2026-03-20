@@ -1095,7 +1095,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 8px 0 16px;
+    padding: 8px 0 22px;
+    margin-bottom: 4px;
 }
 
 /* Stats row */
@@ -1143,6 +1144,12 @@
     letter-spacing: .06em;
     text-transform: uppercase;
     font-weight: 500;
+}
+
+/* 圆环内仅数字与操作提示，完整洪名仅在页脚 .counter-namo */
+.counter-lotus-wrap .counter-number,
+.counter-lotus-wrap .counter-hint {
+    pointer-events: none;
 }
 
 /* Main tap area — 唯一计数热区；圣号在上方独立供奉区 */
@@ -1351,6 +1358,7 @@
 
 .counter-footer {
     flex-shrink: 0;
+    margin-top: 8px;
     padding: 0 24px 6px;
     padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
     display: flex;

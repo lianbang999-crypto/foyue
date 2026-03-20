@@ -53,6 +53,12 @@ function getPracticeDisplayName(data) {
   return data.practice || '南无阿弥陀佛';
 }
 
+/** 供奉区文案：完整「南无阿弥陀佛」不放在计数圆环旁，仅页脚展示；此处用简称 */
+function getHonorPracticeText(data) {
+  const name = getPracticeDisplayName(data);
+  return name === '南无阿弥陀佛' ? t('counter_honor_namo_outside') : name;
+}
+
 /* ── Daily log helpers ── */
 function recordDailyLog(data, practice, count) {
   if (!data.dailyLog) data.dailyLog = {};
@@ -309,7 +315,7 @@ export function openCounter() {
 function buildCounterHTML(data, session) {
   const ps = getPracticeStats(data);
   const beadPos = ps.total % BEADS_PER_LOOP;
-  const displayName = escapeHtml(getPracticeDisplayName(data));
+  const honorPracticeHtml = escapeHtml(getHonorPracticeText(data));
 
   return `
     <div class="counter-header counter-header--minimal">
@@ -332,7 +338,7 @@ function buildCounterHTML(data, session) {
         <!-- 圣号仅作供奉展示：不可点、不可选，与计数热区分隔 -->
         <div class="counter-honor-block" aria-live="polite">
           <p class="counter-honor-caption">${t('counter_honor_caption')}</p>
-          <p class="counter-practice-name" id="counterPracticeName">${displayName}</p>
+          <p class="counter-practice-name" id="counterPracticeName">${honorPracticeHtml}</p>
         </div>
 
         <div class="counter-focus">
@@ -428,7 +434,7 @@ function wireCounterEvents(view, data, _session) {
     }
     if (els.progressFill) els.progressFill.style.strokeDashoffset = offset;
     if (els.hint) els.hint.style.display = session > 0 ? 'none' : '';
-    if (els.practice) els.practice.textContent = getPracticeDisplayName(data);
+    if (els.practice) els.practice.textContent = getHonorPracticeText(data);
   }
 
   /* ── Fast tap update — only the minimal DOM writes needed ── */
