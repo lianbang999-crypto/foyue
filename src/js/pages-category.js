@@ -17,7 +17,7 @@ import { probeDurations, getCachedDuration } from './duration-cache.js';
 export function renderCategory(tabId) {
   const dom = getDOM();
   if (!state.data) return;
-  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page,.practice-page').forEach(el => el.remove());
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
   const cat = state.data.categories.find(c => c.id === tabId);
   if (!cat) { dom.contentArea.innerHTML = `<div class="loader-text">${t('no_content')}</div>`; return; }
   const wrap = document.createElement('div');
@@ -44,93 +44,9 @@ export function renderCategory(tabId) {
   dom.contentArea.appendChild(wrap);
 }
 
-const FILTER_ICONS = {
-  all: '<svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round"/></svg>',
-  tingjingtai: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 3"/></svg>',
-  youshengshu: '<svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M4 19.5V5a2 2 0 012-2h14v14H6.5"/></svg>',
-  fohao: '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
-};
-
-const FILTER_LABELS = {
-  all: () => t('filter_all') || '全部',
-  tingjingtai: () => t('tab_lectures') || '讲经',
-  youshengshu: () => t('tab_audiobooks') || '有声书',
-  fohao: () => t('tab_chanting') || '佛号',
-};
-
-let _activeMergedFilter = 'all';
-
-export function renderMergedCategory(initialFilter) {
-  const dom = getDOM();
-  if (!state.data) return;
-  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page,.practice-page').forEach(el => el.remove());
-
-  if (initialFilter) _activeMergedFilter = initialFilter;
-
-  const wrap = document.createElement('div');
-  wrap.className = 'view active';
-
-  const filterBar = document.createElement('div');
-  filterBar.className = 'category-filter-bar';
-  const filters = ['all', 'tingjingtai', 'youshengshu', 'fohao'];
-  filters.forEach(f => {
-    const pill = document.createElement('button');
-    pill.className = 'category-filter-pill' + (f === _activeMergedFilter ? ' active' : '');
-    pill.dataset.filter = f;
-    pill.innerHTML = FILTER_LABELS[f]();
-    pill.addEventListener('click', () => {
-      _activeMergedFilter = f;
-      filterBar.querySelectorAll('.category-filter-pill').forEach(p => p.classList.toggle('active', p.dataset.filter === f));
-      renderSeriesList(list, f);
-    });
-    filterBar.appendChild(pill);
-  });
-  wrap.appendChild(filterBar);
-
-  const list = document.createElement('div');
-  list.className = 'series-list';
-  wrap.appendChild(list);
-  dom.contentArea.appendChild(wrap);
-
-  renderSeriesList(list, _activeMergedFilter);
-}
-
-function renderSeriesList(listEl, filter) {
-  listEl.innerHTML = '';
-  const nowSid = state.epIdx >= 0 && state.playlist.length ? state.playlist[state.epIdx].seriesId : null;
-  const allSeries = [];
-
-  for (const cat of state.data.categories) {
-    if (filter !== 'all' && cat.id !== filter) continue;
-    const unit = cat.id === 'fohao' ? t('tracks') : t('episodes');
-    cat.series.forEach(s => allSeries.push({ ...s, catId: cat.id, unit }));
-  }
-
-  if (!allSeries.length) {
-    listEl.innerHTML = `<div class="loader-text" style="padding:40px 0;text-align:center">${t('no_content')}</div>`;
-    return;
-  }
-
-  const frag = document.createDocumentFragment();
-  allSeries.forEach(s => {
-    const card = document.createElement('div');
-    const isPlaying = s.id === nowSid;
-    card.className = 'card' + (isPlaying ? ' now-playing' : '');
-    const introHtml = s.intro ? `<div class="card-intro">${escapeHtml(s.intro)}</div>` : '';
-    const playTag = isPlaying ? `<span class="card-playing-tag">${t('now_playing')}</span>` : '';
-    const playCountText = s.playCount ? ` \u00B7 ${fmtCount(s.playCount)}${t('play_count_unit') || '\u6B21'}` : '';
-    card.innerHTML = `<div class="card-icon">${CATEGORY_ICONS[s.catId] || CATEGORY_ICONS.tingjingtai}</div>
-      <div class="card-body"><div class="card-title">${escapeHtml(s.title)}${playTag}</div>${introHtml}<div class="card-meta">${escapeHtml(s.speaker || '')} \u00B7 ${s.totalEpisodes} ${s.unit}${playCountText}</div></div>
-      <span class="card-arrow"><svg viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg></span>`;
-    card.addEventListener('click', () => showEpisodes(s, s.catId));
-    frag.appendChild(card);
-  });
-  listEl.appendChild(frag);
-}
-
 export async function showEpisodes(series, tabId) {
   const dom = getDOM();
-  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page,.practice-page').forEach(el => el.remove());
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
   state.seriesId = series.id;
   let fullSeries = series;
 
@@ -164,7 +80,6 @@ export async function showEpisodes(series, tabId) {
   view.querySelector('#backBtn').addEventListener('click', () => {
     state.seriesId = null;
     if (state.tab === 'home') renderHomePage();
-    else if (state.tab === 'faying') renderMergedCategory();
     else renderCategory(state.tab);
   });
   view.querySelector('#shareSeriesBtn').addEventListener('click', () => shareSeries(series));
