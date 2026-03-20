@@ -838,6 +838,17 @@ export function togglePlay() {
   }
 }
 
+/** 打开念佛计数器时暂停播放并同步 UI，避免与计数专注冲突 */
+export function pausePlaybackForCounter() {
+  const dom = getDOM();
+  if (!dom.audio.src) return;
+  if (isSwitching) cancelPendingTrackLoad();
+  _userPaused = true;
+  dom.audio.pause();
+  clearStallWatch();
+  setPlayState(false);
+}
+
 let _skipDebounce = 0;
 const SKIP_DEBOUNCE_MS = 80;
 
@@ -1122,6 +1133,7 @@ function _doBgFullLoad(url) {
 export function onVisibilityResume() {
   const dom = getDOM();
   if (!dom.audio.src || dom.audio.paused || dom.audio.ended) return;
+  if (document.body.hasAttribute('data-counter-active')) return;
 
   // Check if buffer is running low
   const ct = dom.audio.currentTime;

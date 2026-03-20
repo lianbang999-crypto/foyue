@@ -1,6 +1,7 @@
 /* ===== 念佛计数器 (Buddhist Chanting Counter) ===== */
 import { t } from './i18n.js';
 import { get, patch } from './store.js';
+import { pausePlaybackForCounter } from './player.js';
 import { haptic, showToast, escapeHtml, formatCount, HUIXIANG_TEXT, localTodayStr, HUIXIANG_DISPLAY_AUTO_MS } from './utils.js';
 const BEADS_PER_LOOP = 108;
 /** @deprecated Kept only for data migration from old single-custom format */
@@ -262,6 +263,7 @@ export function openCounter() {
   // Mark counter as active — player.js uses this to block system-initiated
   // MediaSession 'play' events that would override the user's explicit pause.
   document.body.setAttribute('data-counter-active', '1');
+  pausePlaybackForCounter();
 
   // Request wake lock to keep screen on during chanting
   requestWakeLock();
