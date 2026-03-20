@@ -2,6 +2,7 @@
 import { t } from './i18n.js';
 import { get, patch } from './store.js';
 import { pausePlaybackForCounter } from './player.js';
+import { FEATURE_GONGXIU_PLAZA } from './feature-flags.js';
 import { haptic, showToast, escapeHtml, formatCount, HUIXIANG_TEXT, localTodayStr, HUIXIANG_DISPLAY_AUTO_MS } from './utils.js';
 const BEADS_PER_LOOP = 108;
 /** @deprecated Kept only for data migration from old single-custom format */
@@ -379,7 +380,7 @@ function closeCounter(view, sourceTab, popHandler, escHandler, visHandler, optio
     const targetTab = document.querySelector(`.tab[data-tab="${sourceTab}"]`) || document.querySelector('.tab[data-tab="mypage"]');
     if (targetTab) targetTab.click();
     try {
-      if (sessionStorage.getItem('counter:goto-gongxiu')) {
+      if (FEATURE_GONGXIU_PLAZA && sessionStorage.getItem('counter:goto-gongxiu')) {
         sessionStorage.removeItem('counter:goto-gongxiu');
         sessionStorage.setItem('gongxiu:scroll-to-submit', '1');
         setTimeout(() => {
@@ -576,7 +577,7 @@ function wireCounterEvents(view, data, _session) {
 /**
  * 回向文沉浸展示（全屏）
  *
- * 次序：个人回向（若有）→ 莲池大师回向文 → 南无阿弥陀佛 → 可选「参与共修广场」
+ * 次序：个人回向（若有）→ 莲池大师回向文 → 南无阿弥陀佛 →（可选）参与共修广场
  */
 function showHuixiangDisplay(parentView, anotherVow, counterData, dailyCount) {
   parentView.querySelectorAll('.huixiang-display').forEach(el => el.remove());
@@ -588,6 +589,10 @@ function showHuixiangDisplay(parentView, anotherVow, counterData, dailyCount) {
     ? `<div class="hd-personal">${escapeHtml(anotherVow)}</div>`
     : '';
 
+  const gongxiuBtnHtml = FEATURE_GONGXIU_PLAZA
+    ? '<button type="button" class="hd-gongxiu-btn" id="hdGongxiuBtn">参与共修广场</button>'
+    : '';
+
   display.innerHTML = `
     <div class="hd-overlay">
       <div class="hd-content">
@@ -595,7 +600,7 @@ function showHuixiangDisplay(parentView, anotherVow, counterData, dailyCount) {
         ${personalLine}
         <div class="hd-main-text">${HUIXIANG_TEXT.replace(/\n/g, '<br>')}</div>
         <div class="hd-namo">南无阿弥陀佛</div>
-        <button class="hd-gongxiu-btn" id="hdGongxiuBtn">参与共修广场</button>
+        ${gongxiuBtnHtml}
         <div class="hd-hint">点击其他区域关闭</div>
       </div>
     </div>`;
@@ -609,20 +614,23 @@ function showHuixiangDisplay(parentView, anotherVow, counterData, dailyCount) {
   const autoClose = setTimeout(close, HUIXIANG_DISPLAY_AUTO_MS);
 
   display.querySelector('.hd-overlay').addEventListener('click', (e) => {
-    if (e.target.closest('#hdGongxiuBtn')) return;
+    if (FEATURE_GONGXIU_PLAZA && e.target.closest('#hdGongxiuBtn')) return;
     clearTimeout(autoClose);
     close();
   });
 
-  display.querySelector('#hdGongxiuBtn').addEventListener('click', () => {
-    clearTimeout(autoClose);
-    if (counterData && dailyCount > 0) {
-      submitToGongxiu(counterData, dailyCount, { anotherVow: anotherVow || '' }).catch(() => { });
-    }
-    close();
-    try { sessionStorage.setItem('counter:goto-gongxiu', '1'); } catch { }
-    setTimeout(() => history.back(), 420);
-  });
+  const gxBtn = display.querySelector('#hdGongxiuBtn');
+  if (gxBtn) {
+    gxBtn.addEventListener('click', () => {
+      clearTimeout(autoClose);
+      if (counterData && dailyCount > 0) {
+        submitToGongxiu(counterData, dailyCount, { anotherVow: anotherVow || '' }).catch(() => { });
+      }
+      close();
+      try { sessionStorage.setItem('counter:goto-gongxiu', '1'); } catch { }
+      setTimeout(() => history.back(), 420);
+    });
+  }
 }
 
 /**

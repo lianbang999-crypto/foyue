@@ -10,6 +10,7 @@ import { showToast, escapeHtml } from './utils.js';
 // renderMessageWall is kept for backward-compat but community page uses gongxiu.js
 import { getCachedCount, getCachedSize, clearAudioCache } from './audio-cache.js';
 import { get as storeGet } from './store.js';
+import { FEATURE_GONGXIU_PLAZA } from './feature-flags.js';
 
 function fmtRelTime(ts) {
   const d = Date.now() - ts;
@@ -38,9 +39,8 @@ export function renderMyPage() {
   const lang = getLang();
   dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
 
-  // Auto-open 共修广场 if redirected from counter 回向
   try {
-    if (sessionStorage.getItem('counter:goto-gongxiu')) {
+    if (FEATURE_GONGXIU_PLAZA && sessionStorage.getItem('counter:goto-gongxiu')) {
       sessionStorage.removeItem('counter:goto-gongxiu');
       try { sessionStorage.setItem('gongxiu:scroll-to-submit', '1'); } catch { /* ignore */ }
       setTimeout(() => showGongxiuSubview(), 350);
@@ -130,6 +130,7 @@ export function renderMyPage() {
           </div>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
+        ${FEATURE_GONGXIU_PLAZA ? `
         <div class="my-item" id="myGongxiuCard">
           <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           <div class="my-item-body">
@@ -137,7 +138,7 @@ export function renderMyPage() {
             <span class="my-item-desc">${t('my_gongxiu_desc')}</span>
           </div>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
-        </div>
+        </div>` : ''}
         <div class="my-item" id="myHistoryCard">
           <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
           <div class="my-item-body">
@@ -155,7 +156,7 @@ export function renderMyPage() {
           <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           <div class="my-item-body">
             <span class="my-item-label">法名</span>
-            <span class="my-item-desc" style="font-size:.72rem;color:var(--text-muted)">共修广场中的长期身份</span>
+            <span class="my-item-desc" style="font-size:.72rem;color:var(--text-muted)">${FEATURE_GONGXIU_PLAZA ? '共修广场中的长期身份' : '念佛回向等场景中的称呼'}</span>
           </div>
           <span class="my-item-value" id="myDharmaNameValue">${((() => { try { return localStorage.getItem('gongxiu-nickname') || ''; } catch { return ''; } })()) || '未设置'}</span>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
@@ -200,7 +201,7 @@ export function renderMyPage() {
   page.querySelector('#myWenkuCard').addEventListener('click', () => {
     import('./wenku.js').then(mod => mod.renderWenkuHome(() => renderMyPage()));
   });
-  page.querySelector('#myGongxiuCard').addEventListener('click', () => showGongxiuSubview());
+  page.querySelector('#myGongxiuCard')?.addEventListener('click', () => showGongxiuSubview());
 
   // Prefetch wenku series data in background to speed up first open of 文库
   // Uses idle callback (or fallback timeout) so it doesn't compete with primary page rendering
@@ -323,6 +324,7 @@ function showHistorySubview() {
 }
 
 export function showGongxiuSubview() {
+  if (!FEATURE_GONGXIU_PLAZA) return;
   const dom = getDOM();
 
   // Full-screen slide-in panel
@@ -375,7 +377,7 @@ function showDharmaNameSheet(parentPage) {
     <div class="counter-goal-panel" style="gap:14px">
       <div class="counter-goal-panel-title">设定法名</div>
       <div style="font-size:.78rem;color:var(--text-secondary);line-height:1.6;margin-bottom:2px">
-        法名是您在共修广场的长期身份，回向时也会以法名记录。<br>
+        ${FEATURE_GONGXIU_PLAZA ? '法名是您在共修广场的长期身份，回向时也会以法名记录。' : '法名将在念佛回向等场景中使用。'}<br>
         <span style="color:var(--text-muted)">如：净空、妙莲、法喜、法缘…</span>
       </div>
       <div class="counter-goal-custom-row">
