@@ -100,6 +100,15 @@ function setWakeLockPref(on) {
   try { localStorage.setItem(WAKELOCK_PREF_KEY, on ? 'on' : 'off'); } catch { }
 }
 
+/** Toggle screen wake lock preference; returns new enabled state */
+function toggleWakeLockPreference() {
+  const nowOn = !isWakeLockEnabled();
+  setWakeLockPref(nowOn);
+  if (nowOn) requestWakeLock();
+  else releaseWakeLock();
+  return nowOn;
+}
+
 async function requestWakeLock() {
   if (!isWakeLockEnabled()) return;
   if (_wakeLock) return;
@@ -215,6 +224,16 @@ function getCounterData() {
   return data;
 }
 
+/** Clear all practices' counts and daily log; keeps per-practice goals */
+function resetAllCounterData(data) {
+  for (const p of Object.keys(data.practices)) {
+    const goal = data.practices[p].goal || 108;
+    data.practices[p] = { total: 0, daily: 0, dailyDate: localTodayStr(), goal };
+  }
+  data.dailyLog = {};
+  patch('counter', data);
+}
+
 /* ── Main render ── */
 export function openCounter() {
   // Remove existing counter view if present
@@ -270,6 +289,12 @@ export function openCounter() {
     if (e.key === 'Escape') {
       // If a picker sheet is open (and visible), let it handle the Escape key
       if (view.querySelector('.counter-goal-sheet--visible, .counter-practice-sheet--visible')) return;
+      const histOpen = view.querySelector('.counter-history--in');
+      if (histOpen) {
+        histOpen.classList.remove('counter-history--in');
+        setTimeout(() => histOpen.remove(), 320);
+        return;
+      }
       history.back();
     }
   };
@@ -281,106 +306,58 @@ export function openCounter() {
 function buildCounterHTML(data, session) {
   const ps = getPracticeStats(data);
   const beadPos = ps.total % BEADS_PER_LOOP;
-  const goalPct = ps.goal > 0 ? Math.min(100, Math.round(ps.daily / ps.goal * 100)) : 0;
-  const goalDone = ps.goal > 0 && ps.daily >= ps.goal;
   const displayName = escapeHtml(getPracticeDisplayName(data));
-  const streak = getStreak(data);
 
-  const wakeLockOn = isWakeLockEnabled();
   return `
-    <div class="counter-header">
-      <button class="counter-back btn-icon" id="counterBack" aria-label="${t('wenku_back')}">
-        <svg viewBox="0 0 24 24" width="20" height="20"><polyline points="15,18 9,12 15,6"/></svg>
-      </button>
-      <span class="counter-header-title">${t('counter_title')}</span>
-      <button class="btn-icon counter-wakelock-btn${wakeLockOn ? ' active' : ''}" id="counterWakeLockBtn"
-              aria-label="${wakeLockOn ? '屏幕保持点亮（点击关闭）' : '屏幕将按系统设置自动熄灭（点击开启常亮）'}"
-              title="${wakeLockOn ? '屏幕常亮' : '屏幕按系统设置自动熄灭'}">
-        ${wakeLockOn
-          ? `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`
-          : `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`
-        }
-      </button>
-      <button class="btn-icon" id="counterHistoryBtn" aria-label="念佛历史" title="念佛历史">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="9"/>
-          <polyline points="12,7 12,12 15.5,14"/>
-        </svg>
-      </button>
-      <button class="counter-menu btn-icon" id="counterMenu" aria-label="${t('more')}">
-        <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="5" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="19" r="1.5" fill="currentColor"/></svg>
-      </button>
-    </div>
-
-    <div class="counter-body">
-      <!-- Practice name (outside tap area for reverence) -->
-      <div class="counter-practice-name" id="counterPracticeName">${displayName}</div>
-
-      <!-- Main tap button -->
-      <div class="counter-tap-area" id="counterTapArea" role="button" tabindex="0"
-           aria-label="${t('counter_tap_hint')}">
-        <!-- Outer ring glow -->
-        <div class="counter-ring counter-ring--outer"></div>
-        <!-- Bead progress ring -->
-        <svg class="counter-progress-svg" viewBox="0 0 200 200" id="counterProgressSvg">
-          <circle class="counter-progress-bg" cx="100" cy="100" r="88"/>
-          <circle class="counter-progress-fill" id="counterProgressFill" cx="100" cy="100" r="88"
-            stroke-dasharray="${Math.round(2 * Math.PI * 88)}"
-            stroke-dashoffset="${Math.round(2 * Math.PI * 88 * (1 - beadPos / BEADS_PER_LOOP))}"/>
-        </svg>
-        <!-- Inner circle -->
-        <div class="counter-lotus-wrap">
-          <!-- Count number -->
-          <div class="counter-number" id="counterNumber">${session}</div>
-          <div class="counter-hint" id="counterHint">${t('counter_tap_hint')}</div>
-        </div>
-        <!-- Ripple container -->
-        <div class="counter-ripples" id="counterRipples"></div>
+    <div class="counter-header counter-header--minimal">
+      <div class="counter-header-slot counter-header-slot--start">
+        <button class="counter-back btn-icon" id="counterBack" aria-label="${t('wenku_back')}">
+          <svg viewBox="0 0 24 24" width="20" height="20"><polyline points="15,18 9,12 15,6"/></svg>
+        </button>
       </div>
-
-      <!-- Daily progress bar -->
-      <div class="counter-daily-wrap">
-        <div class="counter-daily-row">
-          <span class="counter-daily-lbl">${t('counter_daily')}: <strong id="ctrDaily">${ps.daily}</strong></span>
-          <span class="counter-daily-goal" id="ctrGoalLabel">${goalDone ? '&#10003; ' : ''}${t('counter_goal')}: <span id="ctrGoalVal">${ps.goal}</span></span>
-        </div>
-        <div class="counter-progress-bar">
-          <div class="counter-progress-bar-fill${goalDone ? ' counter-progress-bar-fill--done' : ''}"
-               id="ctrGoalBar" style="width:${goalPct}%"></div>
-        </div>
-        ${streak > 1 ? `<div class="counter-streak" id="counterStreak">${t('counter_streak').replace('{n}', streak)}</div>` : '<div class="counter-streak" id="counterStreak" style="display:none"></div>'}
+      <div class="counter-header-slot counter-header-slot--center">
+        <span class="counter-header-title">${t('counter_title')}</span>
+      </div>
+      <div class="counter-header-slot counter-header-slot--end">
+        <button type="button" class="counter-records-entry" id="counterRecordsBtn"
+                aria-label="${t('counter_records')}">${t('counter_records')}</button>
       </div>
     </div>
 
-    <!-- Bottom actions -->
-    <div class="counter-actions">
-      <button class="counter-action-btn counter-action-btn--clear" id="counterResetSession">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="23 4 23 10 17 10"/>
-          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-        </svg>
-        ${t('counter_clear')}
-      </button>
-      <button class="counter-action-btn counter-action-btn--huixiang" id="counterHuixiang">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10"/>
-          <path d="M16 12l4 4-4 4"/>
-          <path d="M20 16H9a4 4 0 0 1 0-8h2"/>
-        </svg>
-        ${t('counter_huixiang')}
-      </button>
-      <button class="counter-action-btn counter-action-btn--goal" id="counterSetGoal">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/>
-          <circle cx="12" cy="12" r="6"/>
-          <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/>
-        </svg>
-        ${t('counter_gongke')}
-      </button>
-    </div>
+    <div class="counter-shell">
+      <div class="counter-body">
+        <!-- 圣号仅作供奉展示：不可点、不可选，与计数热区分隔 -->
+        <div class="counter-honor-block" aria-live="polite">
+          <p class="counter-honor-caption">${t('counter_honor_caption')}</p>
+          <p class="counter-practice-name" id="counterPracticeName">${displayName}</p>
+        </div>
 
-    <!-- Namo footer -->
-    <div class="counter-namo">${t('counter_namo')}</div>
+        <div class="counter-focus">
+          <div class="counter-tap-area" id="counterTapArea" role="button" tabindex="0"
+               aria-label="${t('counter_tap_hint')}">
+            <div class="counter-ring counter-ring--outer"></div>
+            <svg class="counter-progress-svg" viewBox="0 0 200 200" id="counterProgressSvg" aria-hidden="true">
+              <circle class="counter-progress-bg" cx="100" cy="100" r="88"/>
+              <circle class="counter-progress-fill" id="counterProgressFill" cx="100" cy="100" r="88"
+                stroke-dasharray="${Math.round(2 * Math.PI * 88)}"
+                stroke-dashoffset="${Math.round(2 * Math.PI * 88 * (1 - beadPos / BEADS_PER_LOOP))}"/>
+            </svg>
+            <div class="counter-lotus-wrap">
+              <div class="counter-number" id="counterNumber">${session}</div>
+              <div class="counter-hint" id="counterHint">${t('counter_tap_hint')}</div>
+            </div>
+            <div class="counter-ripples" id="counterRipples"></div>
+          </div>
+        </div>
+      </div>
+
+      <footer class="counter-footer">
+        <button type="button" class="counter-huixiang-primary" id="counterHuixiang">
+          <span class="counter-huixiang-primary__text">${t('counter_huixiang')}</span>
+        </button>
+        <p class="counter-namo" aria-hidden="true">${t('counter_namo')}</p>
+      </footer>
+    </div>
   `;
 }
 
@@ -427,15 +404,10 @@ function wireCounterEvents(view, data, _session) {
   /* ── Cache all DOM references once ── */
   const els = {
     number: view.querySelector('#counterNumber'),
-    daily: view.querySelector('#ctrDaily'),
-    bar: view.querySelector('#ctrGoalBar'),
-    goalLabel: view.querySelector('#ctrGoalLabel'),
-    goalVal: view.querySelector('#ctrGoalVal'),
     progressFill: view.querySelector('#counterProgressFill'),
     hint: view.querySelector('#counterHint'),
     practice: view.querySelector('#counterPracticeName'),
     ripples: view.querySelector('#counterRipples'),
-    streak: view.querySelector('#counterStreak'),
   };
 
   /* ── Full UI update (settings change, loop complete, goal done, reset) ── */
@@ -444,9 +416,6 @@ function wireCounterEvents(view, data, _session) {
     const beadPos = ps.total % BEADS_PER_LOOP;
     const circum = Math.round(2 * Math.PI * 88);
     const offset = Math.round(circum * (1 - beadPos / BEADS_PER_LOOP));
-    const goalPct = ps.goal > 0 ? Math.min(100, Math.round(ps.daily / ps.goal * 100)) : 0;
-    const goalDone = ps.goal > 0 && ps.daily >= ps.goal;
-
     if (els.number) {
       els.number.textContent = session;
       if (bump) {
@@ -454,23 +423,9 @@ function wireCounterEvents(view, data, _session) {
         setTimeout(() => els.number.classList.remove('counter-number--bump'), 180);
       }
     }
-    if (els.daily) els.daily.textContent = ps.daily;
-    if (els.bar) { els.bar.style.width = goalPct + '%'; els.bar.classList.toggle('counter-progress-bar-fill--done', goalDone); }
-    if (els.goalLabel && els.goalVal) { els.goalLabel.firstChild.textContent = (goalDone ? '\u2713 ' : '') + t('counter_goal') + ': '; els.goalVal.textContent = ps.goal; }
     if (els.progressFill) els.progressFill.style.strokeDashoffset = offset;
     if (els.hint) els.hint.style.display = session > 0 ? 'none' : '';
     if (els.practice) els.practice.textContent = getPracticeDisplayName(data);
-
-    // Update streak display
-    const streak = getStreak(data);
-    if (els.streak) {
-      if (streak > 1) {
-        els.streak.textContent = t('counter_streak').replace('{n}', streak);
-        els.streak.style.display = '';
-      } else {
-        els.streak.style.display = 'none';
-      }
-    }
   }
 
   /* ── Fast tap update — only the minimal DOM writes needed ── */
@@ -488,11 +443,6 @@ function wireCounterEvents(view, data, _session) {
       }
     }
     if (els.progressFill) els.progressFill.style.strokeDashoffset = offset;
-    if (els.daily) els.daily.textContent = ps.daily;
-    if (els.bar) {
-      const goalPct = ps.goal > 0 ? Math.min(100, Math.round(ps.daily / ps.goal * 100)) : 0;
-      els.bar.style.width = goalPct + '%';
-    }
     if (els.hint && session === 1) els.hint.style.display = 'none';
   }
 
@@ -592,47 +542,25 @@ function wireCounterEvents(view, data, _session) {
     history.back();
   });
 
-  /* ── 清零 (reset session) ── */
-  view.querySelector('#counterResetSession').addEventListener('click', () => {
+  const resetSessionWithToast = () => {
     session = 0;
     updateUI();
     haptic(20);
     showToast(t('counter_clear'));
-  });
+  };
 
-  /* ── 今日功课 (set goal) ── */
-  view.querySelector('#counterSetGoal').addEventListener('click', () => {
-    showGoalPicker(view, data, () => updateUI());
-  });
+  const resetSessionQuiet = () => {
+    session = 0;
+    updateUI();
+  };
 
-  /* ── Wake lock toggle ── */
-  const wakeLockBtn = view.querySelector('#counterWakeLockBtn');
-  if (wakeLockBtn) {
-    wakeLockBtn.addEventListener('click', () => {
-      const nowOn = !isWakeLockEnabled();
-      setWakeLockPref(nowOn);
-      if (nowOn) {
-        requestWakeLock();
-        showToast('屏幕常亮已开启');
-      } else {
-        releaseWakeLock();
-        showToast('屏幕将按系统设置自动熄灭');
-      }
-      // Update button appearance without full re-render
-      wakeLockBtn.classList.toggle('active', nowOn);
-      wakeLockBtn.setAttribute('title', nowOn ? '屏幕常亮' : '屏幕自动熄灭');
-      wakeLockBtn.innerHTML = nowOn
-        ? `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`
-        : `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
-      haptic(15);
+  view.querySelector('#counterRecordsBtn').addEventListener('click', () => {
+    openHistory(view, data, {
+      onDataChange: () => updateUI(),
+      resetSessionWithToast,
+      resetSessionQuiet,
     });
-  }
-
-  /* ── History button ── */
-  const histBtn = view.querySelector('#counterHistoryBtn');
-  if (histBtn) {
-    histBtn.addEventListener('click', () => openHistory(view, data));
-  }
+  });
 
   /* ── 回向 button ── */
   const huixiangBtn = view.querySelector('#counterHuixiang');
@@ -641,109 +569,12 @@ function wireCounterEvents(view, data, _session) {
       showHuixiangSheet(view, data, session);
     });
   }
-
-  /* ── Menu button → combined sheet: practice picker + reset all ── */
-  view.querySelector('#counterMenu').addEventListener('click', () => {
-    showCounterMenu(view, data, () => { session = 0; updateUI(); });
-  });
-}
-
-/* ── Counter menu sheet (practice + reset) ── */
-function showCounterMenu(parentView, data, onPracticeChange) {
-  parentView.querySelectorAll('.counter-menu-sheet').forEach(el => el.remove());
-
-  const sheet = document.createElement('div');
-  sheet.className = 'counter-goal-sheet counter-menu-sheet';
-  sheet.innerHTML = `
-    <div class="counter-goal-backdrop" id="menuBackdrop"></div>
-    <div class="counter-goal-panel">
-      <div class="counter-goal-panel-title">${t('more')}</div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        <button class="counter-action-btn" id="menuSharePoster" style="flex:none;width:100%;padding:14px 16px;border-radius:var(--radius-sm);justify-content:flex-start;gap:12px;font-size:.86rem">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-          分享念佛海报
-        </button>
-        <button class="counter-action-btn" id="menuSwitchPractice" style="flex:none;width:100%;padding:14px 16px;border-radius:var(--radius-sm);justify-content:flex-start;gap:12px;font-size:.86rem">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 3a3 3 0 0 0-3 3l-9 9a3 3 0 0 0 4.24 4.24l9-9A3 3 0 0 0 18 3z"/><line x1="3" y1="21" x2="6" y2="18"/></svg>
-          ${t('counter_practice_title')}
-        </button>
-        <button class="counter-action-btn counter-action-btn--danger" id="menuResetAll" style="flex:none;width:100%;padding:14px 16px;border-radius:var(--radius-sm);justify-content:flex-start;gap:12px;font-size:.86rem">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-          ${t('counter_reset_all')}
-        </button>
-      </div>
-      <button class="counter-goal-cancel" id="menuCancel">${t('cancel')}</button>
-    </div>`;
-  parentView.appendChild(sheet);
-  requestAnimationFrame(() => sheet.classList.add('counter-goal-sheet--visible'));
-
-  let menuEsc;
-  const close = () => {
-    window.removeEventListener('keydown', menuEsc);
-    sheet.classList.remove('counter-goal-sheet--visible');
-    setTimeout(() => sheet.remove(), 250);
-  };
-  menuEsc = (e) => { if (e.key === 'Escape') close(); };
-  window.addEventListener('keydown', menuEsc);
-
-  sheet.querySelector('#menuBackdrop').addEventListener('click', close);
-  sheet.querySelector('#menuCancel').addEventListener('click', close);
-
-  sheet.querySelector('#menuSharePoster').addEventListener('click', () => {
-    close();
-    setTimeout(() => {
-      // Collect stats for this practice
-      const ps = getPracticeStats(data);
-      const streak = getStreak(data);
-      // Lazy-load counter-share.js + qrcode only when user actually wants to share,
-      // so counter.js module itself loads quickly (qrcode is ~60 KB gzipped).
-      import('./counter-share.js').then(mod => {
-        mod.showSharePoster(parentView, {
-          practice: getPracticeDisplayName(data),
-          daily: ps.daily || 0,
-          total: ps.total || 0,
-          streak,
-        });
-      });
-    }, 260);
-  });
-
-  sheet.querySelector('#menuSwitchPractice').addEventListener('click', () => {
-    close();
-    setTimeout(() => showPracticePicker(parentView, data, onPracticeChange), 260);
-  });
-
-  sheet.querySelector('#menuResetAll').addEventListener('click', () => {
-    close();
-    setTimeout(() => {
-      if (!window.confirm(t('counter_reset_confirm'))) return;
-      for (const p of Object.keys(data.practices)) {
-        const goal = data.practices[p].goal || 108;
-        data.practices[p] = { total: 0, daily: 0, dailyDate: localTodayStr(), goal };
-      }
-      data.dailyLog = {};
-      patch('counter', data);
-      haptic(30);
-      onPracticeChange();
-      showToast(t('counter_reset_all'));
-    }, 260);
-  });
 }
 
 /**
  * 回向文沉浸展示（全屏）
  *
- * 莲池大师回向文始终完整展示，以"同生极乐国"作为一切功德的最终归宿。
- * 用户的"另愿"附于回向文之后，作为个人愿心的补充。
- */
-/**
- * 回向文沉浸展示（全屏）
- *
- * 次序（先个人愿心，再总回向作庄严收尾）：
- *   1. 个人回向（若有）
- *   2. 莲池大师回向文（以"同生极乐国"作总结）
- *   3. 南无阿弥陀佛
- *   4. 「参与共修广场」可选
+ * 次序：个人回向（若有）→ 莲池大师回向文 → 南无阿弥陀佛 → 可选「参与共修广场」
  */
 function showHuixiangDisplay(parentView, anotherVow, counterData, dailyCount) {
   parentView.querySelectorAll('.huixiang-display').forEach(el => el.remove());
@@ -1233,11 +1064,14 @@ function buildCalendarGrid(data, year, month) {
   }).join('');
 }
 
+const CHI_CHEVRON = '<svg class="chi-tool-chevron" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>';
+
 /** 构建完整历史面板 HTML（日历视图） */
 function buildHistoryHTML(data, year, month) {
   const todayStr  = todayDateStr();
   const log       = data.dailyLog || {};
   const streak    = getStreak(data);
+  const wakeOn    = isWakeLockEnabled();
 
   // 累计总声数
   let grandTotal = 0;
@@ -1261,7 +1095,7 @@ function buildHistoryHTML(data, year, month) {
       <button class="btn-icon" id="chBack" aria-label="返回">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,18 9,12 15,6"/></svg>
       </button>
-      <span class="ch-title">念佛历史</span>
+      <span class="ch-title">${t('counter_records')}</span>
       <button class="btn-icon" id="chBuluBtn" title="补录" aria-label="补录过去的念佛声数">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="9"/>
@@ -1276,17 +1110,17 @@ function buildHistoryHTML(data, year, month) {
       <div class="chi-top-stats">
         <div class="chi-top-item">
           <div class="chi-top-val" id="chiGrand">${formatCount(grandTotal)}</div>
-          <div class="chi-top-lbl">累计</div>
+          <div class="chi-top-lbl">${t('counter_total')}</div>
         </div>
         <div class="chi-top-divider"></div>
         <div class="chi-top-item">
           <div class="chi-top-val" id="chiToday">${formatCount(todayTotal)}</div>
-          <div class="chi-top-lbl">今日</div>
+          <div class="chi-top-lbl">${t('counter_daily')}</div>
         </div>
         <div class="chi-top-divider"></div>
         <div class="chi-top-item">
           <div class="chi-top-val" id="chiStreak">${streak}</div>
-          <div class="chi-top-lbl">连续</div>
+          <div class="chi-top-lbl">${t('counter_consecutive_label')}</div>
         </div>
       </div>
 
@@ -1312,10 +1146,40 @@ function buildHistoryHTML(data, year, month) {
 
       <!-- 图例 -->
       <div class="chi-legend">
-        <span class="chi-legend-dot chi-legend-dot--none"></span><span class="chi-legend-lbl">无记录</span>
-        <span class="chi-legend-dot chi-legend-dot--partial"></span><span class="chi-legend-lbl">已念</span>
-        <span class="chi-legend-dot chi-legend-dot--goal"></span><span class="chi-legend-lbl">达标</span>
+        <span class="chi-legend-dot chi-legend-dot--none"></span><span class="chi-legend-lbl">${t('counter_cal_legend_none')}</span>
+        <span class="chi-legend-dot chi-legend-dot--partial"></span><span class="chi-legend-lbl">${t('counter_cal_legend_partial')}</span>
+        <span class="chi-legend-dot chi-legend-dot--goal"></span><span class="chi-legend-lbl">${t('counter_cal_legend_goal')}</span>
       </div>
+
+      <section class="chi-tools-section" aria-label="${t('counter_tools_heading')}">
+        <h3 class="chi-tools-heading">${t('counter_tools_heading')}</h3>
+        <div class="chi-tools-list">
+          <button type="button" class="chi-tool-row" id="chToolGoal">
+            <span class="chi-tool-label">${t('counter_tool_goal')}</span>
+            ${CHI_CHEVRON}
+          </button>
+          <button type="button" class="chi-tool-row" id="chToolPractice">
+            <span class="chi-tool-label">${t('counter_tool_practice')}</span>
+            ${CHI_CHEVRON}
+          </button>
+          <button type="button" class="chi-tool-row chi-tool-row--toggle" id="chToolWake">
+            <span class="chi-tool-label">${t('counter_tool_wakelock')}</span>
+            <span class="chi-tool-meta chi-tool-meta--pill" id="chWakeState">${wakeOn ? t('counter_wakelock_on') : t('counter_wakelock_off')}</span>
+          </button>
+          <button type="button" class="chi-tool-row" id="chToolShare">
+            <span class="chi-tool-label">${t('counter_tool_share')}</span>
+            ${CHI_CHEVRON}
+          </button>
+          <button type="button" class="chi-tool-row" id="chToolClear">
+            <span class="chi-tool-label">${t('counter_tool_clear_session')}</span>
+            ${CHI_CHEVRON}
+          </button>
+          <button type="button" class="chi-tool-row chi-tool-row--danger" id="chToolReset">
+            <span class="chi-tool-label">${t('counter_tool_reset_all')}</span>
+            ${CHI_CHEVRON}
+          </button>
+        </div>
+      </section>
     </div>`;
 }
 
@@ -1448,7 +1312,11 @@ function showBuluSheet(parentView, data, onDone, fixedDate = null) {
 }
 
 /** Open / refresh the history slide-in panel (calendar view) */
-export function openHistory(counterView, data) {
+export function openHistory(counterView, data, hooks = {}) {
+  const onDataChange = typeof hooks.onDataChange === 'function' ? hooks.onDataChange : () => { };
+  const resetSessionWithToast = typeof hooks.resetSessionWithToast === 'function' ? hooks.resetSessionWithToast : () => { };
+  const resetSessionQuiet = typeof hooks.resetSessionQuiet === 'function' ? hooks.resetSessionQuiet : () => { };
+
   counterView.querySelectorAll('.counter-history').forEach(el => el.remove());
 
   const now = new Date();
@@ -1525,5 +1393,59 @@ export function openHistory(counterView, data) {
     let y = curYear, m = curMonth + 1;
     if (m > 12) { m = 1; y++; }
     goToMonth(y, m);
+  });
+
+  const syncWakeLabel = () => {
+    const el = hist.querySelector('#chWakeState');
+    if (el) el.textContent = isWakeLockEnabled() ? t('counter_wakelock_on') : t('counter_wakelock_off');
+  };
+
+  hist.querySelector('#chToolGoal')?.addEventListener('click', () => {
+    showGoalPicker(counterView, data, () => {
+      onDataChange();
+      refreshCalendar();
+    });
+  });
+
+  hist.querySelector('#chToolPractice')?.addEventListener('click', () => {
+    showPracticePicker(counterView, data, () => {
+      resetSessionQuiet();
+      onDataChange();
+      refreshCalendar();
+    });
+  });
+
+  hist.querySelector('#chToolWake')?.addEventListener('click', () => {
+    const nowOn = toggleWakeLockPreference();
+    syncWakeLabel();
+    haptic(15);
+    showToast(nowOn ? t('counter_toast_wakelock_on') : t('counter_toast_wakelock_off'));
+  });
+
+  hist.querySelector('#chToolShare')?.addEventListener('click', () => {
+    const ps = getPracticeStats(data);
+    const streak = getStreak(data);
+    import('./counter-share.js').then(mod => {
+      mod.showSharePoster(counterView, {
+        practice: getPracticeDisplayName(data),
+        daily: ps.daily || 0,
+        total: ps.total || 0,
+        streak,
+      });
+    });
+  });
+
+  hist.querySelector('#chToolClear')?.addEventListener('click', () => {
+    resetSessionWithToast();
+  });
+
+  hist.querySelector('#chToolReset')?.addEventListener('click', () => {
+    if (!window.confirm(t('counter_reset_confirm'))) return;
+    resetAllCounterData(data);
+    haptic(30);
+    resetSessionQuiet();
+    onDataChange();
+    refreshCalendar();
+    showToast(t('counter_reset_all'));
   });
 }
