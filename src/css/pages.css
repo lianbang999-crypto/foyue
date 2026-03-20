@@ -381,21 +381,9 @@
 /* === HOME PAGE === */
 .home-page {
     display: none;
-    animation: fadeAndRise .6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    animation: viewIn .3s ease-out;
     position: relative;
     padding-bottom: 24px
-}
-
-@keyframes fadeAndRise {
-    0% {
-        opacity: 0;
-        transform: translateY(14px) scale(0.993);
-    }
-
-    100% {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
 }
 
 .home-page::before {
@@ -404,22 +392,15 @@
     top: -20px;
     left: -20px;
     right: -20px;
-    height: 520px;
-    background: var(--hero-gradient, linear-gradient(180deg, var(--accent-gradient-top) 0%, rgba(131, 106, 50, 0.01) 60%, transparent 100%));
+    height: 280px;
+    background: linear-gradient(180deg, var(--accent-gradient-top) 0%, transparent 100%);
     z-index: -1;
     pointer-events: none;
+    opacity: 0.5;
 }
 
 .home-page::after {
-    content: '';
-    position: absolute;
-    top: -20px;
-    left: -20px;
-    right: -20px;
-    height: 360px;
-    background: var(--hero-radial, radial-gradient(ellipse at 25% 0%, rgba(212,175,55,0.18) 0%, transparent 55%));
-    z-index: -1;
-    pointer-events: none;
+    display: none;
 }
 
 .home-section:first-child .home-section-title {
