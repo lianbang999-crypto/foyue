@@ -48,7 +48,7 @@ export function renderMyPage() {
   } catch { }
   const page = document.createElement('div');
   page.className = 'my-page active';
-  const themeText = { light: t('theme_light'), dark: t('theme_dark'), terracotta: t('theme_terracotta') }[getTheme()] || t('theme_light');
+  const themeText = { light: t('theme_light'), dark: t('theme_dark'), terracotta: t('theme_terracotta'), ink: t('theme_ink') }[getTheme()] || t('theme_light');
   const langText = { zh: '中文', en: 'English', fr: 'Fran\u00E7ais' }[lang] || '中文';
 
   // Feature card subtitles
@@ -167,7 +167,7 @@ export function renderMyPage() {
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
         <div class="my-item" id="myThemeItem">
-          <svg class="my-item-icon" viewBox="0 0 24 24">${getTheme() === 'dark' ? '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>' : '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>'}</svg>
+          <svg class="my-item-icon" viewBox="0 0 24 24">${getTheme() === 'dark' || getTheme() === 'ink' ? '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>' : '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>'}</svg>
           <span class="my-item-label" data-i18n="my_theme">${t('my_theme')}</span>
           <span class="my-item-value" id="myThemeValue">${themeText}</span>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>

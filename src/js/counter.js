@@ -308,71 +308,58 @@ export function openCounter() {
 function buildCounterHTML(data, session) {
   const ps = getPracticeStats(data);
   const beadPos = ps.total % BEADS_PER_LOOP;
-  const goalPct = ps.goal > 0 ? Math.min(100, Math.round(ps.daily / ps.goal * 100)) : 0;
-  const goalDone = ps.goal > 0 && ps.daily >= ps.goal;
   const displayName = escapeHtml(getPracticeDisplayName(data));
-  const streak = getStreak(data);
 
   return `
-    <div class="counter-header">
-      <button class="counter-back btn-icon" id="counterBack" aria-label="${t('wenku_back')}">
-        <svg viewBox="0 0 24 24" width="20" height="20"><polyline points="15,18 9,12 15,6"/></svg>
-      </button>
-      <span class="counter-header-title">${t('counter_title')}</span>
-      <button class="counter-menu btn-icon" id="counterMenu" aria-label="${t('more')}">
-        <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="5" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="19" r="1.5" fill="currentColor"/></svg>
-      </button>
+    <div class="counter-header counter-header--minimal">
+      <div class="counter-header-slot counter-header-slot--start">
+        <button class="counter-back btn-icon" id="counterBack" aria-label="${t('wenku_back')}">
+          <svg viewBox="0 0 24 24" width="20" height="20"><polyline points="15,18 9,12 15,6"/></svg>
+        </button>
+      </div>
+      <div class="counter-header-slot counter-header-slot--center">
+        <span class="counter-header-title">${t('counter_title')}</span>
+      </div>
+      <div class="counter-header-slot counter-header-slot--end">
+        <button type="button" class="counter-records-entry" id="counterRecordsBtn"
+                aria-label="${t('counter_records')}">${t('counter_records')}</button>
+      </div>
     </div>
 
-    <div class="counter-body">
-      <div class="counter-tap-area" id="counterTapArea" role="button" tabindex="0"
-           aria-label="${t('counter_tap_hint')}">
-        <div class="counter-ring counter-ring--outer"></div>
-        <svg class="counter-progress-svg" viewBox="0 0 200 200" id="counterProgressSvg" aria-hidden="true">
-          <circle class="counter-progress-bg" cx="100" cy="100" r="88"/>
-          <circle class="counter-progress-fill" id="counterProgressFill" cx="100" cy="100" r="88"
-            stroke-dasharray="${Math.round(2 * Math.PI * 88)}"
-            stroke-dashoffset="${Math.round(2 * Math.PI * 88 * (1 - beadPos / BEADS_PER_LOOP))}"/>
-        </svg>
-        <div class="counter-lotus-wrap">
-          <div class="counter-number" id="counterNumber">${session}</div>
-          <div class="counter-practice-name" id="counterPracticeName">${displayName}</div>
+    <div class="counter-shell">
+      <div class="counter-body">
+        <!-- 圣号仅作供奉展示：不可点、不可选，与计数热区分隔 -->
+        <div class="counter-honor-block" aria-live="polite">
+          <p class="counter-honor-caption">${t('counter_honor_caption')}</p>
+          <p class="counter-practice-name" id="counterPracticeName">${displayName}</p>
         </div>
-        <div class="counter-ripples" id="counterRipples"></div>
-      </div>
 
-      <div class="counter-stats" id="counterStats">
-        <div class="counter-stat">
-          <div class="counter-stat-val" id="ctrDaily">${ps.daily}</div>
-          <div class="counter-stat-lbl">${t('counter_daily')}</div>
-        </div>
-        <div class="counter-stat">
-          <div class="counter-stat-val" id="ctrTotal">${formatCount(ps.total)}</div>
-          <div class="counter-stat-lbl">${t('counter_total')}</div>
-        </div>
-        <div class="counter-stat counter-stat--accent">
-          <div class="counter-stat-val" id="ctrGoalVal">${ps.goal}</div>
-          <div class="counter-stat-lbl" id="ctrGoalLbl">${goalDone ? '\u2713 ' : ''}${t('counter_goal')}</div>
+        <div class="counter-focus">
+          <div class="counter-tap-area" id="counterTapArea" role="button" tabindex="0"
+               aria-label="${t('counter_tap_hint')}">
+            <div class="counter-ring counter-ring--outer"></div>
+            <svg class="counter-progress-svg" viewBox="0 0 200 200" id="counterProgressSvg" aria-hidden="true">
+              <circle class="counter-progress-bg" cx="100" cy="100" r="88"/>
+              <circle class="counter-progress-fill" id="counterProgressFill" cx="100" cy="100" r="88"
+                stroke-dasharray="${Math.round(2 * Math.PI * 88)}"
+                stroke-dashoffset="${Math.round(2 * Math.PI * 88 * (1 - beadPos / BEADS_PER_LOOP))}"/>
+            </svg>
+            <div class="counter-lotus-wrap">
+              <div class="counter-number" id="counterNumber">${session}</div>
+              <div class="counter-hint" id="counterHint">${t('counter_tap_hint')}</div>
+            </div>
+            <div class="counter-ripples" id="counterRipples"></div>
+          </div>
         </div>
       </div>
 
-      <div class="counter-progress-bar counter-progress-bar--counter" style="margin:0 auto;max-width:360px;width:100%">
-        <div class="counter-progress-bar-fill${goalDone ? ' counter-progress-bar-fill--done' : ''}"
-             id="ctrGoalBar" style="width:${goalPct}%"></div>
-      </div>
-      ${streak > 1 ? `<div class="counter-streak" id="counterStreak">${t('counter_streak').replace('{n}', streak)}</div>` : '<div class="counter-streak" id="counterStreak" style="display:none"></div>'}
+      <footer class="counter-footer">
+        <button type="button" class="counter-huixiang-primary" id="counterHuixiang">
+          <span class="counter-huixiang-primary__text">${t('counter_huixiang')}</span>
+        </button>
+        <p class="counter-namo" aria-hidden="true">${t('counter_namo')}</p>
+      </footer>
     </div>
-
-    <div class="counter-actions">
-      <button class="counter-action-btn counter-action-btn--huixiang" id="counterHuixiang">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7z"/>
-        </svg>
-        ${t('counter_huixiang')}
-      </button>
-    </div>
-
-    <div class="counter-namo">${t('counter_namo')}</div>
   `;
 }
 
@@ -416,27 +403,21 @@ function closeCounter(view, sourceTab, popHandler, escHandler, visHandler, optio
 function wireCounterEvents(view, data, _session) {
   let session = _session;
 
+  /* ── Cache all DOM references once ── */
   const els = {
     number: view.querySelector('#counterNumber'),
-    daily: view.querySelector('#ctrDaily'),
-    total: view.querySelector('#ctrTotal'),
-    bar: view.querySelector('#ctrGoalBar'),
-    goalVal: view.querySelector('#ctrGoalVal'),
-    goalLbl: view.querySelector('#ctrGoalLbl'),
     progressFill: view.querySelector('#counterProgressFill'),
+    hint: view.querySelector('#counterHint'),
     practice: view.querySelector('#counterPracticeName'),
     ripples: view.querySelector('#counterRipples'),
-    streak: view.querySelector('#counterStreak'),
   };
 
+  /* ── Full UI update (settings change, loop complete, goal done, reset) ── */
   function updateUI(bump = false) {
     const ps = getPracticeStats(data);
     const beadPos = ps.total % BEADS_PER_LOOP;
     const circum = Math.round(2 * Math.PI * 88);
     const offset = Math.round(circum * (1 - beadPos / BEADS_PER_LOOP));
-    const goalPct = ps.goal > 0 ? Math.min(100, Math.round(ps.daily / ps.goal * 100)) : 0;
-    const goalDone = ps.goal > 0 && ps.daily >= ps.goal;
-
     if (els.number) {
       els.number.textContent = session;
       if (bump) {
@@ -444,28 +425,12 @@ function wireCounterEvents(view, data, _session) {
         setTimeout(() => els.number.classList.remove('counter-number--bump'), 180);
       }
     }
-    if (els.daily) els.daily.textContent = String(ps.daily);
-    if (els.total) els.total.textContent = formatCount(ps.total);
-    if (els.bar) {
-      els.bar.style.width = goalPct + '%';
-      els.bar.classList.toggle('counter-progress-bar-fill--done', goalDone);
-    }
-    if (els.goalVal) els.goalVal.textContent = String(ps.goal);
-    if (els.goalLbl) els.goalLbl.textContent = (goalDone ? '\u2713 ' : '') + t('counter_goal');
     if (els.progressFill) els.progressFill.style.strokeDashoffset = offset;
+    if (els.hint) els.hint.style.display = session > 0 ? 'none' : '';
     if (els.practice) els.practice.textContent = getPracticeDisplayName(data);
-
-    const streak = getStreak(data);
-    if (els.streak) {
-      if (streak > 1) {
-        els.streak.textContent = t('counter_streak').replace('{n}', streak);
-        els.streak.style.display = '';
-      } else {
-        els.streak.style.display = 'none';
-      }
-    }
   }
 
+  /* ── Fast tap update — only the minimal DOM writes needed ── */
   function updateUIFast(bump) {
     const ps = getPracticeStats(data);
     const beadPos = ps.total % BEADS_PER_LOOP;
@@ -480,12 +445,7 @@ function wireCounterEvents(view, data, _session) {
       }
     }
     if (els.progressFill) els.progressFill.style.strokeDashoffset = offset;
-    if (els.daily) els.daily.textContent = String(ps.daily);
-    if (els.total) els.total.textContent = formatCount(ps.total);
-    if (els.bar) {
-      const goalPct = ps.goal > 0 ? Math.min(100, Math.round(ps.daily / ps.goal * 100)) : 0;
-      els.bar.style.width = goalPct + '%';
-    }
+    if (els.hint && session === 1) els.hint.style.display = 'none';
   }
 
   /* ── Ripple effect (pooled, max count limited) ── */
@@ -596,139 +556,21 @@ function wireCounterEvents(view, data, _session) {
     updateUI();
   };
 
-  const historyHooks = {
-    onDataChange: () => updateUI(),
-    resetSessionWithToast,
-    resetSessionQuiet,
-  };
-
-  view.querySelector('#counterMenu').addEventListener('click', () => {
-    showCounterMenu(view, data, historyHooks);
+  view.querySelector('#counterRecordsBtn').addEventListener('click', () => {
+    openHistory(view, data, {
+      onDataChange: () => updateUI(),
+      resetSessionWithToast,
+      resetSessionQuiet,
+    });
   });
 
+  /* ── 回向 button ── */
   const huixiangBtn = view.querySelector('#counterHuixiang');
   if (huixiangBtn) {
     huixiangBtn.addEventListener('click', () => {
       showHuixiangSheet(view, data, session);
     });
   }
-}
-
-/* ── 更多菜单（功课记录、常亮、切换法门等）── */
-function showCounterMenu(parentView, data, hooks) {
-  parentView.querySelectorAll('.counter-menu-sheet').forEach(el => el.remove());
-
-  const wakeLockOn = isWakeLockEnabled();
-  const sheet = document.createElement('div');
-  sheet.className = 'counter-goal-sheet counter-menu-sheet';
-  sheet.innerHTML = `
-    <div class="counter-goal-backdrop" id="menuBackdrop"></div>
-    <div class="counter-goal-panel">
-      <div class="counter-goal-panel-title">${t('more')}</div>
-      <div class="counter-menu-list">
-        <button type="button" class="counter-action-btn" id="menuClearSession">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          ${t('counter_clear')}
-        </button>
-        <button type="button" class="counter-action-btn" id="menuSetGoal">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/></svg>
-          ${t('counter_gongke')}
-        </button>
-        <button type="button" class="counter-action-btn" id="menuHistory">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
-          ${t('counter_records')}
-        </button>
-        <button type="button" class="counter-action-btn" id="menuWakeLock">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${wakeLockOn ? '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>' : '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>'}</svg>
-          ${wakeLockOn ? t('counter_wakelock_on') + ' · ' + t('counter_tool_wakelock') : t('counter_wakelock_off') + ' · ' + t('counter_tool_wakelock')}
-        </button>
-        <button type="button" class="counter-action-btn" id="menuSwitchPractice">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M18 3a3 3 0 0 0-3 3l-9 9a3 3 0 0 0 4.24 4.24l9-9A3 3 0 0 0 18 3z"/><line x1="3" y1="21" x2="6" y2="18"/></svg>
-          ${t('counter_practice_title')}
-        </button>
-        <button type="button" class="counter-action-btn" id="menuSharePoster">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-          ${t('counter_tool_share')}
-        </button>
-        <button type="button" class="counter-action-btn counter-action-btn--danger" id="menuResetAll">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-          ${t('counter_reset_all')}
-        </button>
-      </div>
-      <button type="button" class="counter-goal-cancel" id="menuCancel">${t('cancel')}</button>
-    </div>`;
-  parentView.appendChild(sheet);
-  requestAnimationFrame(() => sheet.classList.add('counter-goal-sheet--visible'));
-
-  let menuEsc;
-  const close = () => {
-    window.removeEventListener('keydown', menuEsc);
-    sheet.classList.remove('counter-goal-sheet--visible');
-    setTimeout(() => sheet.remove(), 250);
-  };
-  menuEsc = (e) => { if (e.key === 'Escape') close(); };
-  window.addEventListener('keydown', menuEsc);
-
-  sheet.querySelector('#menuBackdrop').addEventListener('click', close);
-  sheet.querySelector('#menuCancel').addEventListener('click', close);
-
-  sheet.querySelector('#menuClearSession').addEventListener('click', () => {
-    close();
-    setTimeout(() => hooks.resetSessionWithToast(), 260);
-  });
-
-  sheet.querySelector('#menuSetGoal').addEventListener('click', () => {
-    close();
-    setTimeout(() => showGoalPicker(parentView, data, () => hooks.onDataChange()), 260);
-  });
-
-  sheet.querySelector('#menuHistory').addEventListener('click', () => {
-    close();
-    setTimeout(() => openHistory(parentView, data, hooks), 260);
-  });
-
-  sheet.querySelector('#menuWakeLock').addEventListener('click', () => {
-    const nowOn = toggleWakeLockPreference();
-    haptic(15);
-    showToast(nowOn ? t('counter_toast_wakelock_on') : t('counter_toast_wakelock_off'));
-    close();
-  });
-
-  sheet.querySelector('#menuSharePoster').addEventListener('click', () => {
-    close();
-    setTimeout(() => {
-      const ps = getPracticeStats(data);
-      const streak = getStreak(data);
-      import('./counter-share.js').then(mod => {
-        mod.showSharePoster(parentView, {
-          practice: getPracticeDisplayName(data),
-          daily: ps.daily || 0,
-          total: ps.total || 0,
-          streak,
-        });
-      });
-    }, 260);
-  });
-
-  sheet.querySelector('#menuSwitchPractice').addEventListener('click', () => {
-    close();
-    setTimeout(() => showPracticePicker(parentView, data, () => {
-      hooks.resetSessionQuiet();
-      hooks.onDataChange();
-    }), 260);
-  });
-
-  sheet.querySelector('#menuResetAll').addEventListener('click', () => {
-    close();
-    setTimeout(() => {
-      if (!window.confirm(t('counter_reset_confirm'))) return;
-      resetAllCounterData(data);
-      haptic(30);
-      hooks.resetSessionQuiet();
-      hooks.onDataChange();
-      showToast(t('counter_reset_all'));
-    }, 260);
-  });
 }
 
 /**

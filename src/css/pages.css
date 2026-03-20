@@ -897,12 +897,14 @@
     }
 }
 
-/* === COUNTER VIEW === */
+/* === COUNTER VIEW — 极简念佛首页 === */
 .counter-view {
     position: fixed;
     inset: 0;
     z-index: 300;
-    background: var(--bg);
+    background:
+        radial-gradient(120% 80% at 50% -20%, var(--accent-glow), transparent 55%),
+        linear-gradient(180deg, var(--bg) 0%, var(--bg-secondary) 100%);
     display: flex;
     flex-direction: column;
     transform: translateY(100%);
@@ -932,6 +934,61 @@
     flex-shrink: 0;
 }
 
+.counter-header--minimal {
+    display: grid;
+    grid-template-columns: minmax(44px, auto) 1fr minmax(72px, auto);
+    align-items: center;
+    gap: 4px;
+    padding-left: 10px;
+    padding-right: 12px;
+    border-bottom-color: transparent;
+    background: linear-gradient(180deg, var(--bg-header) 70%, transparent);
+}
+
+.counter-header-slot {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.counter-header-slot--start {
+    justify-content: flex-start;
+}
+
+.counter-header-slot--center {
+    justify-content: center;
+}
+
+.counter-header-slot--end {
+    justify-content: flex-end;
+}
+
+.counter-records-entry {
+    -webkit-appearance: none;
+    appearance: none;
+    border: none;
+    background: transparent;
+    padding: 8px 4px;
+    font-family: var(--font-zh);
+    font-size: .78rem;
+    font-weight: 500;
+    color: var(--accent);
+    letter-spacing: .06em;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: opacity .2s, background .2s;
+    max-width: 100%;
+    white-space: nowrap;
+}
+
+.counter-records-entry:hover {
+    background: var(--accent-glow);
+}
+
+.counter-records-entry:active {
+    opacity: .85;
+}
+
 .counter-header-title {
     flex: 1;
     text-align: center;
@@ -939,6 +996,20 @@
     font-weight: 600;
     color: var(--text);
     letter-spacing: .03em;
+}
+
+.counter-header--minimal .counter-header-title {
+    font-size: .88rem;
+    font-weight: 600;
+    letter-spacing: .12em;
+    color: var(--text-secondary);
+}
+
+.counter-shell {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
 }
 
 .counter-back,
@@ -963,41 +1034,14 @@
     background: var(--bg-card-hover);
 }
 
-.counter-back svg {
+.counter-back svg,
+.counter-menu svg {
     display: block;
     stroke: currentColor;
     fill: none;
     stroke-width: 2;
     stroke-linecap: round;
     stroke-linejoin: round;
-}
-
-.counter-menu svg {
-    display: block;
-    stroke: none;
-    fill: currentColor;
-}
-
-.counter-menu-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.counter-menu-list .counter-action-btn {
-    flex: none;
-    width: 100%;
-    flex-direction: row;
-    justify-content: flex-start;
-    align-items: center;
-    padding: 13px 16px;
-    border-radius: var(--radius-sm);
-    font-size: .86rem;
-    gap: 12px;
-}
-
-.counter-menu-list .counter-action-btn svg {
-    flex-shrink: 0;
 }
 
 /* 屏幕唤醒锁切换按钮 */
@@ -1016,13 +1060,42 @@
 
 .counter-body {
     flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    padding: 16px 20px;
-    gap: 20px;
+    padding: 8px 22px 0;
     overflow: hidden;
+}
+
+.counter-honor-block {
+    width: 100%;
+    max-width: 340px;
+    text-align: center;
+    padding: 20px 8px 8px;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.counter-honor-caption {
+    margin: 0 0 10px;
+    font-size: .62rem;
+    font-weight: 600;
+    letter-spacing: .28em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    opacity: .85;
+}
+
+.counter-focus {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 0 16px;
 }
 
 /* Stats row */
@@ -1072,11 +1145,11 @@
     font-weight: 500;
 }
 
-/* Main tap area */
+/* Main tap area — 唯一计数热区；圣号在上方独立供奉区 */
 .counter-tap-area {
     position: relative;
-    width: min(260px, 65vw);
-    height: min(260px, 65vw);
+    width: min(272px, 72vw);
+    height: min(272px, 72vw);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -1132,17 +1205,19 @@
 
 .counter-lotus-wrap {
     position: absolute;
-    inset: 10%;
+    inset: 11%;
     border-radius: 50%;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    box-shadow: 0 8px 32px var(--accent-shadow), 0 2px 8px rgba(0,0,0,0.06);
+    background: color-mix(in srgb, var(--bg-card) 92%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+    box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.04) inset,
+        0 20px 48px -24px var(--accent-shadow);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 4px;
-    transition: transform .1s ease, box-shadow .1s ease;
+    gap: 6px;
+    transition: transform .22s cubic-bezier(0.22, 1, 0.36, 1), box-shadow .22s ease;
 }
 
 .counter-tap-area:active .counter-lotus-wrap {
@@ -1151,13 +1226,13 @@
 }
 
 .counter-number {
-    font-size: 2.8rem;
+    font-size: clamp(2.5rem, 9vw, 3.1rem);
     font-weight: 700;
     color: var(--text);
     line-height: 1;
     font-variant-numeric: tabular-nums;
     font-family: var(--font-en);
-    letter-spacing: -.02em;
+    letter-spacing: -.03em;
     transition: transform .12s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -1165,25 +1240,27 @@
     transform: scale(1.12);
 }
 
-/* 念诵名号 — 圆环内与次数一体展示 */
-.counter-lotus-wrap .counter-practice-name {
+/* 圣号：供奉展示，非交互 */
+.counter-practice-name {
     margin: 0;
-    padding: 0 6px;
-    font-size: .72rem;
-    line-height: 1.35;
-    font-weight: 600;
+    font-size: 1.02rem;
+    line-height: 1.65;
     color: var(--accent);
-    letter-spacing: .08em;
-    text-align: center;
+    letter-spacing: .18em;
+    font-weight: 500;
+    font-family: var(--font-serif);
     max-width: 100%;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-family: var(--font-zh);
+    text-align: center;
+    text-wrap: balance;
 }
 
-.counter-progress-bar--counter {
-    margin-top: -4px;
+.counter-hint {
+    font-size: .68rem;
+    color: var(--text-muted);
+    letter-spacing: .14em;
+    margin-top: 2px;
+    font-weight: 500;
+    opacity: .9;
 }
 
 /* Ripple effect */
@@ -1272,18 +1349,54 @@
     text-align: right;
 }
 
-/* Bottom actions */
+.counter-footer {
+    flex-shrink: 0;
+    padding: 0 24px 6px;
+    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+}
+
+.counter-huixiang-primary {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    max-width: 320px;
+    border: none;
+    border-radius: 999px;
+    padding: 14px 24px;
+    background: linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 75%, #2a1810) 100%);
+    color: var(--text-inverse);
+    font-family: var(--font-zh);
+    font-size: .9rem;
+    font-weight: 600;
+    letter-spacing: .2em;
+    cursor: pointer;
+    box-shadow: 0 10px 28px -8px var(--accent-shadow);
+    transition: transform .2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow .2s ease, filter .2s ease;
+}
+
+.counter-huixiang-primary:hover {
+    filter: brightness(1.04);
+    box-shadow: 0 14px 32px -10px var(--accent-shadow);
+}
+
+.counter-huixiang-primary:active {
+    transform: scale(0.98);
+}
+
+.counter-huixiang-primary__text {
+    display: block;
+}
+
+/* Bottom actions (legacy — 功课页已迁移至「功课记录」) */
 .counter-actions {
     display: flex;
     gap: 8px;
-    padding: 0 20px 8px;
+    padding: 0 20px 12px;
     flex-shrink: 0;
-    justify-content: center;
-}
-
-.counter-actions .counter-action-btn:only-child {
-    flex: 1;
-    max-width: 360px;
 }
 
 .counter-action-btn {
@@ -1748,13 +1861,20 @@
     letter-spacing: .04em;
 }
 
+/* 六字洪名 — 页脚供奉，非按钮、非热区 */
 .counter-namo {
+    margin: 0;
     text-align: center;
-    font-size: .78rem;
+    font-size: .74rem;
     color: var(--text-muted);
-    letter-spacing: .12em;
-    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-    flex-shrink: 0;
+    letter-spacing: .28em;
+    font-family: var(--font-serif);
+    font-weight: 400;
+    opacity: .72;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+    padding-bottom: 4px;
 }
 
 /* Goal picker sheet */
