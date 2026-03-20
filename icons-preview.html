@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SVG 图标预览 · 净土法音</title>
+  <style>
+    :root {
+      --bg: #faf9f6;
+      --text: #1a1a1a;
+      --muted: #6b6560;
+      --accent: #b8860b;
+      --accent-dim: #9a7209;
+      --border: #e8e4dc;
+      --card-bg: #f3f0ea;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 24px 20px 48px;
+      line-height: 1.5;
+    }
+
+    h1 {
+      font-size: 1.35rem;
+      font-weight: 600;
+      margin: 0 0 8px;
+    }
+
+    .ip-hint {
+      color: var(--muted);
+      font-size: 0.88rem;
+      margin-bottom: 28px;
+    }
+
+    .ip-hint code {
+      background: var(--card-bg);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.85em;
+    }
+
+    #icons-preview {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .ip-section {
+      margin-bottom: 32px;
+    }
+
+    .ip-section h2 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--muted);
+      margin: 0 0 14px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .ip-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 16px;
+    }
+
+    .ip-cell {
+      text-align: center;
+    }
+
+    .ip-swatch {
+      width: 100%;
+      min-height: 88px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    .ip-swatch :is(svg) {
+      width: 40px;
+      height: 40px;
+      stroke: var(--text);
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* 播放器描边按钮 */
+    .ip-stroke .ip-swatch svg {
+      stroke: var(--text);
+      fill: none;
+    }
+
+    /* 分类卡片（与 cards.css 接近） */
+    .ip-card .ip-swatch {
+      background: linear-gradient(135deg, rgba(184, 134, 11, 0.12) 0%, var(--card-bg) 100%);
+    }
+
+    .ip-card .ip-swatch svg {
+      width: 34px;
+      height: 34px;
+      stroke: var(--accent-dim);
+      fill: none;
+      stroke-width: 1.8;
+    }
+
+    /* 仿「播放全部」按钮上的反色填充 */
+    .ip-on-accent .ip-swatch {
+      background: var(--accent);
+    }
+
+    .ip-on-accent .ip-swatch svg {
+      stroke: none;
+      fill: var(--bg);
+      width: 28px;
+      height: 28px;
+    }
+
+    /* 底部大钮：深色圆 + 浅色图形 */
+    .ip-center .ip-swatch {
+      background: var(--accent);
+      border-color: transparent;
+    }
+
+    .ip-center .ip-swatch svg {
+      stroke: none;
+      fill: var(--bg);
+      width: 48px;
+      height: 48px;
+    }
+
+    .ip-heart-fill .ip-swatch svg {
+      stroke: none;
+      fill: var(--accent);
+    }
+
+    .ip-label {
+      margin-top: 8px;
+      font-size: 0.72rem;
+      color: var(--muted);
+      word-break: break-all;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>SVG 图标预览</h1>
+  <p class="ip-hint">本地运行 <code>npm run dev</code> 后打开 <code>/icons-preview.html</code>（例如
+    <code>http://localhost:8080/icons-preview.html</code>）。数据来自 <code>src/js/icons.js</code>。
+  </p>
+  <div id="icons-preview"></div>
+  <script type="module" src="/src/js/icons-preview-entry.js"></script>
+</body>
+
+</html>

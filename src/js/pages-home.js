@@ -2,7 +2,7 @@
 import { state } from './state.js';
 import { t, getLang } from './i18n.js';
 import { getDOM } from './dom.js';
-import { ICON_PLAY, ICON_PAUSE } from './icons.js';
+import { ICON_PLAY, ICON_PAUSE, HOME_CATEGORY_ICONS } from './icons.js';
 import { playList, togglePlay, getIsSwitching } from './player.js';
 import { getDailyRecommendation } from './ai-client.js';
 import { getHistory } from './history.js';
@@ -77,13 +77,6 @@ const DAILY_QUOTES = [
   { zh: '厌离娑婆，欣求极乐。', en: 'Renounce the Saha world; aspire to the Land of Ultimate Bliss.', author: '善导大师' },
 ];
 
-// Category icons for recommendation cards
-const CAT_ICONS = {
-  tingjingtai: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 3"/></svg>',
-  youshengshu: '<svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M4 19.5V5a2 2 0 012-2h14v14H6.5"/></svg>',
-  jingdiandusong: '<svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>',
-};
-
 /* ---------- Skeleton placeholder ---------- */
 function renderRecSkeletons(count) {
   return Array.from({ length: count }, () => `
@@ -100,7 +93,7 @@ function renderRecSkeletons(count) {
 
 /* ---------- Render a single AI recommendation card ---------- */
 function renderAiRecCard(rec) {
-  const icon = CAT_ICONS[rec.category_id] || CAT_ICONS.tingjingtai;
+  const icon = HOME_CATEGORY_ICONS[rec.category_id] || HOME_CATEGORY_ICONS.tingjingtai;
   return `
     <div class="home-rec-card" data-sid="${rec.series_id}" data-cat="${rec.category_id}"
          data-epnum="${rec.episode_num}" data-url="${rec.play_url || ''}">
@@ -184,7 +177,7 @@ function renderFallbackRecs(recList) {
     const introHtml = s.intro ? `<div class="home-rec-intro">${s.intro}</div>` : '';
     return `
     <div class="home-rec-card" data-sid="${s.id}" data-cat="${s.catId}">
-      <div class="home-rec-icon">${CAT_ICONS[s.catId] || CAT_ICONS.tingjingtai}</div>
+      <div class="home-rec-icon">${HOME_CATEGORY_ICONS[s.catId] || HOME_CATEGORY_ICONS.tingjingtai}</div>
       <div class="home-rec-body">
         <div class="home-rec-title">${s.title}</div>${introHtml}
         <div class="home-rec-sub">${s.speaker || ''} · ${s.totalEpisodes} ${t('episodes')}${pc}</div>

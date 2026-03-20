@@ -1,7 +1,7 @@
 /* ===== Audio Player Engine ===== */
 import { state } from './state.js';
 import { getDOM, RING_CIRCUMFERENCE } from './dom.js';
-import { SVG, ICON_PLAY, ICON_PAUSE, ICON_PLAY_FILLED, ICON_PAUSE_FILLED, ICON_APPRECIATE, ICON_APPRECIATE_FILLED } from './icons.js';
+import { SVG, CENTER_PLAY_INNER, ICON_PLAY, ICON_PAUSE, ICON_PLAY_FILLED, ICON_PAUSE_FILLED, ICON_APPRECIATE, ICON_APPRECIATE_FILLED } from './icons.js';
 import { t } from './i18n.js';
 import { fmt, showToast, seekAt, haptic, fmtCount, escapeHtml, shareContent } from './utils.js';
 import { addHistory, syncHistoryProgress, getHistory } from './history.js';
@@ -651,9 +651,7 @@ export function setPlayState(playing) {
   const icon = playing ? SVG.pause : SVG.play;
   dom.btnPlay.innerHTML = icon;
   dom.expPlay.innerHTML = icon;
-  dom.centerPlayIcon.innerHTML = playing ?
-    '<rect x="5" y="3" width="4" height="18" rx="1"/><rect x="15" y="3" width="4" height="18" rx="1"/>' :
-    '<polygon points="8,4 20,12 8,20"/>';
+  dom.centerPlayIcon.innerHTML = playing ? CENTER_PLAY_INNER.pause : CENTER_PLAY_INNER.play;
   dom.centerPlayBtn.classList.toggle('playing', playing);
   // Remove dim state once audio is loaded
   dom.centerPlayBtn.classList.remove('no-audio');

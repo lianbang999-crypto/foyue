@@ -14,7 +14,7 @@
 git clone https://github.com/lianbang999-crypto/foyue.git
 cd foyue
 npm install
-npm run dev       # 本地开发（端口 8080，API 代理到 foyue.org）
+npm run dev       # 本地开发（端口 8080，API 代理到 foyue.org）；图标预览见 /icons-preview.html
 npm run build     # 生产构建，输出到 dist/
 npm run preview   # 预览构建结果
 ```
@@ -43,6 +43,7 @@ npm run preview   # 预览构建结果
 ```
 foyue/
 ├── index.html                  # 主站 HTML 入口
+├── icons-preview.html          # SVG 图标预览页（dev / build 均可打开）
 ├── admin.html                  # 管理后台入口
 ├── package.json                # Vite 项目配置
 ├── vite.config.js              # Vite 构建配置（代码分割、代理）
@@ -69,7 +70,7 @@ foyue/
 │   │   ├── dom.js              #   DOM 元素引用（延迟初始化）
 │   │   ├── i18n.js             #   国际化
 │   │   ├── theme.js            #   主题管理
-│   │   ├── icons.js            #   SVG 图标常量
+│   │   ├── icons.js            #   SVG 图标库（播放器 / 分类 / 首页推荐）
 │   │   ├── utils.js            #   工具函数
 │   │   ├── player.js           #   播放器核心
 │   │   ├── history.js          #   播放历史
