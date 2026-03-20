@@ -35,6 +35,32 @@ let bgBlobUrl = '';
 let bgLoadDelayTimer = null;
 let bgLoadScheduledUrl = '';
 
+/* ===== Play count (server-side series.play_count) =====
+ * 旧逻辑：在 playCurrent() 末尾立刻 recordPlay → 加载失败也会 +1，且连点同一集会重复计数。
+ * 现逻辑：仅在 audio.play() 成功且仍为当前 callId 时上报，并对同一 series+集号短时去重。
+ */
+const PLAY_COUNT_DEBOUNCE_MS = 6000;
+let _lastPlayCountKey = '';
+let _lastPlayCountAt = 0;
+
+function episodeNumForPlayCount(tr) {
+  const id = tr.id;
+  if (typeof id === 'number' && Number.isInteger(id) && id >= 0) return id;
+  if (typeof id === 'string' && /^\d+$/.test(id)) return parseInt(id, 10);
+  return state.epIdx + 1;
+}
+
+function maybeRecordPlayCount(tr, callId) {
+  if (callId !== _playCurrentId) return;
+  const epNum = episodeNumForPlayCount(tr);
+  const key = `${tr.seriesId}:${epNum}`;
+  const now = Date.now();
+  if (key === _lastPlayCountKey && now - _lastPlayCountAt < PLAY_COUNT_DEBOUNCE_MS) return;
+  _lastPlayCountKey = key;
+  _lastPlayCountAt = now;
+  recordPlay(tr.seriesId, epNum);
+}
+
 /* ===== Network Quality State ===== */
 let _networkWeak = false;  // set true on stall or slow connection detection
 
@@ -419,6 +445,7 @@ function playCurrent() {
       startStallWatch();
       if (_networkWeak) setNetworkWeak(false);
       startBgFullLoad(tr.url);
+      maybeRecordPlayCount(tr, callId);
     }).catch(err => {
       clearSwitchingTimeout();
       isSwitching = false;
@@ -452,6 +479,7 @@ function playCurrent() {
         startStallWatch();
         if (_networkWeak) setNetworkWeak(false);
         startBgFullLoad(tr.url);
+        maybeRecordPlayCount(tr, callId);
       }).catch(err => {
         if (err.name === 'AbortError') return;
         // Otherwise fall back to waiting for canplay/loadeddata events
@@ -535,8 +563,6 @@ function playCurrent() {
 
   renderPlaylistItems();
   addHistory(tr, dom.audio);
-  // Record play to D1 database (non-blocking)
-  recordPlay(tr.seriesId, tr.id || state.epIdx + 1);
 }
 
 function updateUI(tr) {
