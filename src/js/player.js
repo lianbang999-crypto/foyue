@@ -727,6 +727,7 @@ export function onAudioError() {
   clearStallWatch();
   const dom = getDOM();
   if (!dom.audio.error || dom.audio.error.code === MediaError.MEDIA_ERR_ABORTED) return;
+  if (dom.audio.paused && !_playPending) return;
   isSwitching = false;
   setBuffering(false);
   clearStallWatch();

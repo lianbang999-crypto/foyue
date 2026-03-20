@@ -40,6 +40,10 @@ function persistHistory(chatHistory) {
 }
 
 /* ===== Public API ===== */
+export function prefetchAiChat() {
+  if (!chatInstance) createChatPage();
+}
+
 export function openAiChat() {
   if (chatInstance && chatInstance.isOpen) return;
   if (!chatInstance) createChatPage();
