@@ -681,14 +681,12 @@
     letter-spacing: .04em;
 }
 
-/* ── Dark/Ink theme adjustments ─────────────────────── */
-[data-theme="dark"] .gx-merit-pool,
-[data-theme="ink"] .gx-merit-pool {
+/* ── Dark theme adjustments ─────────────────────── */
+[data-theme="dark"] .gx-merit-pool {
     background: linear-gradient(145deg, var(--accent-glow), var(--bg-card));
 }
 
-[data-theme="dark"] .gx-vow-picker,
-[data-theme="ink"] .gx-vow-picker {
+[data-theme="dark"] .gx-vow-picker {
     background: var(--bg-secondary);
 }
 

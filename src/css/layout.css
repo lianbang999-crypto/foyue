@@ -97,12 +97,6 @@
   box-shadow: 0 -1px 0 rgba(255,255,255,0.04), 0 -8px 32px rgba(0, 0, 0, 0.3);
 }
 
-[data-theme="ink"] .tab-bar {
-  background: rgba(14, 15, 20, 0.92);
-  border-top: 1px solid rgba(232, 213, 176, 0.06);
-  box-shadow: 0 -1px 0 rgba(232,213,176,0.04), 0 -8px 32px rgba(0, 0, 0, 0.4);
-}
-
 .tab-bar.hide {
   transform: translateY(100%)
 }
