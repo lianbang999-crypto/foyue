@@ -1,0 +1,28 @@
+---
+description: 智能体技能调用规则 - 根据用户请求类型自动选择对应技能（设计、gstack、浏览等）
+alwaysApply: true
+---
+
+# 技能调用规则
+
+根据用户请求类型，按以下规则调用技能：
+
+## 设计类（先读 .impeccable.md）
+
+- **触发词**：重新设计、改版、UI/UX 优化、界面设计、样式改造
+- **技能**：frontend-design、Impeccable、ui-ux-pro-max
+- **规则**：先读取 .impeccable.md，再执行设计
+
+## 工程类（gstack slash 命令）
+
+- **网页浏览** → `/browse`（不用 mcp__claude-in-chrome__*）
+- **代码审查** → `/review`
+- **产品讨论** → `/office-hours`
+- **功能评审** → `/plan-ceo-review`
+- **设计评审** → `/plan-design-review` 或 `/design-review`
+- **QA 测试** → `/qa`
+- **发布 PR** → `/ship`
+
+## 故障排除
+
+gstack 技能不工作时：`cd .claude/skills/gstack && ./setup`

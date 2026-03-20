@@ -1,8 +1,20 @@
 # 净土法音 - 项目说明
 
-## gstack
+## 技能调用规则
 
-使用 gstack 的 `/browse` 技能进行所有网页浏览，**不要使用** `mcp__claude-in-chrome__*` 工具。
+1. **网页浏览**：使用 gstack 的 `/browse`，**不要使用** `mcp__claude-in-chrome__*` 工具。
+2. **UI/UX 设计、改版、界面优化**：先读取 `.impeccable.md`，激活 frontend-design、Impeccable、ui-ux-pro-max 技能。
+3. **代码审查**：使用 `/review`
+4. **产品/功能讨论**：使用 `/office-hours` 或 `/plan-ceo-review`
+5. **设计评审**：使用 `/plan-design-review` 或 `/design-review`
+6. **QA 测试**：使用 `/qa`
+7. **发布 PR**：使用 `/ship`
+
+详细提示词模板见 `docs/智能体技能调用指南.md`。
+
+---
+
+## gstack
 
 ### 可用技能
 
