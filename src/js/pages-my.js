@@ -7,9 +7,7 @@ import { getHistory, clearHistory } from './history.js';
 import { playList } from './player.js';
 import { promptInstall } from './pwa.js';
 import { showToast, escapeHtml } from './utils.js';
-// renderMessageWall is kept for backward-compat but community page uses gongxiu.js
 import { getCachedCount, getCachedSize, clearAudioCache } from './audio-cache.js';
-import { get as storeGet } from './store.js';
 
 function fmtRelTime(ts) {
   const d = Date.now() - ts;
@@ -36,15 +34,8 @@ function buildHistItem(h, i) {
 export function renderMyPage() {
   const dom = getDOM();
   const lang = getLang();
-  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page,.practice-page').forEach(el => el.remove());
 
-  // Auto-open 共修广场 if redirected from counter 回向
-  try {
-    if (sessionStorage.getItem('counter:goto-gongxiu')) {
-      sessionStorage.removeItem('counter:goto-gongxiu');
-      setTimeout(() => showGongxiuSubview(), 350);
-    }
-  } catch { }
   const page = document.createElement('div');
   page.className = 'my-page active';
   const themeText = { light: t('theme_light'), dark: t('theme_dark'), terracotta: t('theme_terracotta'), ink: t('theme_ink') }[getTheme()] || t('theme_light');
@@ -55,21 +46,6 @@ export function renderMyPage() {
   const histDesc = histCount > 0
     ? t('my_history_desc').replace('{n}', histCount)
     : t('my_history_empty_desc');
-
-  // Counter stats for subtitle
-  const counterData = storeGet('counter') || {};
-  let counterDesc = t('my_counter_desc');
-  if (counterData.practices) {
-    const practice = counterData.practice || '南无阿弥陀佛';
-    const ps = counterData.practices[practice];
-    if (ps && ps.total > 0) {
-      const displayName = practice === '__custom__' ? escapeHtml(counterData.customPractice || t('counter_goal_custom')) : escapeHtml(practice);
-      counterDesc = t('my_counter_total_desc').replace('{n}', ps.total) + ' · ' + displayName;
-    }
-  } else if (counterData.total > 0) {
-    // Backward compat: old flat structure
-    counterDesc = t('my_counter_total_desc').replace('{n}', counterData.total) + (counterData.practice ? ' · ' + escapeHtml(counterData.practice) : '');
-  }
 
   // Build install guide section
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
@@ -113,14 +89,6 @@ export function renderMyPage() {
     </div>
     <div class="my-section">
       <div class="my-list">
-        <div class="my-item" id="myHistoryCard">
-          <svg class="my-item-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          <div class="my-item-body">
-            <span class="my-item-label">${t('my_history')}</span>
-            <span class="my-item-desc">${histDesc}</span>
-          </div>
-          <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
-        </div>
         <div class="my-item" id="myWenkuCard">
           <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
           <div class="my-item-body">
@@ -129,23 +97,11 @@ export function renderMyPage() {
           </div>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
-        <div class="my-item" id="myCounterCard">
-          <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2z"/><path d="M12 6v6l4 2"/><path d="M8 2.5C5.4 3.9 3.5 6.3 3 9"/></svg>
+        <div class="my-item" id="myHistoryCard">
+          <svg class="my-item-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           <div class="my-item-body">
-            <span class="my-item-label">${t('my_counter')}</span>
-            <span class="my-item-desc">${counterDesc}</span>
-          </div>
-          <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
-        </div>
-        <div class="my-item" id="myGongxiuCard">
-          <svg class="my-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="9"/>
-            <path d="M8 12c0-2.2 1.8-4 4-4s4 1.8 4 4-1.8 4-4 4"/>
-            <path d="M12 16v2M12 6v2"/>
-          </svg>
-          <div class="my-item-body">
-            <span class="my-item-label">${t('my_gongxiu')}</span>
-            <span class="my-item-desc">${t('my_gongxiu_desc')}</span>
+            <span class="my-item-label">${t('my_history')}</span>
+            <span class="my-item-desc">${histDesc}</span>
           </div>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
@@ -175,10 +131,6 @@ export function renderMyPage() {
           <span class="my-item-value" id="myThemeValue">${themeText}</span>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
-      </div>
-    </div>
-    <div class="my-section">
-      <div class="my-list">
         <div class="my-item" id="myAboutItem">
           <svg class="my-item-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
           <span class="my-item-label" data-i18n="my_about">${t('my_about')}</span>
@@ -196,18 +148,10 @@ export function renderMyPage() {
   `;
   dom.contentArea.appendChild(page);
 
-  // Feature card clicks
   page.querySelector('#myHistoryCard').addEventListener('click', () => showHistorySubview());
-  page.querySelector('#myCounterCard').addEventListener('click', () => {
-    import('./counter.js').then(mod => mod.openCounter()).catch(err => {
-      console.error('[Counter] load failed:', err);
-      showToast('计数器加载失败，请刷新页面重试');
-    });
-  });
   page.querySelector('#myWenkuCard').addEventListener('click', () => {
     import('./wenku.js').then(mod => mod.renderWenkuHome(() => renderMyPage()));
   });
-  page.querySelector('#myGongxiuCard').addEventListener('click', () => showGongxiuSubview());
 
   // Prefetch wenku series data in background to speed up first open of 文库
   // Uses idle callback (or fallback timeout) so it doesn't compete with primary page rendering
@@ -270,7 +214,7 @@ export function renderMyPage() {
 
 function showHistorySubview() {
   const dom = getDOM();
-  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page,.practice-page').forEach(el => el.remove());
 
   const view = document.createElement('div');
   view.className = 'view active';

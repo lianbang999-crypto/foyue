@@ -34,6 +34,8 @@ import {
 } from './player.js';
 import { renderHomePage, invalidateHomePage } from './pages-home.js';
 import { renderMyPage } from './pages-my.js';
+import { renderMergedCategory } from './pages-category.js';
+import { renderPracticePage } from './pages-practice.js';
 import { openAiChat, closeAiChat, isAiChatOpen, updateAiContext, checkAiDeepLink } from './ai-chat.js';
 // ✅ 修复代码分割警告：统一使用动态导入，避免静态和动态导入混用
 // import { renderCategory, showEpisodes } from './pages-category.js';
@@ -244,7 +246,7 @@ async function ensureSeriesDetail(seriesId, categoryId) {
   });
 
   // Tabs
-  const TAB_I18N = { home: 'tab_home', tingjingtai: 'tab_lectures', youshengshu: 'tab_audiobooks', mypage: 'tab_my' };
+  const TAB_I18N = { home: 'tab_home', faying: 'tab_dharma', xiuxing: 'tab_practice', mypage: 'tab_my' };
 
   // One-time setup: scroll listener for translucent header (must not be inside tab click handler)
   dom.contentArea.addEventListener('scroll', () => {
@@ -277,16 +279,25 @@ async function ensureSeriesDetail(seriesId, categoryId) {
 
   document.querySelectorAll('.tab').forEach(btn => {
     btn.addEventListener('click', async () => {
-      // Close any open reader overlay before switching tabs
       closeWenkuReader();
       document.querySelectorAll('.tab').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
       btn.classList.add('active'); btn.setAttribute('aria-selected', 'true');
       state.tab = btn.dataset.tab; state.seriesId = null;
 
-      dom.navTitle.textContent = t(TAB_I18N[state.tab] || 'tab_lectures');
-      dom.navTitle.dataset.i18n = TAB_I18N[state.tab] || 'tab_lectures';
+      dom.navTitle.textContent = t(TAB_I18N[state.tab] || 'tab_dharma');
+      dom.navTitle.dataset.i18n = TAB_I18N[state.tab] || 'tab_dharma';
       if (state.tab === 'mypage') { renderMyPage(); }
       else if (state.tab === 'home') { renderHomePage(); }
+      else if (state.tab === 'xiuxing') {
+        renderPracticePage();
+      }
+      else if (state.tab === 'faying') {
+        if (!state.isDataFull && state.ensureFullData) {
+          showToast(t('loading_retry') || '连接中，请稍候...');
+          await state.ensureFullData({ rerenderHome: false });
+        }
+        renderMergedCategory();
+      }
       else {
         if (!state.isDataFull && state.ensureCategoryData) {
           showToast(t('loading_retry') || '连接中，请稍候...');
@@ -787,7 +798,7 @@ function needsImmediateFullData() {
     params.get('series') ||
     params.get('doc') ||
     params.get('wenku') ||
-    (tab && !['home', 'ai', 'wenku'].includes(tab)) ||
+    (tab && !['home', 'ai', 'wenku', 'xiuxing'].includes(tab)) ||
     (playerState?.seriesId && playerState.seriesId !== 'donglin-fohao')
   );
 }
@@ -839,12 +850,14 @@ async function loadData() {
       applyLoadedData(cached);
       dom.loader.style.display = 'none';
       if (state.tab === 'home') renderHomePage();
+      else if (state.tab === 'faying') renderMergedCategory();
+      else if (state.tab === 'xiuxing') renderPracticePage();
+      else if (state.tab === 'mypage') renderMyPage();
       else renderCategory(state.tab);
       if (!handleShareHash()) {
         restoreState(renderCategory, renderHomePage, renderMyPage);
         if (state.isFirstVisit && state.epIdx < 0) playDefaultTrack();
       }
-      // ✅ 修复：缓存模式下也处理深链接
       handleSeriesDeepLink();
       handleWenkuDeepLink();
       handleTabDeepLink();
@@ -893,13 +906,14 @@ async function loadData() {
     saveCachedData(state.data, initHash);
     dom.loader.style.display = 'none';
     if (state.tab === 'home') renderHomePage();
+    else if (state.tab === 'faying') renderMergedCategory();
+    else if (state.tab === 'xiuxing') renderPracticePage();
+    else if (state.tab === 'mypage') renderMyPage();
     else renderCategory(state.tab);
     if (!handleShareHash()) {
       restoreState(renderCategory, renderHomePage, renderMyPage);
-      // Default play on first visit
       if (state.isFirstVisit && state.epIdx < 0) playDefaultTrack();
     }
-    // Handle ?series= deep link from wenku
     handleSeriesDeepLink();
     // Handle ?wenku= and ?doc= deep links
     handleWenkuDeepLink();
@@ -1047,16 +1061,16 @@ function handleShareHash() {
   // Clear hash so it doesn't re-trigger on refresh
   history.replaceState(null, '', location.pathname + location.search);
   // Switch to the correct tab
-  const tabId = foundCatId === 'fohao' ? 'home' : foundCatId;
+  const tabId = 'faying';
   state.tab = tabId;
-  const TAB_I18N = { home: 'tab_home', tingjingtai: 'tab_lectures', youshengshu: 'tab_audiobooks', mypage: 'tab_my' };
+  const shareTabI18n = { home: 'tab_home', faying: 'tab_dharma', xiuxing: 'tab_practice', mypage: 'tab_my' };
   const dom = getDOM();
   document.querySelectorAll('.tab').forEach(b => {
     b.classList.toggle('active', b.dataset.tab === tabId);
     b.setAttribute('aria-selected', b.dataset.tab === tabId ? 'true' : 'false');
   });
-  dom.navTitle.textContent = t(TAB_I18N[tabId] || 'tab_lectures');
-  dom.navTitle.dataset.i18n = TAB_I18N[tabId] || 'tab_lectures';
+  dom.navTitle.textContent = t(shareTabI18n[tabId] || 'tab_dharma');
+  dom.navTitle.dataset.i18n = shareTabI18n[tabId] || 'tab_dharma';
   if (epId != null && !isNaN(epId)) {
     // Find episode index by id
     const epIdx = foundSeries.episodes.findIndex(ep => ep.id === epId);
@@ -1134,24 +1148,27 @@ function handleTabDeepLink() {
   const params = new URLSearchParams(window.location.search);
   const tab = params.get('tab');
   if (!tab) return;
-  const validTabs = ['home', 'tingjingtai', 'youshengshu', 'mypage'];
-  if (!validTabs.includes(tab)) return;
-  const TAB_I18N = { home: 'tab_home', tingjingtai: 'tab_lectures', youshengshu: 'tab_audiobooks', mypage: 'tab_my' };
-  state.tab = tab;
+  const tabMap = { tingjingtai: 'faying', youshengshu: 'faying' };
+  const resolvedTab = tabMap[tab] || tab;
+  const validTabs = ['home', 'faying', 'xiuxing', 'mypage'];
+  if (!validTabs.includes(resolvedTab)) return;
+  const deepLinkI18n = { home: 'tab_home', faying: 'tab_dharma', xiuxing: 'tab_practice', mypage: 'tab_my' };
+  state.tab = resolvedTab;
   const dom = getDOM();
   document.querySelectorAll('.tab').forEach(b => {
-    b.classList.toggle('active', b.dataset.tab === tab);
-    b.setAttribute('aria-selected', String(b.dataset.tab === tab));
+    b.classList.toggle('active', b.dataset.tab === resolvedTab);
+    b.setAttribute('aria-selected', String(b.dataset.tab === resolvedTab));
   });
-  dom.navTitle.textContent = t(TAB_I18N[tab] || 'tab_home');
-  dom.navTitle.dataset.i18n = TAB_I18N[tab] || 'tab_home';
+  dom.navTitle.textContent = t(deepLinkI18n[resolvedTab] || 'tab_home');
+  dom.navTitle.dataset.i18n = deepLinkI18n[resolvedTab] || 'tab_home';
   window.history.replaceState({}, '', window.location.pathname);
-  if (tab === 'mypage') renderMyPage();
-  else if (tab === 'home') renderHomePage();
-  else {
-    const renderTab = () => renderCategory(tab);
-    if (!state.isDataFull && state.ensureCategoryData) {
-      state.ensureCategoryData(tab).then(renderTab).catch(renderTab);
+  if (resolvedTab === 'mypage') renderMyPage();
+  else if (resolvedTab === 'home') renderHomePage();
+  else if (resolvedTab === 'xiuxing') renderPracticePage();
+  else if (resolvedTab === 'faying') {
+    const renderTab = () => renderMergedCategory();
+    if (!state.isDataFull && state.ensureFullData) {
+      state.ensureFullData({ rerenderHome: false }).then(renderTab).catch(renderTab);
     } else {
       renderTab();
     }
