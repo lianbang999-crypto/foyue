@@ -1305,36 +1305,64 @@ function buildHistoryHTML(data, year, month) {
     </div>`;
 }
 
-/** 补录 sheet — 为过去某日追加念佛声数 */
-function showBuluSheet(parentView, data, onDone) {
+/**
+ * 补录 sheet — 为某日追加念佛声数
+ *
+ * @param {HTMLElement} parentView
+ * @param {Object}      data       counter 数据
+ * @param {Function}    onDone     保存后刷新回调
+ * @param {string|null} fixedDate  YYYY-MM-DD；有值时直接显示该日期，无需选择；
+ *                                  null 时显示日期下拉选择（最近30天）
+ */
+function showBuluSheet(parentView, data, onDone, fixedDate = null) {
   parentView.querySelectorAll('.bulu-sheet').forEach(el => el.remove());
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  // 选项：今天 ~ 30天前
-  const dateOptions = Array.from({ length: 31 }, (_, i) => {
+  const practices = [...PRACTICE_PRESETS, ...(data.customPractices || [])];
+
+  // 当 fixedDate 有值时，计算该日已有的记录（显示为提示）
+  let existingInfo = '';
+  let dateLabel = '';
+  if (fixedDate) {
+    const existing = data.dailyLog?.[fixedDate] || {};
+    const parts = Object.entries(existing).filter(([, v]) => v > 0);
+    if (parts.length > 0) {
+      existingInfo = parts.map(([k, v]) => `${k} ${formatCount(v)}声`).join('、');
+    }
+    const [y, m, d] = fixedDate.split('-').map(Number);
+    const diff = Math.round((today - new Date(y, m - 1, d)) / 86400000);
+    dateLabel = diff === 0 ? '今天' : diff === 1 ? '昨天' : `${m}月${d}日`;
+  }
+
+  // 日期选项（fixedDate 为 null 时使用）
+  const dateOptions = fixedDate ? [] : Array.from({ length: 31 }, (_, i) => {
     const d = new Date(today); d.setDate(d.getDate() - i);
     const ds = mkDateStr(d);
     const label = i === 0 ? '今天' : i === 1 ? '昨天' : `${d.getMonth()+1}月${d.getDate()}日`;
     return { dateStr: ds, label };
   });
 
-  // All configured practices
-  const practices = [...PRACTICE_PRESETS, ...(data.customPractices || [])];
-
   const sheet = document.createElement('div');
   sheet.className = 'counter-goal-sheet bulu-sheet';
   sheet.innerHTML = `
     <div class="counter-goal-backdrop" id="buluBackdrop"></div>
     <div class="counter-goal-panel" style="gap:14px">
-      <div class="counter-goal-panel-title">补录念佛</div>
-      <div style="font-size:.76rem;color:var(--text-muted);margin-bottom:2px">为过去未记录的日子补充声数</div>
+      <div class="counter-goal-panel-title">记录念佛</div>
 
-      <div>
-        <div class="counter-goal-section-label">日期</div>
-        <select class="counter-goal-custom-input" id="buluDate" style="cursor:pointer">
-          ${dateOptions.map(o => `<option value="${o.dateStr}">${o.label}</option>`).join('')}
-        </select>
-      </div>
+      ${fixedDate ? `
+        <!-- 固定日期展示 -->
+        <div class="bulu-date-badge">
+          <span class="bulu-date-name">${dateLabel}</span>
+          <span class="bulu-date-existing">${existingInfo ? '已记录：' + escapeHtml(existingInfo) : '尚无记录'}</span>
+        </div>
+      ` : `
+        <div>
+          <div class="counter-goal-section-label">日期</div>
+          <select class="counter-goal-custom-input" id="buluDate" style="cursor:pointer">
+            ${dateOptions.map(o => `<option value="${o.dateStr}">${o.label}</option>`).join('')}
+          </select>
+        </div>
+      `}
 
       <div>
         <div class="counter-goal-section-label">功课</div>
@@ -1344,10 +1372,10 @@ function showBuluSheet(parentView, data, onDone) {
       </div>
 
       <div>
-        <div class="counter-goal-section-label">声数</div>
+        <div class="counter-goal-section-label">${existingInfo ? '追加声数' : '声数'}</div>
         <div class="counter-goal-custom-row">
           <input class="counter-goal-custom-input" id="buluCount" type="number" min="1"
-                 placeholder="请输入声数">
+                 placeholder="请输入声数" inputmode="numeric">
           <button class="counter-goal-custom-btn" id="buluConfirm">保存</button>
         </div>
       </div>
@@ -1365,12 +1393,12 @@ function showBuluSheet(parentView, data, onDone) {
 
   sheet.querySelector('#buluBackdrop').addEventListener('click', close);
   sheet.querySelector('#buluCancel').addEventListener('click', close);
-  sheet.querySelector('#buluCount').focus();
+  setTimeout(() => sheet.querySelector('#buluCount').focus(), 300);
 
   const confirm = () => {
-    const dateStr = sheet.querySelector('#buluDate').value;
+    const dateStr  = fixedDate || sheet.querySelector('#buluDate').value;
     const practice = sheet.querySelector('#buluPractice').value;
-    const count = parseInt(sheet.querySelector('#buluCount').value);
+    const count    = parseInt(sheet.querySelector('#buluCount').value);
     if (isNaN(count) || count < 1) {
       sheet.querySelector('#buluCount').classList.add('counter-goal-custom-input--error');
       showToast('请输入有效的正整数');
@@ -1378,18 +1406,15 @@ function showBuluSheet(parentView, data, onDone) {
       return;
     }
 
-    // Add to daily log
     if (!data.dailyLog) data.dailyLog = {};
     if (!data.dailyLog[dateStr]) data.dailyLog[dateStr] = {};
     data.dailyLog[dateStr][practice] = (data.dailyLog[dateStr][practice] || 0) + count;
 
-    // Update practice total (all-time cumulative)
     if (!data.practices[practice]) {
       data.practices[practice] = { total: 0, daily: 0, dailyDate: '', goal: 108 };
     }
     data.practices[practice].total += count;
 
-    // If it's today, also update daily count
     if (dateStr === todayDateStr()) {
       data.practices[practice].daily = (data.practices[practice].daily || 0) + count;
       data.practices[practice].dailyDate = dateStr;
@@ -1397,7 +1422,7 @@ function showBuluSheet(parentView, data, onDone) {
 
     patch('counter', data);
     haptic(15);
-    showToast(`${practice} ${formatCount(count)}声 已补录`);
+    showToast(`${escapeHtml(practice)} ${formatCount(count)}声 已记录`);
     close();
     onDone();
   };
@@ -1461,8 +1486,17 @@ export function openHistory(counterView, data) {
     setTimeout(() => hist.remove(), 320);
   });
 
+  // [+] 按钮：通用补录（带日期选择）
   hist.querySelector('#chBuluBtn').addEventListener('click', () => {
-    showBuluSheet(hist, data, refreshCalendar);
+    showBuluSheet(hist, data, refreshCalendar, null);
+  });
+
+  // 日历格点击 → 直接为该日补录（过去/今天有效，未来忽略）
+  hist.querySelector('#chiCalGrid').addEventListener('click', e => {
+    const cell = e.target.closest('.chi-cal-cell');
+    if (!cell || cell.classList.contains('chi-cal-cell--future')) return;
+    const dateStr = cell.dataset.date;
+    if (dateStr) showBuluSheet(hist, data, refreshCalendar, dateStr);
   });
 
   hist.querySelector('#chPrevMonth').addEventListener('click', () => {

@@ -2888,6 +2888,16 @@
     overflow: hidden;
 }
 
+/* 可点击（过去日期 + 今天） — 未来格子不加 pointer */
+.chi-cal-cell:not(.chi-cal-cell--future) {
+    cursor: pointer;
+}
+
+.chi-cal-cell:not(.chi-cal-cell--future):hover {
+    filter: brightness(0.94);
+    transform: scale(0.96);
+}
+
 /* 无记录 */
 .chi-cal-cell {
     background: var(--bg-secondary);
@@ -2971,3 +2981,27 @@
 .chi-legend-dot--none    { background: var(--bg-secondary); border: 1px solid var(--border); }
 .chi-legend-dot--partial { background: var(--accent-glow); border: 1px solid var(--border-active); }
 .chi-legend-dot--goal    { background: var(--accent); }
+
+/* 补录日期徽章（点日历格后显示） */
+.bulu-date-badge {
+    background: var(--accent-glow);
+    border: 1px solid var(--border-active);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.bulu-date-name {
+    font-size: .92rem;
+    font-weight: 600;
+    color: var(--accent);
+    font-family: var(--font-serif);
+    letter-spacing: .04em;
+}
+
+.bulu-date-existing {
+    font-size: .74rem;
+    color: var(--text-secondary);
+}
