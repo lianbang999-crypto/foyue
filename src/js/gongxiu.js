@@ -270,7 +270,6 @@ function buildSubmitSection(counterData, submitted) {
 export function renderGongxiu(container, onOpenCounter) {
   container.innerHTML = `
     <div class="gx-view" id="gxView">
-      <!-- 功德池 -->
       <div class="gx-merit-pool" id="gxMeritPool">
         <div class="gx-pool-loading">
           <svg class="gx-pool-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -279,15 +278,7 @@ export function renderGongxiu(container, onOpenCounter) {
           加载中…
         </div>
       </div>
-      <p class="gx-data-context" role="note">参与共修时提交的声数，与您在本设备念佛计数器中的<strong>今日</strong>记录一致；下方可补充回向与法名。</p>
 
-      <!-- 共修说明 -->
-      <div class="gx-banner">
-        <div class="gx-banner-text">${HUIXIANG_TEXT.replace(/\n/g, '<br>')}</div>
-        <div class="gx-banner-attr">— 莲池大师 回向文</div>
-      </div>
-
-      <!-- 参与共修 -->
       <div class="gx-section" id="gxParticipateSection">
         <div class="gx-section-title">参与今日共修</div>
         <div id="gxSubmitArea">
@@ -295,7 +286,6 @@ export function renderGongxiu(container, onOpenCounter) {
         </div>
       </div>
 
-      <!-- 莲友共修流 -->
       <div class="gx-section">
         <div class="gx-section-title">莲友共修</div>
         <div class="gx-entries" id="gxEntries">
@@ -303,16 +293,13 @@ export function renderGongxiu(container, onOpenCounter) {
         </div>
       </div>
 
-      <!-- 统一回向（用户手动触发） -->
       <div class="gx-section">
         <button class="gx-huixiang-btn" id="gxHuixiangBtn">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10"/>
-            <path d="M16 12l4 4-4 4"/><path d="M20 16H9a4 4 0 0 1 0-8h2"/>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7z"/>
           </svg>
-          今日统一回向
+          统一回向
         </button>
-        <div class="gx-huixiang-hint">合掌，将今日共修功德回向法界一切众生</div>
       </div>
 
       <div class="gx-footer">南无阿弥陀佛</div>
@@ -353,17 +340,13 @@ function renderData(view, data, onOpenCounter) {
       <div class="gx-pool-inner">
         <div class="gx-pool-today">
           <div class="gx-pool-num">${formatCount(data.today_total || 0)}</div>
-          <div class="gx-pool-lbl">今日共修声数</div>
+          <div class="gx-pool-lbl">今日 · ${data.today_participants || 0}人</div>
         </div>
         <div class="gx-pool-divider"></div>
         <div class="gx-pool-all">
           <div class="gx-pool-num gx-pool-num--sm">${formatCount(data.grand_total || 0)}</div>
-          <div class="gx-pool-lbl">累计功德</div>
+          <div class="gx-pool-lbl">累计</div>
         </div>
-      </div>
-      <div class="gx-pool-participants">
-        今日 <strong>${data.today_participants || 0}</strong> 位莲友共修
-        · 累计 <strong>${data.grand_participants || 0}</strong> 人次
       </div>`;
   }
 

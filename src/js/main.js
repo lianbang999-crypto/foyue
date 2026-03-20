@@ -34,7 +34,7 @@ import {
 } from './player.js';
 import { renderHomePage, invalidateHomePage } from './pages-home.js';
 import { renderMyPage } from './pages-my.js';
-import { openAiChat, closeAiChat, isAiChatOpen, updateAiContext, checkAiDeepLink } from './ai-chat.js';
+import { openAiChat, closeAiChat, isAiChatOpen, updateAiContext, checkAiDeepLink, prefetchAiChat } from './ai-chat.js';
 // ✅ 修复代码分割警告：统一使用动态导入，避免静态和动态导入混用
 // import { renderCategory, showEpisodes } from './pages-category.js';
 import { doSearch, openSearchOverlay, closeSearchOverlay, isSearchOverlayOpen } from './search.js';
@@ -696,6 +696,10 @@ async function ensureSeriesDetail(seriesId, categoryId) {
 
   // Initialise the store's cached-URL set from the real Cache API (background, non-blocking)
   initCachedUrls().catch(() => { });
+
+  const _idlePrefetch = () => prefetchAiChat();
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(_idlePrefetch, { timeout: 5000 });
+  else setTimeout(_idlePrefetch, 3000);
 
   setInterval(saveState, 15000);
 
