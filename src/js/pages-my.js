@@ -113,14 +113,6 @@ export function renderMyPage() {
     </div>
     <div class="my-section">
       <div class="my-list">
-        <div class="my-item" id="myHistoryCard">
-          <svg class="my-item-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          <div class="my-item-body">
-            <span class="my-item-label">${t('my_history')}</span>
-            <span class="my-item-desc">${histDesc}</span>
-          </div>
-          <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
-        </div>
         <div class="my-item" id="myWenkuCard">
           <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
           <div class="my-item-body">
@@ -146,6 +138,14 @@ export function renderMyPage() {
           <div class="my-item-body">
             <span class="my-item-label">${t('my_gongxiu')}</span>
             <span class="my-item-desc">${t('my_gongxiu_desc')}</span>
+          </div>
+          <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
+        </div>
+        <div class="my-item" id="myHistoryCard">
+          <svg class="my-item-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <div class="my-item-body">
+            <span class="my-item-label">${t('my_history')}</span>
+            <span class="my-item-desc">${histDesc}</span>
           </div>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
@@ -175,10 +175,6 @@ export function renderMyPage() {
           <span class="my-item-value" id="myThemeValue">${themeText}</span>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
-      </div>
-    </div>
-    <div class="my-section">
-      <div class="my-list">
         <div class="my-item" id="myAboutItem">
           <svg class="my-item-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
           <span class="my-item-label" data-i18n="my_about">${t('my_about')}</span>
