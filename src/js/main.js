@@ -289,7 +289,8 @@ async function ensureSeriesDetail(seriesId, categoryId) {
       else if (state.tab === 'home') { renderHomePage(); }
       else {
         if (!state.isDataFull && state.ensureCategoryData) {
-          showToast(t('loading_retry') || '连接中，请稍候...');
+          const catAlreadyLoaded = state.data?.categories?.find(cat => cat.id === state.tab)?._categoryLoaded;
+          if (!catAlreadyLoaded) showToast(t('loading_retry') || '连接中，请稍候...');
           await state.ensureCategoryData(state.tab);
         }
         renderCategory(state.tab);
