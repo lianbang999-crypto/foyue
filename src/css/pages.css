@@ -3166,3 +3166,8 @@
     font-size: .74rem;
     color: var(--text-secondary);
 }
+
+/* 我的 → 设置：隐藏首页/分类中的「播放次数」展示 */
+html.hide-public-play-count .public-play-count {
+    display: none !important;
+}

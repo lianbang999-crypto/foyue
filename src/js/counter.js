@@ -743,7 +743,7 @@ async function submitToGongxiu(data, count, vowInfo) {
   } catch { /* ignore */ }
 
   if (!savedNickname.trim()) {
-    showToast('可在「我的」中设置法名，便于在共修广场显示');
+    showToast('可在共修参与页填写法名，便于在广场显示');
   }
 
   return resp.json();

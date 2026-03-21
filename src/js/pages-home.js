@@ -173,7 +173,9 @@ function renderFallbackRecs(recList) {
   const picks = rotated.slice(0, 3);
 
   recList.innerHTML = picks.map(s => {
-    const pc = s.playCount ? " · " + (s.playCount >= 10000 ? (s.playCount / 10000).toFixed(1) + "w" : s.playCount) + (t("play_count_unit") || "次") : "";
+    const pc = s.playCount
+      ? `<span class="public-play-count"> · ${s.playCount >= 10000 ? (s.playCount / 10000).toFixed(1) + "w" : s.playCount}${t("play_count_unit") || "次"}</span>`
+      : "";
     const introHtml = s.intro ? `<div class="home-rec-intro">${s.intro}</div>` : '';
     return `
     <div class="home-rec-card" data-sid="${s.id}" data-cat="${s.catId}">
@@ -390,8 +392,7 @@ async function loadDailyRecommendations(page) {
       fetchDone = true;
       clearTimeout(fallbackTimer);
       console.warn('[Home] AI recommendation fetch failed:', err);
-      // Only replace if still showing skeleton
-      if (recList.querySelector('.home-rec-skeleton')) renderFallbackRecs(recList);
+      if (!recList.querySelector('.home-rec-card[data-epnum]')) renderFallbackRecs(recList);
     }
   }
 

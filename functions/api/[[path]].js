@@ -476,20 +476,20 @@ export async function onRequest(context) {
 
     // GET /api/wenku/series — 获取文库系列列表
     if (path === '/api/wenku/series' && method === 'GET') {
-      return json(await handleWenkuSeries(db), cors);
+      return json(await handleWenkuSeries(db), cors, 200, 'public, max-age=180, stale-while-revalidate=3600');
     }
 
     // GET /api/wenku/documents?series= — 获取系列文档列表
     if (path === '/api/wenku/documents' && method === 'GET') {
       const series = url.searchParams.get('series');
       if (!series) return json({ error: 'Missing series parameter' }, cors, 400);
-      return json(await handleWenkuDocuments(db, series), cors);
+      return json(await handleWenkuDocuments(db, series), cors, 200, 'public, max-age=180, stale-while-revalidate=3600');
     }
 
     // GET /api/wenku/documents/:id — 获取单个文档（含内容）
     const wenkuDocMatch = path.match(/^\/api\/wenku\/documents\/(.+)$/);
     if (wenkuDocMatch && method === 'GET') {
-      return json(await handleWenkuDocument(db, decodeURIComponent(wenkuDocMatch[1])), cors);
+      return json(await handleWenkuDocument(db, decodeURIComponent(wenkuDocMatch[1])), cors, 200, 'public, max-age=120, stale-while-revalidate=600');
     }
 
     // GET /api/wenku/search?q= — 搜索文库
@@ -2321,6 +2321,25 @@ ${epDesc}
 }
 
 /**
+ * 将 AI 返回的推荐语与选中的集对齐（支持按数组顺序或 JSON 里的 index 字段 1-based）
+ */
+function mergeEpisodeIntros(episodes, intros) {
+  return episodes.map((ep, i) => {
+    let aiIntro = ep.series_intro || '';
+    if (!Array.isArray(intros) || !intros.length) return { ...ep, ai_intro: aiIntro };
+    const byIdx = intros.find(
+      x => x && Number(x.index) === i + 1
+    );
+    const fromMap = byIdx && typeof byIdx.intro === 'string' ? byIdx.intro.trim() : '';
+    const item = intros[i];
+    const fromPos = item && typeof item.intro === 'string' ? item.intro.trim() : '';
+    if (fromMap) aiIntro = fromMap;
+    else if (fromPos) aiIntro = fromPos;
+    return { ...ep, ai_intro: aiIntro };
+  });
+}
+
+/**
  * GET /api/ai/daily-recommend — 每日 AI 推荐
  */
 async function handleDailyRecommend(env, cors, ctx) {
@@ -2328,31 +2347,45 @@ async function handleDailyRecommend(env, cors, ctx) {
   const dateKey = new Date().toISOString().slice(0, 10);
   const startMs = Date.now();
 
-  // 1. 查缓存
-  const cached = await db.prepare(
+  let row = await db.prepare(
     `SELECT recommendations, status FROM ai_daily_recommendations WHERE date_key = ?`
   ).bind(dateKey).first();
 
-  if (cached && cached.status === 'ready') {
-    return json({
-      date: dateKey,
-      recommendations: JSON.parse(cached.recommendations),
-      cached: true,
-    }, cors, 200, 'public, max-age=300');
+  if (row && row.status === 'ready') {
+    try {
+      return json({
+        date: dateKey,
+        recommendations: JSON.parse(row.recommendations),
+        cached: true,
+      }, cors, 200, 'public, max-age=300');
+    } catch (e) {
+      console.warn('[DailyRec] Corrupt recommendations JSON, will regenerate:', e.message);
+      await db.prepare(`DELETE FROM ai_daily_recommendations WHERE date_key = ?`).bind(dateKey).run();
+      row = null;
+    }
   }
 
-  if (cached && cached.status === 'generating') {
+  if (row && row.status === 'generating') {
     return json({ date: dateKey, recommendations: null, generating: true }, cors, 200, 'no-store');
   }
 
-  // 2. 插入锁行
-  try {
+  // failed 或刚删掉坏缓存：获取生成锁（不可对已有 date_key 再 INSERT，否则会误判成 generating）
+  if (row && row.status === 'failed') {
     await db.prepare(
-      `INSERT INTO ai_daily_recommendations (date_key, recommendations, model, status)
-       VALUES (?, '[]', 'pending', 'generating')`
+      `UPDATE ai_daily_recommendations
+       SET status = 'generating', recommendations = '[]', model = 'pending', error = NULL
+       WHERE date_key = ?`
     ).bind(dateKey).run();
-  } catch (e) {
-    // UNIQUE 冲突 — 另一个请求正在生成
+  } else if (!row) {
+    try {
+      await db.prepare(
+        `INSERT INTO ai_daily_recommendations (date_key, recommendations, model, status)
+         VALUES (?, '[]', 'pending', 'generating')`
+      ).bind(dateKey).run();
+    } catch (e) {
+      return json({ date: dateKey, recommendations: null, generating: true }, cors, 200, 'no-store');
+    }
+  } else {
     return json({ date: dateKey, recommendations: null, generating: true }, cors, 200, 'no-store');
   }
 
@@ -2369,11 +2402,7 @@ async function handleDailyRecommend(env, cors, ctx) {
     // AI 生成推荐语
     const intros = await generateRecommendIntros(env, episodes, contexts, ctx);
 
-    // 合并推荐语
-    const recommendations = episodes.map((ep, i) => {
-      const aiIntro = intros && intros[i] ? intros[i].intro : ep.series_intro;
-      return { ...ep, ai_intro: aiIntro };
-    });
+    const recommendations = mergeEpisodeIntros(episodes, intros);
 
     const genMs = Date.now() - startMs;
 

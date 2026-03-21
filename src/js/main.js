@@ -18,6 +18,7 @@ import { state } from './state.js';
 import { initDOM, getDOM } from './dom.js';
 import { initLang, applyI18n, t } from './i18n.js';
 import { initTheme } from './theme.js';
+import { syncHidePublicPlayCountClass } from './prefs.js';
 import { seekCalc, seekUI, seekCommit, showToast, showFloatText, haptic } from './utils.js';
 import { seedCachedDurationsFromData, seedCachedDurationsFromEpisodes } from './duration-cache.js';
 import {
@@ -217,6 +218,7 @@ async function ensureSeriesDetail(seriesId, categoryId) {
   // Language & Theme
   initLang();
   initTheme();
+  syncHidePublicPlayCountClass();
 
   // DOM refs
   const dom = initDOM();
@@ -693,7 +695,14 @@ async function ensureSeriesDetail(seriesId, categoryId) {
   window.addEventListener('online', tryNetworkRecovery);
 
   applyI18n();
-  loadData();
+  loadData().then(() => {
+    const warmWenku = () => import('./wenku-api.js').then(m => m.getWenkuSeries()).catch(() => {});
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(warmWenku, { timeout: 8000 });
+    } else {
+      setTimeout(warmWenku, 2000);
+    }
+  });
 
   // Initialise the store's cached-URL set from the real Cache API (background, non-blocking)
   initCachedUrls().catch(() => { });
