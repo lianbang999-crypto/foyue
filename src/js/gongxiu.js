@@ -192,7 +192,7 @@ function buildSubmitSection(counterData, submitted) {
       ? `<div class="gx-submitted-merge">您今日念佛 <strong>${formatCount(counterData.daily)}</strong> 声已汇入共修功德。</div>`
       : '';
     const nameHint = noName
-      ? `<div class="gx-submitted-name-hint">当前以「莲友」显示。下次参与共修时可填写法名，莲友共修流中更易相认。</div>`
+      ? `<div class="gx-submitted-name-hint">当前以「莲友」显示。可在「我的 → 法名」设定称呼，莲友共修流中更易相认。</div>`
       : '';
     return `
       <div class="gx-submitted-banner">

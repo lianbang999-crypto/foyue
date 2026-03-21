@@ -33,11 +33,9 @@ export function renderCategory(tabId) {
     card.className = 'card' + (isPlaying ? ' now-playing' : '');
     const introHtml = s.intro ? `<div class="card-intro">${escapeHtml(s.intro)}</div>` : '';
     const playTag = isPlaying ? `<span class="card-playing-tag">${t('now_playing')}</span>` : '';
-    const playCountHtml = s.playCount
-      ? `<span class="public-play-count"> \u00B7 ${fmtCount(s.playCount)}${t('play_count_unit') || '\u6B21'}</span>`
-      : '';
+    const playCountText = s.playCount ? ` \u00B7 ${fmtCount(s.playCount)}${t('play_count_unit') || '\u6B21'}` : '';
     card.innerHTML = `<div class="card-icon">${CATEGORY_ICONS[tabId] || CATEGORY_ICONS.tingjingtai}</div>
-      <div class="card-body"><div class="card-title">${escapeHtml(s.title)}${playTag}</div>${introHtml}<div class="card-meta">${escapeHtml(s.speaker || '')} \u00B7 ${s.totalEpisodes} ${unit}${playCountHtml}</div></div>
+      <div class="card-body"><div class="card-title">${escapeHtml(s.title)}${playTag}</div>${introHtml}<div class="card-meta">${escapeHtml(s.speaker || '')} \u00B7 ${s.totalEpisodes} ${unit}${playCountText}</div></div>
       <span class="card-arrow"><svg viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg></span>`;
     card.addEventListener('click', () => showEpisodes(s, tabId));
     list.appendChild(card);
@@ -73,7 +71,7 @@ export async function showEpisodes(series, tabId) {
   view.className = 'view active ep-view';
   view.innerHTML = `<div class="ep-header">
     <button class="btn-back" id="backBtn"><svg viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg></button>
-    <div class="ep-header-info"><div class="ep-header-title">${escapeHtml(series.title)}</div><div class="ep-header-sub">${escapeHtml(series.speaker || '')} \u00B7 ${series.totalEpisodes} ${unit}<span id="epPlayCount" class="public-play-count"></span></div>${introHdr}</div>
+    <div class="ep-header-info"><div class="ep-header-title">${escapeHtml(series.title)}</div><div class="ep-header-sub">${escapeHtml(series.speaker || '')} \u00B7 ${series.totalEpisodes} ${unit}<span id="epPlayCount"></span></div>${introHdr}</div>
     <button class="btn-play-all" id="playAllBtn" aria-label="${t('play_all')}"><svg viewBox="0 0 24 24"><polygon points="8,4 20,12 8,20"/></svg></button>
     <button class="btn-share-series" id="shareSeriesBtn" aria-label="Share"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
   </div><div class="ep-actions" id="epActions"></div><ul class="ep-list" id="epList"></ul>`;

@@ -3,15 +3,7 @@ import { state } from './state.js';
 import { t } from './i18n.js';
 import { getDOM } from './dom.js';
 import { escapeHtml, debounce, showToast } from './utils.js';
-import {
-  getWenkuSeries,
-  getWenkuDocuments,
-  searchWenku,
-  peekWenkuSeriesSync,
-  peekWenkuDocumentsSync,
-  wenkuSeriesListSig,
-  wenkuDocsListSig,
-} from './wenku-api.js';
+import { getWenkuSeries, getWenkuDocuments, searchWenku } from './wenku-api.js';
 
 /* Bookmark helpers — localStorage based, capped at 100 entries */
 const BM_KEY = 'wenku-bookmarks';
@@ -108,32 +100,18 @@ export async function renderWenkuHome(backFn, { skipPush } = {}) {
 
   const content = page.querySelector('#wenkuHomeContent');
 
-  const peekSeries = peekWenkuSeriesSync();
-  if (peekSeries?.series?.length) {
-    content.dataset.wenkuSig = wenkuSeriesListSig(peekSeries);
-    content.innerHTML = buildHomeContent(peekSeries);
-    wireHomeEvents(content, backFn);
-  }
-
-  attachWenkuSeriesRefreshListener(content, backFn);
-
   let data;
   try {
     data = await getWenkuSeries();
   } catch { data = null; }
 
   if (!data || !data.series || !data.series.length) {
-    if (!peekSeries?.series?.length) {
-      content.innerHTML = buildErrorOrEmpty(data === null, () => renderWenkuHome(backFn));
-    }
+    content.innerHTML = buildErrorOrEmpty(data === null, () => renderWenkuHome(backFn));
     return;
   }
 
-  if (content.dataset.wenkuSig !== wenkuSeriesListSig(data)) {
-    content.dataset.wenkuSig = wenkuSeriesListSig(data);
-    content.innerHTML = buildHomeContent(data);
-    wireHomeEvents(content, backFn);
-  }
+  content.innerHTML = buildHomeContent(data);
+  wireHomeEvents(content, backFn);
 
   // Restore scroll position
   if (_homeScrollTop > 0) {
@@ -171,37 +149,16 @@ export async function renderWenkuSeries(seriesName, backFn, { skipPush } = {}) {
 
   const content = page.querySelector('#wenkuSeriesContent');
 
-  const peekDocs = peekWenkuDocumentsSync(seriesName);
-  if (peekDocs?.documents?.length) {
-    fillWenkuSeriesContent(content, peekDocs);
-  }
-
-  attachWenkuDocsRefreshListener(content, seriesName);
-
   let data;
   try {
     data = await getWenkuDocuments(seriesName);
   } catch { data = null; }
 
   if (!data || !data.documents || !data.documents.length) {
-    if (!peekDocs?.documents?.length) {
-      content.innerHTML = buildErrorOrEmpty(data === null, () => renderWenkuSeries(seriesName, backFn));
-    }
+    content.innerHTML = buildErrorOrEmpty(data === null, () => renderWenkuSeries(seriesName, backFn));
     return;
   }
 
-  if (content.dataset.wenkuDocsSig !== wenkuDocsListSig(data)) {
-    fillWenkuSeriesContent(content, data);
-  }
-
-  // Restore scroll position
-  if (_seriesScrollTop > 0) {
-    requestAnimationFrame(() => { dom.contentArea.scrollTop = _seriesScrollTop; _seriesScrollTop = 0; });
-  }
-}
-
-function fillWenkuSeriesContent(content, data) {
-  content.dataset.wenkuDocsSig = wenkuDocsListSig(data);
   const bookmarks = getBookmarks();
   let html = `<div class="wenku-section-title">${data.documents.length} ${t('wenku_lectures_suffix') || '讲'}</div>`;
   html += '<div class="wenku-ep-list">';
@@ -228,38 +185,11 @@ function fillWenkuSeriesContent(content, data) {
       import('./wenku-reader.js').then(mod => mod.openReader(docId)).catch(() => showToast(t('loading_fail') || '加载失败'));
     });
   });
-}
 
-function attachWenkuSeriesRefreshListener(content, backFn) {
-  const handler = (e) => {
-    if (e.detail?.type !== 'series' || !e.detail?.data?.series?.length) return;
-    if (!document.body.contains(content)) {
-      window.removeEventListener('wenku:cache-updated', handler);
-      return;
-    }
-    const d = e.detail.data;
-    if (content.dataset.wenkuSig === wenkuSeriesListSig(d)) return;
-    content.dataset.wenkuSig = wenkuSeriesListSig(d);
-    content.innerHTML = buildHomeContent(d);
-    wireHomeEvents(content, backFn);
-  };
-  window.addEventListener('wenku:cache-updated', handler);
-}
-
-function attachWenkuDocsRefreshListener(content, seriesName) {
-  const handler = (e) => {
-    if (e.detail?.type !== 'docs' || e.detail.seriesName !== seriesName || !e.detail?.data?.documents?.length) {
-      return;
-    }
-    if (!document.body.contains(content)) {
-      window.removeEventListener('wenku:cache-updated', handler);
-      return;
-    }
-    const d = e.detail.data;
-    if (content.dataset.wenkuDocsSig === wenkuDocsListSig(d)) return;
-    fillWenkuSeriesContent(content, d);
-  };
-  window.addEventListener('wenku:cache-updated', handler);
+  // Restore scroll position
+  if (_seriesScrollTop > 0) {
+    requestAnimationFrame(() => { dom.contentArea.scrollTop = _seriesScrollTop; _seriesScrollTop = 0; });
+  }
 }
 
 /* ===== Build Helpers ===== */

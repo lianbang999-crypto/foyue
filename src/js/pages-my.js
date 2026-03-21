@@ -11,7 +11,6 @@ import { showToast, escapeHtml } from './utils.js';
 import { getCachedCount, getCachedSize, clearAudioCache } from './audio-cache.js';
 import { get as storeGet } from './store.js';
 import { FEATURE_GONGXIU_PLAZA } from './feature-flags.js';
-import { getHidePublicPlayCount, setHidePublicPlayCount } from './prefs.js';
 
 function fmtRelTime(ts) {
   const d = Date.now() - ts;
@@ -153,6 +152,15 @@ export function renderMyPage() {
     <div class="my-section">
       <div class="my-section-title" data-i18n="my_settings">${t('my_settings')}</div>
       <div class="my-list">
+        <div class="my-item" id="myDharmaNameItem">
+          <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <div class="my-item-body">
+            <span class="my-item-label">法名</span>
+            <span class="my-item-desc" style="font-size:.72rem;color:var(--text-muted)">${FEATURE_GONGXIU_PLAZA ? '共修广场中的长期身份' : '念佛回向等场景中的称呼'}</span>
+          </div>
+          <span class="my-item-value" id="myDharmaNameValue">${((() => { try { return localStorage.getItem('gongxiu-nickname') || ''; } catch { return ''; } })()) || '未设置'}</span>
+          <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
+        </div>
         <div class="my-item" id="myLangItem">
           <svg class="my-item-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
           <span class="my-item-label" data-i18n="my_lang">${t('my_lang')}</span>
@@ -163,15 +171,6 @@ export function renderMyPage() {
           <svg class="my-item-icon" viewBox="0 0 24 24">${getTheme() === 'dark' || getTheme() === 'ink' ? '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>' : '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>'}</svg>
           <span class="my-item-label" data-i18n="my_theme">${t('my_theme')}</span>
           <span class="my-item-value" id="myThemeValue">${themeText}</span>
-          <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
-        </div>
-        <div class="my-item" id="myPlayCountItem">
-          <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
-          <div class="my-item-body">
-            <span class="my-item-label" data-i18n="my_play_count_visibility">${t('my_play_count_visibility')}</span>
-            <span class="my-item-desc" style="font-size:.72rem;color:var(--text-muted)" data-i18n="my_play_count_visibility_desc">${t('my_play_count_visibility_desc')}</span>
-          </div>
-          <span class="my-item-value" id="myPlayCountValue">${getHidePublicPlayCount() ? t('my_play_count_hidden_label') : t('my_play_count_visible_label')}</span>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
         <div class="my-item" id="myAboutItem">
@@ -246,6 +245,9 @@ export function renderMyPage() {
   }
 
   // Wire up settings items
+  page.querySelector('#myDharmaNameItem').addEventListener('click', () => {
+    showDharmaNameSheet(page);
+  });
   page.querySelector('#myLangItem').addEventListener('click', () => {
     const langs = ['zh', 'en', 'fr'];
     const i = (langs.indexOf(getLang()) + 1) % langs.length;
@@ -253,10 +255,6 @@ export function renderMyPage() {
   });
   page.querySelector('#myThemeItem').addEventListener('click', () => {
     toggleTheme();
-    renderMyPage();
-  });
-  page.querySelector('#myPlayCountItem').addEventListener('click', () => {
-    setHidePublicPlayCount(!getHidePublicPlayCount());
     renderMyPage();
   });
   page.querySelector('#myAboutItem').addEventListener('click', () => {
@@ -364,5 +362,56 @@ export function showGongxiuSubview() {
   panel.querySelector('#gxFsBack').addEventListener('click', () => {
     panel.classList.remove('gx-fullscreen--in');
     setTimeout(() => panel.remove(), 320);
+  });
+}
+
+/** 法名设置 sheet —— 简洁输入框，与共修广场共用同一 localStorage key */
+function showDharmaNameSheet(parentPage) {
+  document.querySelectorAll('.dharma-name-sheet').forEach(el => el.remove());
+
+  const saved = (() => { try { return localStorage.getItem('gongxiu-nickname') || ''; } catch { return ''; } })();
+  const sheet = document.createElement('div');
+  sheet.className = 'counter-goal-sheet dharma-name-sheet';
+  sheet.innerHTML = `
+    <div class="counter-goal-backdrop" id="dnBackdrop"></div>
+    <div class="counter-goal-panel" style="gap:14px">
+      <div class="counter-goal-panel-title">设定法名</div>
+      <div style="font-size:.78rem;color:var(--text-secondary);line-height:1.6;margin-bottom:2px">
+        ${FEATURE_GONGXIU_PLAZA ? '法名是您在共修广场的长期身份，回向时也会以法名记录。' : '法名将在念佛回向等场景中使用。'}<br>
+        <span style="color:var(--text-muted)">如：净空、妙莲、法喜、法缘…</span>
+      </div>
+      <div class="counter-goal-custom-row">
+        <input class="counter-goal-custom-input" id="dnInput" type="text" maxlength="20"
+               placeholder="请输入法名" value="${escapeHtml(saved)}" autocomplete="off">
+        <button class="counter-goal-custom-btn" id="dnConfirm">保存</button>
+      </div>
+      <button class="counter-goal-cancel" id="dnCancel">取消</button>
+    </div>`;
+
+  document.getElementById('app').appendChild(sheet);
+  requestAnimationFrame(() => sheet.classList.add('counter-goal-sheet--visible'));
+
+  const close = () => {
+    sheet.classList.remove('counter-goal-sheet--visible');
+    setTimeout(() => sheet.remove(), 250);
+  };
+
+  sheet.querySelector('#dnBackdrop').addEventListener('click', close);
+  sheet.querySelector('#dnCancel').addEventListener('click', close);
+  sheet.querySelector('#dnInput').focus();
+
+  const save = () => {
+    const val = sheet.querySelector('#dnInput').value.trim();
+    try { localStorage.setItem('gongxiu-nickname', val.slice(0, 20)); } catch { }
+    // Update display in my-page
+    const el = parentPage.querySelector('#myDharmaNameValue');
+    if (el) el.textContent = val || '未设置';
+    showToast(val ? `法名已设为：${val}` : '法名已清除');
+    close();
+  };
+
+  sheet.querySelector('#dnConfirm').addEventListener('click', save);
+  sheet.querySelector('#dnInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); save(); }
   });
 }
