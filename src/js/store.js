@@ -1,6 +1,6 @@
 /* ===== Unified App Store ===== */
 /* Single localStorage key ('foyue_store') manages all lightweight persisted data.
- * Structure: { player, history, durations, appreciated, cachedUrls }
+ * Structure: { player, history, durations, appreciated, cachedUrls, ... }
  * All modules should import from this file instead of touching localStorage directly.
  */
 
@@ -13,6 +13,22 @@ const _defaults = () => ({
   durations:  {},
   appreciated: [],
   cachedUrls: [],
+  profile: {
+    dharmaName: '',
+    messageNickname: '',
+  },
+  preferences: {
+    counterCustomGoal: 0,
+    huixiangAnotherVow: '',
+    wakeLockEnabled: true,
+  },
+  gongxiu: {
+    submittedDate: '',
+  },
+  monitor: {
+    visitorId: '',
+    summary: null,
+  },
   counter:    {
     practice: '南无阿弥陀佛',
     customPractice: '',
@@ -44,18 +60,15 @@ function _load() {
           _data[k] = parsed[k];
         }
       }
-    } else {
-      // First run: migrate old isolated keys
-      _migrate();
     }
   } catch {
     _data = _defaults();
-    _migrate();
   }
+  _migrateLegacyKeys();
   return _data;
 }
 
-function _migrate() {
+function _migrateLegacyKeys() {
   // pl-state → player
   try {
     const s = JSON.parse(localStorage.getItem('pl-state') || 'null');
@@ -89,8 +102,80 @@ function _migrate() {
     if (Array.isArray(a)) _data.appreciated = a;
   } catch {}
 
+  // gongxiu-nickname → profile.dharmaName
+  try {
+    const nickname = localStorage.getItem('gongxiu-nickname') || '';
+    if (nickname && !_data.profile?.dharmaName) {
+      _data.profile = { ..._data.profile, dharmaName: nickname.slice(0, 20) };
+    }
+  } catch {}
+
+  // msg-nickname → profile.messageNickname
+  try {
+    const nickname = localStorage.getItem('msg-nickname') || '';
+    if (nickname && !_data.profile?.messageNickname) {
+      _data.profile = { ..._data.profile, messageNickname: nickname.slice(0, 20) };
+    }
+  } catch {}
+
+  // Legacy lightweight settings
+  try {
+    const goal = parseInt(localStorage.getItem('counter-custom-goal') || '0', 10) || 0;
+    if (goal > 0 && !_data.preferences?.counterCustomGoal) {
+      _data.preferences = { ..._data.preferences, counterCustomGoal: goal };
+    }
+  } catch {}
+
+  try {
+    const vow = localStorage.getItem('hx-another-vow') || '';
+    if (vow && !_data.preferences?.huixiangAnotherVow) {
+      _data.preferences = { ..._data.preferences, huixiangAnotherVow: vow };
+    }
+  } catch {}
+
+  try {
+    const wakeLockPref = localStorage.getItem('counter-wakelock-pref');
+    if (wakeLockPref != null) {
+      _data.preferences = { ..._data.preferences, wakeLockEnabled: wakeLockPref !== 'off' };
+    }
+  } catch {}
+
+  try {
+    const submittedDate = localStorage.getItem('gongxiu-submitted-date') || '';
+    if (submittedDate && !_data.gongxiu?.submittedDate) {
+      _data.gongxiu = { ..._data.gongxiu, submittedDate };
+    }
+  } catch {}
+
+  try {
+    const summary = JSON.parse(localStorage.getItem('site-monitor') || 'null');
+    if (summary && !_data.monitor?.summary) {
+      _data.monitor = { ..._data.monitor, summary };
+    }
+  } catch {}
+
+  try {
+    const visitorId = localStorage.getItem('visitor-id') || '';
+    if (visitorId && !_data.monitor?.visitorId) {
+      _data.monitor = { ..._data.monitor, visitorId };
+    }
+  } catch {}
+
   // Remove old keys
-  for (const k of ['pl-state', 'pl-history', 'foyue_duration_cache', 'appreciated']) {
+  for (const k of [
+    'pl-state',
+    'pl-history',
+    'foyue_duration_cache',
+    'appreciated',
+    'gongxiu-nickname',
+    'msg-nickname',
+    'counter-custom-goal',
+    'hx-another-vow',
+    'counter-wakelock-pref',
+    'gongxiu-submitted-date',
+    'site-monitor',
+    'visitor-id',
+  ]) {
     try { localStorage.removeItem(k); } catch {}
   }
 

@@ -63,7 +63,7 @@ foyue/
 │   │   ├── wenku.css           #   文库阅读器
 │   │   └── admin.css           #   管理后台
 │   │
-│   ├── js/                     # 28 个 ES Module
+│   ├── js/                     # 前端 ES Module
 │   │   ├── main.js             #   入口：初始化 + 事件绑定 + 数据加载
 │   │   ├── state.js            #   共享可变状态对象
 │   │   ├── store.js            #   统一 localStorage 管理器
@@ -99,9 +99,16 @@ foyue/
 │       └── fr.json
 │
 ├── functions/                  # Cloudflare Pages Functions
-│   ├── api/[[path]].js         #   API 路由（分类 / 系列 / 播放 / AI / 管理）
-│   ├── lib/ai-utils.js         #   AI 工具模块
-│   ├── lib/audio-utils.js      #   音频工具模块
+│   ├── api/[[path]].js         #   API 路由入口（分发到各模块）
+│   ├── lib/admin-content.js    #   管理后台内容管理（分类 / 系列 / 集数）
+│   ├── lib/admin-messages.js   #   管理后台留言管理
+│   ├── lib/ai-routes.js        #   AI 路由处理（问答 / 摘要 / 推荐 / 语音）
+│   ├── lib/ai-utils.js         #   AI 通用工具
+│   ├── lib/audio-utils.js      #   音频 URL / 格式工具
+│   ├── lib/crypto-utils.js     #   Hash / 日期等通用工具
+│   ├── lib/http-utils.js       #   JSON 响应 / Edge Cache 工具
+│   ├── lib/transcript-routes.js #   文稿 / 章节相关路由
+│   ├── lib/wenku-routes.js     #   文库 / R2 同步相关路由
 │   └── share/[[path]].js       #   分享页面
 │
 ├── public/                     # 静态资源（不经 Vite 处理）
@@ -117,7 +124,7 @@ foyue/
 ├── icons/                      # Logo 源文件
 ├── scripts/                    # 工具脚本（音频转码 / R2 上传 / 数据同步）
 └── workers/                    # D1 迁移脚本 + 子域 Worker
-    └── migrations/             #   0001 ~ 0013 数据库迁移
+    └── migrations/             #   0001 ~ 0016 数据库迁移
 ```
 
 ---
@@ -235,7 +242,7 @@ node scripts/cleanup-cloudflare-cache-rules.mjs --zone foyue.org
 
 - 3 个分类、14+ 个系列、466+ 集音频
 - 4 个 R2 存储桶
-- D1 迁移脚本 13 个（0001 ~ 0013）
+- D1 迁移脚本 16 个（0001 ~ 0016）
 
 ---
 

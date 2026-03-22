@@ -184,9 +184,10 @@ function showSeriesModal(existing, container) {
         <div class="adm-form-group"><label class="adm-form-label">Folder</label><input class="adm-input" id="sFolder" value="${esc(s.folder || '')}"></div>
       </div>
       <div class="adm-form-row">
-        <div class="adm-form-group"><label class="adm-form-label">总集数</label><input class="adm-input" id="sTotal" type="number" value="${s.total_episodes || 0}"></div>
+        <div class="adm-form-group"><label class="adm-form-label">总集数</label><input class="adm-input" id="sTotal" type="number" value="${s.total_episodes || 0}" disabled></div>
         <div class="adm-form-group"><label class="adm-form-label">排序</label><input class="adm-input" id="sSort" type="number" value="${s.sort_order || 0}"></div>
       </div>
+      <p class="adm-form-hint" style="color:#888;font-size:12px">总集数由系统按实际集数自动统计，无需手动维护</p>
       <div class="adm-form-group"><label class="adm-form-label">简介</label><textarea class="adm-input adm-textarea" id="sIntro">${esc(s.intro || '')}</textarea></div>
     </div>
     <div class="adm-modal-footer">
@@ -207,7 +208,6 @@ function showSeriesModal(existing, container) {
       speaker_en: overlay.querySelector('#sSpeakerEn').value.trim(),
       bucket: overlay.querySelector('#sBucket').value.trim(),
       folder: overlay.querySelector('#sFolder').value.trim(),
-      total_episodes: parseInt(overlay.querySelector('#sTotal').value) || 0,
       sort_order: parseInt(overlay.querySelector('#sSort').value) || 0,
       intro: overlay.querySelector('#sIntro').value.trim(),
     };

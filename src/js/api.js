@@ -1,31 +1,8 @@
 /* ===== D1 API Service with Client-Side Caching ===== */
+import { createRequestCache } from './request-cache.js';
 
 const API_BASE = '/api';
-
-/* Simple cache: { key: { data, ts } } */
-const _cache = new Map();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-function cacheGet(key) {
-  const entry = _cache.get(key);
-  if (!entry) return null;
-  if (Date.now() - entry.ts > CACHE_TTL) { _cache.delete(key); return null; }
-  return entry.data;
-}
-
-function cacheSet(key, data) {
-  _cache.set(key, { data, ts: Date.now() });
-}
-
-/* Deduplication: prevent duplicate in-flight requests */
-const _pending = new Map();
-
-function dedupFetch(key, fetcher) {
-  if (_pending.has(key)) return _pending.get(key);
-  const p = fetcher().finally(() => _pending.delete(key));
-  _pending.set(key, p);
-  return p;
-}
+const requestCache = createRequestCache({ ttlMs: 5 * 60 * 1000 });
 
 /**
  * Record a play event for a series/episode
@@ -69,10 +46,10 @@ export async function recordPlay(seriesId, episodeNum) {
     // Update cache with new count
     if (data && data.playCount) {
       const cacheKey = `pc:${seriesId}`;
-      const cached = cacheGet(cacheKey);
+      const cached = requestCache.get(cacheKey);
       if (cached) {
         cached.totalPlayCount = data.playCount;
-        cacheSet(cacheKey, cached);
+        requestCache.set(cacheKey, cached);
       }
     }
     // Notify UI so play count display can refresh without a page reload
@@ -97,15 +74,15 @@ export async function recordPlay(seriesId, episodeNum) {
  */
 export async function getPlayCount(seriesId) {
   const key = `pc:${seriesId}`;
-  const cached = cacheGet(key);
+  const cached = requestCache.get(key);
   if (cached) return cached;
 
-  return dedupFetch(key, async () => {
+  return requestCache.dedupe(key, async () => {
     try {
       const r = await fetch(`${API_BASE}/play-count/${encodeURIComponent(seriesId)}`);
       if (!r.ok) return null;
       const data = await r.json();
-      if (data && !data.error) cacheSet(key, data);
+      if (data && !data.error) requestCache.set(key, data);
       return data;
     } catch (e) {
       return null;
@@ -135,15 +112,15 @@ export async function appreciate(seriesId, episodeNum) {
  */
 export async function getAppreciateCount(seriesId) {
   const key = `ap:${seriesId}`;
-  const cached = cacheGet(key);
+  const cached = requestCache.get(key);
   if (cached) return cached;
 
-  return dedupFetch(key, async () => {
+  return requestCache.dedupe(key, async () => {
     try {
       const r = await fetch(`${API_BASE}/appreciate/${encodeURIComponent(seriesId)}`);
       if (!r.ok) return null;
       const data = await r.json();
-      if (data) cacheSet(key, data);
+      if (data) requestCache.set(key, data);
       return data;
     } catch (e) {
       return null;
@@ -156,15 +133,15 @@ export async function getAppreciateCount(seriesId) {
  */
 export async function getStats() {
   const key = 'stats';
-  const cached = cacheGet(key);
+  const cached = requestCache.get(key);
   if (cached) return cached;
 
-  return dedupFetch(key, async () => {
+  return requestCache.dedupe(key, async () => {
     try {
       const r = await fetch(`${API_BASE}/stats`);
       if (!r.ok) return null;
       const data = await r.json();
-      if (data) cacheSet(key, data);
+      if (data) requestCache.set(key, data);
       return data;
     } catch (e) {
       return null;

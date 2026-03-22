@@ -1,7 +1,7 @@
 /* Service Worker — 净土法音 Offline Cache */
 'use strict';
 
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v6';
 const STATIC_CACHE = 'static-' + CACHE_VERSION;
 const DATA_CACHE = 'data-' + CACHE_VERSION;
 const AUDIO_CACHE = 'audio-v2';

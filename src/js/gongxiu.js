@@ -14,11 +14,9 @@
  */
 
 import { t } from './i18n.js';
-import { escapeHtml, showToast, formatCount, formatRelTime, HUIXIANG_TEXT, localTodayStr, HUIXIANG_DISPLAY_AUTO_MS } from './utils.js';
-import { get as storeGet } from './store.js';
+import { escapeHtml, showToast, formatCount, formatRelTime, HUIXIANG_TEXT, beijingTodayStr, HUIXIANG_DISPLAY_AUTO_MS } from './utils.js';
+import { get as storeGet, patch as storePatch } from './store.js';
 
-const GONGXIU_SUBMITTED_KEY = 'gongxiu-submitted-date';
-const GONGXIU_NICKNAME_KEY  = 'gongxiu-nickname';
 const CACHE_KEY             = 'gongxiu-cache';
 const CACHE_TTL             = 60 * 1000; // 1 minute
 
@@ -33,27 +31,21 @@ const VOW_TYPES = {
 
 // ── Helpers ──────────────────────────────────────────────────
 
-/** UTC+8 today string for server-synced community date (Beijing time) */
-function todayStr() {
-  return new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
-}
-
 function hasSubmittedToday() {
-  try {
-    return localStorage.getItem(GONGXIU_SUBMITTED_KEY) === new Date().toDateString();
-  } catch { return false; }
+  const gongxiu = storeGet('gongxiu') || {};
+  return gongxiu.submittedDate === beijingTodayStr();
 }
 
 function markSubmittedToday() {
-  try { localStorage.setItem(GONGXIU_SUBMITTED_KEY, new Date().toDateString()); } catch { }
+  storePatch('gongxiu', { submittedDate: beijingTodayStr() });
 }
 
 function getSavedNickname() {
-  try { return localStorage.getItem(GONGXIU_NICKNAME_KEY) || ''; } catch { return ''; }
+  return (storeGet('profile') || {}).dharmaName || '';
 }
 
 function saveNickname(n) {
-  try { localStorage.setItem(GONGXIU_NICKNAME_KEY, n.slice(0, 20)); } catch { }
+  storePatch('profile', { dharmaName: (n || '').slice(0, 20) });
 }
 
 function getVowLabel(entry) {
@@ -71,7 +63,7 @@ function getCounterData() {
   if (!data || !data.practices) return null;
   const ps = data.practices[data.practice];
   if (!ps) return null;
-  const today = localTodayStr();
+  const today = beijingTodayStr();
   const daily = (ps.dailyDate === today) ? (ps.daily || 0) : 0;
   const practiceName = data.practice === '__custom__'
     ? (data.customPractice || '念佛')
@@ -329,7 +321,7 @@ function renderError(view, err) {
 }
 
 function renderData(view, data, onOpenCounter) {
-  const today = todayStr();
+  const today = beijingTodayStr();
   const submitted = hasSubmittedToday();
   const counterData = getCounterData();
 
@@ -465,7 +457,7 @@ function wireSubmitSection(view, submitArea, data, counterData, onOpenCounter) {
           setCache(fresh);
           const entriesEl = view.querySelector('#gxEntries');
           const pool = view.querySelector('#gxMeritPool');
-          const today = todayStr();
+          const today = beijingTodayStr();
           if (entriesEl) entriesEl.innerHTML = (fresh.entries || []).map(e => buildEntryCard(e, e.date === today)).join('');
           if (pool) {
             const pNum = pool.querySelector('.gx-pool-today .gx-pool-num');

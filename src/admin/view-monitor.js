@@ -1,4 +1,9 @@
 /* ===== 监控页面 ===== */
+import { get as storeGet } from '../js/store.js';
+
+function getMonitorData() {
+  return (storeGet('monitor') || {}).summary || {};
+}
 
 export function renderMonitor(container) {
   container.innerHTML = `
@@ -124,8 +129,7 @@ export function renderMonitor(container) {
 }
 
 function loadMonitorData() {
-  // 从 localStorage 读取监控数据
-  const monitorData = JSON.parse(localStorage.getItem('site-monitor') || '{}');
+  const monitorData = getMonitorData();
 
   // 更新页面性能
   document.getElementById('pageLoadTime').textContent =
@@ -182,7 +186,7 @@ function loadMonitorData() {
 }
 
 function exportReport() {
-  const monitorData = JSON.parse(localStorage.getItem('site-monitor') || '{}');
+  const monitorData = getMonitorData();
   const report = generateTextReport(monitorData);
 
   // 创建下载

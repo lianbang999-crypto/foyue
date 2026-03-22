@@ -13,6 +13,11 @@ export function localTodayStr() {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
+/** 社区与后端统一使用的北京时间「今日」YYYY-MM-DD */
+export function beijingTodayStr() {
+  return new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
+}
+
 /** 全屏回向文自动收起时长（毫秒），计数器与共修广场统一 */
 export const HUIXIANG_DISPLAY_AUTO_MS = 8000;
 

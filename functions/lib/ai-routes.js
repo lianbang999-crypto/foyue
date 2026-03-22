@@ -1,0 +1,808 @@
+import {
+  AI_CONFIG,
+  GATEWAY_PROFILES,
+  generateEmbeddings,
+  semanticSearch,
+  retrieveDocuments,
+  rerankResults,
+  expandContextFromDocs,
+  ragAnswer,
+  buildRAGMessages,
+  generateSummary,
+  checkRateLimit,
+  extractAIResponse,
+  stripThinkTags,
+  runAIWithLogging,
+} from './ai-utils.js';
+
+function buildSourceList(matches, docs) {
+  const seenDocIds = new Set();
+  const sources = [];
+  for (const match of matches) {
+    const docId = match.metadata?.doc_id || '';
+    if (!docId || seenDocIds.has(docId)) continue;
+    seenDocIds.add(docId);
+    const doc = docs.find(item => item.id === docId);
+    sources.push({
+      title: match.metadata.title || '',
+      doc_id: docId,
+      score: Math.round(match.score * 100) / 100,
+      category: doc?.category || match.metadata.category || '',
+      series_name: doc?.series_name || match.metadata.series_name || '',
+      snippet: (match.metadata?.text || '').replace(/\s+/g, '').slice(0, 120),
+    });
+    if (sources.length >= 3) break;
+  }
+  return sources;
+}
+
+async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
+  const filter = {};
+  if (seriesId && typeof seriesId === 'string') filter.audio_series_id = seriesId.slice(0, 100);
+
+  let matches = [];
+  try {
+    matches = await semanticSearch(env, question, {
+      topK: 5,
+      filter: Object.keys(filter).length > 0 ? filter : undefined,
+      ctx,
+    });
+  } catch (err) {
+    console.warn('Vectorize search failed, falling back to D1:', err.message);
+  }
+
+  if (matches.length >= 2) {
+    matches = await rerankResults(env, question, matches, { topK: 5, ctx });
+  }
+
+  let docs = await retrieveDocuments(env, matches);
+
+  if (seriesId && Number.isInteger(episodeNum) && episodeNum > 0) {
+    const exactDoc = await env.DB.prepare(
+      `SELECT id, title, content, category, series_name, audio_series_id, audio_episode_num
+       FROM documents
+       WHERE audio_series_id = ? AND audio_episode_num = ? AND content IS NOT NULL AND content != ''
+       LIMIT 1`
+    ).bind(seriesId, episodeNum).first();
+    if (exactDoc && !docs.some(doc => doc.id === exactDoc.id)) {
+      docs = [exactDoc, ...docs];
+    }
+  }
+
+  if (matches.length > 0 && docs.length > 0) {
+    matches = expandContextFromDocs(matches, docs);
+  }
+
+  if (!docs.length) {
+    try {
+      const keywords = question.replace(/[？?！!，。、]/g, ' ').trim().slice(0, 50);
+      let fallbackQuery;
+      if (seriesId) {
+        fallbackQuery = env.DB.prepare(
+          `SELECT id, title, content, category, series_name FROM documents
+           WHERE audio_series_id = ? AND content IS NOT NULL
+           ORDER BY episode_num ASC LIMIT 5`
+        ).bind(seriesId);
+      } else {
+        fallbackQuery = env.DB.prepare(
+          `SELECT id, title, content, category, series_name FROM documents
+           WHERE content IS NOT NULL AND (title LIKE ? OR content LIKE ?)
+           LIMIT 5`
+        ).bind(`%${keywords.slice(0, 20)}%`, `%${keywords.slice(0, 20)}%`);
+      }
+      const fallback = await fallbackQuery.all();
+      if (fallback.results?.length > 0) docs = fallback.results;
+    } catch (err) {
+      console.warn('D1 fallback search failed:', err.message);
+    }
+  }
+
+  return { matches, docs };
+}
+
+export async function handleAiAsk(env, request, cors, ctx, json) {
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const limit = await checkRateLimit(env, ip, 'ai_ask');
+  if (!limit.allowed) return json({ error: limit.reason }, cors, 429);
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'Invalid JSON' }, cors, 400);
+  }
+
+  const { question, series_id, episode_id, episode_num, history } = body;
+  const episodeNum = Number.parseInt(episode_num ?? episode_id, 10);
+
+  if (!question || typeof question !== 'string' || question.length > 500) {
+    return json({ error: '问题不能为空且不超过500字' }, cors, 400);
+  }
+
+  const { matches, docs } = await loadAiDocs(env, question, series_id, episodeNum, ctx);
+
+  if (!docs.length) {
+    return json({
+      answer: '抱歉，暂未找到与您问题相关的内容。请尝试换一种方式提问。',
+      sources: [],
+      disclaimer: '以上回答由AI生成，仅供参考，请以原始经典为准。',
+    }, cors);
+  }
+
+  let result;
+  try {
+    result = await ragAnswer(env, question, docs, {
+      history: Array.isArray(history) ? history : [],
+      vectorMatches: matches,
+      ctx,
+    });
+  } catch (err) {
+    console.error('RAG answer failed:', err.message);
+    return json({
+      answer: '抱歉，AI 服务暂时不可用，请稍后再试。',
+      sources: [],
+      disclaimer: '以上回答由AI生成，仅供参考，请以原始经典为准。',
+    }, cors, 503, 'no-store');
+  }
+
+  const answer = result?.response?.trim();
+  if (!answer) {
+    return json({
+      answer: '抱歉，AI 暂时无法生成回答，请稍后再试。',
+      sources: [],
+      disclaimer: '以上回答由AI生成，仅供参考，请以原始经典为准。',
+    }, cors, 200, 'no-store');
+  }
+
+  return json({
+    answer,
+    sources: buildSourceList(matches, docs),
+    disclaimer: '以上回答由AI生成，仅供参考，请以原始经典为准。',
+  }, cors, 200, 'no-store');
+}
+
+export async function handleAiAskStream(env, request, cors, ctx, json) {
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const limit = await checkRateLimit(env, ip, 'ai_ask');
+  if (!limit.allowed) return json({ error: limit.reason }, cors, 429);
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'Invalid JSON' }, cors, 400);
+  }
+
+  const { question, series_id, episode_id, episode_num, history } = body;
+  const episodeNum = Number.parseInt(episode_num ?? episode_id, 10);
+  if (!question || typeof question !== 'string' || question.length > 500) {
+    return json({ error: '问题不能为空且不超过500字' }, cors, 400);
+  }
+
+  const { matches, docs } = await loadAiDocs(env, question, series_id, episodeNum, ctx);
+  if (!docs.length) {
+    return json({
+      answer: '抱歉，暂未找到与您问题相关的内容。请尝试换一种方式提问。',
+      sources: [],
+      disclaimer: '以上回答由AI生成，仅供参考，请以原始经典为准。',
+    }, cors);
+  }
+
+  const sources = buildSourceList(matches, docs);
+  const messages = buildRAGMessages(question, docs, {
+    history: Array.isArray(history) ? history : [],
+    vectorMatches: matches,
+  });
+
+  let aiStream;
+  try {
+    aiStream = await runAIWithLogging(
+      env,
+      AI_CONFIG.models.chat,
+      { messages, max_tokens: 500, temperature: 0.2, stream: true },
+      GATEWAY_PROFILES.ragStream,
+      'ragStream',
+      ctx
+    );
+  } catch (err) {
+    console.warn('Primary chat model failed, using fallback:', err.message);
+    try {
+      aiStream = await runAIWithLogging(
+        env,
+        AI_CONFIG.models.chatFallback,
+        { messages, max_tokens: 500, temperature: 0.2, stream: true },
+        GATEWAY_PROFILES.ragStream,
+        'ragStream',
+        ctx
+      );
+    } catch {
+      return json({
+        answer: '抱歉，AI 服务暂时不可用，请稍后再试。',
+        sources: [],
+        disclaimer: '以上回答由AI生成，仅供参考，请以原始经典为准。',
+      }, cors, 503, 'no-store');
+    }
+  }
+
+  const encoder = new TextEncoder();
+  const disclaimer = '以上回答由AI生成，仅供参考，请以原始经典为准。';
+
+  const sseStream = new ReadableStream({
+    async start(controller) {
+      let tokenCount = 0;
+      let inThinkBlock = false;
+      let thinkBuffer = '';
+      try {
+        const reader = aiStream.getReader();
+        const decoder = new TextDecoder();
+        let sseBuffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const text = typeof value === 'string' ? value : decoder.decode(value, { stream: true });
+          sseBuffer += text;
+          const segments = sseBuffer.split('\n');
+          sseBuffer = segments.pop() || '';
+
+          for (const line of segments) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('event:')) continue;
+            if (trimmed.startsWith('data:')) {
+              const payload = trimmed.slice(5).trim();
+              if (payload === '[DONE]') continue;
+              try {
+                const parsed = JSON.parse(payload);
+                const token = parsed.response
+                  || parsed.choices?.[0]?.delta?.content
+                  || parsed.choices?.[0]?.text
+                  || parsed.result?.response
+                  || parsed.text
+                  || parsed.token
+                  || '';
+                if (token) {
+                  thinkBuffer += token;
+                  if (inThinkBlock) {
+                    const endIdx = thinkBuffer.indexOf('</think>');
+                    if (endIdx !== -1) {
+                      inThinkBlock = false;
+                      thinkBuffer = thinkBuffer.slice(endIdx + 8);
+                    } else {
+                      continue;
+                    }
+                  }
+                  const startIdx = thinkBuffer.indexOf('<think>');
+                  if (startIdx !== -1) {
+                    const before = thinkBuffer.slice(0, startIdx);
+                    if (before.trim()) {
+                      tokenCount++;
+                      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: before })}\n\n`));
+                    }
+                    const endIdx = thinkBuffer.indexOf('</think>', startIdx);
+                    if (endIdx !== -1) {
+                      thinkBuffer = thinkBuffer.slice(endIdx + 8);
+                    } else {
+                      inThinkBlock = true;
+                      thinkBuffer = '';
+                      continue;
+                    }
+                  }
+                  if (thinkBuffer.trim()) {
+                    tokenCount++;
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: thinkBuffer })}\n\n`));
+                  }
+                  thinkBuffer = '';
+                }
+              } catch {}
+              continue;
+            }
+
+            if (trimmed.startsWith('{')) {
+              try {
+                const parsed = JSON.parse(trimmed);
+                const token = parsed.response || parsed.choices?.[0]?.delta?.content || parsed.text || '';
+                if (token) {
+                  tokenCount++;
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token })}\n\n`));
+                }
+              } catch {}
+            }
+          }
+        }
+
+        if (sseBuffer.trim()) {
+          const trimmed = sseBuffer.trim();
+          if (trimmed.startsWith('data:')) {
+            const payload = trimmed.slice(5).trim();
+            if (payload !== '[DONE]') {
+              try {
+                const parsed = JSON.parse(payload);
+                const token = parsed.response || parsed.choices?.[0]?.delta?.content || '';
+                if (token) {
+                  tokenCount++;
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token })}\n\n`));
+                }
+              } catch {}
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Stream processing error:', err.message);
+        if (tokenCount === 0) {
+          try {
+            const fallbackResult = await env.AI.run(
+              AI_CONFIG.models.chat,
+              { messages, max_tokens: 500, temperature: 0.2 },
+              { gateway: GATEWAY_PROFILES.ragChat }
+            );
+            const answer = stripThinkTags(extractAIResponse(fallbackResult));
+            if (answer) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: answer })}\n\n`));
+              tokenCount++;
+            }
+          } catch {}
+        }
+        if (tokenCount === 0) {
+          controller.enqueue(encoder.encode(
+            `event: error\ndata: ${JSON.stringify({ error: err.message || 'Stream failed' })}\n\n`
+          ));
+        }
+      }
+
+      if (tokenCount === 0) {
+        try {
+          const fallbackResult = await runAIWithLogging(
+            env,
+            AI_CONFIG.models.chat,
+            { messages, max_tokens: 500, temperature: 0.2 },
+            GATEWAY_PROFILES.ragChat,
+            'ragChat',
+            ctx
+          );
+          const answer = stripThinkTags(extractAIResponse(fallbackResult));
+          if (answer) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: answer })}\n\n`));
+            tokenCount++;
+          }
+        } catch {
+          try {
+            const fallback2 = await runAIWithLogging(
+              env,
+              AI_CONFIG.models.chatFallback,
+              { messages, max_tokens: 500, temperature: 0.2 },
+              GATEWAY_PROFILES.ragChat,
+              'ragChat',
+              ctx
+            );
+            const answer2 = stripThinkTags(extractAIResponse(fallback2));
+            if (answer2) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: answer2 })}\n\n`));
+              tokenCount++;
+            }
+          } catch {}
+        }
+      }
+
+      controller.enqueue(encoder.encode(
+        `event: done\ndata: ${JSON.stringify({ sources, disclaimer })}\n\n`
+      ));
+      controller.close();
+    }
+  });
+
+  return new Response(sseStream, {
+    headers: {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-store',
+      Connection: 'keep-alive',
+      ...cors,
+    },
+  });
+}
+
+export async function handleAiSummary(env, documentId, request, cors, ctx, json) {
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const limit = await checkRateLimit(env, ip, 'ai_summary');
+  if (!limit.allowed) return json({ error: limit.reason }, cors, 429);
+
+  const cached = await env.DB.prepare(
+    'SELECT summary FROM ai_summaries WHERE document_id = ?'
+  ).bind(documentId).first();
+
+  if (cached) {
+    return json({
+      summary: cached.summary,
+      cached: true,
+      disclaimer: 'AI生成摘要，仅供参考',
+    }, cors);
+  }
+
+  let doc = await env.DB.prepare('SELECT id, title, content FROM documents WHERE id = ?').bind(documentId).first();
+  if (!doc || !doc.content) {
+    const seriesDocs = await env.DB.prepare(
+      `SELECT id, title, content, series_name FROM documents
+       WHERE audio_series_id = ? AND content IS NOT NULL
+       ORDER BY audio_episode_num ASC LIMIT 10`
+    ).bind(documentId).all();
+
+    if (seriesDocs.results?.length > 0) {
+      const combinedTitle = seriesDocs.results[0].series_name || documentId;
+      const combinedContent = seriesDocs.results
+        .map(item => `【${item.title}】\n${(item.content || '').slice(0, 2000)}`)
+        .join('\n\n');
+      doc = { id: documentId, title: combinedTitle, content: combinedContent };
+    } else {
+      return json({ error: '未找到该文档或文档无文本内容' }, cors, 404);
+    }
+  }
+
+  let summary;
+  try {
+    summary = await generateSummary(env, doc.title, doc.content, { ctx });
+  } catch (err) {
+    console.error('generateSummary failed:', err.message);
+    return json({ error: 'AI摘要服务暂时不可用，请稍后再试' }, cors, 503);
+  }
+
+  if (!summary || !summary.trim()) {
+    return json({ error: 'AI未能生成有效摘要，请稍后再试' }, cors, 503);
+  }
+
+  await env.DB.prepare(
+    `INSERT OR REPLACE INTO ai_summaries (document_id, summary, model)
+     VALUES (?, ?, ?)`
+  ).bind(documentId, summary, AI_CONFIG.models.chat).run();
+
+  return json({
+    summary,
+    cached: false,
+    disclaimer: 'AI生成摘要，仅供参考',
+  }, cors);
+}
+
+export async function handleAiSearch(env, request, query, cors, ctx, json) {
+  if (!query || query.length < 2 || query.length > 200) {
+    return json({ error: '搜索词长度应为2-200个字符' }, cors, 400);
+  }
+
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const limit = await checkRateLimit(env, ip, 'ai_search');
+  if (!limit.allowed) return json({ error: limit.reason }, cors, 429);
+
+  let matches = await semanticSearch(env, query, { topK: 10, ctx });
+  if (matches.length >= 2) {
+    matches = await rerankResults(env, query, matches, { topK: 10, ctx });
+  }
+
+  const docs = await retrieveDocuments(env, matches);
+  const results = matches.map(match => {
+    const doc = docs.find(item => item.id === match.metadata.doc_id);
+    let snippet = '';
+    if (doc?.content) {
+      const ql = query.toLowerCase();
+      const idx = doc.content.toLowerCase().indexOf(ql);
+      if (idx >= 0) {
+        const start = Math.max(0, idx - 60);
+        const end = Math.min(doc.content.length, idx + ql.length + 140);
+        snippet = (start > 0 ? '...' : '') + doc.content.slice(start, end).trim() + (end < doc.content.length ? '...' : '');
+      } else {
+        snippet = doc.content.slice(0, 200).trim() + (doc.content.length > 200 ? '...' : '');
+      }
+    }
+    return {
+      doc_id: match.metadata.doc_id,
+      title: doc ? doc.title : match.metadata.title || '',
+      snippet,
+      score: Math.round(match.score * 100) / 100,
+      series_name: doc ? doc.series_name : '',
+      category: doc ? doc.category : match.metadata.category || '',
+      audio_series_id: doc ? doc.audio_series_id : '',
+    };
+  });
+
+  return json({ results, query }, cors);
+}
+
+function dateSeed(dateKey) {
+  let h = 0;
+  for (let i = 0; i < dateKey.length; i++) {
+    h = ((h << 5) - h + dateKey.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+async function selectDailyEpisodes(db, dateKey) {
+  const seed = dateSeed(dateKey);
+  const { results: allSeries } = await db.prepare(
+    `SELECT s.id, s.title, s.title_en, s.speaker, s.speaker_en,
+            s.category_id, s.total_episodes, s.intro
+     FROM series s
+     WHERE s.total_episodes > 0 AND s.category_id != 'fohao'
+     ORDER BY s.sort_order`
+  ).all();
+  if (!allSeries.length) return [];
+
+  const shuffled = [...allSeries].sort((a, b) => {
+    const ha = ((seed * 31 + a.id.charCodeAt(0) * 17) >>> 0) % 10000;
+    const hb = ((seed * 31 + b.id.charCodeAt(0) * 17) >>> 0) % 10000;
+    return ha - hb;
+  });
+
+  const picks = [];
+  const usedCats = new Set();
+  const usedSeries = new Set();
+
+  for (const series of shuffled) {
+    if (picks.length >= 3) break;
+    if (usedCats.has(series.category_id)) continue;
+    const epNum = (seed + series.id.charCodeAt(0) * 7) % series.total_episodes + 1;
+    picks.push({ series, episodeNum: epNum });
+    usedCats.add(series.category_id);
+    usedSeries.add(series.id);
+  }
+
+  for (const series of shuffled) {
+    if (picks.length >= 3) break;
+    if (usedSeries.has(series.id)) continue;
+    const ci = Math.min(series.id.length - 1, 2);
+    const epNum = (seed + series.id.charCodeAt(ci) * 13) % series.total_episodes + 1;
+    picks.push({ series, episodeNum: epNum });
+    usedSeries.add(series.id);
+  }
+
+  const results = [];
+  for (const pick of picks) {
+    const ep = await db.prepare(
+      `SELECT episode_num, title, file_name, url
+       FROM episodes WHERE series_id = ? AND episode_num = ?`
+    ).bind(pick.series.id, pick.episodeNum).first();
+
+    if (ep) {
+      results.push({
+        series_id: pick.series.id,
+        episode_num: ep.episode_num,
+        episode_title: ep.title,
+        series_title: pick.series.title,
+        series_title_en: pick.series.title_en || '',
+        series_intro: pick.series.intro || '',
+        category_id: pick.series.category_id,
+        speaker: pick.series.speaker,
+        speaker_en: pick.series.speaker_en || '',
+        play_url: ep.url,
+        total_episodes: pick.series.total_episodes,
+      });
+    }
+  }
+  return results;
+}
+
+async function getEpisodeContext(db, seriesId, episodeNum) {
+  const doc = await db.prepare(
+    `SELECT content FROM documents
+     WHERE audio_series_id = ? AND audio_episode_num = ?
+       AND content IS NOT NULL AND content != ''
+     LIMIT 1`
+  ).bind(seriesId, episodeNum).first();
+  return doc?.content ? doc.content.slice(0, 800) : null;
+}
+
+async function generateRecommendIntros(env, episodes, contexts, ctx) {
+  const epDesc = episodes.map((ep, i) => {
+    let d = `${i + 1}. 系列：${ep.series_title}\n`;
+    d += `   系列简介：${ep.series_intro}\n`;
+    d += `   讲者：${ep.speaker}\n`;
+    d += `   本集标题：${ep.episode_title}（第${ep.episode_num}讲，共${ep.total_episodes}讲）\n`;
+    if (contexts[i]) d += `   本集开头内容：${contexts[i].slice(0, 500)}\n`;
+    return d;
+  }).join('\n');
+
+  const messages = [
+    {
+      role: 'system',
+      content: `你是净土法音平台的内容编辑，负责每日为用户撰写简短的收听推荐语。
+要求：
+1. 为每集音频写一段50-80字的推荐语，引导用户想去收听
+2. 推荐语应点明该集的核心内容或亮点，用亲切自然的语气
+3. 如果有本集内容，应基于实际内容来写；如果没有，则根据系列简介和集数位置推测
+4. 不要使用"本集"两字开头，用更自然的表达
+5. 严格按JSON数组格式输出，不要输出其他内容
+6. 使用简体中文`,
+    },
+    {
+      role: 'user',
+      content: `请为以下${episodes.length}集音频各写一段推荐语：
+
+${epDesc}
+
+请按以下JSON格式输出（只输出JSON数组，不要其他文字）：
+[{"index":1,"intro":"推荐语..."}${episodes.length >= 2 ? ',{"index":2,"intro":"..."}' : ''}${episodes.length >= 3 ? ',{"index":3,"intro":"..."}' : ''}]`,
+    },
+  ];
+
+  let response;
+  try {
+    response = await runAIWithLogging(
+      env,
+      AI_CONFIG.models.chat,
+      { messages, max_tokens: 500, temperature: 0.6 },
+      GATEWAY_PROFILES.recommend,
+      'recommend',
+      ctx
+    );
+  } catch (err) {
+    console.warn('[DailyRec] Primary model failed, trying fallback:', err.message);
+    response = await runAIWithLogging(
+      env,
+      AI_CONFIG.models.chatFallback,
+      { messages, max_tokens: 500, temperature: 0.6 },
+      GATEWAY_PROFILES.recommend,
+      'recommend',
+      ctx
+    );
+  }
+
+  const text = extractAIResponse(response);
+  if (!text) return null;
+  const cleaned = text.replace(/```json?\s*/g, '').replace(/```/g, '').trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    console.warn('[DailyRec] Failed to parse AI JSON:', cleaned.slice(0, 200));
+    return null;
+  }
+}
+
+export async function handleDailyRecommend(env, cors, ctx, json) {
+  const db = env.DB;
+  const dateKey = new Date().toISOString().slice(0, 10);
+  const startMs = Date.now();
+
+  const cached = await db.prepare(
+    `SELECT recommendations, status FROM ai_daily_recommendations WHERE date_key = ?`
+  ).bind(dateKey).first();
+
+  if (cached && cached.status === 'ready') {
+    return json({
+      date: dateKey,
+      recommendations: JSON.parse(cached.recommendations),
+      cached: true,
+    }, cors, 200, 'public, max-age=300');
+  }
+
+  if (cached && cached.status === 'generating') {
+    return json({ date: dateKey, recommendations: null, generating: true }, cors, 200, 'no-store');
+  }
+
+  try {
+    await db.prepare(
+      `INSERT INTO ai_daily_recommendations (date_key, recommendations, model, status)
+       VALUES (?, '[]', 'pending', 'generating')`
+    ).bind(dateKey).run();
+  } catch {
+    return json({ date: dateKey, recommendations: null, generating: true }, cors, 200, 'no-store');
+  }
+
+  try {
+    const episodes = await selectDailyEpisodes(db, dateKey);
+    if (!episodes.length) throw new Error('No episodes selected');
+
+    const contexts = await Promise.all(
+      episodes.map(ep => getEpisodeContext(db, ep.series_id, ep.episode_num))
+    );
+    const intros = await generateRecommendIntros(env, episodes, contexts, ctx);
+    const recommendations = episodes.map((ep, i) => ({
+      ...ep,
+      ai_intro: intros && intros[i] ? intros[i].intro : ep.series_intro,
+    }));
+    const genMs = Date.now() - startMs;
+
+    await db.prepare(
+      `UPDATE ai_daily_recommendations
+       SET recommendations = ?, model = ?, generation_ms = ?, status = 'ready'
+       WHERE date_key = ?`
+    ).bind(JSON.stringify(recommendations), AI_CONFIG.models.chat, genMs, dateKey).run();
+
+    return json({
+      date: dateKey,
+      recommendations,
+      cached: false,
+      generation_ms: genMs,
+    }, cors, 200, 'public, max-age=300');
+  } catch (err) {
+    console.error('[DailyRec] Generation failed:', err);
+    await db.prepare(
+      `UPDATE ai_daily_recommendations SET status = 'failed', error = ? WHERE date_key = ?`
+    ).bind(err.message || 'unknown', dateKey).run();
+    return json({
+      date: dateKey,
+      recommendations: null,
+      error: 'generation_failed',
+      fallback: true,
+    }, cors, 500, 'no-store');
+  }
+}
+
+export async function handleVoiceToText(env, request, cors, json) {
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const limit = await checkRateLimit(env, ip, 'ai_voice');
+  if (!limit.allowed) return json({ error: limit.reason }, cors, 429);
+
+  const contentType = request.headers.get('Content-Type') || '';
+  if (!contentType.includes('audio/') && !contentType.includes('application/octet-stream') && !contentType.includes('video/webm')) {
+    return json({ error: 'Expected audio content' }, cors, 400);
+  }
+
+  const audioBuffer = await request.arrayBuffer();
+  if (audioBuffer.byteLength > 5 * 1024 * 1024) {
+    return json({ error: '音频文件过大，请控制在5MB以内' }, cors, 400);
+  }
+  if (audioBuffer.byteLength < 100) {
+    return json({ error: '音频数据过短' }, cors, 400);
+  }
+
+  try {
+    const result = await env.AI.run(
+      AI_CONFIG.models.whisper,
+      { audio: [...new Uint8Array(audioBuffer)] },
+      { gateway: GATEWAY_PROFILES.whisper }
+    );
+    const text = result?.text?.trim() || '';
+    if (!text) return json({ error: '未识别到语音内容' }, cors);
+    return json({ text }, cors, 200, 'no-store');
+  } catch (err) {
+    console.error('Whisper failed:', err.message);
+    return json({ error: '语音识别失败，请稍后重试' }, cors, 503);
+  }
+}
+
+export async function handlePersonalizedRecommend(env, request, url, cors, json) {
+  const seriesIds = (url.searchParams.get('series') || '').split(',').filter(Boolean).slice(0, 5);
+  if (!seriesIds.length) return json({ recommendations: [] }, cors);
+
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const limit = await checkRateLimit(env, ip, 'ai_recommend');
+  if (!limit.allowed) return json({ error: limit.reason }, cors, 429);
+
+  const placeholders = seriesIds.map(() => '?').join(',');
+  const { results: docs } = await env.DB.prepare(
+    `SELECT id, title, content FROM documents
+     WHERE audio_series_id IN (${placeholders})
+     AND content IS NOT NULL
+     LIMIT 5`
+  ).bind(...seriesIds).all();
+
+  if (!docs.length) return json({ recommendations: [] }, cors);
+
+  const combinedText = docs
+    .map(doc => doc.title + ' ' + (doc.content || '').slice(0, 500))
+    .join('\n')
+    .slice(0, 2000);
+  const [queryVector] = await generateEmbeddings(env, [combinedText], { gatewayProfile: 'searchEmbedding' });
+  const results = await env.VECTORIZE.query(queryVector, { topK: 15, returnMetadata: 'all' });
+  const filtered = results.matches
+    .filter(match => match.score >= 0.4 && !seriesIds.includes(match.metadata?.audio_series_id || match.metadata?.series_name))
+    .slice(0, 10);
+
+  const recommendations = [];
+  const seenSeries = new Set();
+  for (const match of filtered) {
+    const sid = match.metadata?.audio_series_id || match.metadata?.series_name;
+    if (!sid || seenSeries.has(sid)) continue;
+    seenSeries.add(sid);
+    const series = await env.DB.prepare(
+      'SELECT id, title, speaker, total_episodes, category_id FROM series WHERE id = ?'
+    ).bind(sid).first();
+    if (series) {
+      recommendations.push({
+        series_id: series.id,
+        series_title: series.title,
+        speaker: series.speaker,
+        category_id: series.category_id,
+        total_episodes: series.total_episodes,
+        relevance_score: Math.round(match.score * 100) / 100,
+      });
+    }
+    if (recommendations.length >= 3) break;
+  }
+
+  return json({ recommendations }, cors, 200, 'private, max-age=3600');
+}

@@ -9,7 +9,7 @@ import { promptInstall } from './pwa.js';
 import { showToast, escapeHtml } from './utils.js';
 // renderMessageWall is kept for backward-compat but community page uses gongxiu.js
 import { getCachedCount, getCachedSize, clearAudioCache } from './audio-cache.js';
-import { get as storeGet } from './store.js';
+import { get as storeGet, patch as storePatch } from './store.js';
 import { FEATURE_GONGXIU_PLAZA } from './feature-flags.js';
 
 function fmtRelTime(ts) {
@@ -32,6 +32,10 @@ function buildHistItem(h, i) {
     + '<div class="my-history-bar"><div class="my-history-bar-fill" style="width:' + pct + '%"></div></div>'
     + '</div>'
     + '</div>';
+}
+
+function getSavedDharmaName() {
+  return (storeGet('profile') || {}).dharmaName || '';
 }
 
 export function renderMyPage() {
@@ -158,7 +162,7 @@ export function renderMyPage() {
             <span class="my-item-label">法名</span>
             <span class="my-item-desc" style="font-size:.72rem;color:var(--text-muted)">${FEATURE_GONGXIU_PLAZA ? '共修广场中的长期身份' : '念佛回向等场景中的称呼'}</span>
           </div>
-          <span class="my-item-value" id="myDharmaNameValue">${((() => { try { return localStorage.getItem('gongxiu-nickname') || ''; } catch { return ''; } })()) || '未设置'}</span>
+          <span class="my-item-value" id="myDharmaNameValue">${escapeHtml(getSavedDharmaName()) || '未设置'}</span>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
         <div class="my-item" id="myLangItem">
@@ -369,7 +373,7 @@ export function showGongxiuSubview() {
 function showDharmaNameSheet(parentPage) {
   document.querySelectorAll('.dharma-name-sheet').forEach(el => el.remove());
 
-  const saved = (() => { try { return localStorage.getItem('gongxiu-nickname') || ''; } catch { return ''; } })();
+  const saved = getSavedDharmaName();
   const sheet = document.createElement('div');
   sheet.className = 'counter-goal-sheet dharma-name-sheet';
   sheet.innerHTML = `
@@ -402,7 +406,7 @@ function showDharmaNameSheet(parentPage) {
 
   const save = () => {
     const val = sheet.querySelector('#dnInput').value.trim();
-    try { localStorage.setItem('gongxiu-nickname', val.slice(0, 20)); } catch { }
+    storePatch('profile', { dharmaName: val.slice(0, 20) });
     // Update display in my-page
     const el = parentPage.querySelector('#myDharmaNameValue');
     if (el) el.textContent = val || '未设置';

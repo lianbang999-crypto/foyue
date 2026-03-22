@@ -3,7 +3,8 @@ import { t } from './i18n.js';
 import { get, patch } from './store.js';
 import { pausePlaybackForCounter } from './player.js';
 import { FEATURE_GONGXIU_PLAZA } from './feature-flags.js';
-import { haptic, showToast, escapeHtml, formatCount, HUIXIANG_TEXT, localTodayStr, HUIXIANG_DISPLAY_AUTO_MS } from './utils.js';
+import { showGongxiuSubview } from './pages-my.js';
+import { haptic, showToast, escapeHtml, formatCount, HUIXIANG_TEXT, localTodayStr, beijingTodayStr, HUIXIANG_DISPLAY_AUTO_MS } from './utils.js';
 const BEADS_PER_LOOP = 108;
 /** @deprecated Kept only for data migration from old single-custom format */
 const CUSTOM_KEY = '__custom__';
@@ -18,14 +19,11 @@ const PRACTICE_PRESETS = ['南无阿弥陀佛', '阿弥陀佛'];
 /** Standard daily practice goal presets (all have Buddhist significance) */
 const GOAL_PRESETS = [108, 216, 540, 1080, 3000, 10000];
 
-/** localStorage key for the user's last saved custom goal */
-const CUSTOM_GOAL_KEY = 'counter-custom-goal';
-
 function getSavedCustomGoal() {
-  try { return parseInt(localStorage.getItem(CUSTOM_GOAL_KEY)) || 0; } catch { return 0; }
+  return (get('preferences') || {}).counterCustomGoal || 0;
 }
 function persistCustomGoal(val) {
-  try { localStorage.setItem(CUSTOM_GOAL_KEY, String(val)); } catch { }
+  patch('preferences', { counterCustomGoal: Math.max(0, parseInt(val, 10) || 0) });
 }
 
 /* ── Helpers ── */
@@ -99,13 +97,13 @@ function pruneDailyLog(data) {
 
 /* ── Wake Lock ── */
 let _wakeLock = null;
-const WAKELOCK_PREF_KEY = 'counter-wakelock-pref';
 
 function isWakeLockEnabled() {
-  try { return localStorage.getItem(WAKELOCK_PREF_KEY) !== 'off'; } catch { return true; }
+  const preferences = get('preferences') || {};
+  return preferences.wakeLockEnabled !== false;
 }
 function setWakeLockPref(on) {
-  try { localStorage.setItem(WAKELOCK_PREF_KEY, on ? 'on' : 'off'); } catch { }
+  patch('preferences', { wakeLockEnabled: !!on });
 }
 
 /** Toggle screen wake lock preference; returns new enabled state */
@@ -390,9 +388,7 @@ function closeCounter(view, sourceTab, popHandler, escHandler, visHandler, optio
         sessionStorage.removeItem('counter:goto-gongxiu');
         sessionStorage.setItem('gongxiu:scroll-to-submit', '1');
         setTimeout(() => {
-          import('./pages-my.js').then(m => {
-            if (typeof m.showGongxiuSubview === 'function') m.showGongxiuSubview();
-          }).catch(() => { });
+          showGongxiuSubview();
         }, 380);
       }
     } catch { /* ignore */ }
@@ -654,7 +650,7 @@ function showHuixiangSheet(parentView, data, _session) {
   const ps = getPracticeStats(data);
   const practiceName = escapeHtml(getPracticeDisplayName(data));
   const dailyCount = ps.daily;
-  const savedVow = (() => { try { return localStorage.getItem('hx-another-vow') || ''; } catch { return ''; } })();
+  const savedVow = (get('preferences') || {}).huixiangAnotherVow || '';
 
   const sheet = document.createElement('div');
   sheet.className = 'counter-goal-sheet huixiang-sheet';
@@ -706,7 +702,7 @@ function showHuixiangSheet(parentView, data, _session) {
 
   sheet.querySelector('#hxConfirm').addEventListener('click', () => {
     const anotherVow = sheet.querySelector('#hxAnotherVow')?.value.trim() || '';
-    try { localStorage.setItem('hx-another-vow', anotherVow); } catch { }
+    patch('preferences', { huixiangAnotherVow: anotherVow });
     close();
     setTimeout(() => showHuixiangDisplay(parentView, anotherVow, data, dailyCount), 260);
   });
@@ -714,7 +710,7 @@ function showHuixiangSheet(parentView, data, _session) {
 
 /* ── Submit to 共修广场 ── */
 async function submitToGongxiu(data, count, vowInfo) {
-  const savedNickname = (() => { try { return localStorage.getItem('gongxiu-nickname') || ''; } catch { return ''; } })();
+  const savedNickname = (get('profile') || {}).dharmaName || '';
   const practice = getPracticeDisplayName(data);
 
   const body = {
@@ -738,9 +734,7 @@ async function submitToGongxiu(data, count, vowInfo) {
   }
 
   // Mark as submitted today
-  try {
-    localStorage.setItem('gongxiu-submitted-date', new Date().toDateString());
-  } catch { /* ignore */ }
+  patch('gongxiu', { submittedDate: beijingTodayStr() });
 
   if (!savedNickname.trim()) {
     showToast('可在「我的」中设置法名，便于在共修广场显示');
@@ -755,7 +749,7 @@ async function submitToGongxiu(data, count, vowInfo) {
  * - 预设按钮：GOAL_PRESETS 列表（108 / 216 / 540 / 1080 / 3000 / 10000）
  * - 「我的功课」快捷按钮：若用户曾保存过自定义数量且不在预设中，额外显示
  * - 自定义输入框预填充上次保存的数量，便于快速修改
- * - 确认后将自定义数量持久化到 localStorage（CUSTOM_GOAL_KEY）
+ * - 确认后将自定义数量持久化到统一 store
  */
 function showGoalPicker(parentView, data, onDone) {
   parentView.querySelectorAll('.counter-goal-sheet').forEach(el => el.remove());

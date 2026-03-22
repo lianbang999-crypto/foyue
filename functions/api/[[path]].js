@@ -4,13 +4,66 @@
  */
 
 import {
-  AI_CONFIG, GATEWAY_PROFILES, chunkText, generateEmbeddings, semanticSearch,
-  retrieveDocuments, rerankResults, expandContextFromDocs,
-  ragAnswer, buildRAGMessages, generateSummary,
+  AI_CONFIG, GATEWAY_PROFILES, chunkText, generateEmbeddings,
   checkRateLimit, cleanupRateLimits, timingSafeCompare,
   extractAIResponse, stripThinkTags, getAICallStats, runAIWithLogging,
 } from '../lib/ai-utils.js';
 import { buildAudioUrl, OPUS_CATEGORIES } from '../lib/audio-utils.js';
+import {
+  json,
+  buildCategoriesCacheKey,
+  buildCategoryCacheKey,
+  getEdgeCachedJson,
+} from '../lib/http-utils.js';
+import {
+  hashString,
+  getTodayBeijing,
+  hashIP,
+} from '../lib/crypto-utils.js';
+import {
+  handleAdminGetMessages,
+  handleAdminUpdateMessage,
+  handleAdminDeleteMessage,
+} from '../lib/admin-messages.js';
+import {
+  handleAdminGetCategories,
+  handleAdminUpdateCategory,
+  handleAdminGetSeries,
+  handleAdminCreateSeries,
+  handleAdminUpdateSeries,
+  handleAdminDeleteSeries,
+  handleAdminGetEpisodes,
+  handleAdminCreateEpisode,
+  handleAdminUpdateEpisode,
+  handleAdminDeleteEpisode,
+} from '../lib/admin-content.js';
+import {
+  handleTranscriptAvailability,
+  handleGetTranscript,
+  handlePopulateTranscriptMapping,
+  handleAutoMatchTranscripts,
+  handleIncrementalTranscribe,
+  handleGetChapters,
+  handleGenerateChapters,
+} from '../lib/transcript-routes.js';
+import {
+  handleWenkuSeries,
+  handleWenkuDocuments,
+  handleWenkuDocument,
+  handleWenkuSearch,
+  handleWenkuReadCount,
+  handleWenkuSync,
+  handleWenkuSyncStatus,
+} from '../lib/wenku-routes.js';
+import {
+  handleAiAsk,
+  handleAiAskStream,
+  handleAiSummary,
+  handleAiSearch,
+  handleDailyRecommend,
+  handleVoiceToText,
+  handlePersonalizedRecommend,
+} from '../lib/ai-routes.js';
 
 export async function onRequest(context) {
   const { request, env, waitUntil } = context;
@@ -87,7 +140,8 @@ export async function onRequest(context) {
     if (path === '/api/play-count' && method === 'POST') {
       let body;
       try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
-      return json(await recordPlay(db, body, request), cors, 200, 'no-store');
+      const result = await recordPlay(db, body, request);
+      return json(result, cors, result?.error ? 400 : 200, 'no-store');
     }
 
     // GET /api/play-count/:id
@@ -120,73 +174,73 @@ export async function onRequest(context) {
     // GET /api/transcript/available/:seriesId — 批量查询有文稿的集数
     const ta = path.match(/^\/api\/transcript\/available\/([^/]+)$/);
     if (ta && method === 'GET') {
-      return await handleTranscriptAvailability(db, ta[1], cors);
+      return await handleTranscriptAvailability(db, ta[1], cors, json);
     }
 
     // GET /api/transcript/:seriesId/:episodeNum — 获取文稿内容
     const tm = path.match(/^\/api\/transcript\/([^/]+)\/(\d+)$/);
     if (tm && method === 'GET') {
-      return await handleGetTranscript(db, tm[1], tm[2], cors);
+      return await handleGetTranscript(db, tm[1], tm[2], cors, json);
     }
 
     // POST /api/admin/transcript/populate — 填充音频-文稿映射
     if (path === '/api/admin/transcript/populate' && method === 'POST') {
-      return await handlePopulateTranscriptMapping(env, request, cors);
+      return await handlePopulateTranscriptMapping(env, request, cors, json);
     }
 
     // POST /api/admin/transcript/auto-match — 自动匹配音频与文稿
     if (path === '/api/admin/transcript/auto-match' && method === 'POST') {
-      return await handleAutoMatchTranscripts(env, request, cors);
+      return await handleAutoMatchTranscripts(env, request, cors, json);
     }
 
     // POST /api/admin/transcript/transcribe — 增量 Whisper 转写
     if (path === '/api/admin/transcript/transcribe' && method === 'POST') {
-      return await handleIncrementalTranscribe(env, request, cors);
+      return await handleIncrementalTranscribe(env, request, cors, json);
     }
 
     // ==================== AI 路由 ====================
 
     // POST /api/ai/ask — RAG 问答
     if (path === '/api/ai/ask' && method === 'POST') {
-      return await handleAiAsk(env, request, cors, context);
+      return await handleAiAsk(env, request, cors, context, json);
     }
 
     // POST /api/ai/ask-stream — RAG 问答（SSE 流式）
     if (path === '/api/ai/ask-stream' && method === 'POST') {
-      return await handleAiAskStream(env, request, cors, context);
+      return await handleAiAskStream(env, request, cors, context, json);
     }
 
     // GET /api/ai/summary/:id — 获取/生成集摘要
     const sumMatch = path.match(/^\/api\/ai\/summary\/([^/]+)$/);
     if (sumMatch && method === 'GET') {
-      return await handleAiSummary(env, sumMatch[1], request, cors, context);
+      return await handleAiSummary(env, sumMatch[1], request, cors, context, json);
     }
 
     // GET /api/ai/search?q= — 语义搜索
     if (path === '/api/ai/search' && method === 'GET') {
       const q = url.searchParams.get('q');
-      return await handleAiSearch(env, request, q, cors, context);
+      return await handleAiSearch(env, request, q, cors, context, json);
     }
 
     // GET /api/ai/daily-recommend — AI 每日推荐
     if (path === '/api/ai/daily-recommend' && method === 'GET') {
-      return await handleDailyRecommend(env, cors, context);
+      return await handleDailyRecommend(env, cors, context, json);
     }
 
     // POST /api/ai/voice-to-text — Whisper 语音识别
     if (path === '/api/ai/voice-to-text' && method === 'POST') {
-      return await handleVoiceToText(env, request, cors);
+      return await handleVoiceToText(env, request, cors, json);
     }
 
     // GET /api/ai/personalized-recommend — 个性化推荐
     if (path === '/api/ai/personalized-recommend' && method === 'GET') {
-      return await handlePersonalizedRecommend(env, request, url, cors);
+      return await handlePersonalizedRecommend(env, request, url, cors, json);
     }
 
     // GET /api/chapters/:seriesId/:episodeNum — 获取章节标记
     const chapMatch = path.match(/^\/api\/chapters\/([^/]+)\/(\d+)$/);
     if (chapMatch && method === 'GET') {
-      return await handleGetChapters(env, chapMatch[1], parseInt(chapMatch[2]), cors);
+      return await handleGetChapters(env, chapMatch[1], parseInt(chapMatch[2], 10), cors, json);
     }
 
     // ==================== 留言墙路由 ====================
@@ -229,7 +283,7 @@ export async function onRequest(context) {
 
     // POST /api/admin/chapters/generate — 生成章节标记
     if (path === '/api/admin/chapters/generate' && method === 'POST') {
-      return await handleGenerateChapters(env, request, cors);
+      return await handleGenerateChapters(env, request, cors, json);
     }
 
     // POST /api/admin/cleanup — 清理过期限流记录
@@ -371,7 +425,7 @@ export async function onRequest(context) {
     if (path === '/api/admin/messages' && method === 'GET') {
       const authErr = requireAdmin();
       if (authErr) return authErr;
-      return await handleAdminGetMessages(db, url, cors);
+      return await handleAdminGetMessages(db, url, cors, json);
     }
 
     // PUT /api/admin/messages/:id — update message status/pin
@@ -380,7 +434,7 @@ export async function onRequest(context) {
       const authErr = requireAdmin();
       if (authErr) return authErr;
       let body; try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
-      return await handleAdminUpdateMessage(db, parseInt(admMsgPut[1]), body, cors);
+      return await handleAdminUpdateMessage(db, parseInt(admMsgPut[1], 10), body, cors, json);
     }
 
     // DELETE /api/admin/messages/:id
@@ -388,14 +442,14 @@ export async function onRequest(context) {
     if (admMsgDel && method === 'DELETE') {
       const authErr = requireAdmin();
       if (authErr) return authErr;
-      return await handleAdminDeleteMessage(db, parseInt(admMsgDel[1]), cors);
+      return await handleAdminDeleteMessage(db, parseInt(admMsgDel[1], 10), cors, json);
     }
 
     // GET /api/admin/categories — list categories with series count
     if (path === '/api/admin/categories' && method === 'GET') {
       const authErr = requireAdmin();
       if (authErr) return authErr;
-      return await handleAdminGetCategories(db, cors);
+      return await handleAdminGetCategories(db, cors, json);
     }
 
     // PUT /api/admin/categories/:id
@@ -404,14 +458,14 @@ export async function onRequest(context) {
       const authErr = requireAdmin();
       if (authErr) return authErr;
       let body; try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
-      return await handleAdminUpdateCategory(db, admCatPut[1], body, cors);
+      return await handleAdminUpdateCategory(db, admCatPut[1], body, cors, json);
     }
 
     // GET /api/admin/series — list series
     if (path === '/api/admin/series' && method === 'GET') {
       const authErr = requireAdmin();
       if (authErr) return authErr;
-      return await handleAdminGetSeries(db, url, cors);
+      return await handleAdminGetSeries(db, url, cors, json);
     }
 
     // POST /api/admin/series — create series
@@ -419,7 +473,7 @@ export async function onRequest(context) {
       const authErr = requireAdmin();
       if (authErr) return authErr;
       let body; try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
-      return await handleAdminCreateSeries(db, body, cors);
+      return await handleAdminCreateSeries(db, body, cors, json);
     }
 
     // PUT /api/admin/series/:id
@@ -428,7 +482,7 @@ export async function onRequest(context) {
       const authErr = requireAdmin();
       if (authErr) return authErr;
       let body; try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
-      return await handleAdminUpdateSeries(db, admSerPut[1], body, cors);
+      return await handleAdminUpdateSeries(db, admSerPut[1], body, cors, json);
     }
 
     // DELETE /api/admin/series/:id
@@ -436,7 +490,7 @@ export async function onRequest(context) {
     if (admSerDel && method === 'DELETE') {
       const authErr = requireAdmin();
       if (authErr) return authErr;
-      return await handleAdminDeleteSeries(db, admSerDel[1], cors);
+      return await handleAdminDeleteSeries(db, admSerDel[1], cors, json);
     }
 
     // GET /api/admin/episodes/:seriesId
@@ -444,7 +498,7 @@ export async function onRequest(context) {
     if (admEpGet && method === 'GET') {
       const authErr = requireAdmin();
       if (authErr) return authErr;
-      return await handleAdminGetEpisodes(db, admEpGet[1], cors);
+      return await handleAdminGetEpisodes(db, admEpGet[1], cors, json);
     }
 
     // POST /api/admin/episodes
@@ -452,7 +506,7 @@ export async function onRequest(context) {
       const authErr = requireAdmin();
       if (authErr) return authErr;
       let body; try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
-      return await handleAdminCreateEpisode(db, body, cors);
+      return await handleAdminCreateEpisode(db, body, cors, json);
     }
 
     // PUT /api/admin/episodes/:id
@@ -461,7 +515,7 @@ export async function onRequest(context) {
       const authErr = requireAdmin();
       if (authErr) return authErr;
       let body; try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
-      return await handleAdminUpdateEpisode(db, parseInt(admEpPut[1]), body, cors);
+      return await handleAdminUpdateEpisode(db, parseInt(admEpPut[1], 10), body, cors, json);
     }
 
     // DELETE /api/admin/episodes/:id
@@ -469,7 +523,7 @@ export async function onRequest(context) {
     if (admEpDel && method === 'DELETE') {
       const authErr = requireAdmin();
       if (authErr) return authErr;
-      return await handleAdminDeleteEpisode(db, parseInt(admEpDel[1]), cors);
+      return await handleAdminDeleteEpisode(db, parseInt(admEpDel[1], 10), cors, json);
     }
 
     // ==================== 文库路由 ====================
@@ -509,14 +563,14 @@ export async function onRequest(context) {
     if (path === '/api/admin/wenku-sync' && method === 'POST') {
       const authErr = requireAdmin();
       if (authErr) return authErr;
-      return await handleWenkuSync(env, cors);
+      return await handleWenkuSync(env, cors, json);
     }
 
     // GET /api/admin/wenku-sync-status — 查看同步状态
     if (path === '/api/admin/wenku-sync-status' && method === 'GET') {
       const authErr = requireAdmin();
       if (authErr) return authErr;
-      return await handleWenkuSyncStatus(db, cors);
+      return await handleWenkuSyncStatus(db, cors, json);
     }
 
     return json({ error: 'Not Found' }, cors, 404);
@@ -527,59 +581,6 @@ export async function onRequest(context) {
   }
 }
 
-// ============================================================
-function json(data, cors, status = 200, cacheControl) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-      'Cache-Control': cacheControl || (status === 200 ? 'public, max-age=300' : 'no-cache'),
-      ...cors,
-    },
-  });
-}
-
-function buildCategoriesCacheKey(url, { opusSupported, homeView }) {
-  const cacheUrl = new URL(url.toString());
-  cacheUrl.search = '';
-  if (homeView) cacheUrl.searchParams.set('home', '1');
-  cacheUrl.searchParams.set('opus', opusSupported ? '1' : '0');
-  return new Request(cacheUrl.toString(), { method: 'GET' });
-}
-
-function buildCategoryCacheKey(url, { opusSupported, categoryId }) {
-  const cacheUrl = new URL(url.toString());
-  cacheUrl.pathname = `/api/category/${encodeURIComponent(categoryId)}`;
-  cacheUrl.search = '';
-  cacheUrl.searchParams.set('opus', opusSupported ? '1' : '0');
-  return new Request(cacheUrl.toString(), { method: 'GET' });
-}
-
-async function getEdgeCachedJson(request, cacheKey, waitUntil, buildResponse) {
-  const cache = caches.default;
-  const cached = await cache.match(cacheKey);
-  if (cached) return withEdgeCacheHeader(cached, 'HIT');
-
-  const response = await buildResponse(request);
-  if (response.ok) {
-    const cacheWrite = cache.put(cacheKey, response.clone());
-    if (typeof waitUntil === 'function') waitUntil(cacheWrite);
-    else await cacheWrite;
-  }
-  return withEdgeCacheHeader(response, 'MISS');
-}
-
-function withEdgeCacheHeader(response, status) {
-  const headers = new Headers(response.headers);
-  headers.set('X-Edge-Cache', status);
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
-}
-
-// ============================================================
 async function getCategories(db, opusSupported) {
   // 一次性 JOIN categories + series + episodes，避免 N+1 查询
   const result = await db.prepare(`
@@ -818,16 +819,28 @@ async function getEpisodes(db, seriesId, opusSupported) {
 async function recordPlay(db, body, request) {
   const { seriesId, episodeNum } = body;
   if (!seriesId || typeof seriesId !== 'string' ||
-    typeof episodeNum !== 'number' || !Number.isInteger(episodeNum) || episodeNum < 0) {
+    typeof episodeNum !== 'number' || !Number.isInteger(episodeNum) || episodeNum < 1) {
     return { error: 'Missing or invalid seriesId/episodeNum' };
   }
 
-  const origin = new URL(request.url).hostname;
-  await db.prepare('UPDATE series SET play_count = play_count + 1 WHERE id = ?').bind(seriesId).run();
-  await db.prepare('UPDATE episodes SET play_count = play_count + 1 WHERE series_id = ? AND episode_num = ?').bind(seriesId, episodeNum).run();
+  const episode = await db.prepare(
+    `SELECT e.id
+     FROM episodes e
+     JOIN series s ON s.id = e.series_id
+     WHERE s.id = ? AND e.episode_num = ?
+     LIMIT 1`
+  ).bind(seriesId, episodeNum).first();
+  if (!episode) {
+    return { error: 'Episode not found' };
+  }
 
+  const origin = new URL(request.url).hostname;
   const ua = request.headers.get('User-Agent') || '';
-  await db.prepare('INSERT INTO play_logs (series_id, episode_num, user_agent, origin) VALUES (?, ?, ?, ?)').bind(seriesId, episodeNum, ua.substring(0, 200), origin).run();
+  await db.batch([
+    db.prepare('UPDATE series SET play_count = play_count + 1 WHERE id = ?').bind(seriesId),
+    db.prepare('UPDATE episodes SET play_count = play_count + 1 WHERE series_id = ? AND episode_num = ?').bind(seriesId, episodeNum),
+    db.prepare('INSERT INTO play_logs (series_id, episode_num, user_agent, origin) VALUES (?, ?, ?, ?)').bind(seriesId, episodeNum, ua.substring(0, 200), origin),
+  ]);
 
   const result = await db.prepare('SELECT play_count FROM series WHERE id = ?').bind(seriesId).first();
   return { success: true, playCount: result?.play_count || 0 };
@@ -847,23 +860,34 @@ async function getPlayCount(db, seriesId) {
 async function appreciate(db, seriesId, body, request) {
   const origin = new URL(request.url).hostname;
   const episodeNum = (body && typeof body.episodeNum === 'number' && Number.isInteger(body.episodeNum)) ? body.episodeNum : null;
+  const clientIp = request.headers.get('CF-Connecting-IP') ||
+    request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ||
+    request.headers.get('User-Agent') ||
+    'unknown';
+  const clientHash = await hashString('appreciate:' + clientIp);
 
-  // Backward-compatible: try with episode_num first, fall back to without if column doesn't exist yet
-  try {
-    await db.prepare(
-      'INSERT INTO appreciations (series_id, episode_num, origin) VALUES (?, ?, ?)'
-    ).bind(seriesId, episodeNum, origin).run();
-  } catch (e) {
-    // episode_num column may not exist yet (migration 0005 not applied)
-    await db.prepare(
-      'INSERT INTO appreciations (series_id, origin) VALUES (?, ?)'
-    ).bind(seriesId, origin).run();
+  const existing = await db.prepare(
+    'SELECT id FROM appreciations WHERE series_id = ? AND client_hash = ? LIMIT 1'
+  ).bind(seriesId, clientHash).first().catch(() => null);
+
+  if (!existing) {
+    // Backward-compatible: try with episode_num first, fall back to without if column doesn't exist yet
+    try {
+      await db.prepare(
+        'INSERT INTO appreciations (series_id, client_hash, episode_num, origin) VALUES (?, ?, ?, ?)'
+      ).bind(seriesId, clientHash, episodeNum, origin).run();
+    } catch (e) {
+      // episode_num column may not exist yet (migration 0005 not applied)
+      await db.prepare(
+        'INSERT INTO appreciations (series_id, client_hash, origin) VALUES (?, ?, ?)'
+      ).bind(seriesId, clientHash, origin).run();
+    }
   }
 
   const count = await db.prepare(
     'SELECT COUNT(*) as total FROM appreciations WHERE series_id = ?'
   ).bind(seriesId).first();
-  return { success: true, total: count.total };
+  return { success: true, total: count.total, duplicate: !!existing };
 }
 
 async function getAppreciateCount(db, seriesId) {
@@ -908,1044 +932,6 @@ async function getStats(db, origin = '') {
     recentPlays: recentPlays.results, topSeries: topSeries.results,
     originStats: originStats.results, filteredBy: origin || 'all',
   };
-}
-
-async function hashString(str) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(str);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
-}
-
-// ============================================================
-// 文稿路由处理器
-// ============================================================
-
-/**
- * GET /api/transcript/available/:seriesId — 查询有文稿的集数列表
- */
-async function handleTranscriptAvailability(db, seriesId, cors) {
-  if (!seriesId || typeof seriesId !== 'string') {
-    return json({ error: 'Missing seriesId' }, cors, 400);
-  }
-
-  const result = await db.prepare(
-    `SELECT DISTINCT audio_episode_num FROM documents
-     WHERE audio_series_id = ? AND content IS NOT NULL AND content != ''
-     ORDER BY audio_episode_num`
-  ).bind(seriesId).all();
-
-  const episodes = result.results.map(r => r.audio_episode_num);
-  return json({ seriesId, episodes }, cors, 200, 'public, max-age=3600');
-}
-
-/**
- * GET /api/transcript/:seriesId/:episodeNum — 获取文稿内容
- */
-async function handleGetTranscript(db, seriesId, episodeNum, cors) {
-  if (!seriesId) {
-    return json({ error: 'Missing seriesId' }, cors, 400);
-  }
-
-  const epNum = parseInt(episodeNum, 10);
-  if (!Number.isInteger(epNum) || epNum < 1) {
-    return json({ error: 'Invalid episode number' }, cors, 400);
-  }
-
-  const doc = await db.prepare(
-    `SELECT id, title, content, series_name, episode_num
-     FROM documents
-     WHERE audio_series_id = ? AND audio_episode_num = ?
-       AND content IS NOT NULL AND content != ''
-     LIMIT 1`
-  ).bind(seriesId, epNum).first();
-
-  if (!doc) {
-    return json({ error: 'Transcript not found', available: false }, cors, 404);
-  }
-
-  // 更新阅读计数（fire-and-forget）
-  db.prepare(
-    'UPDATE documents SET read_count = read_count + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-  ).bind(doc.id).run();
-
-  return json({
-    available: true,
-    documentId: doc.id,
-    title: doc.title,
-    seriesName: doc.series_name,
-    episodeNum: doc.episode_num,
-    content: doc.content,
-  }, cors, 200, 'public, max-age=3600');
-}
-
-/**
- * POST /api/admin/transcript/populate — 批量填充音频-文稿映射
- * Header: X-Admin-Token
- * Body: { mappings: [{ seriesName, audioSeriesId }] }
- */
-async function handlePopulateTranscriptMapping(env, request, cors) {
-  const token = request.headers.get('X-Admin-Token');
-  if (!token || !env.ADMIN_TOKEN || !timingSafeCompare(token, env.ADMIN_TOKEN)) {
-    return json({ error: 'Unauthorized' }, cors, 401);
-  }
-
-  let body;
-  try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
-
-  const { mappings } = body;
-  if (!mappings || !Array.isArray(mappings) || mappings.length === 0) {
-    return json({ error: 'Missing or empty mappings array' }, cors, 400);
-  }
-
-  let updated = 0;
-  const errors = [];
-
-  for (const mapping of mappings) {
-    const { seriesName, audioSeriesId } = mapping;
-    if (!seriesName || !audioSeriesId) {
-      errors.push({ seriesName, error: 'Missing seriesName or audioSeriesId' });
-      continue;
-    }
-
-    try {
-      // 先尝试从标题补全缺失的 episode_num
-      await env.DB.prepare(
-        `UPDATE documents
-         SET episode_num = CAST(
-           SUBSTR(title,
-             INSTR(title, '第') + 1,
-             INSTR(SUBSTR(title, INSTR(title, '第') + 1), '讲') - 1
-           ) AS INTEGER
-         ), updated_at = CURRENT_TIMESTAMP
-         WHERE series_name = ? AND episode_num IS NULL
-           AND title LIKE '%第%讲%'
-           AND type = 'transcript'`
-      ).bind(seriesName).run();
-
-      const result = await env.DB.prepare(
-        `UPDATE documents
-         SET audio_series_id = ?, audio_episode_num = episode_num,
-             updated_at = CURRENT_TIMESTAMP
-         WHERE series_name = ? AND episode_num IS NOT NULL
-           AND type = 'transcript' AND content IS NOT NULL AND content != ''`
-      ).bind(audioSeriesId, seriesName).run();
-
-      updated += result.meta.changes || 0;
-    } catch (err) {
-      errors.push({ seriesName, error: err.message });
-    }
-  }
-
-  return json({
-    success: true,
-    updated,
-    errors: errors.length > 0 ? errors : undefined,
-  }, cors, 200, 'no-store');
-}
-
-/**
- * POST /api/admin/transcript/auto-match — 自动匹配音频系列与文库文稿
- * 通过字符串标准化匹配，无需 AI，零成本
- *
- * 流程：
- * 1. 从 D1 读取所有 foyue series
- * 2. 从 D1 读取所有 wenku documents 的 distinct series_name
- * 3. 标准化两侧名称，自动配对
- * 4. 批量 UPDATE documents 表
- */
-async function handleAutoMatchTranscripts(env, request, cors) {
-  const token = request.headers.get('X-Admin-Token');
-  if (!token || !env.ADMIN_TOKEN || !timingSafeCompare(token, env.ADMIN_TOKEN)) {
-    return json({ error: 'Unauthorized' }, cors, 401);
-  }
-
-  const db = env.DB;
-
-  // 1. 获取所有音频系列
-  const { results: allSeries } = await db.prepare(
-    'SELECT id, title FROM series'
-  ).all();
-
-  // 2. 获取所有文库系列名（有文字内容的 transcript 类型）
-  const { results: wenkuSeries } = await db.prepare(
-    `SELECT DISTINCT series_name FROM documents
-     WHERE type = 'transcript' AND series_name IS NOT NULL
-       AND content IS NOT NULL AND content != ''
-       AND (audio_series_id IS NULL OR audio_series_id = '')`
-  ).all();
-
-  if (!wenkuSeries.length) {
-    return json({
-      success: true,
-      message: 'No unmatched wenku series found',
-      matched: 0,
-      updated: 0,
-    }, cors, 200, 'no-store');
-  }
-
-  // 3. 标准化名称用于匹配
-  //    保留"正编""续编"等区分性后缀，避免不同系列碰撞
-  function normalize(str) {
-    return str
-      .replace(/[（）()《》【】\[\]""''「」『』]/g, '')
-      .replace(/[：:，,。.、；;！!？?\s]/g, '')
-      .toLowerCase();
-  }
-
-  // 为每个音频系列建立标准化名称 → id 的映射
-  const audioMap = new Map();
-  for (const s of allSeries) {
-    audioMap.set(normalize(s.title), s.id);
-    // 也用 title 的子串做匹配（处理音频标题比文库标题长的情况）
-  }
-
-  // 4. 匹配并更新
-  let matched = 0;
-  let updated = 0;
-  const matches = [];
-  const unmatched = [];
-
-  for (const ws of wenkuSeries) {
-    const normWenku = normalize(ws.series_name);
-    let bestMatch = null;
-
-    // 精确匹配
-    if (audioMap.has(normWenku)) {
-      bestMatch = audioMap.get(normWenku);
-    }
-
-    // 子串匹配：文库名包含音频名，或反之（取最长匹配，避免短名误命中）
-    if (!bestMatch) {
-      let bestLen = 0;
-      for (const [normAudio, audioId] of audioMap) {
-        if (normWenku.includes(normAudio) || normAudio.includes(normWenku)) {
-          const overlap = Math.min(normWenku.length, normAudio.length);
-          if (overlap > bestLen) {
-            bestLen = overlap;
-            bestMatch = audioId;
-          }
-        }
-      }
-    }
-
-    if (bestMatch) {
-      matched++;
-      matches.push({ wenkuSeries: ws.series_name, audioSeriesId: bestMatch });
-
-      // 批量更新该系列的所有文档
-      // 先尝试从标题补全缺失的 episode_num（"第X讲" 格式）
-      try {
-        await db.prepare(
-          `UPDATE documents
-           SET episode_num = CAST(
-             SUBSTR(title,
-               INSTR(title, '第') + 1,
-               INSTR(SUBSTR(title, INSTR(title, '第') + 1), '讲') - 1
-             ) AS INTEGER
-           ), updated_at = CURRENT_TIMESTAMP
-           WHERE series_name = ? AND episode_num IS NULL
-             AND title LIKE '%第%讲%'
-             AND type = 'transcript'`
-        ).bind(ws.series_name).run();
-      } catch { /* best-effort */ }
-
-      try {
-        const result = await db.prepare(
-          `UPDATE documents
-           SET audio_series_id = ?, audio_episode_num = episode_num,
-               updated_at = CURRENT_TIMESTAMP
-           WHERE series_name = ? AND episode_num IS NOT NULL
-             AND type = 'transcript' AND content IS NOT NULL AND content != ''
-             AND (audio_series_id IS NULL OR audio_series_id = '')`
-        ).bind(bestMatch, ws.series_name).run();
-        updated += result.meta.changes || 0;
-      } catch (err) {
-        matches[matches.length - 1].error = err.message;
-      }
-    } else {
-      unmatched.push(ws.series_name);
-    }
-  }
-
-  return json({
-    success: true,
-    matched,
-    updated,
-    matches,
-    unmatched: unmatched.length > 0 ? unmatched : undefined,
-  }, cors, 200, 'no-store');
-}
-
-/**
- * POST /api/admin/transcript/transcribe — 增量 Whisper 音频转文字
- * 每次处理有限数量的集数，用完每日免费额度即止
- *
- * Body: { limit?: number } — 本次最多处理几集（默认 3）
- *
- * 流程：
- * 1. 找到有音频但无文稿的集数
- * 2. 下载音频，分段送 Whisper 转写
- * 3. 将转写结果写入 documents 表
- */
-async function handleIncrementalTranscribe(env, request, cors) {
-  const token = request.headers.get('X-Admin-Token');
-  if (!token || !env.ADMIN_TOKEN || !timingSafeCompare(token, env.ADMIN_TOKEN)) {
-    return json({ error: 'Unauthorized' }, cors, 401);
-  }
-
-  // 检查 AI 绑定
-  if (!env.AI) {
-    return json({ error: 'Workers AI not bound. Add [ai] binding to wrangler.toml' }, cors, 500);
-  }
-
-  let body = {};
-  try { body = await request.json(); } catch { /* use defaults */ }
-  const batchLimit = Math.min(body.limit || 3, 10); // 每次最多 10 集
-
-  const db = env.DB;
-
-  // 1. 找到有音频但无对应文稿的集数
-  //    即：episodes 表中有 url，但 documents 表中没有匹配的 audio_series_id + audio_episode_num
-  const { results: episodes } = await db.prepare(
-    `SELECT e.series_id, e.episode_num, e.title, e.url, s.title as series_title
-     FROM episodes e
-     JOIN series s ON e.series_id = s.id
-     WHERE e.url IS NOT NULL AND e.url != ''
-       AND NOT EXISTS (
-         SELECT 1 FROM documents d
-         WHERE d.audio_series_id = e.series_id
-           AND d.audio_episode_num = e.episode_num
-           AND d.content IS NOT NULL AND d.content != ''
-       )
-     ORDER BY s.play_count DESC, e.episode_num ASC
-     LIMIT ?`
-  ).bind(batchLimit).all();
-
-  if (!episodes.length) {
-    return json({
-      success: true,
-      message: 'All episodes have transcripts. Nothing to transcribe.',
-      processed: 0,
-    }, cors, 200, 'no-store');
-  }
-
-  let processed = 0;
-  const results = [];
-
-  for (const ep of episodes) {
-    const epResult = {
-      seriesId: ep.series_id,
-      episodeNum: ep.episode_num,
-      title: ep.title,
-    };
-
-    try {
-      // 2. 下载音频（只取前 10 分钟用于 Whisper，节省资源）
-      //    Whisper 在 Workers AI 上限制 ~30s 输入，所以我们取一个小片段做测试
-      const audioResponse = await fetch(ep.url, {
-        headers: { 'Range': 'bytes=0-1048576' }, // 前 1MB（约 30-60 秒 MP3）
-      });
-
-      if (!audioResponse.ok) {
-        throw new Error(`Audio download failed: ${audioResponse.status}`);
-      }
-
-      const audioBuffer = await audioResponse.arrayBuffer();
-
-      // 3. Whisper 转写
-      const transcription = await env.AI.run(
-        AI_CONFIG.models.whisper,
-        { audio: [...new Uint8Array(audioBuffer)] },
-        { gateway: GATEWAY_PROFILES.whisper }
-      );
-
-      const text = transcription.text?.trim();
-      if (!text) {
-        throw new Error('Whisper returned empty transcription');
-      }
-
-      // 4. 写入 documents 表
-      const docId = `whisper-${ep.series_id}-${String(ep.episode_num).padStart(3, '0')}`;
-      const docTitle = `${ep.series_title} ${ep.title}（AI转写）`;
-
-      await db.prepare(
-        `INSERT OR REPLACE INTO documents
-         (id, title, type, category, series_name, episode_num, format,
-          r2_bucket, r2_key, content, audio_series_id, audio_episode_num,
-          created_at, updated_at)
-         VALUES (?, ?, 'transcript', '大安法师', ?, ?, 'txt',
-                 'whisper', ?, ?, ?, ?,
-                 CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
-      ).bind(
-        docId,
-        docTitle,
-        ep.series_title,
-        ep.episode_num,
-        `whisper/${ep.series_id}/${ep.episode_num}`,
-        text,
-        ep.series_id,
-        ep.episode_num,
-      ).run();
-
-      epResult.status = 'completed';
-      epResult.textLength = text.length;
-      epResult.preview = text.slice(0, 100) + '...';
-      processed++;
-    } catch (err) {
-      epResult.status = 'failed';
-      epResult.error = err.message;
-
-      // 如果是 AI 配额耗尽，停止处理
-      if (err.message.includes('rate') || err.message.includes('limit') || err.message.includes('quota')) {
-        epResult.note = 'Daily AI quota likely exhausted. Try again tomorrow.';
-        results.push(epResult);
-        break;
-      }
-    }
-
-    results.push(epResult);
-  }
-
-  return json({
-    success: true,
-    processed,
-    remaining: episodes.length - processed,
-    results,
-    hint: processed < episodes.length
-      ? 'Some episodes were not processed. Run again tomorrow to continue.'
-      : undefined,
-  }, cors, 200, 'no-store');
-}
-
-// ============================================================
-// AI 路由处理器
-// ============================================================
-
-/**
- * POST /api/ai/ask — RAG 问答
- * Body: { question, series_id?, episode_id? }
- */
-async function handleAiAsk(env, request, cors, ctx) {
-  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-  const limit = await checkRateLimit(env, ip, 'ai_ask');
-  if (!limit.allowed) {
-    return json({ error: limit.reason }, cors, 429);
-  }
-
-  let body;
-  try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
-  const { question, series_id, episode_id, episode_num, history } = body;
-  const episodeNum = Number.parseInt(episode_num ?? episode_id, 10);
-
-  if (!question || typeof question !== 'string' || question.length > 500) {
-    return json({ error: '问题不能为空且不超过500字' }, cors, 400);
-  }
-
-  // 构建 Vectorize 过滤条件
-  const filter = {};
-  if (series_id && typeof series_id === 'string') filter.audio_series_id = series_id.slice(0, 100);
-
-  // 语义搜索
-  let matches = [];
-  try {
-    matches = await semanticSearch(env, question, {
-      topK: 5,
-      filter: Object.keys(filter).length > 0 ? filter : undefined,
-      ctx,
-    });
-  } catch (err) {
-    console.warn('Vectorize search failed, falling back to D1:', err.message);
-  }
-
-  // 重排序：使用 reranker 模型精排结果
-  if (matches.length >= 2) {
-    matches = await rerankResults(env, question, matches, { topK: 5, ctx });
-  }
-
-  // 从 D1 检索源文档
-  let docs = await retrieveDocuments(env, matches);
-
-  if (series_id && Number.isInteger(episodeNum) && episodeNum > 0) {
-    const exactDoc = await env.DB.prepare(
-      `SELECT id, title, content, category, series_name, audio_series_id, audio_episode_num
-       FROM documents
-       WHERE audio_series_id = ? AND audio_episode_num = ? AND content IS NOT NULL AND content != ''
-       LIMIT 1`
-    ).bind(series_id, episodeNum).first();
-    if (exactDoc && !docs.some(doc => doc.id === exactDoc.id)) {
-      docs = [exactDoc, ...docs];
-    }
-  }
-
-  // 上下文扩展：从源文档中扩展匹配片段的上下文窗口
-  if (matches.length > 0 && docs.length > 0) {
-    matches = expandContextFromDocs(matches, docs);
-  }
-
-  // Fallback: 如果 Vectorize 没有结果，尝试 D1 关键词搜索
-  if (!docs.length) {
-    try {
-      const keywords = question.replace(/[？?！!，。、]/g, ' ').trim().slice(0, 50);
-      let fallbackQuery;
-      if (series_id) {
-        fallbackQuery = env.DB.prepare(
-          `SELECT id, title, content, category, series_name FROM documents
-           WHERE audio_series_id = ? AND content IS NOT NULL
-           ORDER BY episode_num ASC LIMIT 5`
-        ).bind(series_id);
-      } else {
-        fallbackQuery = env.DB.prepare(
-          `SELECT id, title, content, category, series_name FROM documents
-           WHERE content IS NOT NULL AND (title LIKE ? OR content LIKE ?)
-           LIMIT 5`
-        ).bind(`%${keywords.slice(0, 20)}%`, `%${keywords.slice(0, 20)}%`);
-      }
-      const fallback = await fallbackQuery.all();
-      if (fallback.results && fallback.results.length > 0) {
-        docs = fallback.results;
-      }
-    } catch (err) {
-      console.warn('D1 fallback search failed:', err.message);
-    }
-  }
-
-  if (!docs.length) {
-    return json({
-      answer: '抱歉，暂未找到与您问题相关的内容。请尝试换一种方式提问。',
-      sources: [],
-      disclaimer: '以上回答由AI生成，仅供参考，请以原始经典为准。',
-    }, cors);
-  }
-
-  // RAG 生成回答
-  let result;
-  try {
-    result = await ragAnswer(env, question, docs, {
-      history: Array.isArray(history) ? history : [],
-      vectorMatches: matches,
-      ctx,
-    });
-  } catch (err) {
-    console.error('RAG answer failed:', err.message);
-    return json({
-      answer: '抱歉，AI 服务暂时不可用，请稍后再试。',
-      sources: [],
-      disclaimer: '以上回答由AI生成，仅供参考，请以原始经典为准。',
-    }, cors, 503, 'no-store');
-  }
-  const answer = result?.response?.trim();
-
-  if (!answer) {
-    return json({
-      answer: '抱歉，AI 暂时无法生成回答，请稍后再试。',
-      sources: [],
-      disclaimer: '以上回答由AI生成，仅供参考，请以原始经典为准。',
-    }, cors, 200, 'no-store');
-  }
-
-  // 构建引用来源，按 doc_id 去重
-  const seenDocIds = new Set();
-  const sources = [];
-  for (const m of matches) {
-    const docId = m.metadata?.doc_id || '';
-    if (!docId || seenDocIds.has(docId)) continue;
-    seenDocIds.add(docId);
-    const doc = docs.find(d => d.id === docId);
-    sources.push({
-      title: m.metadata.title || '',
-      doc_id: docId,
-      score: Math.round(m.score * 100) / 100,
-      category: doc?.category || m.metadata.category || '',
-      series_name: doc?.series_name || m.metadata.series_name || '',
-      snippet: (m.metadata?.text || '').replace(/\s+/g, '').slice(0, 120),
-    });
-    if (sources.length >= 3) break;
-  }
-
-  return json({
-    answer,
-    sources,
-    disclaimer: '以上回答由AI生成，仅供参考，请以原始经典为准。',
-  }, cors, 200, 'no-store');
-}
-
-/**
- * POST /api/ai/ask-stream — RAG 问答（SSE 流式输出）
- * 与 handleAiAsk 共享检索逻辑，AI 生成阶段使用 stream: true
- * 协议：SSE text/event-stream
- *   data: {"token":"..."}        — 逐 token 输出
- *   event: done\ndata: {"sources":[...],"disclaimer":"..."}  — 结束事件
- *   event: error\ndata: {"error":"..."}  — 错误事件
- */
-async function handleAiAskStream(env, request, cors, ctx) {
-  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-  const limit = await checkRateLimit(env, ip, 'ai_ask');
-  if (!limit.allowed) {
-    return json({ error: limit.reason }, cors, 429);
-  }
-
-  let body;
-  try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
-  const { question, series_id, episode_id, episode_num, history } = body;
-  const episodeNum = Number.parseInt(episode_num ?? episode_id, 10);
-
-  if (!question || typeof question !== 'string' || question.length > 500) {
-    return json({ error: '问题不能为空且不超过500字' }, cors, 400);
-  }
-
-  // --- Retrieval phase (same as handleAiAsk) ---
-  const filter = {};
-  if (series_id && typeof series_id === 'string') filter.audio_series_id = series_id.slice(0, 100);
-
-  let matches = [];
-  try {
-    matches = await semanticSearch(env, question, {
-      topK: 5,
-      filter: Object.keys(filter).length > 0 ? filter : undefined,
-      ctx,
-    });
-  } catch (err) {
-    console.warn('Vectorize search failed, falling back to D1:', err.message);
-  }
-
-  // 重排序
-  if (matches.length >= 2) {
-    matches = await rerankResults(env, question, matches, { topK: 5, ctx });
-  }
-
-  let docs = await retrieveDocuments(env, matches);
-
-  if (series_id && Number.isInteger(episodeNum) && episodeNum > 0) {
-    const exactDoc = await env.DB.prepare(
-      `SELECT id, title, content, category, series_name, audio_series_id, audio_episode_num
-       FROM documents
-       WHERE audio_series_id = ? AND audio_episode_num = ? AND content IS NOT NULL AND content != ''
-       LIMIT 1`
-    ).bind(series_id, episodeNum).first();
-    if (exactDoc && !docs.some(doc => doc.id === exactDoc.id)) {
-      docs = [exactDoc, ...docs];
-    }
-  }
-
-  // 上下文扩展
-  if (matches.length > 0 && docs.length > 0) {
-    matches = expandContextFromDocs(matches, docs);
-  }
-
-  if (!docs.length) {
-    try {
-      const keywords = question.replace(/[？?！!，。、]/g, ' ').trim().slice(0, 50);
-      let fallbackQuery;
-      if (series_id) {
-        fallbackQuery = env.DB.prepare(
-          `SELECT id, title, content, category, series_name FROM documents
-           WHERE audio_series_id = ? AND content IS NOT NULL
-           ORDER BY episode_num ASC LIMIT 5`
-        ).bind(series_id);
-      } else {
-        fallbackQuery = env.DB.prepare(
-          `SELECT id, title, content, category, series_name FROM documents
-           WHERE content IS NOT NULL AND (title LIKE ? OR content LIKE ?)
-           LIMIT 5`
-        ).bind(`%${keywords.slice(0, 20)}%`, `%${keywords.slice(0, 20)}%`);
-      }
-      const fallback = await fallbackQuery.all();
-      if (fallback.results?.length > 0) docs = fallback.results;
-    } catch (err) {
-      console.warn('D1 fallback search failed:', err.message);
-    }
-  }
-
-  if (!docs.length) {
-    return json({
-      answer: '抱歉，暂未找到与您问题相关的内容。请尝试换一种方式提问。',
-      sources: [],
-      disclaimer: '以上回答由AI生成，仅供参考，请以原始经典为准。',
-    }, cors);
-  }
-
-  // Build sources list (before streaming starts)
-  const seenDocIds = new Set();
-  const sources = [];
-  for (const m of matches) {
-    const docId = m.metadata?.doc_id || '';
-    if (!docId || seenDocIds.has(docId)) continue;
-    seenDocIds.add(docId);
-    const doc = docs.find(d => d.id === docId);
-    sources.push({
-      title: m.metadata.title || '',
-      doc_id: docId,
-      score: Math.round(m.score * 100) / 100,
-      category: doc?.category || m.metadata.category || '',
-      series_name: doc?.series_name || m.metadata.series_name || '',
-      snippet: (m.metadata?.text || '').replace(/\s+/g, '').slice(0, 120),
-    });
-    if (sources.length >= 3) break;
-  }
-
-  // --- Streaming phase ---
-  const messages = buildRAGMessages(question, docs, {
-    history: Array.isArray(history) ? history : [],
-    vectorMatches: matches,
-  });
-
-  let aiStream;
-  try {
-    aiStream = await runAIWithLogging(
-      env,
-      AI_CONFIG.models.chat,
-      { messages, max_tokens: 500, temperature: 0.2, stream: true },
-      GATEWAY_PROFILES.ragStream,
-      'ragStream',
-      ctx
-    );
-  } catch (err) {
-    console.warn('Primary chat model failed, using fallback:', err.message);
-    try {
-      aiStream = await runAIWithLogging(
-        env,
-        AI_CONFIG.models.chatFallback,
-        { messages, max_tokens: 500, temperature: 0.2, stream: true },
-        GATEWAY_PROFILES.ragStream,
-        'ragStream',
-        ctx
-      );
-    } catch (err2) {
-      return json({
-        answer: '抱歉，AI 服务暂时不可用，请稍后再试。',
-        sources: [],
-        disclaimer: '以上回答由AI生成，仅供参考，请以原始经典为准。',
-      }, cors, 503, 'no-store');
-    }
-  }
-
-  // Transform AI stream → SSE format
-  const encoder = new TextEncoder();
-  const disclaimer = '以上回答由AI生成，仅供参考，请以原始经典为准。';
-
-  const sseStream = new ReadableStream({
-    async start(controller) {
-      let tokenCount = 0;
-      // Track <think>...</think> blocks in stream to suppress them
-      let inThinkBlock = false;
-      let thinkBuffer = '';
-      try {
-        // env.AI.run with stream:true returns a ReadableStream.
-        // The stream contains SSE-formatted text: "data: {...}\n\n"
-        // Format varies by model:
-        //   Old models:  data: {"response":"token"}
-        //   OpenAI-compat: data: {"choices":[{"delta":{"content":"token"}}]}
-        //   Some models may return raw text chunks (not SSE-wrapped)
-        const reader = aiStream.getReader();
-        const decoder = new TextDecoder();
-        let sseBuffer = '';
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const text = typeof value === 'string' ? value : decoder.decode(value, { stream: true });
-          sseBuffer += text;
-
-          // Process complete lines from the buffer
-          const segments = sseBuffer.split('\n');
-          sseBuffer = segments.pop() || ''; // keep incomplete last line
-
-          for (const line of segments) {
-            const trimmed = line.trim();
-            if (!trimmed || trimmed.startsWith('event:')) continue;
-
-            // SSE data line
-            if (trimmed.startsWith('data:')) {
-              const payload = trimmed.slice(5).trim();
-              if (payload === '[DONE]') continue;
-              try {
-                const parsed = JSON.parse(payload);
-                // Try all known Workers AI response formats
-                const token = parsed.response
-                  || parsed.choices?.[0]?.delta?.content
-                  || parsed.choices?.[0]?.text
-                  || parsed.result?.response
-                  || parsed.text
-                  || parsed.token
-                  || '';
-                if (token) {
-                  // Filter out <think>...</think> blocks from stream
-                  thinkBuffer += token;
-                  if (inThinkBlock) {
-                    const endIdx = thinkBuffer.indexOf('</think>');
-                    if (endIdx !== -1) {
-                      inThinkBlock = false;
-                      thinkBuffer = thinkBuffer.slice(endIdx + 8);
-                    } else {
-                      continue;
-                    }
-                  }
-                  const startIdx = thinkBuffer.indexOf('<think>');
-                  if (startIdx !== -1) {
-                    const before = thinkBuffer.slice(0, startIdx);
-                    if (before.trim()) {
-                      tokenCount++;
-                      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: before })}\n\n`));
-                    }
-                    const endIdx = thinkBuffer.indexOf('</think>', startIdx);
-                    if (endIdx !== -1) {
-                      thinkBuffer = thinkBuffer.slice(endIdx + 8);
-                    } else {
-                      inThinkBlock = true;
-                      thinkBuffer = '';
-                      continue;
-                    }
-                  }
-                  if (thinkBuffer.trim()) {
-                    tokenCount++;
-                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: thinkBuffer })}\n\n`));
-                  }
-                  thinkBuffer = '';
-                }
-              } catch { /* skip malformed JSON */ }
-              continue;
-            }
-
-            // Fallback: some models may stream raw JSON objects without "data:" prefix
-            if (trimmed.startsWith('{')) {
-              try {
-                const parsed = JSON.parse(trimmed);
-                const token = parsed.response
-                  || parsed.choices?.[0]?.delta?.content
-                  || parsed.text
-                  || '';
-                if (token) {
-                  tokenCount++;
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token })}\n\n`));
-                }
-              } catch { /* not JSON */ }
-            }
-          }
-        }
-        // Process any remaining buffer
-        if (sseBuffer.trim()) {
-          const trimmed = sseBuffer.trim();
-          if (trimmed.startsWith('data:')) {
-            const payload = trimmed.slice(5).trim();
-            if (payload !== '[DONE]') {
-              try {
-                const parsed = JSON.parse(payload);
-                const token = parsed.response || parsed.choices?.[0]?.delta?.content || '';
-                if (token) {
-                  tokenCount++;
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token })}\n\n`));
-                }
-              } catch { /* skip */ }
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Stream processing error:', err.message);
-        // If stream fails and we got no tokens, try non-stream fallback
-        if (tokenCount === 0) {
-          try {
-            const fallbackResult = await env.AI.run(
-              AI_CONFIG.models.chat,
-              { messages, max_tokens: 500, temperature: 0.2 },
-              { gateway: GATEWAY_PROFILES.ragChat }
-            );
-            const answer = stripThinkTags(extractAIResponse(fallbackResult));
-            if (answer) {
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: answer })}\n\n`));
-              tokenCount++;
-            }
-          } catch { /* fallback also failed */ }
-        }
-        if (tokenCount === 0) {
-          controller.enqueue(encoder.encode(
-            `event: error\ndata: ${JSON.stringify({ error: err.message || 'Stream failed' })}\n\n`
-          ));
-        }
-      }
-
-      // If streaming produced zero tokens, attempt non-stream fallback
-      if (tokenCount === 0) {
-        try {
-          const fallbackResult = await runAIWithLogging(
-            env,
-            AI_CONFIG.models.chat,
-            { messages, max_tokens: 500, temperature: 0.2 },
-            GATEWAY_PROFILES.ragChat,
-            'ragChat',
-            ctx
-          );
-          const answer = stripThinkTags(extractAIResponse(fallbackResult));
-          if (answer) {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: answer })}\n\n`));
-            tokenCount++;
-          }
-        } catch {
-          // Try fallback model non-stream
-          try {
-            const fallback2 = await runAIWithLogging(
-              env,
-              AI_CONFIG.models.chatFallback,
-              { messages, max_tokens: 500, temperature: 0.2 },
-              GATEWAY_PROFILES.ragChat,
-              'ragChat',
-              ctx
-            );
-            const answer2 = stripThinkTags(extractAIResponse(fallback2));
-            if (answer2) {
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: answer2 })}\n\n`));
-              tokenCount++;
-            }
-          } catch { /* all options exhausted */ }
-        }
-      }
-
-      // Send final event with sources
-      controller.enqueue(encoder.encode(
-        `event: done\ndata: ${JSON.stringify({ sources, disclaimer })}\n\n`
-      ));
-      controller.close();
-    }
-  });
-
-  return new Response(sseStream, {
-    headers: {
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache, no-store',
-      'Connection': 'keep-alive',
-      ...cors,
-    },
-  });
-}
-
-/**
- * GET /api/ai/summary/:documentId — 获取/生成内容摘要
- */
-async function handleAiSummary(env, documentId, request, cors, ctx) {
-  // 限流保护
-  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-  const limit = await checkRateLimit(env, ip, 'ai_summary');
-  if (!limit.allowed) {
-    return json({ error: limit.reason }, cors, 429);
-  }
-
-  // 检查缓存
-  const cached = await env.DB.prepare(
-    'SELECT summary FROM ai_summaries WHERE document_id = ?'
-  ).bind(documentId).first();
-
-  if (cached) {
-    return json({
-      summary: cached.summary,
-      cached: true,
-      disclaimer: 'AI生成摘要，仅供参考',
-    }, cors);
-  }
-
-  // 查找对应文档：先按 id 查，再按 audio_series_id 聚合查询
-  let doc = await env.DB.prepare(
-    'SELECT id, title, content FROM documents WHERE id = ?'
-  ).bind(documentId).first();
-
-  if (!doc || !doc.content) {
-    // 尝试按 audio_series_id 查找（音频系列摘要场景）
-    const seriesDocs = await env.DB.prepare(
-      `SELECT id, title, content, series_name FROM documents
-       WHERE audio_series_id = ? AND content IS NOT NULL
-       ORDER BY audio_episode_num ASC LIMIT 10`
-    ).bind(documentId).all();
-
-    if (seriesDocs.results && seriesDocs.results.length > 0) {
-      // 聚合多个文档内容为单一摘要
-      const combinedTitle = seriesDocs.results[0].series_name || documentId;
-      const combinedContent = seriesDocs.results
-        .map(d => `【${d.title}】\n${(d.content || '').slice(0, 2000)}`)
-        .join('\n\n');
-      doc = { id: documentId, title: combinedTitle, content: combinedContent };
-    } else {
-      return json({ error: '未找到该文档或文档无文本内容' }, cors, 404);
-    }
-  }
-
-  // 生成摘要
-  let summary;
-  try {
-    summary = await generateSummary(env, doc.title, doc.content, { ctx });
-  } catch (err) {
-    console.error('generateSummary failed:', err.message);
-    return json({ error: 'AI摘要服务暂时不可用，请稍后再试' }, cors, 503);
-  }
-
-  if (!summary || !summary.trim()) {
-    return json({ error: 'AI未能生成有效摘要，请稍后再试' }, cors, 503);
-  }
-
-  // 缓存
-  await env.DB.prepare(
-    `INSERT OR REPLACE INTO ai_summaries (document_id, summary, model)
-     VALUES (?, ?, ?)`
-  ).bind(documentId, summary, AI_CONFIG.models.chat).run();
-
-  return json({
-    summary,
-    cached: false,
-    disclaimer: 'AI生成摘要，仅供参考',
-  }, cors);
-}
-
-/**
- * GET /api/ai/search?q= — 语义搜索
- */
-async function handleAiSearch(env, request, query, cors, ctx) {
-  if (!query || query.length < 2 || query.length > 200) {
-    return json({ error: '搜索词长度应为2-200个字符' }, cors, 400);
-  }
-
-  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-  const limit = await checkRateLimit(env, ip, 'ai_search');
-  if (!limit.allowed) {
-    return json({ error: limit.reason }, cors, 429);
-  }
-
-  let matches = await semanticSearch(env, query, { topK: 10, ctx });
-
-  // 重排序搜索结果
-  if (matches.length >= 2) {
-    matches = await rerankResults(env, query, matches, { topK: 10, ctx });
-  }
-
-  const docs = await retrieveDocuments(env, matches);
-
-  // 构建搜索结果，包含片段
-  const results = matches.map(m => {
-    const doc = docs.find(d => d.id === m.metadata.doc_id);
-    // 提取匹配片段 — 优先用向量块原文，回退到关键词上下文
-    let snippet = '';
-    if (doc && doc.content) {
-      // 尝试在原文中找关键词上下文
-      const ql = query.toLowerCase();
-      const idx = doc.content.toLowerCase().indexOf(ql);
-      if (idx >= 0) {
-        const start = Math.max(0, idx - 60);
-        const end = Math.min(doc.content.length, idx + ql.length + 140);
-        snippet = (start > 0 ? '...' : '') + doc.content.slice(start, end).trim() + (end < doc.content.length ? '...' : '');
-      } else {
-        // 关键词没精确匹配，取文档开头作为摘要
-        snippet = doc.content.slice(0, 200).trim() + (doc.content.length > 200 ? '...' : '');
-      }
-    }
-    return {
-      doc_id: m.metadata.doc_id,
-      title: doc ? doc.title : m.metadata.title || '',
-      snippet,
-      score: Math.round(m.score * 100) / 100,
-      series_name: doc ? doc.series_name : '',
-      category: doc ? doc.category : m.metadata.category || '',
-      audio_series_id: doc ? doc.audio_series_id : '',
-    };
-  });
-
-  return json({ results, query }, cors);
 }
 
 // ============================================================
@@ -2156,256 +1142,6 @@ async function handleEmbeddingStatus(db, cors) {
   }
 }
 
-// ============================================================
-// AI 每日推荐
-// ============================================================
-
-/**
- * 确定性种子哈希 — 用日期字符串生成稳定的整数种子
- */
-function dateSeed(dateKey) {
-  let h = 0;
-  for (let i = 0; i < dateKey.length; i++) {
-    h = ((h << 5) - h + dateKey.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h);
-}
-
-/**
- * 从所有系列中选 3 集音频（跨系列、跨分类）
- */
-async function selectDailyEpisodes(db, dateKey) {
-  const seed = dateSeed(dateKey);
-
-  // 获取所有有集数的系列（排除佛号类 — 不适合推荐单集）
-  const { results: allSeries } = await db.prepare(
-    `SELECT s.id, s.title, s.title_en, s.speaker, s.speaker_en,
-            s.category_id, s.total_episodes, s.intro
-     FROM series s
-     WHERE s.total_episodes > 0 AND s.category_id != 'fohao'
-     ORDER BY s.sort_order`
-  ).all();
-
-  if (!allSeries.length) return [];
-
-  // 确定性 shuffle
-  const shuffled = [...allSeries].sort((a, b) => {
-    const ha = ((seed * 31 + a.id.charCodeAt(0) * 17) >>> 0) % 10000;
-    const hb = ((seed * 31 + b.id.charCodeAt(0) * 17) >>> 0) % 10000;
-    return ha - hb;
-  });
-
-  // 优先从不同 category 各选一集
-  const picks = [];
-  const usedCats = new Set();
-  const usedSeries = new Set();
-
-  for (const s of shuffled) {
-    if (picks.length >= 3) break;
-    if (usedCats.has(s.category_id)) continue;
-    const epNum = (seed + s.id.charCodeAt(0) * 7) % s.total_episodes + 1;
-    picks.push({ series: s, episodeNum: epNum });
-    usedCats.add(s.category_id);
-    usedSeries.add(s.id);
-  }
-
-  // 不够 3 个则从未用的系列填充
-  for (const s of shuffled) {
-    if (picks.length >= 3) break;
-    if (usedSeries.has(s.id)) continue;
-    const ci = Math.min(s.id.length - 1, 2);
-    const epNum = (seed + s.id.charCodeAt(ci) * 13) % s.total_episodes + 1;
-    picks.push({ series: s, episodeNum: epNum });
-    usedSeries.add(s.id);
-  }
-
-  // 查出每集的完整数据
-  const results = [];
-  for (const pick of picks) {
-    const ep = await db.prepare(
-      `SELECT episode_num, title, file_name, url
-       FROM episodes WHERE series_id = ? AND episode_num = ?`
-    ).bind(pick.series.id, pick.episodeNum).first();
-
-    if (ep) {
-      results.push({
-        series_id: pick.series.id,
-        episode_num: ep.episode_num,
-        episode_title: ep.title,
-        series_title: pick.series.title,
-        series_title_en: pick.series.title_en || '',
-        series_intro: pick.series.intro || '',
-        category_id: pick.series.category_id,
-        speaker: pick.series.speaker,
-        speaker_en: pick.series.speaker_en || '',
-        play_url: ep.url,
-        total_episodes: pick.series.total_episodes,
-      });
-    }
-  }
-  return results;
-}
-
-/**
- * 从 documents 表获取某集的文稿片段作为 AI 上下文
- */
-async function getEpisodeContext(db, seriesId, episodeNum) {
-  const doc = await db.prepare(
-    `SELECT content FROM documents
-     WHERE audio_series_id = ? AND audio_episode_num = ?
-       AND content IS NOT NULL AND content != ''
-     LIMIT 1`
-  ).bind(seriesId, episodeNum).first();
-  return doc && doc.content ? doc.content.slice(0, 800) : null;
-}
-
-/**
- * 一次 AI 调用为 3 集音频生成推荐语
- */
-async function generateRecommendIntros(env, episodes, contexts, ctx) {
-  const epDesc = episodes.map((ep, i) => {
-    let d = `${i + 1}. 系列：${ep.series_title}\n`;
-    d += `   系列简介：${ep.series_intro}\n`;
-    d += `   讲者：${ep.speaker}\n`;
-    d += `   本集标题：${ep.episode_title}（第${ep.episode_num}讲，共${ep.total_episodes}讲）\n`;
-    if (contexts[i]) d += `   本集开头内容：${contexts[i].slice(0, 500)}\n`;
-    return d;
-  }).join('\n');
-
-  const messages = [
-    {
-      role: 'system',
-      content: `你是净土法音平台的内容编辑，负责每日为用户撰写简短的收听推荐语。
-要求：
-1. 为每集音频写一段50-80字的推荐语，引导用户想去收听
-2. 推荐语应点明该集的核心内容或亮点，用亲切自然的语气
-3. 如果有本集内容，应基于实际内容来写；如果没有，则根据系列简介和集数位置推测
-4. 不要使用"本集"两字开头，用更自然的表达
-5. 严格按JSON数组格式输出，不要输出其他内容
-6. 使用简体中文`,
-    },
-    {
-      role: 'user',
-      content: `请为以下${episodes.length}集音频各写一段推荐语：
-
-${epDesc}
-
-请按以下JSON格式输出（只输出JSON数组，不要其他文字）：
-[{"index":1,"intro":"推荐语..."}${episodes.length >= 2 ? `,{"index":2,"intro":"..."}` : ''}${episodes.length >= 3 ? `,{"index":3,"intro":"..."}` : ''}]`,
-    },
-  ];
-
-  let response;
-  try {
-    response = await runAIWithLogging(env, AI_CONFIG.models.chat, {
-      messages, max_tokens: 500, temperature: 0.6,
-    }, GATEWAY_PROFILES.recommend, 'recommend', ctx);
-  } catch (err) {
-    console.warn('[DailyRec] Primary model failed, trying fallback:', err.message);
-    response = await runAIWithLogging(env, AI_CONFIG.models.chatFallback, {
-      messages, max_tokens: 500, temperature: 0.6,
-    }, GATEWAY_PROFILES.recommend, 'recommend', ctx);
-  }
-
-  const text = extractAIResponse(response);
-  if (!text) return null;
-
-  // 清除可能的 markdown code fence
-  const cleaned = text.replace(/```json?\s*/g, '').replace(/```/g, '').trim();
-  try {
-    return JSON.parse(cleaned);
-  } catch (e) {
-    console.warn('[DailyRec] Failed to parse AI JSON:', cleaned.slice(0, 200));
-    return null;
-  }
-}
-
-/**
- * GET /api/ai/daily-recommend — 每日 AI 推荐
- */
-async function handleDailyRecommend(env, cors, ctx) {
-  const db = env.DB;
-  const dateKey = new Date().toISOString().slice(0, 10);
-  const startMs = Date.now();
-
-  // 1. 查缓存
-  const cached = await db.prepare(
-    `SELECT recommendations, status FROM ai_daily_recommendations WHERE date_key = ?`
-  ).bind(dateKey).first();
-
-  if (cached && cached.status === 'ready') {
-    return json({
-      date: dateKey,
-      recommendations: JSON.parse(cached.recommendations),
-      cached: true,
-    }, cors, 200, 'public, max-age=300');
-  }
-
-  if (cached && cached.status === 'generating') {
-    return json({ date: dateKey, recommendations: null, generating: true }, cors, 200, 'no-store');
-  }
-
-  // 2. 插入锁行
-  try {
-    await db.prepare(
-      `INSERT INTO ai_daily_recommendations (date_key, recommendations, model, status)
-       VALUES (?, '[]', 'pending', 'generating')`
-    ).bind(dateKey).run();
-  } catch (e) {
-    // UNIQUE 冲突 — 另一个请求正在生成
-    return json({ date: dateKey, recommendations: null, generating: true }, cors, 200, 'no-store');
-  }
-
-  // 3. 生成推荐
-  try {
-    const episodes = await selectDailyEpisodes(db, dateKey);
-    if (!episodes.length) throw new Error('No episodes selected');
-
-    // 取文稿上下文
-    const contexts = await Promise.all(
-      episodes.map(ep => getEpisodeContext(db, ep.series_id, ep.episode_num))
-    );
-
-    // AI 生成推荐语
-    const intros = await generateRecommendIntros(env, episodes, contexts, ctx);
-
-    // 合并推荐语
-    const recommendations = episodes.map((ep, i) => {
-      const aiIntro = intros && intros[i] ? intros[i].intro : ep.series_intro;
-      return { ...ep, ai_intro: aiIntro };
-    });
-
-    const genMs = Date.now() - startMs;
-
-    // 写入缓存
-    await db.prepare(
-      `UPDATE ai_daily_recommendations
-       SET recommendations = ?, model = ?, generation_ms = ?, status = 'ready'
-       WHERE date_key = ?`
-    ).bind(JSON.stringify(recommendations), AI_CONFIG.models.chat, genMs, dateKey).run();
-
-    return json({
-      date: dateKey,
-      recommendations,
-      cached: false,
-      generation_ms: genMs,
-    }, cors, 200, 'public, max-age=300');
-  } catch (err) {
-    console.error('[DailyRec] Generation failed:', err);
-
-    await db.prepare(
-      `UPDATE ai_daily_recommendations SET status = 'failed', error = ? WHERE date_key = ?`
-    ).bind(err.message || 'unknown', dateKey).run();
-
-    return json({
-      date: dateKey,
-      recommendations: null,
-      error: 'generation_failed',
-      fallback: true,
-    }, cors, 200, 'no-store');
-  }
-}
-
 /**
  * POST /api/admin/cleanup — 清理过期数据
  */
@@ -2517,20 +1253,6 @@ async function handlePostMessage(db, request, cors) {
 // ============================================================
 // 共修社区处理器
 // ============================================================
-
-/** 获取北京时间当日日期字符串 YYYY-MM-DD */
-function getTodayBeijing() {
-  const now = new Date(Date.now() + 8 * 3600000); // UTC+8
-  return now.toISOString().slice(0, 10);
-}
-
-/** 对 IP 进行不可逆哈希（隐私保护，仅用于去重） */
-async function hashIP(ip) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode('gongxiu-salt:' + (ip || ''));
-  const hash = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(hash)).slice(0, 8).map(b => b.toString(16).padStart(2, '0')).join('');
-}
 
 /**
  * GET /api/gongxiu
@@ -2694,683 +1416,4 @@ async function handleAdminStats(db, cors) {
     originStats: origins.results || [],
     messageStats: { approved: msgMap.approved || 0, pending: msgMap.pending || 0, hidden: msgMap.hidden || 0 },
   }, cors, 200, 'private, max-age=60');
-}
-
-/** GET /api/admin/messages */
-async function handleAdminGetMessages(db, url, cors) {
-  const page = Math.max(1, parseInt(url.searchParams.get('page') || '1'));
-  const limit = Math.min(50, Math.max(1, parseInt(url.searchParams.get('limit') || '20')));
-  const status = url.searchParams.get('status') || 'all';
-  const offset = (page - 1) * limit;
-
-  let countQ, listQ;
-  if (status === 'all') {
-    countQ = db.prepare('SELECT COUNT(*) as total FROM messages');
-    listQ = db.prepare('SELECT id, nickname, content, ip_hash, status, pinned, created_at FROM messages ORDER BY created_at DESC LIMIT ? OFFSET ?').bind(limit, offset);
-  } else {
-    countQ = db.prepare('SELECT COUNT(*) as total FROM messages WHERE status=?').bind(status);
-    listQ = db.prepare('SELECT id, nickname, content, ip_hash, status, pinned, created_at FROM messages WHERE status=? ORDER BY created_at DESC LIMIT ? OFFSET ?').bind(status, limit, offset);
-  }
-
-  const total = (await countQ.first())?.total || 0;
-  const { results: messages } = await listQ.all();
-  return json({ messages, total, page, limit }, cors, 200, 'no-store');
-}
-
-/** PUT /api/admin/messages/:id */
-async function handleAdminUpdateMessage(db, id, body, cors) {
-  const fields = [];
-  const vals = [];
-  if (body.status !== undefined) { fields.push('status=?'); vals.push(body.status); }
-  if (body.pinned !== undefined) { fields.push('pinned=?'); vals.push(body.pinned ? 1 : 0); }
-  if (!fields.length) return json({ error: 'No fields to update' }, cors, 400);
-  fields.push("updated_at=datetime('now')");
-  vals.push(id);
-  await db.prepare(`UPDATE messages SET ${fields.join(',')} WHERE id=?`).bind(...vals).run();
-  const updated = await db.prepare('SELECT id, nickname, content, ip_hash, status, pinned, created_at FROM messages WHERE id=?').bind(id).first();
-  return json({ success: true, message: updated }, cors, 200, 'no-store');
-}
-
-/** DELETE /api/admin/messages/:id */
-async function handleAdminDeleteMessage(db, id, cors) {
-  await db.prepare('DELETE FROM messages WHERE id=?').bind(id).run();
-  return json({ success: true }, cors, 200, 'no-store');
-}
-
-/** GET /api/admin/categories */
-async function handleAdminGetCategories(db, cors) {
-  const { results } = await db.prepare(
-    `SELECT c.id, c.title, c.title_en, c.sort_order,
-            (SELECT COUNT(*) FROM series WHERE category_id=c.id) as series_count
-     FROM categories c ORDER BY c.sort_order`
-  ).all();
-  return json({ categories: results || [] }, cors, 200, 'no-store');
-}
-
-/** PUT /api/admin/categories/:id */
-async function handleAdminUpdateCategory(db, id, body, cors) {
-  const fields = [];
-  const vals = [];
-  if (body.title !== undefined) { fields.push('title=?'); vals.push(body.title); }
-  if (body.title_en !== undefined) { fields.push('title_en=?'); vals.push(body.title_en); }
-  if (body.sort_order !== undefined) { fields.push('sort_order=?'); vals.push(body.sort_order); }
-  if (!fields.length) return json({ error: 'No fields to update' }, cors, 400);
-  vals.push(id);
-  await db.prepare(`UPDATE categories SET ${fields.join(',')} WHERE id=?`).bind(...vals).run();
-  return json({ success: true }, cors, 200, 'no-store');
-}
-
-/** GET /api/admin/series */
-async function handleAdminGetSeries(db, url, cors) {
-  const category = url.searchParams.get('category') || '';
-  let q;
-  if (category && category !== 'all') {
-    q = db.prepare(
-      `SELECT s.id, s.title, s.title_en, s.speaker, s.speaker_en, s.category_id,
-              s.bucket, s.folder, s.total_episodes, s.intro, s.sort_order, s.play_count,
-              (SELECT COUNT(*) FROM episodes WHERE series_id=s.id) as episode_count
-       FROM series s WHERE s.category_id=? ORDER BY s.sort_order`
-    ).bind(category);
-  } else {
-    q = db.prepare(
-      `SELECT s.id, s.title, s.title_en, s.speaker, s.speaker_en, s.category_id,
-              s.bucket, s.folder, s.total_episodes, s.intro, s.sort_order, s.play_count,
-              (SELECT COUNT(*) FROM episodes WHERE series_id=s.id) as episode_count
-       FROM series s ORDER BY s.sort_order`
-    );
-  }
-  const { results } = await q.all();
-  return json({ series: results || [] }, cors, 200, 'no-store');
-}
-
-/** POST /api/admin/series */
-async function handleAdminCreateSeries(db, body, cors) {
-  const { id, category_id, title, title_en, speaker, speaker_en, bucket, folder, total_episodes, intro, sort_order } = body;
-  if (!id || !category_id || !title) return json({ error: 'Missing required fields (id, category_id, title)' }, cors, 400);
-  await db.prepare(
-    `INSERT INTO series (id, category_id, title, title_en, speaker, speaker_en, bucket, folder, total_episodes, intro, sort_order)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)`
-  ).bind(id, category_id, title || '', title_en || '', speaker || '', speaker_en || '', bucket || '', folder || '', total_episodes || 0, intro || '', sort_order || 0).run();
-  return json({ success: true, id }, cors, 201, 'no-store');
-}
-
-/** PUT /api/admin/series/:id */
-async function handleAdminUpdateSeries(db, id, body, cors) {
-  const fields = [];
-  const vals = [];
-  const allowed = ['category_id', 'title', 'title_en', 'speaker', 'speaker_en', 'bucket', 'folder', 'total_episodes', 'intro', 'sort_order'];
-  for (const k of allowed) {
-    if (body[k] !== undefined) { fields.push(`${k}=?`); vals.push(body[k]); }
-  }
-  if (!fields.length) return json({ error: 'No fields to update' }, cors, 400);
-  vals.push(id);
-  await db.prepare(`UPDATE series SET ${fields.join(',')} WHERE id=?`).bind(...vals).run();
-  return json({ success: true }, cors, 200, 'no-store');
-}
-
-/** DELETE /api/admin/series/:id */
-async function handleAdminDeleteSeries(db, id, cors) {
-  const epResult = await db.prepare('DELETE FROM episodes WHERE series_id=?').bind(id).run();
-  await db.prepare('DELETE FROM series WHERE id=?').bind(id).run();
-  return json({ success: true, deletedEpisodes: epResult.meta?.changes || 0 }, cors, 200, 'no-store');
-}
-
-/** GET /api/admin/episodes/:seriesId */
-async function handleAdminGetEpisodes(db, seriesId, cors) {
-  const series = await db.prepare('SELECT id, title FROM series WHERE id=?').bind(seriesId).first();
-  const { results } = await db.prepare(
-    'SELECT id, series_id, episode_num, title, file_name, url, intro, story_number, play_count FROM episodes WHERE series_id=? ORDER BY episode_num'
-  ).bind(seriesId).all();
-  return json({ episodes: results || [], series: series || { id: seriesId } }, cors, 200, 'no-store');
-}
-
-/** POST /api/admin/episodes */
-async function handleAdminCreateEpisode(db, body, cors) {
-  const { series_id, episode_num, title, file_name, intro, story_number, duration } = body;
-  if (!series_id || !episode_num || !title || !file_name) return json({ error: 'Missing required fields' }, cors, 400);
-  // 自动从 series 的 bucket/folder + file_name 构建 URL
-  const series = await db.prepare('SELECT bucket, folder FROM series WHERE id = ?').bind(series_id).first();
-  const url = series ? buildAudioUrl(series.bucket, series.folder, file_name) : '';
-  await db.prepare(
-    'INSERT INTO episodes (series_id, episode_num, title, file_name, url, intro, story_number, duration) VALUES (?,?,?,?,?,?,?,?)'
-  ).bind(series_id, episode_num, title, file_name, url, intro || null, story_number || null, duration || 0).run();
-  return json({ success: true }, cors, 201, 'no-store');
-}
-
-/** PUT /api/admin/episodes/:id */
-async function handleAdminUpdateEpisode(db, id, body, cors) {
-  const fields = [];
-  const vals = [];
-  const allowed = ['episode_num', 'title', 'file_name', 'intro', 'story_number', 'duration'];
-  for (const k of allowed) {
-    if (body[k] !== undefined) { fields.push(`${k}=?`); vals.push(body[k]); }
-  }
-  // 如果 file_name 变更，自动重建 url
-  if (body.file_name !== undefined) {
-    const ep = await db.prepare('SELECT series_id FROM episodes WHERE id=?').bind(id).first();
-    if (ep) {
-      const series = await db.prepare('SELECT bucket, folder FROM series WHERE id=?').bind(ep.series_id).first();
-      if (series) {
-        fields.push('url=?');
-        vals.push(buildAudioUrl(series.bucket, series.folder, body.file_name));
-      }
-    }
-  }
-  if (!fields.length) return json({ error: 'No fields to update' }, cors, 400);
-  vals.push(id);
-  await db.prepare(`UPDATE episodes SET ${fields.join(',')} WHERE id=?`).bind(...vals).run();
-  return json({ success: true }, cors, 200, 'no-store');
-}
-
-/** DELETE /api/admin/episodes/:id */
-async function handleAdminDeleteEpisode(db, id, cors) {
-  await db.prepare('DELETE FROM episodes WHERE id=?').bind(id).run();
-  return json({ success: true }, cors, 200, 'no-store');
-}
-
-// ============================================================
-// 文库路由处理器
-// ============================================================
-
-async function handleWenkuSeries(db) {
-  const result = await db.prepare(
-    `SELECT series_name, COUNT(*) as count
-     FROM documents
-     WHERE type = 'transcript' AND content IS NOT NULL AND content != ''
-       AND series_name IS NOT NULL
-     GROUP BY series_name
-     ORDER BY series_name`
-  ).all();
-  return { series: result.results };
-}
-
-async function handleWenkuDocuments(db, seriesName) {
-  const result = await db.prepare(
-    `SELECT id, title, type, category, series_name, episode_num, format,
-            file_size, audio_series_id, read_count
-     FROM documents
-     WHERE series_name = ? AND type = 'transcript'
-       AND content IS NOT NULL AND content != ''
-     ORDER BY episode_num`
-  ).bind(seriesName).all();
-  return { documents: result.results };
-}
-
-async function handleWenkuDocument(db, id) {
-  const doc = await db.prepare(
-    'SELECT * FROM documents WHERE id = ?'
-  ).bind(id).first();
-
-  if (!doc) return { document: null };
-
-  // 获取上一篇/下一篇
-  let prevId = null;
-  let nextId = null;
-  let totalEpisodes = 0;
-
-  if (doc.series_name && doc.episode_num) {
-    const prev = await db.prepare(
-      `SELECT id FROM documents
-       WHERE series_name = ? AND episode_num < ? AND type = 'transcript'
-         AND content IS NOT NULL AND content != ''
-       ORDER BY episode_num DESC LIMIT 1`
-    ).bind(doc.series_name, doc.episode_num).first();
-
-    const next = await db.prepare(
-      `SELECT id FROM documents
-       WHERE series_name = ? AND episode_num > ? AND type = 'transcript'
-         AND content IS NOT NULL AND content != ''
-       ORDER BY episode_num ASC LIMIT 1`
-    ).bind(doc.series_name, doc.episode_num).first();
-
-    const total = await db.prepare(
-      `SELECT COUNT(*) as count FROM documents
-       WHERE series_name = ? AND type = 'transcript'
-         AND content IS NOT NULL AND content != ''`
-    ).bind(doc.series_name).first();
-
-    prevId = prev?.id || null;
-    nextId = next?.id || null;
-    totalEpisodes = total?.count || 0;
-  }
-
-  return { document: doc, prevId, nextId, totalEpisodes };
-}
-
-async function handleWenkuSearch(db, query) {
-  const pattern = `%${query}%`;
-  const result = await db.prepare(
-    `SELECT id, title, type, category, series_name, episode_num, format, read_count
-     FROM documents
-     WHERE type = 'transcript' AND content IS NOT NULL AND content != ''
-       AND (title LIKE ? OR content LIKE ? OR series_name LIKE ?)
-     ORDER BY read_count DESC LIMIT 30`
-  ).bind(pattern, pattern, pattern).all();
-  return { documents: result.results };
-}
-
-async function handleWenkuReadCount(db, documentId) {
-  if (!documentId) return { error: 'Missing documentId' };
-  await db.prepare(
-    'UPDATE documents SET read_count = read_count + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-  ).bind(documentId).run();
-  return { success: true };
-}
-
-// ============================================================
-// 文库 R2-to-D1 同步
-// ============================================================
-
-const SYNC_R2_BASE = '\u5927\u5B89\u6CD5\u5E08/\u5927\u5B89\u6CD5\u5E08\uFF08\u8BB2\u6CD5\u96C6\uFF09TXT/';
-const SYNC_YIYONG = '\u5DF2\u7528/';
-const SYNC_YIYONG_DUPS = new Set(['\u4E00\u51FD\u904D\u590D', '\u9F99\u8212\u51C0\u571F\u6587\uFF08\u9A6C\u6765\u897F\u4E9A\uFF09']);
-const SYNC_FOLDER22 = [
-  { prefix: '\u51C0\u571F\u5341\u7591\u8BBA', expected: 6 },
-  { prefix: '\u51C0\u571F\u51B3\u7591\u8BBA', expected: 8 },
-];
-const SYNC_GARBAGE = [/\.netdisk\.p\.downloading$/, /~\$/, /\.docx?$/i];
-
-function syncNormalizeName(name) {
-  let n = name;
-  n = n.replace(/\uFF08[^\uFF09]*\uFF09/g, '');
-  n = n.replace(/\([^)]*\)/g, '');
-  n = n.replace(/[\u300A\u300B\u3001\u00B7\u300C\u300D\u300E\u300F\u3010\u3011\u201C\u201D\u2018\u2019\uFF01\uFF1F\u3002\uFF0C\uFF1B\uFF1A]/g, '');
-  n = n.replace(/\s+/g, '-');
-  n = n.replace(/[^\u4e00-\u9fff\u3400-\u4dbfa-zA-Z0-9-]/g, '');
-  n = n.replace(/-{2,}/g, '-');
-  n = n.replace(/^-+|-+$/g, '');
-  return n;
-}
-
-function syncGenId(seriesName, epNum) {
-  return `daafs-${syncNormalizeName(seriesName)}-${String(epNum).padStart(2, '0')}`;
-}
-
-function syncIsGarbage(key) {
-  const fn = key.split('/').pop();
-  return SYNC_GARBAGE.some(p => p.test(fn));
-}
-
-function syncParseFolder(name) {
-  const m = name.match(/^(\d+)\s+(.+?)\s+(\d+)[\u8BB2\u8F91]$/);
-  if (m) return { num: m[1], series: m[2].trim(), total: parseInt(m[3]) };
-  const s = name.match(/^(\d+)\s+(.+)$/);
-  if (s) return { num: s[1], series: s[2].trim(), total: null };
-  return null;
-}
-
-function syncParseEpNum(fileName) {
-  const m = fileName.match(/\u7B2C(\d+)[\u8BB2\u8F91]/);
-  return m ? parseInt(m[1]) : null;
-}
-
-function syncResolveFolder22(fileName) {
-  for (const s of SYNC_FOLDER22) {
-    if (fileName.includes(s.prefix)) return s.prefix;
-  }
-  return null;
-}
-
-function syncIsYiyongDup(name) {
-  for (const d of SYNC_YIYONG_DUPS) {
-    if (name.includes(d) || d.includes(name)) return true;
-  }
-  return false;
-}
-
-async function syncListAll(bucket, prefix) {
-  const objects = [];
-  let cursor;
-  let hasMore = true;
-  while (hasMore) {
-    const opts = { prefix, limit: 1000 };
-    if (cursor) opts.cursor = cursor;
-    const r = await bucket.list(opts);
-    objects.push(...r.objects);
-    hasMore = r.truncated;
-    cursor = r.truncated ? r.cursor : undefined;
-  }
-  return objects;
-}
-
-async function handleWenkuSync(env, cors) {
-  const db = env.DB;
-  const bucket = env.R2_WENKU;
-
-  if (!bucket) {
-    return json({ error: 'R2_WENKU binding not available' }, cors, 500);
-  }
-
-  const stats = { scanned: 0, inserted: 0, skipped: 0, errors: 0, series: {} };
-
-  // Ensure table
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS documents (
-      id TEXT PRIMARY KEY, title TEXT NOT NULL,
-      type TEXT DEFAULT 'transcript', category TEXT DEFAULT '\u5927\u5B89\u6CD5\u5E08',
-      series_name TEXT, episode_num INTEGER,
-      format TEXT DEFAULT 'txt', r2_bucket TEXT DEFAULT 'jingdianwendang',
-      r2_key TEXT, content TEXT, file_size INTEGER,
-      audio_series_id TEXT, audio_episode_num INTEGER,
-      read_count INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
-
-  // Existing IDs
-  const existingResult = await db.prepare('SELECT id FROM documents').all();
-  const existing = new Set(existingResult.results.map(r => r.id));
-
-  // List all objects
-  const allObjects = await syncListAll(bucket, SYNC_R2_BASE);
-  const mainFiles = [];
-  const yiyongFiles = [];
-
-  for (const obj of allObjects) {
-    if (obj.key.endsWith('/')) continue;
-    const rel = obj.key.slice(SYNC_R2_BASE.length);
-    if (rel.startsWith(SYNC_YIYONG)) yiyongFiles.push(obj);
-    else mainFiles.push(obj);
-  }
-
-  // Process helper
-  async function processObj(obj, isYiyong) {
-    const fn = obj.key.split('/').pop();
-    if (!fn.endsWith('.txt')) { stats.skipped++; return; }
-    if (syncIsGarbage(obj.key)) { stats.skipped++; return; }
-    stats.scanned++;
-
-    const base = isYiyong ? SYNC_R2_BASE + SYNC_YIYONG : SYNC_R2_BASE;
-    const rel = obj.key.slice(base.length);
-    const segs = rel.split('/');
-    if (segs.length < 2) { stats.skipped++; return; }
-
-    const folderName = segs[0];
-    const parsed = syncParseFolder(folderName);
-    if (!parsed) { stats.skipped++; return; }
-
-    let seriesName = parsed.num === '22' ? syncResolveFolder22(fn) : parsed.series;
-    if (!seriesName) { stats.skipped++; return; }
-    if (isYiyong && syncIsYiyongDup(seriesName)) { stats.skipped++; return; }
-
-    const epNum = syncParseEpNum(fn);
-    if (!epNum) { stats.skipped++; return; }
-
-    const id = syncGenId(seriesName, epNum);
-    if (existing.has(id)) { stats.skipped++; return; }
-
-    let content = '';
-    try {
-      const r2Obj = await bucket.get(obj.key);
-      if (r2Obj) content = await r2Obj.text();
-    } catch { content = ''; }
-
-    if (!content || !content.trim()) { stats.skipped++; return; }
-
-    const title = `${seriesName} \u7B2C${String(epNum).padStart(2, '0')}\u8BB2`;
-
-    try {
-      await db.prepare(
-        `INSERT INTO documents (id, title, type, category, series_name, episode_num,
-          format, r2_bucket, r2_key, content, file_size, created_at, updated_at)
-         VALUES (?, ?, 'transcript', '\u5927\u5B89\u6CD5\u5E08', ?, ?, 'txt', 'jingdianwendang', ?, ?, ?,
-                 datetime('now'), datetime('now'))`
-      ).bind(id, title, seriesName, epNum, obj.key, content, obj.size || 0).run();
-
-      existing.add(id);
-      stats.inserted++;
-      if (!stats.series[seriesName]) stats.series[seriesName] = 0;
-      stats.series[seriesName]++;
-    } catch (e) {
-      stats.errors++;
-    }
-  }
-
-  // Process main files
-  for (const obj of mainFiles) await processObj(obj, false);
-  // Process 已用 files
-  for (const obj of yiyongFiles) await processObj(obj, true);
-
-  return json({
-    success: true,
-    scanned: stats.scanned,
-    inserted: stats.inserted,
-    skipped: stats.skipped,
-    errors: stats.errors,
-    series: stats.series,
-    totalInDb: existing.size,
-  }, cors, 200, 'no-store');
-}
-
-async function handleWenkuSyncStatus(db, cors) {
-  try {
-    const total = await db.prepare('SELECT COUNT(*) as c FROM documents').first();
-    const series = await db.prepare(
-      `SELECT series_name, COUNT(*) as count FROM documents
-       WHERE type = 'transcript' AND content IS NOT NULL AND content != ''
-       GROUP BY series_name ORDER BY series_name`
-    ).all();
-    return json({
-      totalDocuments: total?.c || 0,
-      series: series.results || [],
-    }, cors, 200, 'no-store');
-  } catch (e) {
-    return json({ error: e.message }, cors, 500);
-  }
-}
-
-// ============================================================
-// POST /api/ai/voice-to-text — Whisper 语音识别
-// ============================================================
-async function handleVoiceToText(env, request, cors) {
-  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-  const limit = await checkRateLimit(env, ip, 'ai_voice');
-  if (!limit.allowed) return json({ error: limit.reason }, cors, 429);
-
-  const contentType = request.headers.get('Content-Type') || '';
-  if (!contentType.includes('audio/') && !contentType.includes('application/octet-stream') && !contentType.includes('video/webm')) {
-    return json({ error: 'Expected audio content' }, cors, 400);
-  }
-
-  const audioBuffer = await request.arrayBuffer();
-  if (audioBuffer.byteLength > 5 * 1024 * 1024) {
-    return json({ error: '音频文件过大，请控制在5MB以内' }, cors, 400);
-  }
-  if (audioBuffer.byteLength < 100) {
-    return json({ error: '音频数据过短' }, cors, 400);
-  }
-
-  try {
-    const result = await env.AI.run(
-      AI_CONFIG.models.whisper,
-      { audio: [...new Uint8Array(audioBuffer)] },
-      { gateway: GATEWAY_PROFILES.whisper }
-    );
-    const text = result?.text?.trim() || '';
-    if (!text) return json({ error: '未识别到语音内容' }, cors);
-    return json({ text }, cors, 200, 'no-store');
-  } catch (err) {
-    console.error('Whisper failed:', err.message);
-    return json({ error: '语音识别失败，请稍后重试' }, cors, 503);
-  }
-}
-
-// ============================================================
-// GET /api/ai/personalized-recommend — 个性化推荐
-// ============================================================
-async function handlePersonalizedRecommend(env, request, url, cors) {
-  const seriesIds = (url.searchParams.get('series') || '').split(',').filter(Boolean).slice(0, 5);
-  if (!seriesIds.length) return json({ recommendations: [] }, cors);
-
-  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-  const limit = await checkRateLimit(env, ip, 'ai_recommend');
-  if (!limit.allowed) return json({ error: limit.reason }, cors, 429);
-
-  // 获取用户最近收听系列的文档
-  const placeholders = seriesIds.map(() => '?').join(',');
-  const { results: docs } = await env.DB.prepare(
-    `SELECT id, title, content FROM documents
-     WHERE audio_series_id IN (${placeholders})
-     AND content IS NOT NULL
-     LIMIT 5`
-  ).bind(...seriesIds).all();
-
-  if (!docs.length) return json({ recommendations: [] }, cors);
-
-  // 生成综合嵌入向量
-  const combinedText = docs.map(d => d.title + ' ' + (d.content || '').slice(0, 500)).join('\n').slice(0, 2000);
-  const [queryVector] = await generateEmbeddings(env, [combinedText], { gatewayProfile: 'searchEmbedding' });
-
-  // 搜索相似内容，排除已收听系列
-  const results = await env.VECTORIZE.query(queryVector, { topK: 15, returnMetadata: 'all' });
-  const filtered = results.matches
-    .filter(m => m.score >= 0.4 && !seriesIds.includes(m.metadata?.audio_series_id || m.metadata?.series_name))
-    .slice(0, 10);
-
-  // 按系列去重，构建推荐列表
-  const recommendations = [];
-  const seenSeries = new Set();
-  for (const m of filtered) {
-    const sid = m.metadata?.audio_series_id || m.metadata?.series_name;
-    if (!sid || seenSeries.has(sid)) continue;
-    seenSeries.add(sid);
-    const series = await env.DB.prepare(
-      'SELECT id, title, speaker, total_episodes, category_id FROM series WHERE id = ?'
-    ).bind(sid).first();
-    if (series) {
-      recommendations.push({
-        series_id: series.id,
-        series_title: series.title,
-        speaker: series.speaker,
-        category_id: series.category_id,
-        total_episodes: series.total_episodes,
-        relevance_score: Math.round(m.score * 100) / 100,
-      });
-    }
-    if (recommendations.length >= 3) break;
-  }
-
-  return json({ recommendations }, cors, 200, 'private, max-age=3600');
-}
-
-// ============================================================
-// GET /api/chapters/:seriesId/:episodeNum — 获取章节标记
-// ============================================================
-async function handleGetChapters(env, seriesId, episodeNum, cors) {
-  try {
-    const { results } = await env.DB.prepare(
-      `SELECT chapter_index, title, start_time, end_time
-       FROM episode_chapters
-       WHERE series_id = ? AND episode_num = ?
-       ORDER BY chapter_index`
-    ).bind(seriesId, episodeNum).all();
-    return json({ chapters: results || [] }, cors);
-  } catch (err) {
-    return json({ chapters: [] }, cors);
-  }
-}
-
-// ============================================================
-// POST /api/admin/chapters/generate — 管理员生成章节标记
-// ============================================================
-async function handleGenerateChapters(env, request, cors) {
-  const token = request.headers.get('X-Admin-Token');
-  if (!token || !env.ADMIN_TOKEN || !timingSafeCompare(token, env.ADMIN_TOKEN)) {
-    return json({ error: 'Unauthorized' }, cors, 401);
-  }
-
-  let body;
-  try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
-  const { series_id, episode_num } = body;
-  if (!series_id || !episode_num) return json({ error: 'Missing series_id or episode_num' }, cors, 400);
-
-  // 查找文稿内容
-  const doc = await env.DB.prepare(
-    `SELECT id, title, content FROM documents
-     WHERE audio_series_id = ? AND audio_episode_num = ?
-     AND content IS NOT NULL AND content != ''
-     LIMIT 1`
-  ).bind(series_id, episode_num).first();
-
-  if (!doc || !doc.content) {
-    return json({ error: '未找到该集文稿，请先确保有转录文本' }, cors, 404);
-  }
-
-  // 获取音频时长
-  const ep = await env.DB.prepare(
-    'SELECT duration FROM episodes WHERE series_id = ? AND episode_num = ?'
-  ).bind(series_id, episode_num).first();
-  const totalDuration = ep?.duration || 3600;
-
-  // 使用 LLM 分析文稿内容，识别主题转换点
-  const truncated = doc.content.slice(0, 8000);
-  const messages = [
-    {
-      role: 'system',
-      content: `你是一位佛教音频内容编辑。请分析以下讲经文稿，识别主要的主题段落，生成章节标记。
-要求：
-1. 生成3-8个章节，每个章节有标题和预估的开始时间
-2. 标题简洁（10-20字），概括该段落的核心内容
-3. 开始时间按内容在全文中的相对位置估算（总时长约${Math.round(totalDuration / 60)}分钟）
-4. 严格按JSON数组格式输出，不要输出其他内容
-5. 第一个章节的开始时间为0`,
-    },
-    {
-      role: 'user',
-      content: `文稿标题：${doc.title}\n\n文稿内容：${truncated}\n\n请按以下JSON格式输出：
-[{"title":"章节标题","start_time":0},{"title":"...","start_time":360}]`,
-    },
-  ];
-
-  let response;
-  try {
-    response = await env.AI.run(AI_CONFIG.models.chat, {
-      messages, max_tokens: 500, temperature: 0.3,
-    }, { gateway: GATEWAY_PROFILES.ragChat });
-  } catch (err) {
-    response = await env.AI.run(AI_CONFIG.models.chatFallback, {
-      messages, max_tokens: 500, temperature: 0.3,
-    }, { gateway: GATEWAY_PROFILES.ragChat });
-  }
-
-  const text = extractAIResponse(response);
-  if (!text) return json({ error: 'AI 未能生成章节标记' }, cors, 503);
-
-  // 解析 JSON
-  const cleaned = text.replace(/```json?\s*/g, '').replace(/```/g, '').trim();
-  let chapters;
-  try {
-    chapters = JSON.parse(cleaned);
-  } catch (e) {
-    return json({ error: 'AI 输出格式解析失败', raw: cleaned.slice(0, 200) }, cors, 500);
-  }
-
-  if (!Array.isArray(chapters) || !chapters.length) {
-    return json({ error: '未生成有效章节' }, cors, 500);
-  }
-
-  // 写入数据库
-  let inserted = 0;
-  for (let i = 0; i < chapters.length; i++) {
-    const ch = chapters[i];
-    if (!ch.title || ch.start_time == null) continue;
-    try {
-      await env.DB.prepare(
-        `INSERT OR REPLACE INTO episode_chapters
-         (series_id, episode_num, chapter_index, title, start_time, end_time)
-         VALUES (?, ?, ?, ?, ?, ?)`
-      ).bind(
-        series_id, episode_num, i,
-        ch.title.slice(0, 100),
-        Number(ch.start_time) || 0,
-        i < chapters.length - 1 ? (Number(chapters[i + 1].start_time) || null) : null
-      ).run();
-      inserted++;
-    } catch (err) {
-      console.warn('Chapter insert failed:', err.message);
-    }
-  }
-
-  return json({ success: true, chapters_count: inserted, chapters }, cors);
 }

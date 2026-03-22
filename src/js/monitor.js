@@ -1,5 +1,6 @@
 /* ===== 简化监控模块 ===== */
 // 收集关键性能指标，显示在管理后台
+import { get as storeGet, patch as storePatch } from './store.js';
 
 class SimpleMonitor {
   constructor() {
@@ -126,10 +127,10 @@ class SimpleMonitor {
   }
 
   getVisitorId() {
-    let id = localStorage.getItem('visitor-id');
+    let id = (storeGet('monitor') || {}).visitorId || '';
     if (!id) {
       id = 'visitor-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-      localStorage.setItem('visitor-id', id);
+      storePatch('monitor', { visitorId: id });
     }
     return id;
   }

@@ -1,6 +1,7 @@
 /* ===== Message Wall / 留言墙 ===== */
 import { t } from './i18n.js';
 import { escapeHtml, showToast, formatRelTime } from './utils.js';
+import { get as storeGet, patch as storePatch } from './store.js';
 
 const PAGE_SIZE = 20;
 let currentPage = 1;
@@ -214,9 +215,9 @@ function updateCount(section) {
 }
 
 function getSavedNickname() {
-  try { return localStorage.getItem('msg-nickname') || ''; } catch { return ''; }
+  return (storeGet('profile') || {}).messageNickname || '';
 }
 
 function saveNickname(name) {
-  try { localStorage.setItem('msg-nickname', name); } catch { /* ignore */ }
+  storePatch('profile', { messageNickname: (name || '').slice(0, 20) });
 }

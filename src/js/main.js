@@ -38,7 +38,7 @@ import { openAiChat, closeAiChat, isAiChatOpen, updateAiContext, checkAiDeepLink
 // ✅ 修复代码分割警告：统一使用动态导入，避免静态和动态导入混用
 // import { renderCategory, showEpisodes } from './pages-category.js';
 import { doSearch, openSearchOverlay, closeSearchOverlay, isSearchOverlayOpen } from './search.js';
-import { get as storeGet, saveNow as storeSaveNow } from './store.js';
+import { get as storeGet, patch as storePatch, saveNow as storeSaveNow } from './store.js';
 import { initCachedUrls } from './audio-cache.js';
 
 // pages-category 动态导入函数
@@ -728,21 +728,21 @@ async function ensureSeriesDetail(seriesId, categoryId) {
     navigator.serviceWorker.register('/sw.js').catch(() => { });
   }
 
-  // ✅ 监控：定期保存监控数据到 localStorage
+  // ✅ 监控：定期保存监控摘要到统一 store
   setInterval(() => {
     try {
       const summary = monitor.getSummary();
-      localStorage.setItem('site-monitor', JSON.stringify(summary));
+      storePatch('monitor', { summary });
     } catch (e) { /* ignore */ }
   }, 30000); // 每30秒保存一次
 })();
 
 /* ===== DATA LOADING with cache + retry ===== */
 let loadAttempts = 0;
-const DATA_CACHE_VERSION = 4; // v4: server-side format resolution (Opus/MP3 decided server-side)
+const DATA_CACHE_VERSION = 5; // v5: force-refresh after Pages/API deployment recovery
 const DATA_CACHE_KEY = 'pl-data-cache-v' + DATA_CACHE_VERSION;
 const DATA_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
-const HOME_CACHE_VERSION = 1;
+const HOME_CACHE_VERSION = 2;
 const HOME_CACHE_KEY = 'pl-home-cache-v' + HOME_CACHE_VERSION;
 const HOME_CACHE_TTL = 10 * 60 * 1000;
 
