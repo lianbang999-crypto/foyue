@@ -57,11 +57,6 @@ self.addEventListener('activate', event => {
       }
       await self.clients.claim();
     })
-      .then(async () => {
-        // Notify all open clients that a new version is available
-        const clients = await self.clients.matchAll({ type: 'window' });
-        clients.forEach(c => c.postMessage({ type: 'app-updated', version: CACHE_VERSION }));
-      })
   );
 });
 

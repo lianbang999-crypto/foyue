@@ -1021,9 +1021,6 @@ async function fetchFreshData() {
 // it broadcasts a 'data-updated' message so the page can refresh without a reload.
 
 if ('serviceWorker' in navigator) {
-  // Record if page was controlled on load (false for first-time visitors / hard refresh)
-  const isFirstVisit = !navigator.serviceWorker.controller;
-
   navigator.serviceWorker.addEventListener('message', event => {
     if (event.data?.type === 'data-updated' && event.data.data) {
       const fresh = event.data.data;
@@ -1034,24 +1031,6 @@ if ('serviceWorker' in navigator) {
         saveCachedData(fresh, freshHash);
         invalidateHomePage();
         if (state.tab === 'home') renderHomePage();
-      }
-    }
-    // New service worker activated — show update notice if user is not currently playing
-    if (event.data?.type === 'app-updated') {
-      if (isFirstVisit) return; // 第一次安装不应该提示"发现新内容"
-
-      const dom = getDOM();
-      if (dom.audio.paused) {
-        // 创建一个可点击刷新的新内容提示
-        let toast = document.querySelector('.update-toast');
-        if (!toast) {
-          toast = document.createElement('div');
-          toast.className = 'update-toast';
-          toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--accent);color:var(--bg);padding:10px 24px;border-radius:24px;font-size:0.85rem;font-weight:bold;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.15);cursor:pointer;animation:popIn 0.3s;';
-          toast.textContent = '发现新内容，点击刷新';
-          toast.onclick = () => window.location.reload();
-          document.body.appendChild(toast);
-        }
       }
     }
   });
