@@ -39,9 +39,10 @@ export default defineConfig({
           'pages': [
             './src/js/pages-home.js',
             './src/js/pages-category.js',
-            './src/js/pages-my.js',
+            './src/js/history-view.js',
             './src/js/counter.js',
             './src/js/gongxiu.js',
+            './src/js/gongxiu-panel.js',
           ],
           // 文库模块分离（按需加载）
           'wenku': [

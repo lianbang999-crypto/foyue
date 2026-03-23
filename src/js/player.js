@@ -1412,7 +1412,7 @@ export function saveState() {
   } catch { /* ignore */ }
 }
 
-export function restoreState(renderCategory, renderHomePage, renderMyPage) {
+export function restoreState() {
   const dom = getDOM();
   try {
     const s = get('player');

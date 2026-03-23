@@ -100,6 +100,11 @@ export const GATEWAY_PROFILES = {
   },
 };
 
+function shouldRetryWithoutGateway(err) {
+  const message = String(err?.message || '');
+  return /gateway|gateway profile|ai gateway|invalid gateway|not configured/i.test(message);
+}
+
 // ============================================================
 // 短 hash — 将长字符串压缩为 12 字符的 hex
 // ============================================================
@@ -217,6 +222,7 @@ export async function generateEmbeddings(env, texts, options = {}) {
 // 语义搜索 — Vectorize 查询
 // ============================================================
 export async function semanticSearch(env, query, options = {}) {
+  if (!env?.VECTORIZE) return [];
   const {
     topK = AI_CONFIG.vectorize.topK,
     filter = {},
@@ -635,7 +641,18 @@ export async function runAIWithLogging(env, model, input, gatewayOptions, scenar
   let success = true;
   let error = null;
   try {
-    const result = await env.AI.run(model, input, gatewayOptions ? { gateway: gatewayOptions } : undefined);
+    if (!env?.AI?.run) {
+      throw new Error('Workers AI binding is not available');
+    }
+
+    let result;
+    try {
+      result = await env.AI.run(model, input, gatewayOptions ? { gateway: gatewayOptions } : undefined);
+    } catch (err) {
+      if (!gatewayOptions || !shouldRetryWithoutGateway(err)) throw err;
+      console.warn('[AI] Gateway unavailable, retrying without gateway:', err.message);
+      result = await env.AI.run(model, input);
+    }
     return result;
   } catch (err) {
     success = false;

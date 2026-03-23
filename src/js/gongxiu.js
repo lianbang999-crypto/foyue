@@ -184,7 +184,7 @@ function buildSubmitSection(counterData, submitted) {
       ? `<div class="gx-submitted-merge">您今日念佛 <strong>${formatCount(counterData.daily)}</strong> 声已汇入共修功德。</div>`
       : '';
     const nameHint = noName
-      ? `<div class="gx-submitted-name-hint">当前以「莲友」显示。可在「我的 → 法名」设定称呼，莲友共修流中更易相认。</div>`
+      ? `<div class="gx-submitted-name-hint">当前以「莲友」显示；未设置称呼时会继续使用该默认名称。</div>`
       : '';
     return `
       <div class="gx-submitted-banner">
@@ -235,11 +235,11 @@ function buildSubmitSection(counterData, submitted) {
                     placeholder="自定义回向文（最多100字）"></textarea>
         </div>
         <div class="gx-nickname-row">
-          <div class="gx-field-label">法名</div>
+          <div class="gx-field-label">称呼</div>
           <input class="gx-input" id="gxNickname" type="text" maxlength="20"
                  placeholder="如：净空、妙莲、法喜…"
                  value="${escapeHtml(getSavedNickname())}">
-          <div class="gx-field-hint">法名将作为您在共修广场的长期身份</div>
+          <div class="gx-field-hint">称呼将作为您在共修广场的展示名称</div>
         </div>
       </div>
       <button class="gx-join-btn" id="gxJoinBtn">

@@ -3,7 +3,7 @@ import { t } from './i18n.js';
 import { get, patch } from './store.js';
 import { pausePlaybackForCounter } from './player.js';
 import { FEATURE_GONGXIU_PLAZA } from './feature-flags.js';
-import { showGongxiuSubview } from './pages-my.js';
+import { showGongxiuSubview } from './gongxiu-panel.js';
 import { haptic, showToast, escapeHtml, formatCount, HUIXIANG_TEXT, localTodayStr, beijingTodayStr, HUIXIANG_DISPLAY_AUTO_MS } from './utils.js';
 const BEADS_PER_LOOP = 108;
 /** @deprecated Kept only for data migration from old single-custom format */
@@ -251,7 +251,7 @@ export function openCounter() {
     }
   });
 
-  const sourceTab = document.querySelector('.tab.active')?.dataset.tab || 'mypage';
+  const sourceTab = document.querySelector('.tab.active')?.dataset.tab || 'home';
 
   // Push browser history state so back button works
   history.pushState({ counter: true }, '');
@@ -381,7 +381,7 @@ function closeCounter(view, sourceTab, popHandler, escHandler, visHandler, optio
   const finishClose = () => {
     view.remove();
     if (skipNavigation) return;
-    const targetTab = document.querySelector(`.tab[data-tab="${sourceTab}"]`) || document.querySelector('.tab[data-tab="mypage"]');
+    const targetTab = document.querySelector(`.tab[data-tab="${sourceTab}"]`) || document.querySelector('.tab[data-tab="home"]');
     if (targetTab) targetTab.click();
     try {
       if (FEATURE_GONGXIU_PLAZA && sessionStorage.getItem('counter:goto-gongxiu')) {
@@ -737,7 +737,7 @@ async function submitToGongxiu(data, count, vowInfo) {
   patch('gongxiu', { submittedDate: beijingTodayStr() });
 
   if (!savedNickname.trim()) {
-    showToast('可在「我的」中设置法名，便于在共修广场显示');
+    showToast('未设置称呼时，将以“莲友”显示');
   }
 
   return resp.json();

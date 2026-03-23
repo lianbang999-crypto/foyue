@@ -36,6 +36,31 @@ function buildSourceList(matches, docs) {
   return sources;
 }
 
+async function keywordSearchDocs(env, query, { seriesId = null, limit = 10 } = {}) {
+  const keyword = String(query || '').trim().slice(0, 20);
+  if (!keyword) return [];
+
+  if (seriesId) {
+    const { results } = await env.DB.prepare(
+      `SELECT id, title, content, category, series_name, audio_series_id
+       FROM documents
+       WHERE audio_series_id = ? AND content IS NOT NULL
+       ORDER BY audio_episode_num ASC
+       LIMIT ?`
+    ).bind(seriesId, limit).all();
+    return results || [];
+  }
+
+  const like = `%${keyword}%`;
+  const { results } = await env.DB.prepare(
+    `SELECT id, title, content, category, series_name, audio_series_id
+     FROM documents
+     WHERE content IS NOT NULL AND (title LIKE ? OR content LIKE ?)
+     LIMIT ?`
+  ).bind(like, like, limit).all();
+  return results || [];
+}
+
 async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
   const filter = {};
   if (seriesId && typeof seriesId === 'string') filter.audio_series_id = seriesId.slice(0, 100);
@@ -101,6 +126,10 @@ async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
 }
 
 export async function handleAiAsk(env, request, cors, ctx, json) {
+  if (!env?.AI?.run) {
+    return json({ error: 'AI 服务暂未配置，请稍后再试' }, cors, 503, 'no-store');
+  }
+
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
   const limit = await checkRateLimit(env, ip, 'ai_ask');
   if (!limit.allowed) return json({ error: limit.reason }, cors, 429);
@@ -162,6 +191,10 @@ export async function handleAiAsk(env, request, cors, ctx, json) {
 }
 
 export async function handleAiAskStream(env, request, cors, ctx, json) {
+  if (!env?.AI?.run) {
+    return json({ error: 'AI 服务暂未配置，请稍后再试' }, cors, 503, 'no-store');
+  }
+
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
   const limit = await checkRateLimit(env, ip, 'ai_ask');
   if (!limit.allowed) return json({ error: limit.reason }, cors, 429);
@@ -400,6 +433,10 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
 }
 
 export async function handleAiSummary(env, documentId, request, cors, ctx, json) {
+  if (!env?.AI?.run) {
+    return json({ error: 'AI 摘要服务暂未配置' }, cors, 503);
+  }
+
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
   const limit = await checkRateLimit(env, ip, 'ai_summary');
   if (!limit.allowed) return json({ error: limit.reason }, cors, 429);
@@ -464,11 +501,45 @@ export async function handleAiSearch(env, request, query, cors, ctx, json) {
     return json({ error: '搜索词长度应为2-200个字符' }, cors, 400);
   }
 
+  if (!env?.AI?.run || !env?.VECTORIZE) {
+    const fallbackDocs = await keywordSearchDocs(env, query, { limit: 10 });
+    const results = fallbackDocs.map(doc => ({
+      doc_id: doc.id,
+      title: doc.title || '',
+      snippet: (doc.content || '').slice(0, 200).trim() + ((doc.content || '').length > 200 ? '...' : ''),
+      score: null,
+      series_name: doc.series_name || '',
+      category: doc.category || '',
+      audio_series_id: doc.audio_series_id || '',
+    }));
+    return json({ results, query, fallback: true }, cors);
+  }
+
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
   const limit = await checkRateLimit(env, ip, 'ai_search');
   if (!limit.allowed) return json({ error: limit.reason }, cors, 429);
 
-  let matches = await semanticSearch(env, query, { topK: 10, ctx });
+  let matches = [];
+  try {
+    matches = await semanticSearch(env, query, { topK: 10, ctx });
+  } catch (err) {
+    console.warn('AI search semantic lookup failed, using D1 fallback:', err.message);
+  }
+
+  if (!matches.length) {
+    const fallbackDocs = await keywordSearchDocs(env, query, { limit: 10 });
+    const results = fallbackDocs.map(doc => ({
+      doc_id: doc.id,
+      title: doc.title || '',
+      snippet: (doc.content || '').slice(0, 200).trim() + ((doc.content || '').length > 200 ? '...' : ''),
+      score: null,
+      series_name: doc.series_name || '',
+      category: doc.category || '',
+      audio_series_id: doc.audio_series_id || '',
+    }));
+    return json({ results, query, fallback: true }, cors);
+  }
+
   if (matches.length >= 2) {
     matches = await rerankResults(env, query, matches, { topK: 10, ctx });
   }
@@ -652,6 +723,15 @@ ${epDesc}
 }
 
 export async function handleDailyRecommend(env, cors, ctx, json) {
+  if (!env?.AI?.run) {
+    return json({
+      date: new Date().toISOString().slice(0, 10),
+      recommendations: null,
+      error: 'ai_unavailable',
+      fallback: true,
+    }, cors, 503, 'no-store');
+  }
+
   const db = env.DB;
   const dateKey = new Date().toISOString().slice(0, 10);
   const startMs = Date.now();
@@ -722,6 +802,10 @@ export async function handleDailyRecommend(env, cors, ctx, json) {
 }
 
 export async function handleVoiceToText(env, request, cors, json) {
+  if (!env?.AI?.run) {
+    return json({ error: '语音识别服务暂未配置' }, cors, 503);
+  }
+
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
   const limit = await checkRateLimit(env, ip, 'ai_voice');
   if (!limit.allowed) return json({ error: limit.reason }, cors, 429);
@@ -755,6 +839,10 @@ export async function handleVoiceToText(env, request, cors, json) {
 }
 
 export async function handlePersonalizedRecommend(env, request, url, cors, json) {
+  if (!env?.AI?.run || !env?.VECTORIZE) {
+    return json({ recommendations: [], fallback: true }, cors);
+  }
+
   const seriesIds = (url.searchParams.get('series') || '').split(',').filter(Boolean).slice(0, 5);
   if (!seriesIds.length) return json({ recommendations: [] }, cors);
 

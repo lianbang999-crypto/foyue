@@ -401,6 +401,67 @@
     margin-bottom: 24px;
 }
 
+.home-tools-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.home-tool-card {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: linear-gradient(180deg, var(--bg-elevated), var(--bg-card));
+    border-radius: 20px;
+    padding: 16px 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.04);
+    transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+
+.home-tool-card:hover {
+    transform: translateY(-1px);
+    border-color: var(--border-active);
+    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.08);
+}
+
+.home-tool-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent-glow);
+    color: var(--accent);
+}
+
+.home-tool-icon svg {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.home-tool-title {
+    font-size: .9rem;
+    font-weight: 600;
+}
+
+.home-tool-sub {
+    font-size: .74rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
 .home-section-title {
     font-size: .78rem;
     color: var(--text-secondary);
