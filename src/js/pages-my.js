@@ -8,7 +8,6 @@ import { showToast, escapeHtml } from './utils.js';
 import { getCachedCount, getCachedSize, clearAudioCache } from './audio-cache.js';
 import { get as storeGet } from './store.js';
 import { FEATURE_GONGXIU_PLAZA } from './feature-flags.js';
-import { getHidePublicPlayCount, setHidePublicPlayCount } from './prefs.js';
 import { renderHistoryView } from './history-view.js';
 import { showGongxiuSubview } from './gongxiu-panel.js';
 
@@ -154,15 +153,6 @@ export function renderMyPage() {
           <span class="my-item-value" id="myThemeValue">${themeText}</span>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
         </div>
-        <div class="my-item" id="myPlayCountItem">
-          <svg class="my-item-icon" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
-          <div class="my-item-body">
-            <span class="my-item-label" data-i18n="my_play_count_visibility">${t('my_play_count_visibility')}</span>
-            <span class="my-item-desc" style="font-size:.72rem;color:var(--text-muted)" data-i18n="my_play_count_visibility_desc">${t('my_play_count_visibility_desc')}</span>
-          </div>
-          <span class="my-item-value" id="myPlayCountValue">${getHidePublicPlayCount() ? t('my_play_count_hidden_label') : t('my_play_count_visible_label')}</span>
-          <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
-        </div>
         <div class="my-item" id="myAboutItem">
           <svg class="my-item-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
           <span class="my-item-label" data-i18n="my_about">${t('my_about')}</span>
@@ -234,10 +224,6 @@ export function renderMyPage() {
   });
   page.querySelector('#myThemeItem').addEventListener('click', () => {
     toggleTheme();
-    renderMyPage();
-  });
-  page.querySelector('#myPlayCountItem').addEventListener('click', () => {
-    setHidePublicPlayCount(!getHidePublicPlayCount());
     renderMyPage();
   });
   page.querySelector('#myAboutItem').addEventListener('click', () => {
