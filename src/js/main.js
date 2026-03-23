@@ -1143,11 +1143,6 @@ function handleTabDeepLink() {
   const params = new URLSearchParams(window.location.search);
   const tab = params.get('tab');
   if (!tab) return;
-  if (tab === 'mypage') {
-    window.history.replaceState({}, '', window.location.pathname);
-    renderHomeRoot();
-    return;
-  }
   const validTabs = ['home', 'tingjingtai', 'youshengshu'];
   if (!validTabs.includes(tab)) return;
   activateRootTab(tab);

@@ -40,14 +40,6 @@ function markSubmittedToday() {
   storePatch('gongxiu', { submittedDate: beijingTodayStr() });
 }
 
-function getSavedNickname() {
-  return (storeGet('profile') || {}).dharmaName || '';
-}
-
-function saveNickname(n) {
-  storePatch('profile', { dharmaName: (n || '').slice(0, 20) });
-}
-
 function getVowLabel(entry) {
   if (entry.vow_type === 'blessing' && entry.vow_target)
     return `回向 ${escapeHtml(entry.vow_target)} 消灾吉祥`;
@@ -179,20 +171,15 @@ function showHuixiangScreen(container, vowInfo) {
 
 function buildSubmitSection(counterData, submitted) {
   if (submitted) {
-    const noName = !getSavedNickname().trim();
     const mergeLine = counterData && counterData.daily > 0
       ? `<div class="gx-submitted-merge">您今日念佛 <strong>${formatCount(counterData.daily)}</strong> 声已汇入共修功德。</div>`
-      : '';
-    const nameHint = noName
-      ? `<div class="gx-submitted-name-hint">当前以「莲友」显示；未设置称呼时会继续使用该默认名称。</div>`
       : '';
     return `
       <div class="gx-submitted-banner">
         <div class="gx-submitted-icon">🙏</div>
         <div class="gx-submitted-text">今日已参与共修<br><span>明日继续精进，随喜赞叹！</span></div>
       </div>
-      ${mergeLine}
-      ${nameHint}`;
+      ${mergeLine}`;
   }
 
   const countHint = counterData
@@ -233,13 +220,6 @@ function buildSubmitSection(counterData, submitted) {
         <div class="gx-custom-wrap gx-hidden" id="gxCustomWrap">
           <textarea class="gx-input gx-textarea" id="gxCustomInput" rows="2" maxlength="100"
                     placeholder="自定义回向文（最多100字）"></textarea>
-        </div>
-        <div class="gx-nickname-row">
-          <div class="gx-field-label">称呼</div>
-          <input class="gx-input" id="gxNickname" type="text" maxlength="20"
-                 placeholder="如：净空、妙莲、法喜…"
-                 value="${escapeHtml(getSavedNickname())}">
-          <div class="gx-field-hint">称呼将作为您在共修广场的展示名称</div>
         </div>
       </div>
       <button class="gx-join-btn" id="gxJoinBtn">
@@ -416,8 +396,6 @@ function wireSubmitSection(view, submitArea, data, counterData, onOpenCounter) {
     const type    = submitArea.querySelector('input[name="gxVow"]:checked')?.value || 'universal';
     const target  = submitArea.querySelector('#gxTargetInput')?.value.trim() || '';
     const custom  = submitArea.querySelector('#gxCustomInput')?.value.trim() || '';
-    const nicknameInput = submitArea.querySelector('#gxNickname')?.value.trim() || '';
-    const nickname = nicknameInput || '莲友';
 
     if ((type === 'blessing' || type === 'rebirth') && !target) {
       showToast('请填写回向对象'); return;
@@ -436,10 +414,9 @@ function wireSubmitSection(view, submitArea, data, counterData, onOpenCounter) {
         vow_type:   type,
         vow_target: target,
         vow_custom: custom,
-        nickname,
+        nickname: '莲友',
       });
 
-      if (nicknameInput) saveNickname(nicknameInput);
       markSubmittedToday();
       invalidateCache();
 

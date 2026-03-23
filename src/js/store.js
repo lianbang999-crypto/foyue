@@ -14,7 +14,6 @@ const _defaults = () => ({
   appreciated: [],
   cachedUrls: [],
   profile: {
-    dharmaName: '',
     messageNickname: '',
   },
   preferences: {
@@ -102,14 +101,6 @@ function _migrateLegacyKeys() {
     if (Array.isArray(a)) _data.appreciated = a;
   } catch {}
 
-  // gongxiu-nickname → profile.dharmaName
-  try {
-    const nickname = localStorage.getItem('gongxiu-nickname') || '';
-    if (nickname && !_data.profile?.dharmaName) {
-      _data.profile = { ..._data.profile, dharmaName: nickname.slice(0, 20) };
-    }
-  } catch {}
-
   // msg-nickname → profile.messageNickname
   try {
     const nickname = localStorage.getItem('msg-nickname') || '';
@@ -117,6 +108,10 @@ function _migrateLegacyKeys() {
       _data.profile = { ..._data.profile, messageNickname: nickname.slice(0, 20) };
     }
   } catch {}
+
+  if (_data.profile && 'dharmaName' in _data.profile) {
+    delete _data.profile.dharmaName;
+  }
 
   // Legacy lightweight settings
   try {

@@ -8,6 +8,7 @@ import { getDailyRecommendation } from './ai-client.js';
 import { getHistory } from './history.js';
 import { toggleTheme, getTheme } from './theme.js';
 import { renderHistoryView } from './history-view.js';
+import { get as storeGet } from './store.js';
 
 /* ===== Home Page DOM Cache ===== */
 // Keep the home page element alive across tab switches to avoid full re-renders.
@@ -290,13 +291,27 @@ function wireHomeTools(page) {
   });
 }
 
+function getResumeState() {
+  const playerState = storeGet('player');
+  return playerState && playerState.seriesId ? playerState : null;
+}
+
+function playDefaultHomeTrack() {
+  const fohaoCat = state.data?.categories?.find(cat => cat.id === 'fohao');
+  const fohaoSeries = fohaoCat?.series?.find(series => series.id === 'donglin-fohao');
+  if (!fohaoSeries?.episodes?.length) return false;
+  const defaultIdx = fohaoSeries.episodes.length > 3 ? 3 : 0;
+  playList(fohaoSeries.episodes, defaultIdx, fohaoSeries);
+  return true;
+}
+
 /** Build the HTML for the continue-listening / new-user-guide section. */
 function buildDynamicSectionHtml() {
   const dom = getDOM();
   let html = '';
   let hasPlayHistory = false;
   try {
-    const st = JSON.parse(localStorage.getItem('pl-state'));
+    const st = getResumeState();
     if (st && st.seriesId) {
       let cSeries = null, cCat = null;
       for (const c of state.data.categories) {
@@ -305,11 +320,12 @@ function buildDynamicSectionHtml() {
       }
       if (cSeries) {
         hasPlayHistory = true;
-        const cIdx = st.idx || 0;
+        const cIdx = Number.isInteger(st.epIdx) ? st.epIdx : (st.idx || 0);
         const ep = cSeries.episodes[cIdx];
         const epTitle = ep ? (ep.title || ep.fileName) : '';
-        const pct = st.duration > 0
-          ? Math.min(100, Math.round((st.time || 0) / st.duration * 100)) : 0;
+        const duration = ep?.duration || 0;
+        const pct = duration > 0
+          ? Math.min(100, Math.round((st.time || 0) / duration * 100)) : 0;
         const nowSid = state.epIdx >= 0 && state.playlist.length
           ? state.playlist[state.epIdx].seriesId : null;
         const isPlaying = nowSid === st.seriesId && state.epIdx === cIdx && !dom.audio.paused;
@@ -375,14 +391,16 @@ function wireContinueCard(page) {
 function wireGuideCard(page) {
   const guideCard = page.querySelector('#homeGuide');
   if (!guideCard) return;
-  guideCard.addEventListener('click', async () => {
+  guideCard.addEventListener('click', () => {
     const dom = getDOM();
-    if (!state.playlist.length) {
-      playDefaultTrack();
+    if (state.playlist.length && state.epIdx >= 0) {
+      dom.expPlayer.classList.add('show');
+      togglePlay();
+      return;
     }
-    if (!state.playlist.length) return;
+
+    if (!playDefaultHomeTrack()) return;
     dom.expPlayer.classList.add('show');
-    togglePlay();
   });
 }
 

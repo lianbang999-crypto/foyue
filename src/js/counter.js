@@ -710,7 +710,6 @@ function showHuixiangSheet(parentView, data, _session) {
 
 /* ── Submit to 共修广场 ── */
 async function submitToGongxiu(data, count, vowInfo) {
-  const savedNickname = (get('profile') || {}).dharmaName || '';
   const practice = getPracticeDisplayName(data);
 
   const body = {
@@ -719,7 +718,7 @@ async function submitToGongxiu(data, count, vowInfo) {
     vow_type: 'universal', // 回向文始终为"法界一切众生"（往生极乐）
     vow_target: '',
     vow_custom: vowInfo?.anotherVow || '', // 另愿（用户个人附加愿心）
-    nickname: savedNickname || '莲友',
+    nickname: '莲友',
   };
 
   const resp = await fetch('/api/gongxiu', {
@@ -735,10 +734,6 @@ async function submitToGongxiu(data, count, vowInfo) {
 
   // Mark as submitted today
   patch('gongxiu', { submittedDate: beijingTodayStr() });
-
-  if (!savedNickname.trim()) {
-    showToast('未设置称呼时，将以“莲友”显示');
-  }
 
   return resp.json();
 }
