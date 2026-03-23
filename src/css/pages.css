@@ -155,6 +155,10 @@
     letter-spacing: .08em
 }
 
+html.hide-public-play-count .public-play-count {
+    display: none !important;
+}
+
 /* history list */
 .my-section-header {
     display: flex;

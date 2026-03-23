@@ -33,6 +33,7 @@ import {
   onVisibilityResume, setNetworkWeak,
 } from './player.js';
 import { renderHomePage, invalidateHomePage } from './pages-home.js';
+import { renderMyPage } from './pages-my.js';
 import { openAiChat, closeAiChat, isAiChatOpen, updateAiContext, checkAiDeepLink, prefetchAiChat } from './ai-chat.js';
 // ✅ 修复代码分割警告：统一使用动态导入，避免静态和动态导入混用
 // import { renderCategory, showEpisodes } from './pages-category.js';
@@ -69,7 +70,7 @@ const ROOT_TAB_I18N = {
   home: 'tab_home',
   tingjingtai: 'tab_lectures',
   youshengshu: 'tab_audiobooks',
-  wenku: 'my_wenku',
+  mypage: 'tab_my',
 };
 
 function activateRootTab(tabId) {
@@ -90,9 +91,9 @@ function renderHomeRoot() {
 }
 
 function renderWenkuRoot(options = {}) {
-  activateRootTab('wenku');
+  activateRootTab('mypage');
   import('./wenku.js').then(mod => {
-    mod.renderWenkuHome(renderHomeRoot, options);
+    mod.renderWenkuHome(renderMyPage, options);
   });
 }
 
@@ -194,7 +195,7 @@ const categoryLoaders = new Map();
 const seriesLoaders = new Map();
 
 async function ensureCategoryData(categoryId) {
-  if (!categoryId || categoryId === 'home' || categoryId === 'wenku') return null;
+  if (!categoryId || categoryId === 'home' || categoryId === 'mypage' || categoryId === 'wenku') return null;
   if (state.isDataFull) return state.data?.categories?.find(cat => cat.id === categoryId) || null;
 
   const existing = state.data?.categories?.find(cat => cat.id === categoryId);
@@ -308,8 +309,8 @@ async function ensureSeriesDetail(seriesId, categoryId) {
 
       if (nextTab === 'home') {
         renderHomePage();
-      } else if (nextTab === 'wenku') {
-        renderWenkuRoot();
+      } else if (nextTab === 'mypage') {
+        renderMyPage();
       } else {
         if (!state.isDataFull && state.ensureCategoryData) {
           const catAlreadyLoaded = state.data?.categories?.find(cat => cat.id === nextTab)?._categoryLoaded;
@@ -587,7 +588,7 @@ async function ensureSeriesDetail(seriesId, categoryId) {
     // Wenku reader is open — close it and route to correct wenku view
     if (readerOpen) {
       closeWenkuReader();
-      activateRootTab('wenku');
+      activateRootTab('mypage');
       if (st && st.wenku) {
         if (st.wenku === 'home') {
           renderWenkuRoot({ skipPush: true });
@@ -598,8 +599,8 @@ async function ensureSeriesDetail(seriesId, categoryId) {
         }
         return;
       }
-      // Reader was opened without wenku context (or state lost) — return to home
-      renderHomeRoot();
+      // Reader was opened without wenku context (or state lost) — return to 我的
+      renderMyPage();
       rePushGuard();
       return;
     }
@@ -610,7 +611,7 @@ async function ensureSeriesDetail(seriesId, categoryId) {
       wenkuPage.remove();
       // Route based on the state we're navigating TO
       if (st && st.wenku) {
-        activateRootTab('wenku');
+        activateRootTab('mypage');
         if (st.wenku === 'home') {
           // Going back TO wenku home (e.g. from series → home)
           renderWenkuRoot({ skipPush: true });
@@ -621,8 +622,8 @@ async function ensureSeriesDetail(seriesId, categoryId) {
           }, { skipPush: true }));
         }
       } else {
-        // Going back from wenku home → Home
-        renderHomeRoot();
+        // Going back from wenku home → 我的
+        renderMyPage();
         rePushGuard();
       }
       return;
@@ -808,7 +809,7 @@ function needsImmediateFullData() {
     params.get('series') ||
     params.get('doc') ||
     params.get('wenku') ||
-    (tab && !['home', 'ai', 'wenku'].includes(tab)) ||
+    (tab && !['home', 'ai', 'mypage', 'wenku'].includes(tab)) ||
     (playerState?.seriesId && playerState.seriesId !== 'donglin-fohao')
   );
 }
@@ -860,6 +861,7 @@ async function loadData() {
       applyLoadedData(cached);
       dom.loader.style.display = 'none';
       if (state.tab === 'home') renderHomePage();
+      else if (state.tab === 'mypage') renderMyPage();
       else renderCategory(state.tab);
       if (!handleShareHash()) {
         restoreState();
@@ -881,11 +883,14 @@ async function loadData() {
     if (cachedHome) {
       applyLoadedData(cachedHome);
       dom.loader.style.display = 'none';
-      renderHomePage();
+      if (state.tab === 'mypage') renderMyPage();
+      else renderHomePage();
       if (canRestoreFromCurrentData()) {
         restoreState();
         if (state.isFirstVisit && state.epIdx < 0) playDefaultTrack();
       }
+      handleWenkuDeepLink();
+      handleTabDeepLink();
       checkAiDeepLink();
       return;
     }
@@ -902,6 +907,8 @@ async function loadData() {
       } else if (state.isFirstVisit && state.epIdx < 0) {
         playDefaultTrack();
       }
+      handleWenkuDeepLink();
+      handleTabDeepLink();
       checkAiDeepLink();
       return;
     }
@@ -914,6 +921,7 @@ async function loadData() {
     saveCachedData(state.data, initHash);
     dom.loader.style.display = 'none';
     if (state.tab === 'home') renderHomePage();
+    else if (state.tab === 'mypage') renderMyPage();
     else renderCategory(state.tab);
     if (!handleShareHash()) {
       restoreState();
@@ -1122,13 +1130,13 @@ function handleWenkuDeepLink() {
 
   if (docId) {
     // Open reader directly for a specific document
-    activateRootTab('wenku');
+    activateRootTab('mypage');
     import('./wenku-reader.js').then(mod => mod.openReader(docId));
   } else if (wenkuSeries) {
     // Open wenku series view — URL already correct, skip pushState
-    activateRootTab('wenku');
+    activateRootTab('mypage');
     import('./wenku.js').then(mod => {
-      mod.renderWenkuSeries(wenkuSeries, renderHomeRoot, { skipPush: true });
+      mod.renderWenkuSeries(wenkuSeries, renderMyPage, { skipPush: true });
     });
   } else if (tab === 'wenku') {
     // Open wenku home — URL already correct, skip pushState
@@ -1137,17 +1145,18 @@ function handleWenkuDeepLink() {
 }
 
 /* ===== TAB DEEP LINK — from PWA shortcuts or external links ===== */
-// Handles ?tab=home, ?tab=tingjingtai, ?tab=youshengshu
+// Handles ?tab=home, ?tab=tingjingtai, ?tab=youshengshu, ?tab=mypage
 // ?tab=ai is handled by checkAiDeepLink(); ?tab=wenku is handled by handleWenkuDeepLink()
 function handleTabDeepLink() {
   const params = new URLSearchParams(window.location.search);
   const tab = params.get('tab');
   if (!tab) return;
-  const validTabs = ['home', 'tingjingtai', 'youshengshu'];
+  const validTabs = ['home', 'tingjingtai', 'youshengshu', 'mypage'];
   if (!validTabs.includes(tab)) return;
   activateRootTab(tab);
   window.history.replaceState({}, '', window.location.pathname);
   if (tab === 'home') renderHomePage();
+  else if (tab === 'mypage') renderMyPage();
   else {
     const renderTab = () => renderCategory(tab);
     if (!state.isDataFull && state.ensureCategoryData) {

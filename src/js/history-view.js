@@ -28,7 +28,7 @@ function buildHistItem(item, index) {
 
 export function renderHistoryView(onBack) {
   const dom = getDOM();
-  dom.contentArea.querySelectorAll('.view,.ep-view,.home-page,.wenku-page').forEach(el => el.remove());
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
 
   const view = document.createElement('div');
   view.className = 'view active';
