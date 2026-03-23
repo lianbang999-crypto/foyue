@@ -1,13 +1,11 @@
 /* ===== Home Page ===== */
 import { state } from './state.js';
-import { t, getLang, setLang } from './i18n.js';
+import { t, getLang } from './i18n.js';
 import { getDOM } from './dom.js';
 import { ICON_PLAY, ICON_PAUSE, HOME_CATEGORY_ICONS } from './icons.js';
 import { playList, togglePlay, getIsSwitching } from './player.js';
 import { getDailyRecommendation } from './ai-client.js';
 import { getHistory } from './history.js';
-import { toggleTheme, getTheme } from './theme.js';
-import { renderHistoryView } from './history-view.js';
 import { get as storeGet } from './store.js';
 
 /* ===== Home Page DOM Cache ===== */
@@ -220,76 +218,7 @@ function getCachedRecs() {
   return null;
 }
 
-function buildHomeToolsHtml() {
-  const lang = getLang();
-  const langText = { zh: '中文', en: 'English', fr: 'Français' }[lang] || '中文';
-  const themeText = {
-    light: t('theme_light'),
-    dark: t('theme_dark'),
-    terracotta: t('theme_terracotta'),
-    ink: t('theme_ink'),
-  }[getTheme()] || t('theme_light');
 
-  return `
-    <div class="home-section home-section-tight">
-      <div class="home-section-title">${t('my_settings')}</div>
-      <div class="home-tools-grid">
-        <button class="home-tool-card" id="homeCounterCard" type="button">
-          <span class="home-tool-icon">
-            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          </span>
-          <span class="home-tool-title">${t('my_counter')}</span>
-          <span class="home-tool-sub">${t('my_counter_desc')}</span>
-        </button>
-        <button class="home-tool-card" id="homeHistoryCard" type="button">
-          <span class="home-tool-icon">
-            <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
-          </span>
-          <span class="home-tool-title">${t('my_history')}</span>
-          <span class="home-tool-sub">${t('my_history_desc').replace('{n}', getHistory().length)}</span>
-        </button>
-        <button class="home-tool-card" id="homeThemeCard" type="button">
-          <span class="home-tool-icon">
-            <svg viewBox="0 0 24 24">${getTheme() === 'dark' || getTheme() === 'ink' ? '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>' : '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>'}</svg>
-          </span>
-          <span class="home-tool-title">${t('my_theme')}</span>
-          <span class="home-tool-sub">${themeText}</span>
-        </button>
-        <button class="home-tool-card" id="homeLangCard" type="button">
-          <span class="home-tool-icon">
-            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-          </span>
-          <span class="home-tool-title">${t('my_lang')}</span>
-          <span class="home-tool-sub">${langText}</span>
-        </button>
-      </div>
-    </div>`;
-}
-
-function wireHomeTools(page) {
-  page.querySelector('#homeCounterCard')?.addEventListener('click', () => {
-    import('./counter.js').then(mod => mod.openCounter());
-  });
-
-  page.querySelector('#homeHistoryCard')?.addEventListener('click', () => {
-    renderHistoryView(renderHomePage);
-  });
-
-  page.querySelector('#homeThemeCard')?.addEventListener('click', () => {
-    toggleTheme();
-    invalidateHomePage();
-    renderHomePage();
-  });
-
-  page.querySelector('#homeLangCard')?.addEventListener('click', () => {
-    const langs = ['zh', 'en', 'fr'];
-    const next = langs[(langs.indexOf(getLang()) + 1) % langs.length];
-    setLang(next, () => {
-      invalidateHomePage();
-      renderHomePage();
-    });
-  });
-}
 
 function getResumeState() {
   const playerState = storeGet('player');
@@ -413,12 +342,6 @@ function refreshDynamicSection(page) {
   wireGuideCard(page);
 }
 
-function refreshHomeTools(page) {
-  const toolsSection = page.querySelector('#homeTools');
-  if (!toolsSection) return;
-  toolsSection.outerHTML = `<div id="homeTools">${buildHomeToolsHtml()}</div>`;
-  wireHomeTools(page);
-}
 
 async function loadDailyRecommendations(page) {
   const recList = page.querySelector('#homeRecList');
@@ -518,7 +441,6 @@ export function renderHomePage() {
   // ── Fast path: reuse cached home page element ──
   if (_homePageEl) {
     refreshDynamicSection(_homePageEl);     // Update continue/guide card
-    refreshHomeTools(_homePageEl);
     dom.contentArea.appendChild(_homePageEl);
     const updateFn = attachHomeAudioListeners(_homePageEl);
     updateFn();                             // Sync play-state indicators immediately
@@ -573,8 +495,6 @@ export function renderHomePage() {
 
     <div id="homeDynamic">${buildDynamicSectionHtml()}</div>
 
-    <div id="homeTools">${buildHomeToolsHtml()}</div>
-
     <div class="home-section home-section-tight">
       <div class="home-section-title">${t('home_chanting')}</div>
       <div class="home-chanting-wrap">
@@ -611,7 +531,6 @@ export function renderHomePage() {
   // Wire continue card
   wireContinueCard(page);
   wireGuideCard(page);
-  wireHomeTools(page);
 
   // Wire AI rec clicks if pre-rendered from cache
   if (cachedRecs) {
