@@ -1,7 +1,7 @@
 /* Service Worker — 净土法音 Offline Cache */
 'use strict';
 
-const CACHE_VERSION = 'v7';
+const CACHE_VERSION = 'v8';
 const STATIC_CACHE = 'static-' + CACHE_VERSION;
 const DATA_CACHE = 'data-' + CACHE_VERSION;
 const AUDIO_CACHE = 'audio-v2';
@@ -58,6 +58,12 @@ self.addEventListener('activate', event => {
       await self.clients.claim();
     })
   );
+});
+
+self.addEventListener('message', event => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    event.waitUntil(self.skipWaiting());
+  }
 });
 
 /* ── Fetch: cache-first for static, stale-while-revalidate for data ── */

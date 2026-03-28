@@ -53,7 +53,7 @@ export function renderCategory(...args) {
 export function showEpisodes(...args) {
   return getCategoryModule().then(mod => mod.showEpisodes(...args));
 }
-import { initInstallPrompt, initBackGuard } from './pwa.js';
+import { initInstallPrompt, initBackGuard, initRefreshPrompt, observeRefreshRegistration } from './pwa.js';
 import { appreciate } from './api.js';
 import { monitor } from './monitor.js';
 
@@ -97,14 +97,17 @@ function renderWenkuRoot(options = {}) {
 }
 
 function buildCategoriesUrl({ home = false } = {}) {
+  const CATEGORY_API_VERSION = '3';
   const params = new URLSearchParams();
   if (home) params.set('home', '1');
+  params.set('v', CATEGORY_API_VERSION);
   const query = params.toString();
   return '/api/categories' + (query ? `?${query}` : '');
 }
 
 function buildCategoryUrl(categoryId) {
-  return `/api/category/${encodeURIComponent(categoryId)}`;
+  const CATEGORY_API_VERSION = '3';
+  return `/api/category/${encodeURIComponent(categoryId)}?v=${CATEGORY_API_VERSION}`;
 }
 
 function buildSeriesUrl(seriesId) {
@@ -551,6 +554,7 @@ async function ensureSeriesDetail(seriesId, categoryId) {
 
   // PWA install
   initInstallPrompt();
+  initRefreshPrompt();
 
   // Back navigation guard (extended to handle AI chat)
   initBackGuard(renderCategory, state, { closeFullScreen, getPlaylistVisible, closePlaylist, renderHomePage });
@@ -734,7 +738,9 @@ async function ensureSeriesDetail(seriesId, categoryId) {
 
   // Register Service Worker for offline caching
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => { });
+    navigator.serviceWorker.register('/sw.js').then(registration => {
+      observeRefreshRegistration(registration);
+    }).catch(() => { });
   }
 
   // ✅ 监控：定期保存监控摘要到统一 store
@@ -748,10 +754,10 @@ async function ensureSeriesDetail(seriesId, categoryId) {
 
 /* ===== DATA LOADING with cache + retry ===== */
 let loadAttempts = 0;
-const DATA_CACHE_VERSION = 5; // v5: force-refresh after Pages/API deployment recovery
+const DATA_CACHE_VERSION = 6; // v6: invalidate stale category caches after catalog changes
 const DATA_CACHE_KEY = 'pl-data-cache-v' + DATA_CACHE_VERSION;
 const DATA_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
-const HOME_CACHE_VERSION = 2;
+const HOME_CACHE_VERSION = 3;
 const HOME_CACHE_KEY = 'pl-home-cache-v' + HOME_CACHE_VERSION;
 const HOME_CACHE_TTL = 10 * 60 * 1000;
 

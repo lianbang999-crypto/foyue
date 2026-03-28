@@ -492,6 +492,26 @@
     </div>
   </div>
 
+  <!-- APP REFRESH BANNER -->
+  <div class="install-banner refresh-banner" id="refreshBanner" style="display:none" role="status" aria-live="polite">
+    <div class="install-inner refresh-inner">
+      <div class="install-icon refresh-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24">
+          <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+          <path d="M21 3v6h-6" />
+        </svg>
+      </div>
+      <div class="install-text">
+        <div class="install-title">发现新版本</div>
+        <div class="install-desc">刷新后会更新网页或 PWA 资源，并清理旧应用缓存</div>
+      </div>
+      <div class="install-actions">
+        <button class="install-btn install-btn-dismiss" id="refreshDismiss">稍后</button>
+        <button class="install-btn install-btn-primary refresh-btn-primary" id="refreshAccept">立即刷新</button>
+      </div>
+    </div>
+  </div>
+
   <!-- iOS PWA INSTALL GUIDE -->
   <div class="ios-guide" id="iosGuide" style="display:none">
     <div class="ios-guide-inner">

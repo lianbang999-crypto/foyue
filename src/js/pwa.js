@@ -6,9 +6,14 @@ import { showToast } from './utils.js';
 let deferredPrompt = null;
 let installPromptInitialized = false;
 let installListenersBound = false;
+let refreshPromptInitialized = false;
+let pendingRefreshReload = false;
 
 const INSTALL_DISMISSED_KEY = 'pl-install-dismissed';
 const INSTALL_DISMISS_TTL = 3 * 24 * 60 * 60 * 1000;
+const REFRESH_DISMISSED_KEY = 'pl-refresh-dismissed';
+const REFRESH_DISMISS_TTL = 6 * 60 * 60 * 1000;
+const APP_CACHE_KEY_PATTERNS = [/^pl-data-cache-/, /^pl-home-cache-/];
 
 export function getDeferredPrompt() { return deferredPrompt; }
 export function clearDeferredPrompt() { deferredPrompt = null; }
@@ -40,11 +45,42 @@ function getIosGuide() {
   return document.getElementById('iosGuide');
 }
 
+function getRefreshBanner() {
+  return document.getElementById('refreshBanner');
+}
+
+function isRefreshDismissedRecently() {
+  const dismissed = localStorage.getItem(REFRESH_DISMISSED_KEY);
+  if (!dismissed) return false;
+  const ts = parseInt(dismissed, 10);
+  return Number.isFinite(ts) && Date.now() - ts < REFRESH_DISMISS_TTL;
+}
+
+function rememberRefreshDismissed() {
+  localStorage.setItem(REFRESH_DISMISSED_KEY, String(Date.now()));
+}
+
+function clearRefreshDismissed() {
+  localStorage.removeItem(REFRESH_DISMISSED_KEY);
+}
+
+function showRefreshBanner() {
+  const banner = getRefreshBanner();
+  if (!banner || isRefreshDismissedRecently()) return;
+  banner.classList.add('show');
+}
+
+function hideRefreshBanner() {
+  const banner = getRefreshBanner();
+  if (banner) banner.classList.remove('show');
+}
+
 function hideInstallSurfaces() {
   const banner = getInstallBanner();
   const iosGuide = getIosGuide();
   if (banner) banner.classList.remove('show');
   if (iosGuide) iosGuide.classList.remove('show');
+  hideRefreshBanner();
 }
 
 function updateInstallBannerVisibility() {
@@ -145,6 +181,116 @@ export function initInstallPrompt() {
   });
 
   updateInstallBannerVisibility();
+}
+
+function bindRefreshPromptListeners() {
+  const refreshAccept = document.getElementById('refreshAccept');
+  const refreshDismiss = document.getElementById('refreshDismiss');
+  if (!refreshAccept || !refreshDismiss) return;
+
+  refreshDismiss.addEventListener('click', () => {
+    hideRefreshBanner();
+    rememberRefreshDismissed();
+  });
+
+  refreshAccept.addEventListener('click', async () => {
+    if (pendingRefreshReload) return;
+    pendingRefreshReload = true;
+    refreshAccept.disabled = true;
+    refreshAccept.textContent = '刷新中...';
+    hideRefreshBanner();
+    clearRefreshDismissed();
+    await refreshAppResources();
+  });
+}
+
+function watchServiceWorkerRegistration(registration) {
+  if (!registration) return;
+
+  if (registration.waiting) {
+    showRefreshBanner();
+  }
+
+  registration.addEventListener('updatefound', () => {
+    const worker = registration.installing;
+    if (!worker) return;
+    worker.addEventListener('statechange', () => {
+      if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+        clearRefreshDismissed();
+        showRefreshBanner();
+      }
+    });
+  });
+}
+
+async function clearAppCaches() {
+  if ('caches' in window) {
+    try {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(key => caches.delete(key)));
+    } catch (e) { /* ignore */ }
+  }
+
+  try {
+    Object.keys(localStorage).forEach(key => {
+      if (APP_CACHE_KEY_PATTERNS.some(pattern => pattern.test(key))) {
+        localStorage.removeItem(key);
+      }
+    });
+  } catch (e) { /* ignore */ }
+}
+
+async function refreshAppResources() {
+  try {
+    await clearAppCaches();
+
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      const refreshRegistration = registrations.find(reg => String(reg.scope || '').startsWith(window.location.origin)) || registrations[0];
+      if (refreshRegistration?.waiting) {
+        refreshRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
+      } else if (refreshRegistration) {
+        await refreshRegistration.update().catch(() => { });
+      }
+    }
+  } finally {
+    window.location.reload();
+  }
+}
+
+export function initRefreshPrompt() {
+  const banner = getRefreshBanner();
+  if (!banner || refreshPromptInitialized) return;
+  refreshPromptInitialized = true;
+
+  bindRefreshPromptListeners();
+
+  if (!('serviceWorker' in navigator)) return;
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (pendingRefreshReload) {
+      window.location.reload();
+    }
+  });
+
+  navigator.serviceWorker.getRegistration().then(registration => {
+    if (!registration) return;
+    watchServiceWorkerRegistration(registration);
+    registration.update().catch(() => { });
+  }).catch(() => { });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    navigator.serviceWorker.getRegistration().then(registration => {
+      if (!registration) return;
+      watchServiceWorkerRegistration(registration);
+      registration.update().catch(() => { });
+    }).catch(() => { });
+  });
+}
+
+export function observeRefreshRegistration(registration) {
+  watchServiceWorkerRegistration(registration);
 }
 
 function showManualInstallGuide() {

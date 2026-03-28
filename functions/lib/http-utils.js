@@ -11,22 +11,30 @@ export function json(data, cors, status = 200, cacheControl) {
 
 export function buildCategoriesCacheKey(url, { homeView }) {
   const cacheUrl = new URL(url.toString());
+  const version = cacheUrl.searchParams.get('v');
   cacheUrl.search = '';
   if (homeView) cacheUrl.searchParams.set('home', '1');
+  if (version) cacheUrl.searchParams.set('v', version);
   return new Request(cacheUrl.toString(), { method: 'GET' });
 }
 
 export function buildCategoryCacheKey(url, { categoryId }) {
   const cacheUrl = new URL(url.toString());
+  const version = cacheUrl.searchParams.get('v');
   cacheUrl.pathname = `/api/category/${encodeURIComponent(categoryId)}`;
   cacheUrl.search = '';
+  if (version) cacheUrl.searchParams.set('v', version);
   return new Request(cacheUrl.toString(), { method: 'GET' });
 }
 
 export async function getEdgeCachedJson(request, cacheKey, waitUntil, buildResponse) {
+  const url = new URL(request.url);
+  const forceRefresh = url.searchParams.has('refresh') || url.searchParams.has('ts');
   const cache = caches.default;
-  const cached = await cache.match(cacheKey);
-  if (cached) return withEdgeCacheHeader(cached, 'HIT');
+  if (!forceRefresh) {
+    const cached = await cache.match(cacheKey);
+    if (cached) return withEdgeCacheHeader(cached, 'HIT');
+  }
 
   const response = await buildResponse(request);
   if (response.ok) {
@@ -34,7 +42,7 @@ export async function getEdgeCachedJson(request, cacheKey, waitUntil, buildRespo
     if (typeof waitUntil === 'function') waitUntil(cacheWrite);
     else await cacheWrite;
   }
-  return withEdgeCacheHeader(response, 'MISS');
+  return withEdgeCacheHeader(response, forceRefresh ? 'REFRESH' : 'MISS');
 }
 
 export function withEdgeCacheHeader(response, status) {
