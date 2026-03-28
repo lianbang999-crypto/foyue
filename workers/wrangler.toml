@@ -5,10 +5,30 @@ name = "audio-subdomain-worker"
 main = "audio-subdomain-worker.js"
 compatibility_date = "2025-01-01"
 
-# MP3 存储桶绑定
+# MP3 分类存储桶绑定
 [[r2_buckets]]
-binding = "BUCKET"
-bucket_name = "audio-bucket"
+binding = "DAANFASHI"
+bucket_name = "daanfashi"
+
+[[r2_buckets]]
+binding = "FOHAO"
+bucket_name = "fohao"
+
+[[r2_buckets]]
+binding = "YINGUANGDASHI"
+bucket_name = "yinguangdashi"
+
+[[r2_buckets]]
+binding = "JINGTUSHENGXIAN"
+bucket_name = "jingtushengxian"
+
+[[r2_buckets]]
+binding = "YOUSHENGSHU"
+bucket_name = "youshengshu"
+
+[[r2_buckets]]
+binding = "JINGDIANDUSONG"
+bucket_name = "jingdiandusong"
 
 # 或者 Opus 存储桶绑定（需要创建两个独立的Worker）
 # [[r2_buckets]]

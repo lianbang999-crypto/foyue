@@ -3,6 +3,15 @@
  * 为音频子域名添加正确的HTTP响应头
  */
 
+const BUCKET_BINDING_BY_ID = {
+  '7be57e30faae4f81bbd76b61006ac8fc': 'DAANFASHI',
+  '8c99ae05414d4672b1ec08a569ab3299': 'FOHAO',
+  '7a334cb009c14e10bbcfee54bb593a2a': 'YINGUANGDASHI',
+  '05d3db9f377146d5bb450025565f7d1b': 'JINGTUSHENGXIAN',
+  '772643034503463d9b954f0eea5ce80b': 'YOUSHENGSHU',
+  '09eef2d346704b409a5fbef97ce6464a': 'JINGDIANDUSONG',
+};
+
 function buildBaseHeaders(object) {
   const headers = new Headers();
   object.writeHttpMetadata(headers);
@@ -36,17 +45,56 @@ function parseRangeHeader(rangeHeader, size) {
   return { start, end: Math.min(end, size - 1) };
 }
 
+function resolveBucketRequest(pathname, env) {
+  const rawPath = pathname.startsWith('/') ? pathname.slice(1) : pathname;
+  const slashIndex = rawPath.indexOf('/');
+  if (slashIndex <= 0) return null;
+
+  const bucketId = rawPath.slice(0, slashIndex);
+  const rawKey = rawPath.slice(slashIndex + 1);
+  const bindingName = BUCKET_BINDING_BY_ID[bucketId];
+  if (!bindingName || !rawKey) return null;
+
+  const bucket = env[bindingName];
+  if (!bucket) return null;
+
+  const candidateKeys = [];
+  try {
+    const decodedKey = decodeURIComponent(rawKey);
+    if (decodedKey) candidateKeys.push(decodedKey);
+  } catch {
+    // Ignore malformed encodings and fall back to the raw key.
+  }
+  if (!candidateKeys.includes(rawKey)) candidateKeys.push(rawKey);
+
+  return { bucket, candidateKeys };
+}
+
+async function getObjectHead(bucket, candidateKeys) {
+  for (const key of candidateKeys) {
+    const object = await bucket.head(key);
+    if (object) return { key, object };
+  }
+  return null;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    const key = url.pathname.slice(1);
-
-    // 先读对象元信息，后续按需决定是否走分段读取
-    const object = await env.BUCKET.head(key);
-
-    if (!object) {
+    const bucketRequest = resolveBucketRequest(url.pathname, env);
+    if (!bucketRequest) {
       return new Response('Not Found', { status: 404 });
     }
+
+    const { bucket, candidateKeys } = bucketRequest;
+
+    // 先读对象元信息，后续按需决定是否走分段读取
+    const resolvedObject = await getObjectHead(bucket, candidateKeys);
+    if (!resolvedObject) {
+      return new Response('Not Found', { status: 404 });
+    }
+
+    const { key, object } = resolvedObject;
 
     const headers = buildBaseHeaders(object);
 
@@ -60,7 +108,7 @@ export default {
       }
 
       const chunkSize = parsedRange.end - parsedRange.start + 1;
-      const rangedObject = await env.BUCKET.get(key, {
+      const rangedObject = await bucket.get(key, {
         range: { offset: parsedRange.start, length: chunkSize }
       });
       if (!rangedObject) {
@@ -77,7 +125,7 @@ export default {
       });
     }
 
-    const fullObject = await env.BUCKET.get(key);
+    const fullObject = await bucket.get(key);
     if (!fullObject) {
       return new Response('Not Found', { status: 404, headers });
     }
