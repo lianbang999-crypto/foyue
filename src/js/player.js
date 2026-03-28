@@ -196,6 +196,7 @@ function onStallDetected() {
     // Auto-recover: save position, reload, and resume
     const currentTime = dom.audio.currentTime;
     const src = dom.audio.src;
+    const recoveryCallId = _playCurrentId; // ✅ 修复：用 callId 防护恢复回调在新曲目上误触发
     setBuffering(true);
 
     if (stallRetries >= 2) {
@@ -207,6 +208,7 @@ function onStallDetected() {
     dom.audio.load();
     dom.audio.addEventListener('loadeddata', function onLoad() {
       dom.audio.removeEventListener('loadeddata', onLoad);
+      if (recoveryCallId !== _playCurrentId) return; // ✅ 新曲目已开始，放弃旧恢复
       if (currentTime > 0) dom.audio.currentTime = currentTime;
       // Guard: if user explicitly paused during this recovery, do NOT auto-resume
       if (_userPaused) {
@@ -226,6 +228,7 @@ function onStallDetected() {
 
     // Timeout for this recovery attempt
     setTimeout(() => {
+      if (recoveryCallId !== _playCurrentId) return; // ✅ 新曲目已开始，忽略超时
       if (dom.audio.paused && !dom.audio.ended) {
         setBuffering(false);
         if (!_userPaused) setErrorState(t('error_stall_tap'));
@@ -822,9 +825,11 @@ export function onAudioError() {
   const dom = getDOM();
   if (!dom.audio.error || dom.audio.error.code === MediaError.MEDIA_ERR_ABORTED) return;
   if (dom.audio.paused && !_playPending) return;
+  // ✅ 修复：错误发生时也清理切换超时和就绪监听器，防止延迟触发覆盖错误状态
+  clearSwitchingTimeout();
+  cleanupReadyListeners(dom);
   isSwitching = false;
   setBuffering(false);
-  clearStallWatch();
 
   const errCode = dom.audio.error.code;
   const src = dom.audio.src;
@@ -1221,6 +1226,10 @@ function _doBgFullLoad(url) {
 
 /* ===== Visibility Change — Resume Buffer on Foreground ===== */
 export function onVisibilityResume() {
+  // ✅ 修复：回到前台时立即清除旧 stallTimer，防止积压的 interval 回调
+  // 在 visibilityState 变为 'visible' 后误判为卡顿（移动端后台节流会导致 currentTime 不推进）
+  clearStallWatch();
+
   const dom = getDOM();
   if (!dom.audio.src || dom.audio.ended) {
     setBuffering(false);
@@ -1502,16 +1511,19 @@ export function restoreState() {
         state.epIdx = s.epIdx || 0;
         const tr = state.playlist[state.epIdx];
         if (tr) {
-          dom.audio.src = tr.url;
-          if (s.time) dom.audio.addEventListener('loadedmetadata', () => { dom.audio.currentTime = s.time; }, { once: true });
           updateUI(tr);
-          // ✅ Offline playback: async check cache, swap to blob URL if found
+          const savedTime = s.time;
+          // ✅ 修复：先检查缓存再设置 src，避免双重 loadedmetadata 监听 + 浪费网络请求
+          // Cache API 是本地读取，延迟极低，不影响恢复速度
           getCachedAudioUrl(tr.url).then(cachedUrl => {
-            if (!cachedUrl) return;
-            dom.audio.src = cachedUrl;
-            dom.audio._cachedBlobUrl = cachedUrl;
-            if (s.time) dom.audio.addEventListener('loadedmetadata', () => { dom.audio.currentTime = s.time; }, { once: true });
-          }).catch(() => { });
+            const srcUrl = cachedUrl || tr.url;
+            if (cachedUrl) dom.audio._cachedBlobUrl = cachedUrl;
+            dom.audio.src = srcUrl;
+            if (savedTime) dom.audio.addEventListener('loadedmetadata', () => { dom.audio.currentTime = savedTime; }, { once: true });
+          }).catch(() => {
+            dom.audio.src = tr.url;
+            if (savedTime) dom.audio.addEventListener('loadedmetadata', () => { dom.audio.currentTime = savedTime; }, { once: true });
+          });
         }
         if (s.loop) {
           state.loopMode = (s.loop === 'none') ? 'all' : s.loop;
