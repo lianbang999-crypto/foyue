@@ -282,9 +282,11 @@ export function retryPlayback() {
   // ✅ 修复seek竞态：保存当前位置，使用pendingSeek机制
   const savedTime = dom.audio.currentTime;
   pendingSeek = savedTime; // 使用全局pendingSeek变量，避免竞态
+  const retryCallId = _playCurrentId; // ✅ 修复：用callId防护stale回调
 
   dom.audio.load();
   dom.audio.play().then(() => {
+    if (retryCallId !== _playCurrentId) return; // ✅ 已切曲目，忽略
     setBuffering(false);
     setPlayState(true);
     startStallWatch(); // Resume stall detection after manual retry
@@ -292,6 +294,7 @@ export function retryPlayback() {
     // Fall back to waiting for canplay
     dom.audio.addEventListener('canplay', function onReady() {
       dom.audio.removeEventListener('canplay', onReady);
+      if (retryCallId !== _playCurrentId) return; // ✅ 已切曲目，忽略stale回调
       setBuffering(false);
       // ✅ 使用pendingSeek而不是直接设置currentTime
       if (pendingSeek > 0) {
@@ -309,6 +312,7 @@ export function retryPlayback() {
     }, { once: true });
     // Timeout
     setTimeout(() => {
+      if (retryCallId !== _playCurrentId) return; // ✅ 已切曲目，忽略
       setBuffering(false);
     }, 30000);
   });
@@ -1058,7 +1062,9 @@ export function cycleSleepTimer() {
       if (b) b.textContent = remaining;
       if (sleepRemaining <= 0) {
         clearInterval(sleepTimerId); sleepTimerId = null;
+        _userPaused = true; // ✅ 修复：睡眠定时器暂停也视为用户意图，阻止自动恢复
         dom.audio.pause(); timerIdx = 0;
+        clearStallWatch(); // ✅ 修复：暂停后停止卡顿检测
         // #6: Explicitly update play state UI so button reflects paused state
         setPlayState(false);
         btn.classList.remove('active');
