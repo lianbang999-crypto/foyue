@@ -1,4 +1,5 @@
 /* ===== Wenku Module — Library Home & Series Views ===== */
+import '../css/wenku.css';
 import { state } from './state.js';
 import { t } from './i18n.js';
 import { getDOM } from './dom.js';

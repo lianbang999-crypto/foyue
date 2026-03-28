@@ -8,12 +8,8 @@ import '../css/player.css';
 import '../css/cards.css';
 import '../css/pages.css';
 import '../css/components.css';
-import '../css/ai.css';
-import '../css/message-wall.css';
-import '../css/gongxiu.css';
-import '../css/wenku.css';
-
-// Module imports
+// ✅ 性能优化：ai.css / message-wall.css / gongxiu.css / wenku.css
+// 已移至各自模块中按需加载，减小首屏 CSS 体积
 import { state, beginContentRequest, isContentRequestCurrent } from './state.js';
 import { initDOM, getDOM } from './dom.js';
 import { initLang, applyI18n, t } from './i18n.js';

@@ -8,6 +8,9 @@
  *
  * 佛法背景：
  *   共修（gòng xiū）= 大众共同修行，以功德回向法界一切众生。
+ */
+import '../css/gongxiu.css';
+/**
  *   回向文（莲池大师）：
  *     "愿以此功德，庄严佛净土，上报四重恩，下济三途苦，
  *      若有见闻者，悉发菩提心，尽此一报身，同生极乐国。"
@@ -17,14 +20,14 @@ import { t } from './i18n.js';
 import { escapeHtml, showToast, formatCount, formatRelTime, HUIXIANG_TEXT, beijingTodayStr, HUIXIANG_DISPLAY_AUTO_MS } from './utils.js';
 import { get as storeGet, patch as storePatch } from './store.js';
 
-const CACHE_KEY             = 'gongxiu-cache';
-const CACHE_TTL             = 60 * 1000; // 1 minute
+const CACHE_KEY = 'gongxiu-cache';
+const CACHE_TTL = 60 * 1000; // 1 minute
 
 const VOW_TYPES = {
   universal: '回向法界一切众生',
-  blessing:  '消灾吉祥',
-  rebirth:   '往生净土',
-  custom:    '自定义',
+  blessing: '消灾吉祥',
+  rebirth: '往生净土',
+  custom: '自定义',
 };
 
 // HUIXIANG_TEXT, formatCount, formatRelTime are imported from utils.js
@@ -393,9 +396,9 @@ function wireSubmitSection(view, submitArea, data, counterData, onOpenCounter) {
       return;
     }
 
-    const type    = submitArea.querySelector('input[name="gxVow"]:checked')?.value || 'universal';
-    const target  = submitArea.querySelector('#gxTargetInput')?.value.trim() || '';
-    const custom  = submitArea.querySelector('#gxCustomInput')?.value.trim() || '';
+    const type = submitArea.querySelector('input[name="gxVow"]:checked')?.value || 'universal';
+    const target = submitArea.querySelector('#gxTargetInput')?.value.trim() || '';
+    const custom = submitArea.querySelector('#gxCustomInput')?.value.trim() || '';
 
     if ((type === 'blessing' || type === 'rebirth') && !target) {
       showToast('请填写回向对象'); return;
@@ -409,9 +412,9 @@ function wireSubmitSection(view, submitArea, data, counterData, onOpenCounter) {
 
     try {
       await postGongxiu({
-        practice:   counterData.practiceName,
-        count:      counterData.daily,
-        vow_type:   type,
+        practice: counterData.practiceName,
+        count: counterData.daily,
+        vow_type: type,
         vow_target: target,
         vow_custom: custom,
         nickname: '莲友',

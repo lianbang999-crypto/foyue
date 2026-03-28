@@ -1,4 +1,5 @@
 /* ===== Message Wall / 留言墙 ===== */
+import '../css/message-wall.css';
 import { t } from './i18n.js';
 import { escapeHtml, showToast, formatRelTime } from './utils.js';
 import { get as storeGet, patch as storePatch } from './store.js';

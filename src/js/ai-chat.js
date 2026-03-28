@@ -1,4 +1,5 @@
 /* ===== AI 全屏聊天页 ===== */
+import '../css/ai.css';
 import { askQuestionStream } from './ai-client.js';
 import { t } from './i18n.js';
 import { escapeHtml, shareContent } from './utils.js';

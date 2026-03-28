@@ -100,6 +100,7 @@ export function getConnType() {
 /* ===== Stall Detection State ===== */
 let stallTimer = null;       // Timer for detecting prolonged stall
 let stallRetries = 0;        // Auto-retry count for stalls
+let _ghostSuspectCount = 0;  // Consecutive checks where played ranges didn't advance
 const MAX_STALL_RETRIES = 3;
 // ✅ 优化：根据网络状况动态调整stall检测间隔
 let STALL_DETECT_MS = 12000; // 默认12s without progress → stalled
@@ -180,6 +181,89 @@ function clearErrorState() {
 }
 
 /* ===== Stall Detection ===== */
+
+/**
+ * 获取 audio.played TimeRanges 中最后一段的结束时间。
+ * played TimeRanges 反映浏览器实际解码播放过的时间区间，
+ * 在幽灵播放 (ghost playback) 下不会跟随 currentTime 推进。
+ */
+function getLastPlayedEnd(audio) {
+  try {
+    if (audio.played && audio.played.length > 0) {
+      return audio.played.end(audio.played.length - 1);
+    }
+  } catch (e) { /* SecurityError on some cross-origin setups */ }
+  return 0;
+}
+
+/**
+ * iOS 幽灵播放恢复：当检测到 currentTime 在推进但 played 时间段停滞时，
+ * 强制重置音频元素并从真实播放位置恢复。
+ */
+function onGhostPlaybackDetected(safePosition) {
+  const dom = getDOM();
+  stallRetries++;
+  console.warn(`[Player] Ghost playback recovery ${stallRetries}/${MAX_STALL_RETRIES} — resuming from ${safePosition.toFixed(1)}s`);
+
+  setNetworkWeak(true);
+  cleanupPreload();
+
+  if (stallRetries <= MAX_STALL_RETRIES) {
+    const src = dom.audio.src;
+    const recoveryCallId = _playCurrentId;
+    setBuffering(true);
+
+    if (stallRetries >= 2) {
+      showToast(t('error_stall'));
+    }
+
+    // 完全重置音频元素（不仅仅是 src = src），确保清除损坏的 iOS 音频会话
+    dom.audio.pause();
+    dom.audio.removeAttribute('src');
+    dom.audio.load();
+
+    // 短暂延迟后重新加载，让 iOS 完成会话清理
+    setTimeout(() => {
+      if (recoveryCallId !== _playCurrentId) return;
+      dom.audio.src = src;
+      dom.audio.load();
+      dom.audio.addEventListener('loadeddata', function onLoad() {
+        dom.audio.removeEventListener('loadeddata', onLoad);
+        if (recoveryCallId !== _playCurrentId) return;
+        if (safePosition > 0) dom.audio.currentTime = safePosition;
+        if (_userPaused) {
+          setBuffering(false);
+          setPlayState(false);
+          return;
+        }
+        dom.audio.play().then(() => {
+          setBuffering(false);
+          startStallWatch();
+        }).catch(() => {
+          setBuffering(false);
+          setErrorState(t('error_stall_tap'));
+          setPlayState(false);
+        });
+      }, { once: true });
+
+      setTimeout(() => {
+        if (recoveryCallId !== _playCurrentId) return;
+        if (dom.audio.paused && !dom.audio.ended) {
+          setBuffering(false);
+          if (!_userPaused) setErrorState(t('error_stall_tap'));
+          setPlayState(false);
+        }
+      }, 20000);
+    }, 100);
+  } else {
+    setBuffering(false);
+    dom.audio.pause();
+    setPlayState(false);
+    setErrorState(t('error_stall_tap'));
+    showToast(t('error_stall'));
+  }
+}
+
 // Called when audio stalls mid-playback (large files on R2 CDN)
 function onStallDetected() {
   const dom = getDOM();
@@ -247,10 +331,14 @@ export function startStallWatch() {
   clearStallWatch();
   const dom = getDOM();
   let lastTime = dom.audio.currentTime;
+  let lastPlayedEnd = getLastPlayedEnd(dom.audio);
+  _ghostSuspectCount = 0;
 
   stallTimer = setInterval(() => {
     if (document.visibilityState === 'hidden') {
       lastTime = dom.audio.currentTime;
+      lastPlayedEnd = getLastPlayedEnd(dom.audio);
+      _ghostSuspectCount = 0;
       return;
     }
     if (dom.audio.paused || dom.audio.ended || !dom.audio.src) {
@@ -258,12 +346,33 @@ export function startStallWatch() {
       return;
     }
     const now = dom.audio.currentTime;
+
+    // 原始卡顿检测：currentTime 完全不推进
     if (now === lastTime && !dom.audio.seeking) {
-      // No progress — audio might be stalled
       clearStallWatch();
       onStallDetected();
+      return;
     }
+
+    // ✅ iOS 幽灵播放检测：currentTime 在推进但 played 时间段没有延伸
+    // 这表明音频解码器已停止工作，但浏览器仍认为在"播放中"
+    const currentPlayedEnd = getLastPlayedEnd(dom.audio);
+    if (now > lastTime + 1 && currentPlayedEnd < lastPlayedEnd + 0.5) {
+      _ghostSuspectCount++;
+      if (_ghostSuspectCount >= 2) {
+        // 连续两次检测窗口内 played 未推进 → 确认幽灵播放
+        console.warn('[Player] Ghost playback — currentTime:', now.toFixed(1),
+          'played.end:', currentPlayedEnd.toFixed(1));
+        clearStallWatch();
+        onGhostPlaybackDetected(currentPlayedEnd > 0 ? currentPlayedEnd : lastPlayedEnd);
+        return;
+      }
+    } else {
+      _ghostSuspectCount = 0;
+    }
+
     lastTime = now;
+    lastPlayedEnd = currentPlayedEnd;
   }, STALL_DETECT_MS);
 }
 
@@ -277,12 +386,22 @@ export function retryPlayback() {
   clearErrorState();
   audioRetries = 0;
   stallRetries = 0;
+  _ghostSuspectCount = 0;
   setBuffering(true);
 
   // ✅ 修复seek竞态：保存当前位置，使用pendingSeek机制
   const savedTime = dom.audio.currentTime;
-  pendingSeek = savedTime; // 使用全局pendingSeek变量，避免竞态
+  // ✅ iOS 修复：用 played 范围确定真实播放位置（防止幽灵播放后 currentTime 虚高）
+  const lastPlayed = getLastPlayedEnd(dom.audio);
+  pendingSeek = (lastPlayed > 0 && lastPlayed < savedTime - 2) ? lastPlayed : savedTime;
   const retryCallId = _playCurrentId; // ✅ 修复：用callId防护stale回调
+
+  // ✅ iOS 修复：完全重置音频元素，清除损坏的音频会话
+  const src = dom.audio.src;
+  dom.audio.pause();
+  dom.audio.removeAttribute('src');
+  dom.audio.load();
+  dom.audio.src = src;
 
   dom.audio.load();
   dom.audio.play().then(() => {
@@ -459,6 +578,11 @@ function playCurrent() {
   cleanupReadyListeners(dom);
 
   dom.audio.pause();
+  // ✅ iOS 修复：完全重置音频元素，清除可能损坏的音频会话
+  // 当 iOS 音频会话被中断（来电/通知/系统声音）后进入幽灵状态,
+  // 仅设置新 src 不足以恢复，必须先 removeAttribute('src') 强制重置
+  dom.audio.removeAttribute('src');
+  dom.audio.load();
 
   // ✅ 核心优化：如果预加载的音频匹配当前要播放的URL，直接复用已缓冲的数据
   let usePreloaded = false;
@@ -1235,6 +1359,7 @@ export function onVisibilityResume() {
   // ✅ 修复：回到前台时立即清除旧 stallTimer，防止积压的 interval 回调
   // 在 visibilityState 变为 'visible' 后误判为卡顿（移动端后台节流会导致 currentTime 不推进）
   clearStallWatch();
+  _ghostSuspectCount = 0; // ✅ 重置幽灵检测计数
 
   const dom = getDOM();
   if (!dom.audio.src || dom.audio.ended) {
