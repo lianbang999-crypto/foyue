@@ -288,7 +288,23 @@
     padding: 16px;
     background: var(--bg-card);
     border-radius: var(--radius);
-    overflow: hidden
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border) 86%)
+}
+
+.my-install-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 0 9px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent-glow) 72%, #fff 28%);
+    color: var(--accent);
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    margin-bottom: 10px
 }
 
 .my-install-top {
@@ -395,7 +411,9 @@
     display: block;
 }
 
-.home-section { margin-bottom: 32px; }
+.home-section {
+    margin-bottom: 32px;
+}
 
 .home-section-tight {
     margin-bottom: 24px;
@@ -620,8 +638,15 @@
 }
 
 @keyframes eqPulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: .6; }
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: .6;
+    }
 }
 
 /* ── Recommendation cards ── */
@@ -741,8 +766,15 @@
 }
 
 @keyframes skeletonPulse {
-    0%, 100% { opacity: .4; }
-    50% { opacity: .7; }
+
+    0%,
+    100% {
+        opacity: .4;
+    }
+
+    50% {
+        opacity: .7;
+    }
 }
 
 /* ── Guide card — Radix Callout style ── */
@@ -827,12 +859,29 @@
 }
 
 /* Old hero/quote classes kept for backward-compat but neutered */
-.home-hero { display: none; }
-.home-quote { display: none; }
-.home-quote-compact { display: none; }
-.home-hero-title { display: none; }
-.home-hero-content { display: none; }
-.home-hero-subtitle { display: none; }
+.home-hero {
+    display: none;
+}
+
+.home-quote {
+    display: none;
+}
+
+.home-quote-compact {
+    display: none;
+}
+
+.home-hero-title {
+    display: none;
+}
+
+.home-hero-content {
+    display: none;
+}
+
+.home-hero-subtitle {
+    display: none;
+}
 
 /* === HOME QUICK ACCESS GRID === */
 .home-quick-grid {
@@ -1230,7 +1279,7 @@
 
 .counter-tap-area:active .counter-lotus-wrap {
     transform: scale(0.96);
-    box-shadow: 0 4px 16px var(--accent-shadow), 0 1px 4px rgba(0,0,0,0.06);
+    box-shadow: 0 4px 16px var(--accent-shadow), 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
 .counter-number {
@@ -1293,8 +1342,15 @@
 }
 
 @keyframes counter-ripple-anim {
-    0%   { transform: scale(0); opacity: 0.3; }
-    100% { transform: scale(3.5); opacity: 0; }
+    0% {
+        transform: scale(0);
+        opacity: 0.3;
+    }
+
+    100% {
+        transform: scale(3.5);
+        opacity: 0;
+    }
 }
 
 /* Daily progress bar section */
@@ -1506,8 +1562,13 @@
     -webkit-tap-highlight-color: transparent;
 }
 
-.practice-item:last-child { border-bottom: none; }
-.practice-item:hover { background: var(--bg-card-hover); }
+.practice-item:last-child {
+    border-bottom: none;
+}
+
+.practice-item:hover {
+    background: var(--bg-card-hover);
+}
 
 .practice-item--active {
     background: var(--accent-glow);
@@ -1765,8 +1826,14 @@
     transition: opacity .15s;
 }
 
-.hx-confirm-btn:hover { opacity: .88; }
-.hx-confirm-btn:active { transform: scale(0.98); transition: transform .05s; }
+.hx-confirm-btn:hover {
+    opacity: .88;
+}
+
+.hx-confirm-btn:active {
+    transform: scale(0.98);
+    transition: transform .05s;
+}
 
 /* ── 回向文沉浸展示（全屏）── */
 .huixiang-display {
@@ -1810,8 +1877,17 @@
 }
 
 @keyframes hd-lotus-pulse {
-    0%, 100% { opacity: .6; transform: scale(1); }
-    50% { opacity: 1; transform: scale(1.1); }
+
+    0%,
+    100% {
+        opacity: .6;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 1;
+        transform: scale(1.1);
+    }
 }
 
 /* 回向文（主体，始终展示） */
@@ -1899,7 +1975,7 @@
 .counter-goal-backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(0,0,0,0.4);
+    background: rgba(0, 0, 0, 0.4);
     opacity: 0;
     transition: opacity .25s;
 }
@@ -2040,9 +2116,19 @@
 }
 
 @keyframes counter-input-shake {
-    0%, 100% { transform: translateX(0); }
-    25%       { transform: translateX(-4px); }
-    75%       { transform: translateX(4px); }
+
+    0%,
+    100% {
+        transform: translateX(0);
+    }
+
+    25% {
+        transform: translateX(-4px);
+    }
+
+    75% {
+        transform: translateX(4px);
+    }
 }
 
 .counter-goal-custom-btn {
@@ -2076,7 +2162,7 @@
 .counter-practice-backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(0,0,0,0.4);
+    background: rgba(0, 0, 0, 0.4);
     opacity: 0;
     transition: opacity .25s;
 }
@@ -2306,7 +2392,9 @@
     padding-bottom: 2px;
 }
 
-.ch-practice-tabs::-webkit-scrollbar { display: none; }
+.ch-practice-tabs::-webkit-scrollbar {
+    display: none;
+}
 
 .ch-practice-tab {
     -webkit-appearance: none;
@@ -2389,11 +2477,30 @@
 }
 
 /* Level-based color intensity */
-.ch-cell[data-level="0"] { background: var(--border); opacity: .35; }
-.ch-cell[data-level="1"] { background: var(--accent); opacity: .22; }
-.ch-cell[data-level="2"] { background: var(--accent); opacity: .45; }
-.ch-cell[data-level="3"] { background: var(--accent); opacity: .72; }
-.ch-cell[data-level="4"] { background: var(--accent); opacity: 1; }
+.ch-cell[data-level="0"] {
+    background: var(--border);
+    opacity: .35;
+}
+
+.ch-cell[data-level="1"] {
+    background: var(--accent);
+    opacity: .22;
+}
+
+.ch-cell[data-level="2"] {
+    background: var(--accent);
+    opacity: .45;
+}
+
+.ch-cell[data-level="3"] {
+    background: var(--accent);
+    opacity: .72;
+}
+
+.ch-cell[data-level="4"] {
+    background: var(--accent);
+    opacity: 1;
+}
 
 .ch-cell--today {
     outline: 2px solid var(--accent);
@@ -2456,8 +2563,14 @@
     margin-top: 1px;
 }
 
-.ch-day-dot--done    { background: var(--accent); }
-.ch-day-dot--partial { background: var(--accent); opacity: .45; }
+.ch-day-dot--done {
+    background: var(--accent);
+}
+
+.ch-day-dot--partial {
+    background: var(--accent);
+    opacity: .45;
+}
 
 .ch-day-info {
     flex: 1;
@@ -2489,7 +2602,9 @@
     white-space: nowrap;
 }
 
-.ch-day-count--done { color: var(--accent); }
+.ch-day-count--done {
+    color: var(--accent);
+}
 
 .ch-empty {
     text-align: center;
@@ -2584,7 +2699,11 @@
     stroke: var(--accent);
 }
 
-@keyframes csm-spin { to { transform: rotate(360deg); } }
+@keyframes csm-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
 
 .csm-error {
     text-align: center;
@@ -2616,7 +2735,9 @@
     border: none;
 }
 
-.csm-btn:active { transform: scale(0.97); }
+.csm-btn:active {
+    transform: scale(0.97);
+}
 
 .csm-btn--primary {
     background: var(--accent);
@@ -2624,7 +2745,9 @@
     flex: 1.5;
 }
 
-.csm-btn--primary:hover { opacity: .88; }
+.csm-btn--primary:hover {
+    opacity: .88;
+}
 
 .csm-btn--secondary {
     background: var(--bg-secondary);
@@ -2632,7 +2755,9 @@
     border: 1px solid var(--border);
 }
 
-.csm-btn--secondary:hover { background: var(--bg-card-hover); }
+.csm-btn--secondary:hover {
+    background: var(--bg-card-hover);
+}
 
 /* ===== 极简历史页样式 (chi-*) ===== */
 
@@ -2794,7 +2919,9 @@
     min-height: 42px;
 }
 
-.chi-row:last-child { border-bottom: none; }
+.chi-row:last-child {
+    border-bottom: none;
+}
 
 .chi-row--empty {
     opacity: .45;
@@ -2853,7 +2980,9 @@
     letter-spacing: -.01em;
 }
 
-.chi-count.done { color: var(--accent); }
+.chi-count.done {
+    color: var(--accent);
+}
 
 .chi-dot {
     width: 7px;
@@ -2863,7 +2992,9 @@
     flex-shrink: 0;
 }
 
-.chi-dot.done { background: var(--accent); }
+.chi-dot.done {
+    background: var(--accent);
+}
 
 /* ===== 日历视图 (chi-cal-*) ===== */
 
@@ -2913,8 +3044,15 @@
     transition: background .15s;
 }
 
-.chi-nav-btn:hover { background: var(--bg-card-hover); }
-.chi-nav-btn--disabled { color: var(--text-muted); opacity: .35; cursor: default; }
+.chi-nav-btn:hover {
+    background: var(--bg-card-hover);
+}
+
+.chi-nav-btn--disabled {
+    color: var(--text-muted);
+    opacity: .35;
+    cursor: default;
+}
 
 /* 日历 */
 .chi-cal-wrap {
@@ -3026,7 +3164,7 @@
 }
 
 .chi-cal-cell--goal .chi-cal-count {
-    color: rgba(255,255,255,.8);
+    color: rgba(255, 255, 255, .8);
 }
 
 /* 图例 */
@@ -3051,9 +3189,19 @@
     border-radius: 4px;
 }
 
-.chi-legend-dot--none    { background: var(--bg-secondary); border: 1px solid var(--border); }
-.chi-legend-dot--partial { background: var(--accent-glow); border: 1px solid var(--border-active); }
-.chi-legend-dot--goal    { background: var(--accent); }
+.chi-legend-dot--none {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+}
+
+.chi-legend-dot--partial {
+    background: var(--accent-glow);
+    border: 1px solid var(--border-active);
+}
+
+.chi-legend-dot--goal {
+    background: var(--accent);
+}
 
 /* 功课记录 — 设置与工具列表 */
 .chi-tools-section {

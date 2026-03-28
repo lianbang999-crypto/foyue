@@ -124,6 +124,45 @@ export function setBuffering(on) {
   if (on) clearErrorState();
 }
 
+function syncBufferingUi() {
+  const dom = getDOM();
+  if (!dom.audio.src || dom.audio.ended) {
+    setBuffering(false);
+    return;
+  }
+  if (isSwitching || _playPending) return;
+
+  const hasFutureData = dom.audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA;
+  const hasCurrentData = dom.audio.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+
+  if (dom.audio.paused) {
+    setBuffering(false);
+    return;
+  }
+
+  if (hasFutureData || (hasCurrentData && !dom.audio.seeking)) {
+    setBuffering(false);
+  }
+}
+
+export function reconcilePlaybackUiAfterForeground() {
+  const dom = getDOM();
+  if (!dom.audio.src || dom.audio.ended) {
+    setBuffering(false);
+    return;
+  }
+
+  if (isSwitching || _playPending) return;
+
+  if (dom.audio.paused) {
+    setBuffering(false);
+    if (_userPaused) setPlayState(false);
+    return;
+  }
+
+  syncBufferingUi();
+}
+
 /* ===== Error State UI ===== */
 // Shows a persistent "tap to retry" message on the player track area
 function setErrorState(msg) {
@@ -288,6 +327,10 @@ let preloadedUrl = '';
 
 /* ===== Playlist Panel ===== */
 let playlistVisible = false;
+
+function setExpandedViewportLock(locked) {
+  document.body.classList.toggle('player-modal-open', locked);
+}
 
 export function getIsSwitching() { return isSwitching; }
 export function getPlaylistVisible() { return playlistVisible; }
@@ -1153,8 +1196,15 @@ function _doBgFullLoad(url) {
 /* ===== Visibility Change — Resume Buffer on Foreground ===== */
 export function onVisibilityResume() {
   const dom = getDOM();
-  if (!dom.audio.src || dom.audio.paused || dom.audio.ended) return;
+  if (!dom.audio.src || dom.audio.ended) {
+    setBuffering(false);
+    return;
+  }
   if (document.body.hasAttribute('data-counter-active')) return;
+
+  reconcilePlaybackUiAfterForeground();
+
+  if (dom.audio.paused) return;
 
   // Check if buffer is running low
   const ct = dom.audio.currentTime;
@@ -1171,9 +1221,14 @@ export function onVisibilityResume() {
   // If less than 5s buffered ahead, nudge the audio to re-trigger buffering
   if (bufAhead < 5) {
     console.log('[Player] Low buffer on resume (' + bufAhead.toFixed(1) + 's), nudging playback');
+    setBuffering(true);
     dom.audio.currentTime = ct; // Triggers a new Range request
     startStallWatch();
+    return;
   }
+
+  setBuffering(false);
+  startStallWatch();
 }
 
 /* ===== Playlist Panel ===== */
@@ -1211,6 +1266,7 @@ export function openFullScreen(trackId) {
       playCurrent();
     }
   }
+  setExpandedViewportLock(true);
   dom.expPlayer.classList.add('show');
   dom.expPlayer.setAttribute('aria-hidden', 'false');
 }
@@ -1227,6 +1283,7 @@ export function closeFullScreen() {
   }
   dom.expPlayer.classList.remove('show');
   dom.expPlayer.setAttribute('aria-hidden', 'true');
+  setExpandedViewportLock(false);
 }
 
 function updatePlTabs() {

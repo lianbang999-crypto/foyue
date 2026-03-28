@@ -6,17 +6,41 @@ import { showToast } from './utils.js';
 let deferredPrompt = null;
 let installPromptInitialized = false;
 let installListenersBound = false;
+let installUiBound = false;
 let refreshPromptInitialized = false;
 let pendingRefreshReload = false;
+let currentInstallMode = 'hidden';
+let forcedManualInstall = false;
+let iosPromptTimer = 0;
 
 const INSTALL_DISMISSED_KEY = 'pl-install-dismissed';
 const INSTALL_DISMISS_TTL = 3 * 24 * 60 * 60 * 1000;
 const REFRESH_DISMISSED_KEY = 'pl-refresh-dismissed';
 const REFRESH_DISMISS_TTL = 6 * 60 * 60 * 1000;
 const APP_CACHE_KEY_PATTERNS = [/^pl-data-cache-/, /^pl-home-cache-/];
+const APP_CACHE_NAME_PATTERNS = [/^static-/, /^data-/];
+const WATCHED_REGISTRATIONS = new WeakSet();
 
 export function getDeferredPrompt() { return deferredPrompt; }
 export function clearDeferredPrompt() { deferredPrompt = null; }
+
+export function isInAppBrowser() {
+  const ua = navigator.userAgent;
+  return /MicroMessenger|WeChat|QQ\/|Weibo|DingTalk|Alipay|baiduboxapp/i.test(ua);
+}
+
+function getInstallEnvironment() {
+  const ua = navigator.userAgent;
+  const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|Chrome/.test(ua);
+  return {
+    isStandalone: isStandaloneMode(),
+    isInApp: isInAppBrowser(),
+    isIOS,
+    isSafari,
+    hasNativePrompt: !!deferredPrompt,
+  };
+}
 
 function isStandaloneMode() {
   return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
@@ -41,8 +65,20 @@ function getInstallBanner() {
   return document.getElementById('installBanner');
 }
 
-function getIosGuide() {
-  return document.getElementById('iosGuide');
+function getInstallElements() {
+  return {
+    banner: document.getElementById('installBanner'),
+    badge: document.getElementById('installBadge'),
+    metaNote: document.getElementById('installMetaNote'),
+    title: document.getElementById('installTitle'),
+    desc: document.getElementById('installDesc'),
+    guideCard: document.getElementById('installGuideCard'),
+    guideLabel: document.getElementById('installGuideLabel'),
+    guideSteps: document.getElementById('installGuideSteps'),
+    actions: document.getElementById('installActions'),
+    dismiss: document.getElementById('installDismiss'),
+    accept: document.getElementById('installAccept'),
+  };
 }
 
 function getRefreshBanner() {
@@ -75,19 +111,114 @@ function hideRefreshBanner() {
   if (banner) banner.classList.remove('show');
 }
 
-function hideInstallSurfaces() {
+function hideInstallBanner() {
   const banner = getInstallBanner();
-  const iosGuide = getIosGuide();
   if (banner) banner.classList.remove('show');
-  if (iosGuide) iosGuide.classList.remove('show');
-  hideRefreshBanner();
 }
 
-function updateInstallBannerVisibility() {
-  const banner = getInstallBanner();
-  if (!banner) return;
-  const shouldShow = !!deferredPrompt && !isStandaloneMode() && !isDismissedRecently();
-  banner.classList.toggle('show', shouldShow);
+function getInstallMode() {
+  const { isStandalone, isInApp, isIOS, isSafari, hasNativePrompt } = getInstallEnvironment();
+
+  if (isStandalone) return 'installed';
+  if (isInApp) return 'blocked';
+  if (hasNativePrompt) return 'native';
+  if (isIOS && isSafari) return 'ios-manual';
+  if (forcedManualInstall) return 'browser-manual';
+  return 'hidden';
+}
+
+export function getInstallEntryState() {
+  const mode = getInstallMode();
+  const { isStandalone, isInApp, isIOS, isSafari } = getInstallEnvironment();
+
+  if (isStandalone || isInApp) return null;
+
+  const effectiveMode = mode === 'hidden'
+    ? ((isIOS && isSafari) ? 'ios-manual' : 'browser-manual')
+    : mode;
+
+  const isManual = effectiveMode !== 'native';
+
+  return {
+    mode: effectiveMode,
+    title: t('my_install'),
+    desc: isManual ? t('install_desc_manual') : t('my_install_desc'),
+    benefit: t('my_install_benefit'),
+    steps: effectiveMode === 'ios-manual' ? t('my_install_ios') : t('my_install_android'),
+    buttonLabel: effectiveMode === 'ios-manual' ? '' : t('my_install_btn'),
+    showButton: effectiveMode !== 'ios-manual',
+    badge: effectiveMode === 'native' ? t('install_badge_ready') : (effectiveMode === 'ios-manual' ? t('install_badge_ios') : t('install_badge_manual')),
+  };
+}
+
+function getBrowserManualGuideText() {
+  const ua = navigator.userAgent;
+  const isAndroid = /Android/.test(ua);
+  const isChrome = /Chrome/.test(ua) && !/Edg/.test(ua);
+  const isFirefox = /Firefox/.test(ua);
+  const isEdge = /Edg/.test(ua);
+
+  if (isAndroid && (isChrome || isFirefox)) {
+    return t('my_install_android');
+  }
+  if (isEdge) {
+    return '点击浏览器菜单「应用」→「将此站点作为应用安装」';
+  }
+  if (isFirefox) {
+    return '点击地址栏附近的安装按钮，或使用浏览器菜单添加到主屏幕';
+  }
+  return t('install_menu_hint');
+}
+
+function updateInstallBannerVisibility(options = {}) {
+  const { forceShow = false } = options;
+  const elements = getInstallElements();
+  if (!elements.banner) return;
+
+  const mode = getInstallMode();
+  currentInstallMode = mode;
+
+  if (mode === 'installed' || mode === 'blocked' || mode === 'hidden') {
+    hideInstallBanner();
+    return;
+  }
+
+  if (!forceShow && isDismissedRecently()) {
+    hideInstallBanner();
+    return;
+  }
+
+  elements.guideLabel.textContent = t('install_guide_title');
+  elements.actions.classList.toggle('install-actions-single', mode !== 'native');
+
+  if (mode === 'native') {
+    elements.badge.textContent = t('install_badge_ready');
+    elements.metaNote.textContent = t('install_hint_ready');
+    elements.title.textContent = t('install_title');
+    elements.desc.textContent = t('install_desc');
+    elements.dismiss.textContent = t('install_later');
+    elements.accept.textContent = t('install_now');
+    elements.accept.hidden = false;
+    elements.accept.disabled = false;
+    elements.guideCard.hidden = true;
+  } else {
+    const isIOSManual = mode === 'ios-manual';
+    elements.badge.textContent = isIOSManual ? t('install_badge_ios') : t('install_badge_manual');
+    elements.metaNote.textContent = isIOSManual ? t('install_hint_ios') : t('install_hint_manual');
+    elements.title.textContent = t('install_title');
+    elements.desc.textContent = t('install_desc_manual');
+    elements.dismiss.textContent = t('install_got_it');
+    elements.accept.hidden = true;
+    elements.guideCard.hidden = false;
+    elements.guideSteps.textContent = isIOSManual ? t('ios_guide_steps') : getBrowserManualGuideText();
+  }
+
+  elements.banner.classList.add('show');
+}
+
+function hideInstallSurfaces() {
+  hideInstallBanner();
+  hideRefreshBanner();
 }
 
 function bindInstallListeners() {
@@ -97,14 +228,33 @@ function bindInstallListeners() {
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
+    forcedManualInstall = false;
     updateInstallBannerVisibility();
   });
 
   window.addEventListener('appinstalled', () => {
     deferredPrompt = null;
+    forcedManualInstall = false;
     clearDismissed();
     hideInstallSurfaces();
     showToast(t('install_success') || '安装成功！');
+  });
+}
+
+function bindInstallUi() {
+  if (installUiBound) return;
+  installUiBound = true;
+
+  const { dismiss, accept } = getInstallElements();
+  if (!dismiss || !accept) return;
+
+  dismiss.addEventListener('click', () => {
+    hideInstallBanner();
+    rememberDismissed();
+  });
+
+  accept.addEventListener('click', async () => {
+    await promptInstall();
   });
 }
 
@@ -112,6 +262,7 @@ export async function promptInstall() {
   if (deferredPrompt) {
     const promptEvent = deferredPrompt;
     deferredPrompt = null;
+    forcedManualInstall = false;
     hideInstallSurfaces();
     promptEvent.prompt();
     const result = await promptEvent.userChoice;
@@ -125,16 +276,18 @@ export async function promptInstall() {
     return result;
   }
 
-  showManualInstallGuide();
+  forcedManualInstall = true;
+  clearDismissed();
+  updateInstallBannerVisibility({ forceShow: true });
   return null;
 }
 
 export function initInstallPrompt() {
   const banner = getInstallBanner();
-  const iosGuide = getIosGuide();
-  if (!banner || !iosGuide) return;
+  if (!banner) return;
 
   bindInstallListeners();
+  bindInstallUi();
 
   if (installPromptInitialized) {
     updateInstallBannerVisibility();
@@ -149,36 +302,23 @@ export function initInstallPrompt() {
   }
 
   const ua = navigator.userAgent;
-  const isInApp = /MicroMessenger|WeChat|QQ\/|Weibo|DingTalk|Alipay|baiduboxapp/i.test(ua);
+  const isInApp = isInAppBrowser();
   if (isInApp) return;
 
   const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|Chrome/.test(ua);
 
-  // iOS Safari 没有 beforeinstallprompt，只能展示手动安装说明。
   if (isIOS && isSafari) {
     if (!isDismissedRecently()) {
-      setTimeout(() => {
+      window.clearTimeout(iosPromptTimer);
+      iosPromptTimer = window.setTimeout(() => {
         if (!isStandaloneMode() && !isDismissedRecently()) {
-          iosGuide.classList.add('show');
+          updateInstallBannerVisibility({ forceShow: true });
         }
-      }, 2000);
+      }, 1800);
     }
-    document.getElementById('iosGuideClose').addEventListener('click', () => {
-      iosGuide.classList.remove('show');
-      rememberDismissed();
-    });
     return;
   }
-
-  document.getElementById('installAccept').addEventListener('click', async () => {
-    await promptInstall();
-  });
-
-  document.getElementById('installDismiss').addEventListener('click', () => {
-    hideInstallSurfaces();
-    rememberDismissed();
-  });
 
   updateInstallBannerVisibility();
 }
@@ -191,6 +331,7 @@ function bindRefreshPromptListeners() {
   refreshDismiss.addEventListener('click', () => {
     hideRefreshBanner();
     rememberRefreshDismissed();
+    updateInstallBannerVisibility();
   });
 
   refreshAccept.addEventListener('click', async () => {
@@ -211,6 +352,9 @@ function watchServiceWorkerRegistration(registration) {
     showRefreshBanner();
   }
 
+  if (WATCHED_REGISTRATIONS.has(registration)) return;
+  WATCHED_REGISTRATIONS.add(registration);
+
   registration.addEventListener('updatefound', () => {
     const worker = registration.installing;
     if (!worker) return;
@@ -227,7 +371,8 @@ async function clearAppCaches() {
   if ('caches' in window) {
     try {
       const keys = await caches.keys();
-      await Promise.all(keys.map(key => caches.delete(key)));
+      const targets = keys.filter(key => APP_CACHE_NAME_PATTERNS.some(pattern => pattern.test(key)));
+      await Promise.all(targets.map(key => caches.delete(key)));
     } catch (e) { /* ignore */ }
   }
 
@@ -291,30 +436,6 @@ export function initRefreshPrompt() {
 
 export function observeRefreshRegistration(registration) {
   watchServiceWorkerRegistration(registration);
-}
-
-function showManualInstallGuide() {
-  const ua = navigator.userAgent;
-  const isAndroid = /Android/.test(ua);
-  const isChrome = /Chrome/.test(ua) && !/Edg/.test(ua);
-  const isFirefox = /Firefox/.test(ua);
-  const isEdge = /Edg/.test(ua);
-
-  let guide = '';
-
-  if (isAndroid && isChrome) {
-    guide = '请点击浏览器右上角菜单 ⋮ → "添加到主屏幕"';
-  } else if (isAndroid && isFirefox) {
-    guide = '请点击浏览器右上角菜单 ⋮ → "添加到主屏幕"';
-  } else if (isEdge) {
-    guide = '请点击浏览器右上角菜单 ⋯ → "应用" → "将此站点作为应用安装"';
-  } else if (isFirefox) {
-    guide = '请点击浏览器地址栏右侧的安装图标 🏠';
-  } else {
-    guide = t('install_menu_hint') || '如果浏览器没有显示安装按钮，请先确认已使用 HTTPS、未在应用内浏览器中打开，且浏览器尚未把本站视为已安装。';
-  }
-
-  showToast(guide);
 }
 
 /* ===== Back Navigation Guard ===== */

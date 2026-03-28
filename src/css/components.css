@@ -251,10 +251,7 @@
     left: 0;
     right: 0;
     z-index: 250;
-    background: var(--bg);
-    border-top: 1px solid var(--border);
-    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
-    padding: 16px 16px calc(16px + var(--safe-bottom));
+    padding: 14px 16px calc(16px + var(--safe-bottom));
     animation: bannerSlide .4s cubic-bezier(.16, 1, .3, 1)
 }
 
@@ -277,22 +274,36 @@
 }
 
 .install-inner {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    max-width: 500px;
+    max-width: 560px;
     margin: 0 auto
 }
 
+.install-shell {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 92%, #fff 8%), color-mix(in srgb, var(--bg-card) 84%, #fff 16%));
+    border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border) 82%);
+    border-radius: 24px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.14);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    padding: 16px
+}
+
+.install-hero {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px
+}
+
 .install-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
-    background: var(--accent-glow);
+    width: 48px;
+    height: 48px;
+    border-radius: 16px;
+    background: radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--accent-glow) 55%, #fff 45%), color-mix(in srgb, var(--accent) 24%, transparent 76%));
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0
+    flex-shrink: 0;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 10px 24px rgba(0, 0, 0, 0.08)
 }
 
 .install-icon svg {
@@ -308,22 +319,102 @@
     min-width: 0
 }
 
+.install-copy {
+    flex: 1;
+    min-width: 0
+}
+
+.install-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 6px
+}
+
+.install-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 12%, #fff 88%);
+    color: var(--accent);
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase
+}
+
+.install-meta-note {
+    font-size: .72rem;
+    color: var(--text-muted)
+}
+
 .install-title {
-    font-size: .84rem;
-    font-weight: 500;
+    font-size: .98rem;
+    font-weight: 600;
     color: var(--text)
 }
 
 .install-desc {
-    font-size: .76rem;
+    font-size: .8rem;
     color: var(--text-secondary);
-    margin-top: 1px
+    margin-top: 4px;
+    line-height: 1.55
+}
+
+.install-benefits {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px
+}
+
+.install-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 0 10px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg-card) 78%, #fff 22%);
+    border: 1px solid color-mix(in srgb, var(--border) 74%, #fff 26%);
+    color: var(--text-secondary);
+    font-size: .72rem
+}
+
+.install-guide-card {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border-radius: 18px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--accent-glow) 54%, #fff 46%), color-mix(in srgb, var(--bg-card) 84%, #fff 16%));
+    border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border) 84%)
+}
+
+.install-guide-label {
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 6px
+}
+
+.install-guide-steps {
+    font-size: .8rem;
+    color: var(--text-secondary);
+    line-height: 1.65
 }
 
 .install-actions {
     display: flex;
     gap: 8px;
-    flex-shrink: 0
+    flex-shrink: 0;
+    justify-content: flex-end;
+    margin-top: 14px
+}
+
+.install-actions.install-actions-single {
+    justify-content: flex-start
 }
 
 .install-btn {
@@ -331,6 +422,7 @@
     appearance: none;
     border: none;
     border-radius: 20px;
+    min-height: 40px;
     padding: 8px 16px;
     font-family: var(--font-zh);
     font-size: .78rem;
@@ -340,32 +432,36 @@
 }
 
 .install-btn-primary {
-    background: var(--text);
-    color: var(--text-inverse)
+    background: linear-gradient(135deg, color-mix(in srgb, var(--text) 92%, #fff 8%), color-mix(in srgb, var(--accent) 28%, var(--text) 72%));
+    color: var(--text-inverse);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.14)
 }
 
 .install-btn-primary:hover {
-    opacity: .88
+    opacity: .92;
+    transform: translateY(-1px)
 }
 
 .install-btn-dismiss {
-    background: var(--bg-card);
+    background: color-mix(in srgb, var(--bg-card) 88%, #fff 12%);
     color: var(--text-secondary);
     border: 1px solid var(--border)
 }
 
 .refresh-banner {
-    z-index: 280;
-    background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 94%, #ffffff 6%), var(--bg));
-    border-top-color: color-mix(in srgb, var(--accent) 24%, var(--border) 76%)
+    z-index: 280
 }
 
 .refresh-inner {
     align-items: flex-start
 }
 
+.refresh-shell {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 92%, #fff 8%), color-mix(in srgb, var(--accent-glow) 28%, var(--bg-card) 72%));
+}
+
 .refresh-icon {
-    background: color-mix(in srgb, var(--accent-glow) 72%, #fff 28%);
+    background: radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--accent-glow) 68%, #fff 32%), color-mix(in srgb, var(--accent) 22%, transparent 78%));
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08)
 }
 
@@ -380,93 +476,25 @@
 }
 
 @media (max-width:640px) {
-    .refresh-inner {
-        flex-wrap: wrap
+    .install-shell {
+        border-radius: 20px;
+        padding: 14px
     }
 
-    .refresh-inner .install-text {
-        min-width: 100%
+    .install-hero {
+        gap: 12px
     }
 
-    .refresh-inner .install-actions {
+    .install-actions {
         width: 100%;
         justify-content: flex-end
     }
-}
 
-/* === iOS PWA GUIDE === */
-.ios-guide {
-    display: none;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 250;
-    background: var(--bg);
-    border-top: 1px solid var(--border);
-    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
-    padding: 16px;
-    padding-bottom: calc(16px + var(--safe-bottom));
-    animation: bannerSlide .4s cubic-bezier(.16, 1, .3, 1)
-}
+    .install-actions.install-actions-single {
+        justify-content: stretch
+    }
 
-.ios-guide.show {
-    display: block
-}
-
-.ios-guide-inner {
-    max-width: 500px;
-    margin: 0 auto
-}
-
-.ios-guide-title {
-    font-size: .84rem;
-    font-weight: 500;
-    color: var(--text);
-    margin-bottom: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between
-}
-
-.ios-guide-close {
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    padding: 0
-}
-
-.ios-guide-close:hover {
-    color: var(--text);
-    background: var(--accent-glow)
-}
-
-.ios-guide-close svg {
-    width: 14px;
-    height: 14px;
-    stroke: currentColor;
-    fill: none;
-    stroke-width: 2;
-    stroke-linecap: round
-}
-
-.ios-guide-steps {
-    font-size: .78rem;
-    color: var(--text-secondary);
-    line-height: 1.6
-}
-
-.ios-guide-steps .ios-icon {
-    display: inline-block;
-    width: 18px;
-    height: 18px;
-    vertical-align: middle;
-    margin: 0 2px
+    .install-actions.install-actions-single .install-btn-dismiss {
+        width: 100%
+    }
 }

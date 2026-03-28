@@ -51,6 +51,12 @@
 .expanded{position:fixed;top:0;right:0;bottom:0;left:0;z-index:300;background:var(--bg);transform:translate3d(0,100%,0);transition:transform .38s cubic-bezier(.22,1,.36,1),visibility 0s .38s;display:flex;flex-direction:column;overflow:hidden;will-change:transform;visibility:hidden;pointer-events:none}
 .expanded.show{transform:translate3d(0,0,0);visibility:visible;pointer-events:auto;transition:transform .38s cubic-bezier(.22,1,.36,1),visibility 0s}
 
+body.player-modal-open{overflow:hidden;overscroll-behavior:none}
+body.player-modal-open #app{height:100vh;overflow:hidden}
+@supports(height:100dvh){body.player-modal-open #app{height:100dvh}}
+body.player-modal-open .content{overflow:hidden}
+.expanded,.exp-player-content,.playlist-items{overscroll-behavior:contain}
+
 /* Immersive gradient background overlay */
 .expanded::before{content:'';position:absolute;top:0;left:0;right:0;height:60%;background:var(--hero-radial, radial-gradient(ellipse at 50% -10%, rgba(212,175,55,0.15) 0%, transparent 65%));pointer-events:none;z-index:0}
 

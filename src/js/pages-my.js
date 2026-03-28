@@ -3,7 +3,7 @@ import { t, getLang, setLang } from './i18n.js';
 import { getDOM } from './dom.js';
 import { toggleTheme, getTheme } from './theme.js';
 import { getHistory } from './history.js';
-import { promptInstall } from './pwa.js';
+import { promptInstall, getInstallEntryState } from './pwa.js';
 import { showToast, escapeHtml } from './utils.js';
 import { getCachedCount, getCachedSize, clearAudioCache } from './audio-cache.js';
 import { get as storeGet } from './store.js';
@@ -30,30 +30,29 @@ function buildCounterDesc(counterData) {
 }
 
 function buildInstallSection() {
-  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
-  const ua = navigator.userAgent;
-  const isInApp = /MicroMessenger|WeChat|QQ\/|Weibo|DingTalk|Alipay|baiduboxapp/i.test(ua);
-  const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|Chrome/.test(ua);
-  if (isStandalone || isInApp) return '';
+  const installState = getInstallEntryState();
+  if (!installState) return '';
 
-  const stepsHTML = isIOS && isSafari
-    ? '<div class="my-install-steps"><svg class="ios-icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12l7-7 7 7" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> ' + t('my_install_ios') + '</div>'
-    : '<div class="my-install-steps">' + t('my_install_android') + '</div><button class="my-install-btn" id="myInstallBtn" data-i18n="my_install_btn">' + t('my_install_btn') + '</button>';
+  const stepsHTML = `<div class="my-install-steps">${escapeHtml(installState.steps)}</div>`;
+  const buttonHTML = installState.showButton
+    ? `<button class="my-install-btn" id="myInstallBtn">${escapeHtml(installState.buttonLabel)}</button>`
+    : '';
 
   return `
     <div class="my-section">
       <div class="my-section-title" data-i18n="my_install">${t('my_install')}</div>
       <div class="my-install-card">
+        <div class="my-install-badge">${escapeHtml(installState.badge)}</div>
         <div class="my-install-top">
           <div class="my-install-icon"><svg viewBox="0 0 24 24"><path d="M12 15V3m0 12l-4-4m4 4l4-4"/><path d="M2 17l.621 2.485A2 2 0 0 0 4.561 21h14.878a2 2 0 0 0 1.94-1.515L22 17"/></svg></div>
           <div class="my-install-text">
-            <div class="my-install-text-title" data-i18n="my_install">${t('my_install')}</div>
-            <div class="my-install-text-desc" data-i18n="my_install_desc">${t('my_install_desc')}</div>
+            <div class="my-install-text-title">${escapeHtml(installState.title)}</div>
+            <div class="my-install-text-desc">${escapeHtml(installState.desc)}</div>
           </div>
         </div>
-        <div class="my-install-benefit" data-i18n="my_install_benefit">${t('my_install_benefit')}</div>
+        <div class="my-install-benefit">${escapeHtml(installState.benefit)}</div>
         ${stepsHTML}
+        ${buttonHTML}
       </div>
     </div>`;
 }
@@ -147,8 +146,8 @@ export function renderMyPage() {
         </div>
         <div class="my-item" id="myThemeItem">
           <svg class="my-item-icon" viewBox="0 0 24 24">${getTheme() === 'dark' || getTheme() === 'ink'
-            ? '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>'
-            : '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>'}</svg>
+      ? '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>'
+      : '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>'}</svg>
           <span class="my-item-label" data-i18n="my_theme">${t('my_theme')}</span>
           <span class="my-item-value" id="myThemeValue">${themeText}</span>
           <svg class="my-item-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
@@ -184,7 +183,7 @@ export function renderMyPage() {
   page.querySelector('#myGongxiuCard')?.addEventListener('click', () => showGongxiuSubview());
 
   const _prefetchWenku = () => {
-    import('./wenku-api.js').then(m => m.getWenkuSeries()).catch(() => {});
+    import('./wenku-api.js').then(m => m.getWenkuSeries()).catch(() => { });
   };
   if (typeof requestIdleCallback === 'function') requestIdleCallback(_prefetchWenku, { timeout: 3000 });
   else setTimeout(_prefetchWenku, 1000);

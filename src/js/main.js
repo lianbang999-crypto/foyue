@@ -28,9 +28,10 @@ import {
   setPlayState, highlightEp, preloadNextTrack, cleanupPreload,
   togglePlaylist, closePlaylist, getPlaylistVisible, saveState, restoreState,
   getIsSwitching, setDragging, initPlaylistTabs, closeFullScreen,
+  openFullScreen,
   markAppreciated, updateAppreciateBtn, appreciateSuccess, updateAppreciateCount, isAppreciated,
   retryPlayback, startStallWatch, clearStallWatch, setBuffering,
-  onVisibilityResume, setNetworkWeak,
+  onVisibilityResume, setNetworkWeak, reconcilePlaybackUiAfterForeground,
 } from './player.js';
 import { renderHomePage, invalidateHomePage } from './pages-home.js';
 import { renderMyPage } from './pages-my.js';
@@ -53,7 +54,7 @@ export function renderCategory(...args) {
 export function showEpisodes(...args) {
   return getCategoryModule().then(mod => mod.showEpisodes(...args));
 }
-import { initInstallPrompt, initBackGuard, initRefreshPrompt, observeRefreshRegistration } from './pwa.js';
+import { initInstallPrompt, initBackGuard, initRefreshPrompt, observeRefreshRegistration, isInAppBrowser } from './pwa.js';
 import { appreciate } from './api.js';
 import { monitor } from './monitor.js';
 
@@ -71,6 +72,41 @@ const ROOT_TAB_I18N = {
   youshengshu: 'tab_audiobooks',
   mypage: 'tab_my',
 };
+
+const IN_APP_BROWSER = isInAppBrowser();
+let categoryWarmupScheduled = false;
+
+function getTextOrFallback(key, fallback) {
+  const value = t(key);
+  return value === key ? fallback : value;
+}
+
+function scheduleCategoryWarmup() {
+  if (categoryWarmupScheduled || state.isDataFull) return;
+  categoryWarmupScheduled = true;
+
+  const runner = async () => {
+    for (const categoryId of ['tingjingtai', 'youshengshu']) {
+      try {
+        await ensureCategoryData(categoryId);
+      } catch (error) {
+        break;
+      }
+    }
+  };
+
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(() => { runner(); }, { timeout: 2500 });
+  else setTimeout(() => { runner(); }, 900);
+}
+
+function showCategorySwitchLoader() {
+  const dom = getDOM();
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
+  const wrap = document.createElement('div');
+  wrap.className = 'view active';
+  wrap.innerHTML = `<div class="loader"><div class="loader-text">${getTextOrFallback('loading_retry', '加载中，请稍候...')}</div></div>`;
+  dom.contentArea.appendChild(wrap);
+}
 
 function activateRootTab(tabId) {
   const dom = getDOM();
@@ -286,7 +322,7 @@ async function ensureSeriesDetail(seriesId, categoryId) {
       }
     };
     navAudioIndicator.addEventListener('click', () => {
-      if (dom.audio.src) dom.expPlayer.classList.add('show');
+      if (dom.audio.src) openFullScreen();
     });
     dom.audio.addEventListener('play', updateAudioIndicator);
     dom.audio.addEventListener('pause', updateAudioIndicator);
@@ -309,7 +345,10 @@ async function ensureSeriesDetail(seriesId, categoryId) {
       } else {
         if (!state.isDataFull && state.ensureCategoryData) {
           const catAlreadyLoaded = state.data?.categories?.find(cat => cat.id === nextTab)?._categoryLoaded;
-          if (!catAlreadyLoaded) showToast(t('loading_retry') || '连接中，请稍候...');
+          if (!catAlreadyLoaded) {
+            if (!IN_APP_BROWSER) showToast(getTextOrFallback('loading_retry', '连接中，请稍候...'));
+            showCategorySwitchLoader();
+          }
           await state.ensureCategoryData(nextTab);
         }
         renderCategory(nextTab);
@@ -331,13 +370,13 @@ async function ensureSeriesDetail(seriesId, categoryId) {
         if (dom.audio.paused) {
           dom.audio.play().catch(() => { });
         }
-        dom.expPlayer.classList.add('show');
+        openFullScreen();
       } else {
         // Fullscreen already open, toggle play/pause
         togglePlay();
       }
     } else {
-      dom.expPlayer.classList.add('show');
+      openFullScreen();
     }
   });
 
@@ -481,9 +520,10 @@ async function ensureSeriesDetail(seriesId, categoryId) {
       if (dy > 10 && dy > dx) swiping = true;
       // Visual follow-along: translate the player down as user drags
       if (swiping && dy > 0) {
+        e.preventDefault();
         exp.style.transform = `translate3d(0, ${dy}px, 0)`;
       }
-    }, { passive: true });
+    }, { passive: false });
 
     function resetSwipe() {
       clearSwipeTimer();
@@ -637,6 +677,7 @@ async function ensureSeriesDetail(seriesId, categoryId) {
     setBuffering(true);
   }
   function hideBufferingUI() { setBuffering(false); }
+  function settlePlaybackUI() { reconcilePlaybackUiAfterForeground(); }
 
   dom.audio.addEventListener('waiting', showBufferingUI);
   dom.audio.addEventListener('playing', () => {
@@ -648,6 +689,11 @@ async function ensureSeriesDetail(seriesId, categoryId) {
     clearStallWatch();
     if (!getIsSwitching()) hideBufferingUI();
   });
+  dom.audio.addEventListener('loadeddata', settlePlaybackUI);
+  dom.audio.addEventListener('canplay', settlePlaybackUI);
+  dom.audio.addEventListener('canplaythrough', settlePlaybackUI);
+  dom.audio.addEventListener('seeked', settlePlaybackUI);
+  dom.audio.addEventListener('suspend', settlePlaybackUI);
   // 'stalled' event: browser stopped receiving data mid-download (common with large R2 files)
   dom.audio.addEventListener('stalled', () => {
     if (!getIsSwitching() && !dom.audio.paused && !dom.audio.ended && dom.audio.src) {
@@ -883,6 +929,7 @@ async function loadData() {
       dom.loader.style.display = 'none';
       if (state.tab === 'mypage') renderMyPage();
       else renderHomePage();
+      if (IN_APP_BROWSER) scheduleCategoryWarmup();
       if (canRestoreFromCurrentData()) {
         restoreState();
         if (state.isFirstVisit && state.epIdx < 0) playDefaultTrack();
@@ -899,6 +946,7 @@ async function loadData() {
       saveCachedHomeData(homeData);
       dom.loader.style.display = 'none';
       renderHomePage();
+      if (IN_APP_BROWSER) scheduleCategoryWarmup();
       if (canRestoreFromCurrentData()) {
         restoreState();
         if (state.isFirstVisit && state.epIdx < 0) playDefaultTrack();
@@ -937,10 +985,11 @@ async function loadData() {
   } catch (e) {
     loadAttempts++;
     if (loadAttempts < 3) {
-      // #20: Show reconnecting hint during retry, instead of silent loading
       const loaderText = dom.loader.querySelector('.loader-text');
-      if (loaderText) loaderText.textContent = t('loading_retry') || '\u8FDE\u63A5\u4E2D\uFF0C\u8BF7\u7A0D\u5019...';
-      setTimeout(loadData, 1500 * loadAttempts);
+      if (loaderText && (!IN_APP_BROWSER || loadAttempts > 1)) {
+        loaderText.textContent = getTextOrFallback('loading_retry', '\u8FDE\u63A5\u4E2D\uFF0C\u8BF7\u7A0D\u5019...');
+      }
+      setTimeout(loadData, (IN_APP_BROWSER ? 900 : 1500) * loadAttempts);
       return;
     }
     // #20: Retry button calls loadData() instead of location.reload() to preserve state

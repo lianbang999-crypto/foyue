@@ -11,8 +11,67 @@ import { showToast, escapeHtml, showFloatText, fmtCount, fmtDuration } from './u
 import { getBatchCachedStatus } from './audio-cache.js';
 import { mountSummary } from './ai-summary.js';
 import { probeDurations, getCachedDuration } from './duration-cache.js';
+import { isInAppBrowser } from './pwa.js';
 // import { mountTranscript } from './transcript.js';
 // import { getTranscriptAvailability } from './ai-client.js';
+
+const EPISODE_CHUNK_THRESHOLD = isInAppBrowser() ? 28 : 60;
+
+function getTextOrFallback(key, fallback) {
+  const value = t(key);
+  return value === key ? fallback : value;
+}
+
+function deferNonCriticalWork(callback) {
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(() => callback(), { timeout: 1200 });
+    return;
+  }
+  setTimeout(() => callback(), 80);
+}
+
+function buildEpisodeItem(series, ep, idx, histMap) {
+  const li = document.createElement('li');
+  li.className = 'ep-item' + (isCurrentTrack(series.id, idx) ? ' playing' : '');
+  const introHtml = ep.intro ? `<span class="ep-intro">${escapeHtml(ep.intro)}</span>` : '';
+  const hEntry = histMap.get(idx);
+  let progressHtml = '';
+  if (hEntry && hEntry.duration > 0) {
+    const pct = Math.min(100, Math.round(hEntry.time / hEntry.duration * 100));
+    progressHtml = `<div class="ep-progress"><div class="ep-progress-fill" style="width:${pct}%"></div></div>`;
+  }
+  const dur = ep.duration || getCachedDuration(ep.url);
+  const durText = dur ? fmtDuration(dur) : '';
+  li.innerHTML = `<span class="ep-num">${ep.id || idx + 1}</span>
+      <div class="eq-bars"><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span></div>
+      <div class="ep-text"><span class="ep-title">${escapeHtml(ep.title || ep.fileName)}</span>${introHtml}${progressHtml}</div>
+      <span class="ep-duration" data-idx="${idx}">${durText}</span>`;
+  li.addEventListener('click', () => {
+    if (isCurrentTrack(series.id, idx)) { togglePlay(); return; }
+    const hist = getHistory();
+    const entry = hist.find(h => h.seriesId === series.id && h.epIdx === idx);
+    const resumeTime = (entry && entry.time > 5 && (!entry.duration || entry.time < entry.duration - 5)) ? entry.time : 0;
+    playList(series.episodes, idx, series, resumeTime);
+  });
+  return li;
+}
+
+async function renderEpisodeItems(ul, series, histMap) {
+  const shouldChunk = series.episodes.length >= EPISODE_CHUNK_THRESHOLD;
+  const chunkSize = shouldChunk ? 24 : series.episodes.length;
+
+  for (let start = 0; start < series.episodes.length; start += chunkSize) {
+    const frag = document.createDocumentFragment();
+    const end = Math.min(start + chunkSize, series.episodes.length);
+    for (let idx = start; idx < end; idx++) {
+      frag.appendChild(buildEpisodeItem(series, series.episodes[idx], idx, histMap));
+    }
+    ul.appendChild(frag);
+    if (shouldChunk && end < series.episodes.length) {
+      await new Promise(resolve => requestAnimationFrame(resolve));
+    }
+  }
+}
 
 export function renderCategory(tabId) {
   const dom = getDOM();
@@ -53,7 +112,7 @@ export async function showEpisodes(series, tabId) {
   if ((!series.episodes || !series.episodes.length) && state.ensureSeriesDetail) {
     const loading = document.createElement('div');
     loading.className = 'view active ep-view';
-    loading.innerHTML = `<div class="loader-text">${t('loading_retry') || '连接中，请稍候...'}</div>`;
+    loading.innerHTML = `<div class="loader-text">${getTextOrFallback('loading_retry', '连接中，请稍候...')}</div>`;
     dom.contentArea.appendChild(loading);
     try {
       fullSeries = await state.ensureSeriesDetail(series.id, tabId) || series;
@@ -96,6 +155,7 @@ export async function showEpisodes(series, tabId) {
   dom.audio.addEventListener('pause', updatePlayAllBtn);
   let cancelProbe = () => { };
   let onTimeUpdate = () => { };
+  let skipDeferredMetrics = false;
 
   // Declared here so the MutationObserver cleanup closure can reference it; the real
   // implementation is assigned below once `ul` is available (it scopes queries to that element).
@@ -108,6 +168,7 @@ export async function showEpisodes(series, tabId) {
       dom.audio.removeEventListener('timeupdate', onTimeUpdate);
       dom.audio.removeEventListener('playing', updateHighlight);
       dom.audio.removeEventListener('ended', updateHighlight);
+      skipDeferredMetrics = true;
       cancelProbe();
       obs.disconnect();
     }
@@ -138,35 +199,7 @@ export async function showEpisodes(series, tabId) {
   const histMap = new Map();
   hist.forEach(h => { if (h.seriesId === series.id) histMap.set(h.epIdx, h); });
   // Use DocumentFragment for batch DOM insertion (avoids 196+ reflows)
-  const frag = document.createDocumentFragment();
-  series.episodes.forEach((ep, idx) => {
-    const li = document.createElement('li');
-    li.className = 'ep-item' + (isCurrentTrack(series.id, idx) ? ' playing' : '');
-    const introHtml = ep.intro ? `<span class="ep-intro">${escapeHtml(ep.intro)}</span>` : '';
-    // Check history for played progress
-    const hEntry = histMap.get(idx);
-    let progressHtml = '';
-    if (hEntry && hEntry.duration > 0) {
-      const pct = Math.min(100, Math.round(hEntry.time / hEntry.duration * 100));
-      progressHtml = `<div class="ep-progress"><div class="ep-progress-fill" style="width:${pct}%"></div></div>`;
-    }
-    // Duration — prefer JSON duration, then localStorage cache, else empty (filled by probe)
-    const dur = ep.duration || getCachedDuration(ep.url);
-    const durText = dur ? fmtDuration(dur) : '';
-    li.innerHTML = `<span class="ep-num">${ep.id || idx + 1}</span>
-      <div class="eq-bars"><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span></div>
-      <div class="ep-text"><span class="ep-title">${escapeHtml(ep.title || ep.fileName)}</span>${introHtml}${progressHtml}</div>
-      <span class="ep-duration" data-idx="${idx}">${durText}</span>`;
-    li.addEventListener('click', () => {
-      if (isCurrentTrack(series.id, idx)) { togglePlay(); return; }
-      const hist = getHistory();
-      const hEntry = hist.find(h => h.seriesId === series.id && h.epIdx === idx);
-      const resumeTime = (hEntry && hEntry.time > 5 && (!hEntry.duration || hEntry.time < hEntry.duration - 5)) ? hEntry.time : 0;
-      playList(series.episodes, idx, series, resumeTime);
-    });
-    frag.appendChild(li);
-  });
-  ul.appendChild(frag);
+  await renderEpisodeItems(ul, series, histMap);
 
   // Real-time progress bar for the currently playing episode (~1 update/sec)
   let progressTick = 0;
@@ -196,23 +229,26 @@ export async function showEpisodes(series, tabId) {
   dom.audio.addEventListener('timeupdate', onTimeUpdate);
 
   // Batch-check cache status for all episodes (single cache.open() call)
-  getBatchCachedStatus(series.episodes.map(ep => ep.url)).then(cachedArr => {
-    const tooltip = t('ep_cached_tooltip') || '已下载，可离线收听';
-    cachedArr.forEach((cached, idx) => {
-      if (!cached) return;
-      const li = ul.children[idx];
-      if (li) {
-        li.classList.add('ep-cached');
-        const durEl = li.querySelector('.ep-duration');
-        if (durEl) durEl.title = tooltip;
-      }
-    });
-  });
+  deferNonCriticalWork(() => {
+    if (skipDeferredMetrics || !view.isConnected) return;
 
-  // Probe audio durations in background — only for episodes missing JSON duration (non-blocking)
-  cancelProbe = probeDurations(series.episodes, (idx, seconds) => {
-    const el = ul.querySelector(`.ep-duration[data-idx="${idx}"]`);
-    if (el) el.textContent = fmtDuration(seconds);
+    getBatchCachedStatus(series.episodes.map(ep => ep.url)).then(cachedArr => {
+      const tooltip = getTextOrFallback('ep_cached_tooltip', '已下载，可离线收听');
+      cachedArr.forEach((cached, idx) => {
+        if (!cached) return;
+        const li = ul.children[idx];
+        if (li) {
+          li.classList.add('ep-cached');
+          const durEl = li.querySelector('.ep-duration');
+          if (durEl) durEl.title = tooltip;
+        }
+      });
+    });
+
+    cancelProbe = probeDurations(series.episodes, (idx, seconds) => {
+      const el = ul.querySelector(`.ep-duration[data-idx="${idx}"]`);
+      if (el) el.textContent = fmtDuration(seconds);
+    });
   });
 
   // Add appreciation button
