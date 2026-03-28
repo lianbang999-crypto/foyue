@@ -431,11 +431,12 @@ function playCurrent() {
   // Reset _userPaused so stall recovery auto-resumes on the new track.
   _userPaused = false;
 
-  // ✅ 修复Blob URL内存泄漏：在切换音频前释放旧的Blob URL
+  // ✅ 修复Blob URL竞态：延迟释放旧Blob URL，等新音源确认后再释放
+  // 如果立即释放而新缓存获取失败，会导致播放中途静音
   const oldBlobUrl = dom.audio._cachedBlobUrl;
-  if (oldBlobUrl) {
-    URL.revokeObjectURL(oldBlobUrl);
-    dom.audio._cachedBlobUrl = null;
+  dom.audio._cachedBlobUrl = null;
+  function revokeOldBlob() {
+    if (oldBlobUrl) URL.revokeObjectURL(oldBlobUrl);
   }
 
   isSwitching = true;
@@ -477,6 +478,7 @@ function playCurrent() {
     _switchingTimeoutId = null;
     if (isSwitching && callId === _playCurrentId) {
       console.warn('[Player] isSwitching timeout, auto-reset');
+      cleanupReadyListeners(dom); // ✅ 修复：超时时也必须清理孤儿监听器，否则后续事件触发过期回调
       isSwitching = false;
       setBuffering(false);
       renderPlaylistItems(); // Remove loading indicator from playlist item
@@ -580,17 +582,21 @@ function playCurrent() {
   // iOS 上用户点击后的首个 play() 尽量保持在直连链路里，避免先异步取 Cache Blob
   // 把手势窗口耗掉，导致体感上“点了要等一会儿才出声”。离线时仍然回退缓存。
   if (preferDirectPlayback || !isCachedSync(tr.url)) {
+    revokeOldBlob(); // ✅ 直连路径：新源已确定，安全释放旧Blob
     doLoad(tr.url, usePreloaded);
   } else {
     getCachedAudioUrl(tr.url).then(cachedUrl => {
       if (callId !== _playCurrentId) {
         if (cachedUrl) URL.revokeObjectURL(cachedUrl);
+        revokeOldBlob(); // ✅ 过期回调也释放
         return;
       }
+      revokeOldBlob(); // ✅ 新缓存源已确认，安全释放旧Blob
       if (cachedUrl) dom.audio._cachedBlobUrl = cachedUrl;
       const skipLoad = !cachedUrl && usePreloaded;
       doLoad(cachedUrl || tr.url, skipLoad);
     }).catch(() => {
+      revokeOldBlob(); // ✅ 缓存失败回退直连，也释放旧Blob
       doLoad(tr.url, usePreloaded);
     });
   }
@@ -655,7 +661,7 @@ function saveAppreciated(seriesId) {
     const s = getAppreciatedSet();
     s.add(seriesId);
     set('appreciated', [...s]);
-  } catch { /* ignore */ }
+  } catch (e) { console.warn('[Player] saveAppreciated failed:', e); }
 }
 
 export function isAppreciated(seriesId) {
@@ -1464,7 +1470,7 @@ function updateMediaSession(tr) {
     navigator.mediaSession.setActionHandler('seekbackward', () => { if (dom.audio.duration) dom.audio.currentTime = Math.max(0, dom.audio.currentTime - 10); });
     navigator.mediaSession.setActionHandler('seekforward', () => { if (dom.audio.duration) dom.audio.currentTime = Math.min(dom.audio.duration, dom.audio.currentTime + 10); });
     navigator.mediaSession.setActionHandler('seekto', (d) => { if (d.seekTime != null) dom.audio.currentTime = d.seekTime; });
-  } catch (e) { /* ignore */ }
+  } catch (e) { console.warn('[Player] MediaSession setup failed:', e); }
 }
 
 /* ===== Persistence ===== */
@@ -1481,7 +1487,7 @@ export function saveState() {
       loop: state.loopMode,
     });
     syncHistoryProgress(dom.audio);
-  } catch { /* ignore */ }
+  } catch (e) { console.warn('[Player] saveState failed:', e); }
 }
 
 export function restoreState() {
@@ -1519,5 +1525,5 @@ export function restoreState() {
         break;
       }
     }
-  } catch { /* ignore */ }
+  } catch (e) { console.warn('[Player] restoreState failed:', e); }
 }

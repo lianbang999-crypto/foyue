@@ -39,7 +39,7 @@ function _clearCachedUrls() {
 function _dispatchChange() {
   try {
     window.dispatchEvent(new CustomEvent('audiocache:change'));
-  } catch {}
+  } catch { }
 }
 
 /**
@@ -87,9 +87,9 @@ export async function cacheAudio(url, blob) {
     // Update store so UI can reflect instantly
     _addCachedUrl(url);
     // LRU eviction: if total exceeds cap, remove oldest entries
-    _evictIfNeeded(cache).catch(() => {});
+    _evictIfNeeded(cache).catch((e) => { console.warn('[AudioCache] eviction failed:', e); });
   } catch (e) {
-    // Silently fail — quota exceeded or other cache error
+    console.warn('[AudioCache] cacheAudio failed:', e);
   }
 }
 
