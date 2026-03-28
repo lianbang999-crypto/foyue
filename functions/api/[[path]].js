@@ -292,10 +292,8 @@ export async function onRequest(context) {
 
     // GET /api/admin/test-embedding — 诊断 embedding 模型
     if (path === '/api/admin/test-embedding' && method === 'GET') {
-      const tk = url.searchParams.get('token');
-      if (!tk || !env.ADMIN_TOKEN || !timingSafeCompare(tk, env.ADMIN_TOKEN)) {
-        return json({ error: 'Unauthorized' }, cors, 401);
-      }
+        const authErr = requireAdmin();
+        if (authErr) return authErr;
       try {
         // mode=chunk: 从 D1 读文档并切块后测试
         const mode = url.searchParams.get('mode') || 'simple';
@@ -336,10 +334,8 @@ export async function onRequest(context) {
 
     // GET /api/admin/test-chat — 诊断 chat 模型
     if (path === '/api/admin/test-chat' && method === 'GET') {
-      const tk = url.searchParams.get('token');
-      if (!tk || !env.ADMIN_TOKEN || !timingSafeCompare(tk, env.ADMIN_TOKEN)) {
-        return json({ error: 'Unauthorized' }, cors, 401);
-      }
+        const authErr = requireAdmin();
+        if (authErr) return authErr;
       const testPrompt = url.searchParams.get('q') || '请用一句话解释什么是净土宗。';
       const model = url.searchParams.get('model') || AI_CONFIG.models.chat;
       try {
@@ -379,10 +375,8 @@ export async function onRequest(context) {
 
     // GET /api/admin/ai-stats — AI Gateway 调用统计
     if (path === '/api/admin/ai-stats' && method === 'GET') {
-      const tk = url.searchParams.get('token');
-      if (!tk || !env.ADMIN_TOKEN || !timingSafeCompare(tk, env.ADMIN_TOKEN)) {
-        return json({ error: 'Unauthorized' }, cors, 401);
-      }
+        const authErr = requireAdmin();
+        if (authErr) return authErr;
       const days = parseInt(url.searchParams.get('days') || '7', 10);
       try {
         const stats = await getAICallStats(env, { days: Math.min(days, 90) });

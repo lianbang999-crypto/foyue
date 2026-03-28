@@ -423,6 +423,7 @@ function cancelPendingTrackLoad() {
 function playCurrent() {
   const dom = getDOM();
   if (state.epIdx < 0 || state.epIdx >= state.playlist.length) return;
+  const preferDirectPlayback = isAppleMobileBrowser() && navigator.onLine !== false;
 
   // A new track is starting — clear any pending play lock from a previous togglePlay() call
   _playPending = false;
@@ -576,7 +577,9 @@ function playCurrent() {
     }
   }
 
-  if (!isCachedSync(tr.url)) {
+  // iOS 上用户点击后的首个 play() 尽量保持在直连链路里，避免先异步取 Cache Blob
+  // 把手势窗口耗掉，导致体感上“点了要等一会儿才出声”。离线时仍然回退缓存。
+  if (preferDirectPlayback || !isCachedSync(tr.url)) {
     doLoad(tr.url, usePreloaded);
   } else {
     getCachedAudioUrl(tr.url).then(cachedUrl => {
@@ -766,6 +769,12 @@ export function onTimeUpdate() {
 
     if (!cachedDom) cachedDom = getDOM();
     const dom = cachedDom;
+
+    // iPhone WeChat 有时已经恢复播放，但 waiting/playing 事件序列不完整，
+    // buffering class 会残留在按钮上。只要时间在推进，就以真实播放状态为准清掉转圈。
+    if (!dom.audio.paused && !dom.audio.ended && !dom.audio.seeking && dom.audio.currentTime > 0) {
+      setBuffering(false);
+    }
 
     const dur = dom.audio.duration;
     if (!dur || !isFinite(dur)) return;
@@ -1064,6 +1073,9 @@ export function preloadNextTrack() {
   const nurl = state.playlist[ni] && state.playlist[ni].url;
   if (!nurl || nurl === preloadedUrl) return;
 
+  // iPhone/iPad WebKit 内存预算更紧，不额外持有下一曲的 Audio 预加载对象。
+  if (isAppleMobileBrowser()) return;
+
   // Skip preload when network is weak, save-data is on, or connection is 2G/3G
   if (_networkWeak) return;
   if (getConnType() !== 'wifi') return;
@@ -1111,6 +1123,11 @@ export function cleanupPreload() {
 // to a local Blob URL so the rest of playback is fully local — zero network dependency.
 const BG_LOAD_MAX_SIZE = 150 * 1024 * 1024; // Skip files > 150 MB
 
+function isAppleMobileBrowser() {
+  const ua = navigator.userAgent || '';
+  return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
 function cleanupBgFetch() {
   if (bgFetchController) { bgFetchController.abort(); bgFetchController = null; }
   if (bgLoadDelayTimer) {
@@ -1127,6 +1144,9 @@ function cleanupBgFetch() {
 
 function startBgFullLoad(url) {
   if (bgFetchUrl === url || bgLoadScheduledUrl === url) return;
+
+  // iOS 上整文件拉成 Blob 再缓存的峰值内存很高，直接关闭这条后台链路。
+  if (isAppleMobileBrowser()) return;
 
   const conn = navigator.connection || navigator.mozConnection;
   if (getConnType() !== 'wifi') return;

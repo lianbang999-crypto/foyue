@@ -1,5 +1,5 @@
 /* ===== Category & Episode Views ===== */
-import { state } from './state.js';
+import { state, beginContentRequest, isContentRequestCurrent } from './state.js';
 import { t } from './i18n.js';
 import { getDOM } from './dom.js';
 import { CATEGORY_ICONS, ICON_PLAY_FILLED, ICON_PAUSE_FILLED } from './icons.js';
@@ -56,11 +56,12 @@ function buildEpisodeItem(series, ep, idx, histMap) {
   return li;
 }
 
-async function renderEpisodeItems(ul, series, histMap) {
+async function renderEpisodeItems(ul, series, histMap, requestId) {
   const shouldChunk = series.episodes.length >= EPISODE_CHUNK_THRESHOLD;
   const chunkSize = shouldChunk ? 24 : series.episodes.length;
 
   for (let start = 0; start < series.episodes.length; start += chunkSize) {
+    if (!ul.isConnected || !isContentRequestCurrent(requestId)) return false;
     const frag = document.createDocumentFragment();
     const end = Math.min(start + chunkSize, series.episodes.length);
     for (let idx = start; idx < end; idx++) {
@@ -71,9 +72,12 @@ async function renderEpisodeItems(ul, series, histMap) {
       await new Promise(resolve => requestAnimationFrame(resolve));
     }
   }
+
+  return true;
 }
 
 export function renderCategory(tabId) {
+  beginContentRequest();
   const dom = getDOM();
   if (!state.data) return;
   dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
@@ -104,6 +108,7 @@ export function renderCategory(tabId) {
 }
 
 export async function showEpisodes(series, tabId) {
+  const requestId = beginContentRequest();
   const dom = getDOM();
   dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
   state.seriesId = series.id;
@@ -116,12 +121,22 @@ export async function showEpisodes(series, tabId) {
     dom.contentArea.appendChild(loading);
     try {
       fullSeries = await state.ensureSeriesDetail(series.id, tabId) || series;
+      if (!isContentRequestCurrent(requestId)) {
+        loading.remove();
+        return;
+      }
     } catch {
+      if (!isContentRequestCurrent(requestId)) {
+        loading.remove();
+        return;
+      }
       loading.innerHTML = `<div class="loader-text">${t('loading_fail') || '加载失败'}</div>`;
       return;
     }
     loading.remove();
   }
+
+  if (!isContentRequestCurrent(requestId)) return;
 
   series = fullSeries;
   const unit = tabId === 'fohao' ? t('tracks') : t('episodes');
@@ -156,6 +171,7 @@ export async function showEpisodes(series, tabId) {
   let cancelProbe = () => { };
   let onTimeUpdate = () => { };
   let skipDeferredMetrics = false;
+  let cleanupViewResources = () => { };
 
   // Declared here so the MutationObserver cleanup closure can reference it; the real
   // implementation is assigned below once `ul` is available (it scopes queries to that element).
@@ -170,6 +186,7 @@ export async function showEpisodes(series, tabId) {
       dom.audio.removeEventListener('ended', updateHighlight);
       skipDeferredMetrics = true;
       cancelProbe();
+      cleanupViewResources();
       obs.disconnect();
     }
   });
@@ -199,7 +216,8 @@ export async function showEpisodes(series, tabId) {
   const histMap = new Map();
   hist.forEach(h => { if (h.seriesId === series.id) histMap.set(h.epIdx, h); });
   // Use DocumentFragment for batch DOM insertion (avoids 196+ reflows)
-  await renderEpisodeItems(ul, series, histMap);
+  const renderCompleted = await renderEpisodeItems(ul, series, histMap, requestId);
+  if (!renderCompleted || !isContentRequestCurrent(requestId) || !view.isConnected) return;
 
   // Real-time progress bar for the currently playing episode (~1 update/sec)
   let progressTick = 0;
@@ -322,9 +340,9 @@ export async function showEpisodes(series, tabId) {
   };
   window.addEventListener('playcount:updated', onPlayCountUpdated);
   // Store cleanup so MutationObserver can remove listener when view is removed
-  const _origCleanupCache = _cleanupCacheListener;
-  _cleanupCacheListener = () => {
-    _origCleanupCache();
+  const prevCleanupViewResources = cleanupViewResources;
+  cleanupViewResources = () => {
+    prevCleanupViewResources();
     window.removeEventListener('playcount:updated', onPlayCountUpdated);
   };
 

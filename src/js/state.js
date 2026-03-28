@@ -7,6 +7,7 @@ export const state = {
   ensureFullData: null,
   ensureCategoryData: null,
   ensureSeriesDetail: null,
+  contentRequestId: 0,
   tab: 'home',      // Current tab
   seriesId: null,   // Currently viewing series
   epIdx: -1,        // Current episode index
@@ -15,3 +16,12 @@ export const state = {
   isFirstVisit: false,
   networkWeak: false, // True when network is detected as weak (stall or slow connection)
 };
+
+export function beginContentRequest() {
+  state.contentRequestId += 1;
+  return state.contentRequestId;
+}
+
+export function isContentRequestCurrent(requestId) {
+  return requestId === state.contentRequestId;
+}

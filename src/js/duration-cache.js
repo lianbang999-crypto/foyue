@@ -10,6 +10,16 @@ import { getConnType } from './player.js';
 const MAX_CONCURRENT_IDLE = 3;
 const MAX_CONCURRENT_PLAYING = 1;
 
+function releaseProbeAudio(audio) {
+  if (!audio) return;
+  try {
+    audio.pause?.();
+    audio.removeAttribute?.('src');
+    audio.src = '';
+    audio.load?.();
+  } catch { /* ignore */ }
+}
+
 /**
  * Get cached duration for a URL (seconds), or null if not cached.
  */
@@ -47,32 +57,57 @@ export function seedCachedDurationsFromData(data) {
  * Returns a Promise<number|null> (duration in seconds or null on failure).
  */
 function probeOne(url) {
-  return new Promise(resolve => {
-    const a = new Audio();
-    a.preload = 'metadata';
-    let settled = false;
-    const done = (val) => {
-      if (settled) return;
-      settled = true;
-      a.src = '';       // release network connection
-      a.remove?.();
-      resolve(val);
-    };
-    a.addEventListener('loadedmetadata', () => {
-      const d = a.duration;
-      if (d && isFinite(d) && d > 0) {
-        const rounded = Math.round(d);
-        patch('durations', { [url]: rounded });
-        done(rounded);
-      } else {
-        done(null);
-      }
-    });
-    a.addEventListener('error', () => done(null));
-    // Timeout after 15s per file
-    setTimeout(() => done(null), 15000);
-    a.src = url;
+  const a = new Audio();
+  a.preload = 'metadata';
+  let settled = false;
+  let timeoutId = 0;
+  let resolvePromise = () => {};
+
+  const cleanup = () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = 0;
+    }
+    a.removeEventListener('loadedmetadata', onLoadedMetadata);
+    a.removeEventListener('error', onError);
+    releaseProbeAudio(a);
+  };
+
+  const done = (val) => {
+    if (settled) return;
+    settled = true;
+    cleanup();
+    resolvePromise(val);
+  };
+
+  const onLoadedMetadata = () => {
+    const d = a.duration;
+    if (d && isFinite(d) && d > 0) {
+      const rounded = Math.round(d);
+      patch('durations', { [url]: rounded });
+      done(rounded);
+    } else {
+      done(null);
+    }
+  };
+
+  const onError = () => done(null);
+
+  const promise = new Promise(resolve => {
+    resolvePromise = resolve;
   });
+
+  a.addEventListener('loadedmetadata', onLoadedMetadata);
+  a.addEventListener('error', onError);
+  timeoutId = setTimeout(() => done(null), 15000);
+  a.src = url;
+
+  return {
+    promise,
+    cancel() {
+      done(null);
+    }
+  };
 }
 
 /**
@@ -86,6 +121,7 @@ export function probeDurations(episodes, onDuration) {
   const durations = get('durations') || {};
   const queue = [];
   let aborted = false;
+  const activeProbes = new Set();
 
   // Skip probing entirely when network is weak
   if (state.networkWeak) {
@@ -132,8 +168,11 @@ export function probeDurations(episodes, onDuration) {
     while (running < maxC && qi < queue.length) {
       const idx = queue[qi++];
       running++;
-      probeOne(episodes[idx].url).then(d => {
+      const probe = probeOne(episodes[idx].url);
+      activeProbes.add(probe);
+      probe.promise.then(d => {
         running--;
+        activeProbes.delete(probe);
         if (aborted) return;
         if (d) onDuration(idx, d);
         next();
@@ -142,5 +181,9 @@ export function probeDurations(episodes, onDuration) {
   }
   next();
 
-  return () => { aborted = true; };
+  return () => {
+    aborted = true;
+    activeProbes.forEach(probe => probe.cancel());
+    activeProbes.clear();
+  };
 }

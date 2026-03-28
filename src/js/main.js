@@ -14,7 +14,7 @@ import '../css/gongxiu.css';
 import '../css/wenku.css';
 
 // Module imports
-import { state } from './state.js';
+import { state, beginContentRequest, isContentRequestCurrent } from './state.js';
 import { initDOM, getDOM } from './dom.js';
 import { initLang, applyI18n, t } from './i18n.js';
 import { initTheme } from './theme.js';
@@ -75,6 +75,24 @@ const ROOT_TAB_I18N = {
 
 const IN_APP_BROWSER = isInAppBrowser();
 let categoryWarmupScheduled = false;
+const APP_BOOT_TS = performance.now();
+const STANDALONE_LAUNCH_LOADER_MIN_MS = 900;
+
+function isStandaloneLaunchMode() {
+  return window.matchMedia('(display-mode: standalone)').matches || !!navigator.standalone;
+}
+
+async function hideBootLoader(dom) {
+  if (!dom?.loader || dom.loader.style.display === 'none') return;
+  if (isStandaloneLaunchMode()) {
+    const elapsed = performance.now() - APP_BOOT_TS;
+    const remaining = STANDALONE_LAUNCH_LOADER_MIN_MS - elapsed;
+    if (remaining > 0) {
+      await new Promise(resolve => setTimeout(resolve, remaining));
+    }
+  }
+  dom.loader.style.display = 'none';
+}
 
 function getTextOrFallback(key, fallback) {
   const value = t(key);
@@ -106,6 +124,22 @@ function showCategorySwitchLoader() {
   wrap.className = 'view active';
   wrap.innerHTML = `<div class="loader"><div class="loader-text">${getTextOrFallback('loading_retry', '加载中，请稍候...')}</div></div>`;
   dom.contentArea.appendChild(wrap);
+}
+
+function showCategorySwitchError(tabId) {
+  const dom = getDOM();
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
+  const wrap = document.createElement('div');
+  wrap.className = 'view active';
+  wrap.innerHTML = `<div class="error-msg">${getTextOrFallback('loading_fail', '加载失败，请稍后重试')}<br><button id="retryCategoryLoadBtn">${t('retry')}</button></div>`;
+  dom.contentArea.appendChild(wrap);
+  const retryBtn = wrap.querySelector('#retryCategoryLoadBtn');
+  if (retryBtn) {
+    retryBtn.addEventListener('click', () => {
+      const tabBtn = document.querySelector(`.tab[data-tab="${tabId}"]`);
+      if (tabBtn) tabBtn.click();
+    });
+  }
 }
 
 function activateRootTab(tabId) {
@@ -332,6 +366,7 @@ async function ensureSeriesDetail(seriesId, categoryId) {
 
   document.querySelectorAll('.tab').forEach(btn => {
     btn.addEventListener('click', async () => {
+      const requestId = beginContentRequest();
       // Close any open reader overlay before switching tabs
       closeWenkuReader();
       const nextTab = btn.dataset.tab;
@@ -339,18 +374,32 @@ async function ensureSeriesDetail(seriesId, categoryId) {
       activateRootTab(nextTab);
 
       if (nextTab === 'home') {
+        if (!isContentRequestCurrent(requestId)) return;
         renderHomePage();
       } else if (nextTab === 'mypage') {
+        if (!isContentRequestCurrent(requestId)) return;
         renderMyPage();
       } else {
-        if (!state.isDataFull && state.ensureCategoryData) {
-          const catAlreadyLoaded = state.data?.categories?.find(cat => cat.id === nextTab)?._categoryLoaded;
-          if (!catAlreadyLoaded) {
-            if (!IN_APP_BROWSER) showToast(getTextOrFallback('loading_retry', '连接中，请稍候...'));
-            showCategorySwitchLoader();
+        try {
+          if (!state.isDataFull && state.ensureCategoryData) {
+            const catAlreadyLoaded = state.data?.categories?.find(cat => cat.id === nextTab)?._categoryLoaded;
+            if (!catAlreadyLoaded) {
+              if (!IN_APP_BROWSER) showToast(getTextOrFallback('loading_retry', '连接中，请稍候...'));
+              showCategorySwitchLoader();
+            }
+            await state.ensureCategoryData(nextTab);
           }
-          await state.ensureCategoryData(nextTab);
+        } catch {
+          if (!isContentRequestCurrent(requestId)) return;
+          const fallbackCategory = state.data?.categories?.find(cat => cat.id === nextTab);
+          if (fallbackCategory?.series?.length) {
+            renderCategory(nextTab);
+          } else {
+            showCategorySwitchError(nextTab);
+          }
+          return;
         }
+        if (!isContentRequestCurrent(requestId)) return;
         renderCategory(nextTab);
       }
     });
@@ -903,7 +952,6 @@ async function loadData() {
     const cached = loadCachedData();
     if (cached) {
       applyLoadedData(cached);
-      dom.loader.style.display = 'none';
       if (state.tab === 'home') renderHomePage();
       else if (state.tab === 'mypage') renderMyPage();
       else renderCategory(state.tab);
@@ -919,6 +967,7 @@ async function loadData() {
       fetchFreshData();
       // Handle ?tab=ai deep link
       checkAiDeepLink();
+      await hideBootLoader(dom);
       return;
     }
 
@@ -926,7 +975,6 @@ async function loadData() {
     const cachedHome = shouldBootstrapHome ? loadCachedHomeData() : null;
     if (cachedHome) {
       applyLoadedData(cachedHome);
-      dom.loader.style.display = 'none';
       if (state.tab === 'mypage') renderMyPage();
       else renderHomePage();
       if (IN_APP_BROWSER) scheduleCategoryWarmup();
@@ -937,6 +985,7 @@ async function loadData() {
       handleWenkuDeepLink();
       handleTabDeepLink();
       checkAiDeepLink();
+      await hideBootLoader(dom);
       return;
     }
 
@@ -944,7 +993,6 @@ async function loadData() {
       const homeData = await fetchCategoriesData({ home: true });
       applyLoadedData(homeData);
       saveCachedHomeData(homeData);
-      dom.loader.style.display = 'none';
       renderHomePage();
       if (IN_APP_BROWSER) scheduleCategoryWarmup();
       if (canRestoreFromCurrentData()) {
@@ -956,6 +1004,7 @@ async function loadData() {
       handleWenkuDeepLink();
       handleTabDeepLink();
       checkAiDeepLink();
+      await hideBootLoader(dom);
       return;
     }
 
@@ -965,7 +1014,6 @@ async function loadData() {
     const initStr = JSON.stringify(state.data);
     const initHash = Array.from(initStr).reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0);
     saveCachedData(state.data, initHash);
-    dom.loader.style.display = 'none';
     if (state.tab === 'home') renderHomePage();
     else if (state.tab === 'mypage') renderMyPage();
     else renderCategory(state.tab);
@@ -982,6 +1030,7 @@ async function loadData() {
     handleTabDeepLink();
     // Handle ?tab=ai deep link
     checkAiDeepLink();
+    await hideBootLoader(dom);
   } catch (e) {
     loadAttempts++;
     if (loadAttempts < 3) {
