@@ -99,14 +99,12 @@ function scheduleCategoryWarmup() {
   if (categoryWarmupScheduled || state.isDataFull) return;
   categoryWarmupScheduled = true;
 
+  // ✅ P1优化：并行预热两个分类数据
   const runner = async () => {
-    for (const categoryId of ['tingjingtai', 'youshengshu']) {
-      try {
-        await ensureCategoryData(categoryId);
-      } catch (error) {
-        break;
-      }
-    }
+    await Promise.all([
+      ensureCategoryData('tingjingtai').catch(() => null),
+      ensureCategoryData('youshengshu').catch(() => null)
+    ]);
   };
 
   if (typeof requestIdleCallback === 'function') requestIdleCallback(() => { runner(); }, { timeout: 2500 });
@@ -283,11 +281,13 @@ async function ensureSeriesDetail(seriesId, categoryId) {
 
   const existing = findSeriesInData(seriesId)?.series;
   if (existing?.episodes?.length) return existing;
-  if (categoryId) await ensureCategoryData(categoryId);
   if (seriesLoaders.has(seriesId)) return seriesLoaders.get(seriesId);
 
   const promise = (async () => {
-    const payload = await fetchSeriesData(seriesId);
+    // ✅ P1优化：并行获取分类数据和专辑详情，节省一个网络往返
+    const fetches = [fetchSeriesData(seriesId)];
+    if (categoryId) fetches.push(ensureCategoryData(categoryId).catch(() => null));
+    const [payload] = await Promise.all(fetches);
     if (!payload || payload.error) throw new Error(payload?.error || 'Series not found');
     return mergeSeriesIntoState(payload);
   })();
