@@ -35,6 +35,29 @@ let bgBlobUrl = '';
 let bgLoadDelayTimer = null;
 let bgLoadScheduledUrl = '';
 
+function normalizeEpisodeSource(episode) {
+  if (!episode) return episode;
+  if (!episode.url || !episode.url.includes('opus.foyue.org')) return episode;
+  const fallbackUrl = episode.mp3Url || mp3FallbackUrl(episode.url);
+  return {
+    ...episode,
+    url: fallbackUrl || episode.url,
+    mp3Url: fallbackUrl || episode.mp3Url,
+  };
+}
+
+function buildPlaylistEntries(episodes, series) {
+  return episodes.map(ep => {
+    const normalized = normalizeEpisodeSource(ep);
+    return {
+      ...normalized,
+      seriesId: series.id,
+      seriesTitle: series.title,
+      speaker: series.speaker,
+    };
+  });
+}
+
 /* ===== Play count (server-side series.play_count) =====
  * 旧逻辑：在 playCurrent() 末尾立刻 recordPlay → 加载失败也会 +1，且连点同一集会重复计数。
  * 现逻辑：仅在 audio.play() 成功且仍为当前 callId 时上报，并对同一 series+集号短时去重。
@@ -287,7 +310,7 @@ export function playList(episodes, idx, series, restoreTime) {
   cleanupPreload();
   _userPaused = false; // User is explicitly requesting playback of a new track
   // #8: Always rebuild playlist — even for same series, episodes data may have been refreshed
-  state.playlist = episodes.map(ep => ({ ...ep, seriesId: series.id, seriesTitle: series.title, speaker: series.speaker }));
+  state.playlist = buildPlaylistEntries(episodes, series);
   state.epIdx = idx;
   pendingSeek = restoreTime || 0;
   playCurrent();
@@ -297,7 +320,7 @@ export function playList(episodes, idx, series, restoreTime) {
 // (first visit default track, restore from saved state without user gesture)
 export function prepareList(episodes, idx, series, restoreTime) {
   cleanupPreload();
-  state.playlist = episodes.map(ep => ({ ...ep, seriesId: series.id, seriesTitle: series.title, speaker: series.speaker }));
+  state.playlist = buildPlaylistEntries(episodes, series);
   state.epIdx = idx;
   pendingSeek = restoreTime || 0;
   const tr = state.playlist[state.epIdx];
@@ -1420,7 +1443,7 @@ export function restoreState() {
     for (const cat of state.data.categories) {
       const sr = cat.series.find(x => x.id === s.seriesId);
       if (sr) {
-        state.playlist = sr.episodes.map(ep => ({ ...ep, seriesId: sr.id, seriesTitle: sr.title, speaker: sr.speaker }));
+        state.playlist = buildPlaylistEntries(sr.episodes, sr);
         state.epIdx = s.epIdx || 0;
         const tr = state.playlist[state.epIdx];
         if (tr) {

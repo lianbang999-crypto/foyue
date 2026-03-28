@@ -1,44 +1,22 @@
 /* audio-url.js — Minimal audio URL utilities */
-/* "Server Decides, Client Plays" — the server returns the final playable URL.
- * This module only provides Opus detection (for the ?opus=1 API param)
- * and a simple emergency fallback helper. */
+/* 当前策略：全站统一回退 MP3。
+ * 保留旧的 Opus URL 改写能力，用来兜底用户本地残留状态。 */
 'use strict';
 
-/* ── One-time Opus support detection ── */
-let _opusSupported = null;
-
-function detectOpusSupport() {
-  if (_opusSupported !== null) return _opusSupported;
-  try {
-    const a = document.createElement('audio');
-    const ogg = a.canPlayType('audio/ogg; codecs=opus');
-    const opus = a.canPlayType('audio/opus');
-    const webm = a.canPlayType('audio/webm; codecs=opus');
-    _opusSupported = (ogg === 'probably' || opus === 'probably' || webm === 'probably' ||
-                      ogg === 'maybe' || opus === 'maybe' || webm === 'maybe');
-  } catch {
-    _opusSupported = false;
-  }
-  return _opusSupported;
-}
-
-// Detect on module load
-detectOpusSupport();
-
 /**
- * Check if Opus audio format is supported by this browser.
+ * 全站禁用 Opus 下发，统一走 MP3。
  * @returns {boolean}
  */
 export function isOpusSupported() {
-  return detectOpusSupport();
+  return false;
 }
 
 /**
- * Build the opus query parameter string for API requests.
- * @returns {string} '?opus=1' if browser supports Opus, '' otherwise
+ * 关闭 opus 查询参数，确保 API 永远返回 MP3 链接。
+ * @returns {string}
  */
 export function opusQueryParam() {
-  return detectOpusSupport() ? '?opus=1' : '';
+  return '';
 }
 
 /**
@@ -54,7 +32,7 @@ export function mp3FallbackUrl(url) {
   if (!url) return url;
   if (!url.includes('opus.foyue.org')) return url;
   return url.replace('opus.foyue.org', 'audio.foyue.org')
-            .replace(/\.opus(\?|$)/, '.mp3$1');
+    .replace(/\.opus(\?|$)/, '.mp3$1');
 }
 
 /**
