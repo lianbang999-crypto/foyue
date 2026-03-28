@@ -7,7 +7,6 @@ import { fmt, showToast, seekAt, haptic, fmtCount, escapeHtml, shareContent } fr
 import { addHistory, syncHistoryProgress, getHistory } from './history.js';
 import { recordPlay, getAppreciateCount } from './api.js';
 import { cacheAudio, getCachedAudioUrl, isAudioCached, isCachedSync } from './audio-cache.js';
-import { mp3FallbackUrl } from './audio-url.js';
 import { get, set, patch, saveNow } from './store.js';
 
 /* ===== Playback State ===== */
@@ -35,22 +34,10 @@ let bgBlobUrl = '';
 let bgLoadDelayTimer = null;
 let bgLoadScheduledUrl = '';
 
-function normalizeEpisodeSource(episode) {
-  if (!episode) return episode;
-  if (!episode.url || !episode.url.includes('opus.foyue.org')) return episode;
-  const fallbackUrl = episode.mp3Url || mp3FallbackUrl(episode.url);
-  return {
-    ...episode,
-    url: fallbackUrl || episode.url,
-    mp3Url: fallbackUrl || episode.mp3Url,
-  };
-}
-
 function buildPlaylistEntries(episodes, series) {
   return episodes.map(ep => {
-    const normalized = normalizeEpisodeSource(ep);
     return {
-      ...normalized,
+      ...ep,
       seriesId: series.id,
       seriesTitle: series.title,
       speaker: series.speaker,
@@ -783,21 +770,6 @@ export function onAudioError() {
 
   const errCode = dom.audio.error.code;
   const src = dom.audio.src;
-
-  // Opus → MP3 fallback: if the current src is an opus URL that failed,
-  // fall back to the server-provided MP3 URL (or best-effort derivation)
-  if (src && src.includes('opus.foyue.org')) {
-    const tr = state.playlist[state.epIdx];
-    const mp3Url = (tr && tr.mp3Url) || mp3FallbackUrl(src);
-    if (mp3Url && mp3Url !== src) {
-      console.log('[Audio] Opus failed, falling back to MP3:', mp3Url);
-      audioRetries = 0; // reset retries for the MP3 URL
-      dom.audio.src = mp3Url;
-      dom.audio.load();
-      dom.audio.play().catch(() => { });
-      return;
-    }
-  }
 
   // #17: Distinguish error types; first retry is silent
   if (src && audioRetries < 3) {

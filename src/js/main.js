@@ -56,7 +56,6 @@ export function showEpisodes(...args) {
 import { initInstallPrompt, initBackGuard } from './pwa.js';
 import { appreciate } from './api.js';
 import { monitor } from './monitor.js';
-import { opusQueryParam } from './audio-url.js';
 
 // Close wenku reader if open — uses DOM check to avoid pulling wenku chunk into main bundle
 function closeWenkuReader() {
@@ -100,23 +99,16 @@ function renderWenkuRoot(options = {}) {
 function buildCategoriesUrl({ home = false } = {}) {
   const params = new URLSearchParams();
   if (home) params.set('home', '1');
-  if (opusQueryParam()) params.set('opus', '1');
   const query = params.toString();
   return '/api/categories' + (query ? `?${query}` : '');
 }
 
 function buildCategoryUrl(categoryId) {
-  const params = new URLSearchParams();
-  if (opusQueryParam()) params.set('opus', '1');
-  const query = params.toString();
-  return `/api/category/${encodeURIComponent(categoryId)}` + (query ? `?${query}` : '');
+  return `/api/category/${encodeURIComponent(categoryId)}`;
 }
 
 function buildSeriesUrl(seriesId) {
-  const params = new URLSearchParams();
-  if (opusQueryParam()) params.set('opus', '1');
-  const query = params.toString();
-  return `/api/series/${encodeURIComponent(seriesId)}` + (query ? `?${query}` : '');
+  return `/api/series/${encodeURIComponent(seriesId)}`;
 }
 
 async function fetchCategoriesData({ home = false } = {}) {

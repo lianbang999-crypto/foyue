@@ -9,19 +9,17 @@ export function json(data, cors, status = 200, cacheControl) {
   });
 }
 
-export function buildCategoriesCacheKey(url, { opusSupported, homeView }) {
+export function buildCategoriesCacheKey(url, { homeView }) {
   const cacheUrl = new URL(url.toString());
   cacheUrl.search = '';
   if (homeView) cacheUrl.searchParams.set('home', '1');
-  cacheUrl.searchParams.set('opus', opusSupported ? '1' : '0');
   return new Request(cacheUrl.toString(), { method: 'GET' });
 }
 
-export function buildCategoryCacheKey(url, { opusSupported, categoryId }) {
+export function buildCategoryCacheKey(url, { categoryId }) {
   const cacheUrl = new URL(url.toString());
   cacheUrl.pathname = `/api/category/${encodeURIComponent(categoryId)}`;
   cacheUrl.search = '';
-  cacheUrl.searchParams.set('opus', opusSupported ? '1' : '0');
   return new Request(cacheUrl.toString(), { method: 'GET' });
 }
 

@@ -1,5 +1,5 @@
 # 音频子域名 Worker 配置
-# 用于 audio.foyue.org 和 opus.foyue.org
+# 用于 audio.foyue.org
 
 name = "audio-subdomain-worker"
 main = "audio-subdomain-worker.js"
@@ -30,11 +30,5 @@ bucket_name = "youshengshu"
 binding = "JINGDIANDUSONG"
 bucket_name = "jingdiandusong"
 
-# 或者 Opus 存储桶绑定（需要创建两个独立的Worker）
-# [[r2_buckets]]
-# binding = "BUCKET"
-# bucket_name = "opus"
-
 # 路由配置（在Cloudflare Dashboard中设置）
 # audio.foyue.org/* -> audio-subdomain-worker
-# opus.foyue.org/* -> opus-subdomain-worker

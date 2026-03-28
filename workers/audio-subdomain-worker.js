@@ -1,5 +1,5 @@
 /**
- * Cloudflare Worker for audio.foyue.org and opus.foyue.org
+ * Cloudflare Worker for audio.foyue.org
  * 为音频子域名添加正确的HTTP响应头
  */
 

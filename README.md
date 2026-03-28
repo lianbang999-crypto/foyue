@@ -76,7 +76,7 @@ foyue/
 │   │   ├── history.js          #   播放历史
 │   │   ├── api.js              #   D1 API 客户端（播放次数 / 随喜）
 │   │   ├── audio-cache.js      #   Cache API 音频离线缓存
-│   │   ├── audio-url.js        #   音频 URL 构建（MP3 / Opus 自适应）
+│   │   ├── audio-url.js        #   音频 URL 工具
 │   │   ├── duration-cache.js   #   时长探测与缓存
 │   │   ├── search.js           #   关键词 + AI 语义搜索
 │   │   ├── pwa.js              #   PWA 安装引导
@@ -104,7 +104,7 @@ foyue/
 │   ├── lib/admin-messages.js   #   管理后台留言管理
 │   ├── lib/ai-routes.js        #   AI 路由处理（问答 / 摘要 / 推荐 / 语音）
 │   ├── lib/ai-utils.js         #   AI 通用工具
-│   ├── lib/audio-utils.js      #   音频 URL / 格式工具
+│   ├── lib/audio-utils.js      #   音频 URL 工具
 │   ├── lib/crypto-utils.js     #   Hash / 日期等通用工具
 │   ├── lib/http-utils.js       #   JSON 响应 / Edge Cache 工具
 │   ├── lib/transcript-routes.js #   文稿 / 章节相关路由

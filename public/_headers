@@ -38,11 +38,6 @@
   Accept-Ranges: bytes
   Access-Control-Allow-Origin: *
 
-/*.opus
-  Cache-Control: public, max-age=2592000, immutable
-  Accept-Ranges: bytes
-  Access-Control-Allow-Origin: *
-
 # R2 audio files (if using custom domain)
 /audio/*
   Cache-Control: public, max-age=2592000, immutable
@@ -51,7 +46,6 @@
 # Preconnect hints for faster audio loading
 /*
   Link: <https://audio.foyue.org>; rel=preconnect
-  Link: <https://opus.foyue.org>; rel=preconnect
 
-# ✅ 注意：audio.foyue.org 和 opus.foyue.org 的缓存头需要在 R2 存储桶配置中设置
+# ✅ 注意：audio.foyue.org 的缓存头需要在 R2 存储桶配置中设置
 # _headers 文件只对当前域名有效，子域名规则不生效

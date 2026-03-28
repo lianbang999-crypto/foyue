@@ -71,9 +71,8 @@ self.addEventListener('fetch', event => {
   if (event.request.headers.get('range')) return;
 
   /* Cached audio: serve from audio cache if available.
-   * "Server Decides" — no URL normalization needed.
-   * Cache key = the actual URL the player uses (Opus or MP3). */
-  if (url.hostname.includes('audio.foyue.org') || url.hostname.includes('opus.foyue.org') || /\.(mp3|m4a|ogg|opus)(\?|$)/.test(url.pathname)) {
+   * Cache key = the actual URL the player uses. */
+  if (url.hostname.includes('audio.foyue.org') || /\.(mp3|m4a|ogg)(\?|$)/.test(url.pathname)) {
     event.respondWith(
       caches.open(AUDIO_CACHE).then(cache =>
         cache.match(event.request.url).then(cached => {
