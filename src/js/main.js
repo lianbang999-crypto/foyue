@@ -22,13 +22,13 @@ import {
   cycleLoop, cycleSpeed, cycleSleepTimer,
   shareTrack,
   onTimeUpdate, onEnded, onAudioError,
-  setPlayState, highlightEp, preloadNextTrack, cleanupPreload,
+  setPlayState, highlightEp, cleanupPreload,
   togglePlaylist, closePlaylist, getPlaylistVisible, saveState, restoreState,
   getIsSwitching, getIsRecovering, setDragging, initPlaylistTabs, closeFullScreen,
   openFullScreen,
   markAppreciated, updateAppreciateBtn, appreciateSuccess, updateAppreciateCount, isAppreciated,
   retryPlayback, startStallWatch, clearStallWatch, setBuffering,
-  onVisibilityResume, setNetworkWeak, reconcilePlaybackUiAfterForeground,
+  onVisibilityResume, reconcilePlaybackUiAfterForeground,
 } from './player.js';
 import { renderHomePage, invalidateHomePage } from './pages-home.js';
 import { renderMyPage } from './pages-my.js';
@@ -106,13 +106,6 @@ function closeWenkuReader() {
     import('./wenku-reader.js').then(mod => mod.closeReader());
   }
 }
-
-const ROOT_TAB_I18N = {
-  home: 'tab_home',
-  tingjingtai: 'tab_lectures',
-  youshengshu: 'tab_audiobooks',
-  mypage: 'tab_my',
-};
 
 const IN_APP_BROWSER = isInAppBrowser();
 const APP_BOOT_TS = performance.now();
@@ -218,8 +211,6 @@ function activateRootTab(tabId) {
     btn.classList.toggle('active', active);
     btn.setAttribute('aria-selected', active ? 'true' : 'false');
   });
-  dom.navTitle.textContent = t(ROOT_TAB_I18N[tabId] || 'tab_lectures');
-  dom.navTitle.dataset.i18n = ROOT_TAB_I18N[tabId] || 'tab_lectures';
 }
 
 function renderHomeRoot() {
@@ -874,21 +865,6 @@ async function ensureSeriesDetail(seriesId, categoryId) {
   }
   if (navigator.connection) {
     navigator.connection.addEventListener('change', () => {
-      const c = navigator.connection;
-      // Update network quality state
-      if (c.saveData || c.effectiveType === '2g' || c.effectiveType === 'slow-2g') {
-        setNetworkWeak(true);
-        cleanupPreload();
-        return;
-      }
-      // If connection improved to 4g, clear weak flag
-      if (c.effectiveType === '4g') {
-        setNetworkWeak(false);
-      }
-      const remaining = dom.audio.duration - dom.audio.currentTime;
-      if (dom.audio.src && !dom.audio.paused && Number.isFinite(remaining) && remaining <= 20) {
-        preloadNextTrack();
-      }
       tryNetworkRecovery();
     });
   }

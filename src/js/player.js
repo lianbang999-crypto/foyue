@@ -7,8 +7,8 @@ import { fmt, showToast, haptic, fmtCount, escapeHtml, shareContent, isAppleMobi
 import { addHistory, syncHistoryProgress, getHistory } from './history.js';
 import { recordPlay, getAppreciateCount } from './api.js';
 import { cacheAudio, getCachedAudioUrl, isAudioCached, isCachedSync } from './audio-cache.js';
-import { getTrackWithCachedAudioMeta, primeAudioMetadata } from './audio-meta-cache.js';
-import { warmAudioUrl } from './audio-url.js';
+import { getTrackWithCachedAudioMeta } from './audio-meta-cache.js';
+import { drainResponseBody } from './audio-url.js';
 import { isInAppBrowser } from './pwa.js';
 import { getPlaybackPolicy } from './playback-policy.js';
 import { get, set, patch, saveNow } from './store.js';
@@ -41,8 +41,13 @@ let _userPaused = false;
 let bgFetchController = null;
 let bgFetchUrl = '';
 let bgBlobUrl = '';
-let bgLoadDelayTimer = null;
-let bgLoadScheduledUrl = '';
+let currentWarmController = null;
+let currentWarmUrl = '';
+
+const SHORT_AUDIO_DURATION_S = 15 * 60;
+const LONG_AUDIO_WINDOW_S = 15 * 60;
+const LONG_AUDIO_WARM_MAX_BYTES = 24 * 1024 * 1024;
+const NEXT_TRACK_PRELOAD_RATIO = 0.8;
 
 function buildPlaylistEntries(episodes, series) {
   return episodes.map(ep => {
@@ -91,21 +96,6 @@ export function setNetworkWeak(v) {
   state.networkWeak = v;
   // ✅ 优化：网络状态变化时更新stall检测间隔
   updateStallDetectInterval();
-}
-
-/**
- * Detect connection type: 'wifi' | 'cellular' | 'unknown'
- * Uses navigator.connection.type (supported in Chrome/Android/Samsung).
- * Falls back to 'unknown' on iOS Safari and other browsers without the API.
- */
-export function getConnType() {
-  const conn = navigator.connection || navigator.mozConnection;
-  if (!conn) return 'unknown';
-  // conn.type: 'wifi', 'cellular', 'bluetooth', 'ethernet', 'none', 'other', 'unknown'
-  if (conn.type === 'wifi' || conn.type === 'ethernet') return 'wifi';
-  if (conn.type === 'cellular') return 'cellular';
-  // Fallback: if type is missing but API exists, we can't determine — treat as unknown
-  return 'unknown';
 }
 
 /* ===== Stall Detection State ===== */
@@ -556,10 +546,70 @@ function cancelPendingTrackLoad() {
   _playCurrentId += 1;
   finishRecovery();
   clearSwitchingTimeout();
+  cleanupPlaybackPreparations();
   cleanupReadyListeners(dom);
   isSwitching = false;
   setBuffering(false);
   renderPlaylistItems();
+}
+
+function cleanupCurrentWarmup() {
+  if (currentWarmController) {
+    currentWarmController.abort();
+    currentWarmController = null;
+  }
+  currentWarmUrl = '';
+}
+
+function cleanupPlaybackPreparations() {
+  cleanupBgFetch();
+  cleanupCurrentWarmup();
+  cleanupPreload();
+}
+
+function computeLongWarmBytes(track) {
+  const duration = Number(track?.duration) || 0;
+  const bytes = Number(track?.bytes ?? track?.size ?? track?.fileSize ?? track?.contentLength) || 0;
+  if (!duration || !bytes || duration <= SHORT_AUDIO_DURATION_S) return 0;
+  const ratio = Math.min(1, LONG_AUDIO_WINDOW_S / duration);
+  const windowBytes = Math.ceil(bytes * ratio);
+  return Math.max(64 * 1024, Math.min(windowBytes, LONG_AUDIO_WARM_MAX_BYTES, bytes));
+}
+
+function startCurrentTrackWarmup(track) {
+  if (!track?.url || currentWarmUrl === track.url) return;
+  const warmBytes = computeLongWarmBytes(track);
+  if (!warmBytes) return;
+
+  cleanupCurrentWarmup();
+  currentWarmUrl = track.url;
+  currentWarmController = typeof AbortController === 'function' ? new AbortController() : null;
+
+  fetch(track.url, {
+    headers: { Range: `bytes=0-${warmBytes - 1}` },
+    signal: currentWarmController ? currentWarmController.signal : undefined,
+  }).then(resp => {
+    if (!resp.ok && resp.status !== 206) throw new Error('HTTP ' + resp.status);
+    return drainResponseBody(resp);
+  }).catch(err => {
+    if (err.name !== 'AbortError') {
+      console.warn('[Warmup] Failed:', err.message);
+    }
+  }).finally(() => {
+    currentWarmController = null;
+    if (currentWarmUrl === track.url) currentWarmUrl = '';
+  });
+}
+
+function scheduleCurrentTrackLoading(track) {
+  const policy = getPlaybackPolicy({ track: getTrackWithCachedAudioMeta(track) });
+  if (policy.shouldFullLoadCurrent) {
+    startBgFullLoad(track?.url);
+    return;
+  }
+  if (policy.shouldWarmCurrentWindow) {
+    startCurrentTrackWarmup(getTrackWithCachedAudioMeta(track));
+  }
 }
 
 /** 计算本次播放的起始位置：pendingSeek > 历史续播位置 > 0 */
@@ -616,31 +666,11 @@ function playCurrent() {
   stallRetries = 0;
   clearStallWatch();
   clearErrorState();
-  cleanupBgFetch(); // Cancel any in-progress background fetch for previous track
+  cleanupPlaybackPreparations();
   const tr = state.playlist[state.epIdx];
   const trackForPolicy = getTrackWithCachedAudioMeta(tr);
-  const conn = navigator.connection || navigator.mozConnection;
-  const policy = getPlaybackPolicy({
-    track: trackForPolicy,
-    isApple: isAppleMobile(),
-    isInApp: _isInAppBrowser,
-    online: navigator.onLine,
-    connectionType: getConnType(),
-    effectiveType: conn?.effectiveType,
-    saveData: !!conn?.saveData,
-    networkWeak: _networkWeak,
-  });
-  const preferDirectPlayback = policy.preferDirectPlayback;
+  const policy = getPlaybackPolicy({ track: trackForPolicy });
   const callId = ++_playCurrentId; // unique ID for this invocation
-  if (policy.profile.mediaClass === 'unknown' && policy.allowBackgroundFullLoadWhenResolved) {
-    primeAudioMetadata(tr).then(meta => {
-      if (!meta?.bytes) return;
-      if (callId !== _playCurrentId) return;
-      const activeTrack = state.playlist[state.epIdx];
-      if (!activeTrack || activeTrack.url !== tr.url) return;
-      startBgFullLoad(tr.url);
-    }).catch(() => { });
-  }
 
   // Remove any stale listeners from previous rapid switches
   cleanupReadyListeners(dom);
@@ -691,7 +721,7 @@ function playCurrent() {
       renderPlaylistItems(); // Remove loading indicator from playlist item
       startStallWatch();
       if (_networkWeak) setNetworkWeak(false);
-      startBgFullLoad(tr.url);
+      scheduleCurrentTrackLoading(tr);
       maybeRecordPlayCount(tr, callId);
     }).catch(err => {
       clearSwitchingTimeout();
@@ -725,7 +755,7 @@ function playCurrent() {
         // playing事件会在音频实际输出时触发setPlayState和hideBufferingUI
         startStallWatch();
         if (_networkWeak) setNetworkWeak(false);
-        startBgFullLoad(tr.url);
+        scheduleCurrentTrackLoading(tr);
         maybeRecordPlayCount(tr, callId);
       }).catch(err => {
         if (err.name === 'AbortError') return;
@@ -770,9 +800,8 @@ function playCurrent() {
     }
   }
 
-  // iOS 上用户点击后的首个 play() 尽量保持在直连链路里，避免先异步取 Cache Blob
-  // 把手势窗口耗掉，导致体感上“点了要等一会儿才出声”。离线时仍然回退缓存。
-  if (preferDirectPlayback || !policy.allowBlobCachePlayback || !isCachedSync(tr.url)) {
+  // 在线时直接走原始音频地址；离线且已有缓存时才回退本地 Blob。
+  if (navigator.onLine !== false || !isCachedSync(tr.url)) {
     revokeOldBlob(); // ✅ 直连路径：新源已确定，安全释放旧Blob
     doLoad(tr.url, usePreloaded);
   } else {
@@ -1016,8 +1045,7 @@ export function onTimeUpdate() {
       dom.expBufferFill.style.transform = `scaleX(${Math.min(1, bufEnd / dur)})`;
     }
 
-    // 仅在接近结束时为 Wi-Fi 用户预加载下一曲，避免长时间双路下载。
-    if ((dur - ct) <= 20 && !preloadedUrl) {
+    if (dur > SHORT_AUDIO_DURATION_S && p >= (NEXT_TRACK_PRELOAD_RATIO * 100) && !preloadedUrl) {
       preloadNextTrack();
     }
   });
@@ -1162,6 +1190,8 @@ export function togglePlay() {
     setBuffering(true);
     dom.audio.play().then(() => {
       startStallWatch();
+      const currentTrack = state.playlist[state.epIdx];
+      if (currentTrack) scheduleCurrentTrackLoading(currentTrack);
     }).catch((err) => {
       // AbortError means pause() was called before play() resolved — UI already handled
       if (err.name !== 'AbortError') {
@@ -1177,6 +1207,7 @@ export function togglePlay() {
       cancelPendingTrackLoad();
     }
     _userPaused = true; // User explicitly paused — block all auto-resume paths
+    cleanupPlaybackPreparations();
     dom.audio.pause();
     clearStallWatch();
     setPlayState(false);
@@ -1189,6 +1220,7 @@ export function pausePlaybackForCounter() {
   if (!dom.audio.src) return;
   if (isSwitching) cancelPendingTrackLoad();
   _userPaused = true;
+  cleanupPlaybackPreparations();
   dom.audio.pause();
   clearStallWatch();
   setPlayState(false);
@@ -1336,53 +1368,17 @@ export function preloadNextTrack() {
   const ni = getNextTrackIdx();
   if (ni < 0) { cleanupPreload(); return; }
   const currentTrack = state.playlist[state.epIdx];
+  const currentPolicy = getPlaybackPolicy({ track: getTrackWithCachedAudioMeta(currentTrack) });
+  if (!currentPolicy.shouldWarmNextTrack) {
+    cleanupPreload();
+    return;
+  }
   const nextTrack = state.playlist[ni];
   const nurl = nextTrack && nextTrack.url;
   if (!nurl || nurl === preloadedUrl) return;
-  const nextTrackForPolicy = getTrackWithCachedAudioMeta(nextTrack);
 
-  const conn = navigator.connection || navigator.mozConnection;
-  const policy = getPlaybackPolicy({
-    track: nextTrackForPolicy,
-    isApple: isAppleMobile(),
-    isInApp: _isInAppBrowser,
-    online: navigator.onLine,
-    connectionType: getConnType(),
-    effectiveType: conn?.effectiveType,
-    saveData: !!conn?.saveData,
-    networkWeak: _networkWeak,
-  });
-
-  if (!policy.allowNextTrackWarmup) {
-    cleanupPreload();
-    return;
-  }
-
-  if (policy.profile.mediaClass === 'unknown') {
-    primeAudioMetadata(nextTrack).then(meta => {
-      if (!meta?.bytes) return;
-      const upcomingIdx = getNextTrackIdx();
-      const upcomingTrack = upcomingIdx >= 0 ? state.playlist[upcomingIdx] : null;
-      if (!upcomingTrack || upcomingTrack.url !== nurl) return;
-      if (!preloadedUrl) preloadNextTrack();
-    }).catch(() => { });
-    cleanupPreload();
-    return;
-  }
-
-  // iPhone/iPad WebKit 内存预算更紧，不额外持有下一曲的 Audio 预加载对象。
-  if (!policy.allowAudioElementPreload) {
-    if (policy.profile.mediaClass === 'small') warmAudioUrl(nurl);
-    else if (!_networkWeak && currentTrack?.categoryId === 'tingjingtai' && policy.profile.mediaClass === 'medium') warmAudioUrl(nurl);
-    else cleanupPreload();
-    return;
-  }
-
-  // Skip preload when network is weak, save-data is on, or connection is 2G/3G
   cleanupPreload();
   preloadAudio = new Audio();
-  // ✅ 关键优化：始终使用 preload="auto" 让浏览器真正缓冲音频数据
-  // 这样切换下一曲时可以直接复用已缓冲的数据，大幅减少等待时间
   preloadAudio.preload = 'auto';
   preloadAudio.src = nurl;
   preloadedUrl = nurl;
@@ -1391,9 +1387,7 @@ export function preloadNextTrack() {
     console.warn('[Preload] Failed to preload:', nurl);
     cleanupPreload();
   });
-  // ✅ 优化：根据网络状况动态调整预加载超时时间
-  // 网络弱时缩短超时，避免占用带宽；网络好时延长超时，提高成功率
-  const timeoutMs = _networkWeak ? 20000 : 30000;
+  const timeoutMs = 20000;
 
   // Timeout: if preload hasn't loaded enough data, discard it
   preloadAudio._preloadTimeout = setTimeout(() => {
@@ -1421,11 +1415,6 @@ const BG_LOAD_MAX_SIZE = 150 * 1024 * 1024; // Skip files > 150 MB
 
 function cleanupBgFetch() {
   if (bgFetchController) { bgFetchController.abort(); bgFetchController = null; }
-  if (bgLoadDelayTimer) {
-    clearTimeout(bgLoadDelayTimer);
-    bgLoadDelayTimer = null;
-  }
-  bgLoadScheduledUrl = '';
   if (bgBlobUrl) { URL.revokeObjectURL(bgBlobUrl); bgBlobUrl = ''; }
   bgFetchUrl = '';
   // Also revoke cached blob URL if present
@@ -1434,45 +1423,18 @@ function cleanupBgFetch() {
 }
 
 function startBgFullLoad(url) {
-  if (bgFetchUrl === url || bgLoadScheduledUrl === url) return;
-
-  const currentTrack = state.playlist[state.epIdx];
-  const trackForPolicy = getTrackWithCachedAudioMeta(currentTrack);
-  const conn = navigator.connection || navigator.mozConnection;
-  const policy = getPlaybackPolicy({
-    track: trackForPolicy,
-    isApple: isAppleMobile(),
-    isInApp: _isInAppBrowser,
-    online: navigator.onLine,
-    connectionType: getConnType(),
-    effectiveType: conn?.effectiveType,
-    saveData: !!conn?.saveData,
-    networkWeak: _networkWeak,
+  if (!url || bgFetchUrl === url) return;
+  isAudioCached(url).then(cached => {
+    if (cached || state.playlist[state.epIdx]?.url !== url) return;
+    _doBgFullLoad(url);
+  }).catch(() => {
+    if (state.playlist[state.epIdx]?.url === url) _doBgFullLoad(url);
   });
-
-  // iOS 上整文件拉成 Blob 再缓存的峰值内存很高，直接关闭这条后台链路。
-  if (!policy.allowBackgroundFullLoad) return;
-
-  bgLoadScheduledUrl = url;
-  bgLoadDelayTimer = setTimeout(() => {
-    bgLoadDelayTimer = null;
-    if (bgLoadScheduledUrl !== url) return;
-    bgLoadScheduledUrl = '';
-
-    isAudioCached(url).then(cached => {
-      if (cached) return;
-      _doBgFullLoad(url);
-    }).catch(() => _doBgFullLoad(url));
-  }, 45000);
 }
 
 function _doBgFullLoad(url) {
   if (bgFetchUrl === url) return;
   cleanupBgFetch();
-
-  // Skip on save-data or 2g (extremely slow connections)
-  const conn = navigator.connection || navigator.mozConnection;
-  if (conn && (conn.saveData || conn.effectiveType === '2g')) return;
 
   bgFetchUrl = url;
   bgFetchController = new AbortController();

@@ -2,9 +2,7 @@
 /* Lazily probes audio URLs for duration via Audio API and stores in unified store.
  * When the JSON data source already has a duration field the probe is skipped entirely.
  */
-import { state } from './state.js';
 import { get, patch } from './store.js';
-import { getConnType } from './player.js';
 import { isAppleMobile } from './utils.js';
 
 // Reduce concurrency when audio is playing to avoid bandwidth competition
@@ -124,8 +122,8 @@ export function probeDurations(episodes, onDuration) {
   let aborted = false;
   const activeProbes = new Set();
 
-  // Skip probing entirely when network is weak or on iOS (Audio elements leak memory on WebKit)
-  if (state.networkWeak || isAppleMobile()) {
+  // iOS 上仍然跳过运行时探测，避免 WebKit 中临时 Audio 元素带来额外内存压力。
+  if (isAppleMobile()) {
     // Still report cached durations (for episodes without JSON duration)
     episodes.forEach((ep, idx) => {
       if (ep.duration) return; // already in JSON — no need to probe
@@ -153,8 +151,6 @@ export function probeDurations(episodes, onDuration) {
   let qi = 0;
 
   function getMaxConcurrent() {
-    // On cellular, always limit to 1 probe to save data
-    if (getConnType() === 'cellular') return MAX_CONCURRENT_PLAYING;
     // If audio is playing, use lower concurrency to preserve bandwidth
     const audioEl = document.querySelector('#audioEl');
     if (audioEl && !audioEl.paused && audioEl.src) return MAX_CONCURRENT_PLAYING;
@@ -163,8 +159,6 @@ export function probeDurations(episodes, onDuration) {
 
   function next() {
     if (aborted) return;
-    // Re-check network state each iteration
-    if (state.networkWeak) return;
     const maxC = getMaxConcurrent();
     while (running < maxC && qi < queue.length) {
       const idx = queue[qi++];

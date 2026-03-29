@@ -7,9 +7,9 @@ import { playList, togglePlay, isCurrentTrack, getIsSwitching, markAppreciated, 
 import { renderHomePage } from './pages-home.js';
 import { getHistory } from './history.js';
 import { getPlayCount, appreciate } from './api.js';
-import { showToast, escapeHtml, showFloatText, fmtCount, fmtDuration, isAppleMobile } from './utils.js';
+import { showToast, escapeHtml, showFloatText, fmtCount, fmtDuration } from './utils.js';
 import { getBatchCachedStatus } from './audio-cache.js';
-import { getTrackWithCachedAudioMeta, primeAudioMetadata } from './audio-meta-cache.js';
+import { getTrackWithCachedAudioMeta } from './audio-meta-cache.js';
 import { mountSummary } from './ai-summary.js';
 import { probeDurations, getCachedDuration } from './duration-cache.js';
 import { warmAudioUrl } from './audio-url.js';
@@ -21,14 +21,6 @@ import { getPlaybackPolicy } from './playback-policy.js';
 const _isInApp = isInAppBrowser();
 const CATEGORY_PREVIEW_COUNT = _isInApp ? 8 : 10;
 const categoryExpansionState = new Map();
-
-function getConnTypeForWarmup() {
-  const conn = navigator.connection || navigator.mozConnection;
-  if (!conn) return 'unknown';
-  if (conn.type === 'wifi' || conn.type === 'ethernet') return 'wifi';
-  if (conn.type === 'cellular') return 'cellular';
-  return 'unknown';
-}
 
 function getTextOrFallback(key, fallback) {
   const value = t(key);
@@ -158,22 +150,8 @@ function warmLikelyEpisodeAudio(series) {
   const targetEpisode = series.episodes[targetIdx] || series.episodes[0];
   if (!targetEpisode?.url) return;
   const episodeForPolicy = getTrackWithCachedAudioMeta(targetEpisode);
-  const conn = navigator.connection || navigator.mozConnection;
-  const policy = getPlaybackPolicy({
-    track: episodeForPolicy,
-    isApple: isAppleMobile(),
-    isInApp: _isInApp,
-    online: navigator.onLine,
-    connectionType: getConnTypeForWarmup(),
-    effectiveType: conn?.effectiveType,
-    saveData: !!conn?.saveData,
-    networkWeak: !!state.networkWeak,
-  });
-  if (!policy.allowNextTrackWarmup || policy.profile.mediaClass === 'large') return;
-  if (policy.profile.mediaClass === 'unknown') {
-    primeAudioMetadata(targetEpisode).catch(() => { });
-    return;
-  }
+  const policy = getPlaybackPolicy({ track: episodeForPolicy });
+  if (!policy.shouldWarmCurrentWindow) return;
   warmAudioUrl(targetEpisode.url);
 }
 
