@@ -244,114 +244,40 @@ function getLastPlayedEnd(audio) {
 }
 
 /**
- * iOS 幽灵播放恢复：当检测到 currentTime 在推进但 played 时间段停滞时，
- * 强制重置音频元素并从真实播放位置恢复。
+ * 共享卡顿恢复逻辑：幽灵播放和普通卡顿共用。
+ * @param {number} safePosition - 恢复播放的安全位置
+ * @param {boolean} fullReset - 是否完全重置音频元素（幽灵播放需要）
  */
-function onGhostPlaybackDetected(safePosition) {
+function _recoverAudio(safePosition, fullReset) {
   const dom = getDOM();
   stallRetries++;
-  console.warn(`[Player] Ghost playback recovery ${stallRetries}/${MAX_STALL_RETRIES} — resuming from ${safePosition.toFixed(1)}s`);
-
   setNetworkWeak(true);
   cleanupPreload();
-  _isRecovering = true; // ✅ 防止pause事件在恢复期间改变播放状态
+  _isRecovering = true;
 
-  if (stallRetries <= MAX_STALL_RETRIES) {
-    const src = dom.audio.src;
-    const recoveryCallId = _playCurrentId;
-    setBuffering(true);
-
-    if (stallRetries >= 2) {
-      showToast(t('error_stall'));
-    }
-
-    // 完全重置音频元素（不仅仅是 src = src），确保清除损坏的 iOS 音频会话
-    dom.audio.pause();
-    dom.audio.removeAttribute('src');
-    dom.audio.load();
-
-    // 短暂延迟后重新加载，让 iOS 完成会话清理
-    setTimeout(() => {
-      if (recoveryCallId !== _playCurrentId) { finishRecovery(); return; }
-      dom.audio.src = src;
-      dom.audio.load();
-      dom.audio.addEventListener('loadeddata', function onLoad() {
-        dom.audio.removeEventListener('loadeddata', onLoad);
-        if (recoveryCallId !== _playCurrentId) { finishRecovery(); return; }
-        if (safePosition > 0) dom.audio.currentTime = safePosition;
-        if (_userPaused) {
-          finishRecovery();
-          setBuffering(false);
-          setPlayState(false);
-          return;
-        }
-        dom.audio.play().then(() => {
-          finishRecovery();
-          setBuffering(false);
-          startStallWatch();
-        }).catch(() => {
-          finishRecovery();
-          setBuffering(false);
-          setErrorState(t('error_stall_tap'));
-          setPlayState(false);
-        });
-      }, { once: true });
-
-      setTimeout(() => {
-        if (recoveryCallId !== _playCurrentId) {
-          finishRecovery();
-          return;
-        }
-        if (dom.audio.paused && !dom.audio.ended) {
-          finishRecovery();
-          setBuffering(false);
-          if (!_userPaused) setErrorState(t('error_stall_tap'));
-          setPlayState(false);
-        }
-      }, 20000);
-    }, 100);
-  } else {
+  if (stallRetries > MAX_STALL_RETRIES) {
     finishRecovery();
     setBuffering(false);
     dom.audio.pause();
     setPlayState(false);
     setErrorState(t('error_stall_tap'));
     showToast(t('error_stall'));
+    return;
   }
-}
 
-// Called when audio stalls mid-playback (large files on R2 CDN)
-function onStallDetected() {
-  const dom = getDOM();
-  if (!dom.audio.src || dom.audio.paused || dom.audio.ended) return;
+  const src = dom.audio.src;
+  const recoveryCallId = _playCurrentId;
+  setBuffering(true);
+  if (stallRetries >= 2) showToast(t('error_stall'));
 
-  stallRetries++;
-  console.warn(`[Player] Stall detected, auto-retry ${stallRetries}/${MAX_STALL_RETRIES}`);
-
-  // Mark network as weak — this pauses preloading and reduces duration probe concurrency
-  setNetworkWeak(true);
-  cleanupPreload();
-  _isRecovering = true; // ✅ 防止pause事件在恢复期间改变播放状态
-
-  if (stallRetries <= MAX_STALL_RETRIES) {
-    // Auto-recover: save position, reload, and resume
-    const currentTime = dom.audio.currentTime;
-    const src = dom.audio.src;
-    const recoveryCallId = _playCurrentId; // ✅ 修复：用 callId 防护恢复回调在新曲目上误触发
-    setBuffering(true);
-
-    if (stallRetries >= 2) {
-      showToast(t('error_stall'));
-    }
-
-    // Reload audio from current position
+  function doReload() {
+    if (recoveryCallId !== _playCurrentId) { finishRecovery(); return; }
     dom.audio.src = src;
     dom.audio.load();
     dom.audio.addEventListener('loadeddata', function onLoad() {
       dom.audio.removeEventListener('loadeddata', onLoad);
       if (recoveryCallId !== _playCurrentId) { finishRecovery(); return; }
-      if (currentTime > 0) dom.audio.currentTime = currentTime;
-      // Guard: if user explicitly paused during this recovery, do NOT auto-resume
+      if (safePosition > 0) dom.audio.currentTime = safePosition;
       if (_userPaused) {
         finishRecovery();
         setBuffering(false);
@@ -361,7 +287,7 @@ function onStallDetected() {
       dom.audio.play().then(() => {
         finishRecovery();
         setBuffering(false);
-        startStallWatch(); // Resume stall detection after successful recovery
+        startStallWatch();
       }).catch(() => {
         finishRecovery();
         setBuffering(false);
@@ -370,12 +296,9 @@ function onStallDetected() {
       });
     }, { once: true });
 
-    // Timeout for this recovery attempt
+    // 20秒超时保护
     setTimeout(() => {
-      if (recoveryCallId !== _playCurrentId) {
-        finishRecovery();
-        return;
-      }
+      if (recoveryCallId !== _playCurrentId) { finishRecovery(); return; }
       if (dom.audio.paused && !dom.audio.ended) {
         finishRecovery();
         setBuffering(false);
@@ -383,13 +306,34 @@ function onStallDetected() {
         setPlayState(false);
       }
     }, 20000);
-  } else {
-    // Exhausted retries — show persistent error
-    finishRecovery();
-    setBuffering(false);
-    setErrorState(t('error_stall_tap'));
-    setPlayState(false);
   }
+
+  if (fullReset) {
+    // 幽灵播放需要完全重置音频元素，清除损坏的 iOS 音频会话
+    dom.audio.pause();
+    dom.audio.removeAttribute('src');
+    dom.audio.load();
+    setTimeout(doReload, 100);
+  } else {
+    doReload();
+  }
+}
+
+/**
+ * iOS 幽灵播放恢复：当检测到 currentTime 在推进但 played 时间段停滞时，
+ * 强制重置音频元素并从真实播放位置恢复。
+ */
+function onGhostPlaybackDetected(safePosition) {
+  console.warn(`[Player] Ghost playback recovery ${stallRetries + 1}/${MAX_STALL_RETRIES} — resuming from ${safePosition.toFixed(1)}s`);
+  _recoverAudio(safePosition, true);
+}
+
+// Called when audio stalls mid-playback (large files on R2 CDN)
+function onStallDetected() {
+  const dom = getDOM();
+  if (!dom.audio.src || dom.audio.paused || dom.audio.ended) return;
+  console.warn(`[Player] Stall detected, auto-retry ${stallRetries + 1}/${MAX_STALL_RETRIES}`);
+  _recoverAudio(dom.audio.currentTime, false);
 }
 
 export function startStallWatch() {
@@ -616,6 +560,36 @@ function cancelPendingTrackLoad() {
   renderPlaylistItems();
 }
 
+/** 计算本次播放的起始位置：pendingSeek > 历史续播位置 > 0 */
+function _computeSeekTime(tr) {
+  if (pendingSeek > 0) {
+    const t = pendingSeek;
+    pendingSeek = 0;
+    return t;
+  }
+  pendingSeek = 0;
+  const hist = getHistory();
+  const histEntry = hist.find(h => h.seriesId === tr.seriesId && h.epIdx === state.epIdx);
+  if (histEntry && histEntry.time > 5 && (!histEntry.duration || histEntry.time < histEntry.duration - 5)) {
+    return histEntry.time;
+  }
+  return 0;
+}
+
+/** 异步延迟加载点赞计数，不阻塞播放 */
+function _loadAppreciateCountAsync(seriesId) {
+  const loadCount = () => {
+    getAppreciateCount(seriesId).then(data => {
+      if (data && data.total != null) updateAppreciateBtn(seriesId, data.total);
+    });
+  };
+  if ('requestIdleCallback' in window) {
+    requestIdleCallback(loadCount, { timeout: 2000 });
+  } else {
+    setTimeout(loadCount, 500);
+  }
+}
+
 function playCurrent() {
   const dom = getDOM();
   if (state.epIdx < 0 || state.epIdx >= state.playlist.length) return;
@@ -663,15 +637,7 @@ function playCurrent() {
   }
 
   // ✅ Fix 3: Compute seek time — pendingSeek > history resume > 0
-  let seekTime = pendingSeek > 0 ? pendingSeek : 0;
-  pendingSeek = 0;
-  if (seekTime === 0) {
-    const hist = getHistory();
-    const histEntry = hist.find(h => h.seriesId === tr.seriesId && h.epIdx === state.epIdx);
-    if (histEntry && histEntry.time > 5 && (!histEntry.duration || histEntry.time < histEntry.duration - 5)) {
-      seekTime = histEntry.time;
-    }
-  }
+  let seekTime = _computeSeekTime(tr);
 
   // ✅ 优化：添加超时保护，防止isSwitching卡住（预加载时缩短到1.5秒）
   const switchTimeout = usePreloaded ? 1500 : 8000;
@@ -807,23 +773,7 @@ function playCurrent() {
   highlightEp();
   updateMediaSession(tr);
   updateAppreciateBtn(tr.seriesId); // Reset badge first (no count yet)
-
-  // ✅ 优化：延迟加载点赞计数，避免阻塞播放启动
-  // 使用 requestIdleCallback 在浏览器空闲时加载，或2秒后强制加载
-  if ('requestIdleCallback' in window) {
-    requestIdleCallback(() => {
-      getAppreciateCount(tr.seriesId).then(data => {
-        if (data && data.total != null) updateAppreciateBtn(tr.seriesId, data.total);
-      });
-    }, { timeout: 2000 });
-  } else {
-    // 降级方案：延迟500ms后加载
-    setTimeout(() => {
-      getAppreciateCount(tr.seriesId).then(data => {
-        if (data && data.total != null) updateAppreciateBtn(tr.seriesId, data.total);
-      });
-    }, 500);
-  }
+  _loadAppreciateCountAsync(tr.seriesId);
 
   renderPlaylistItems();
   addHistory(tr, dom.audio);

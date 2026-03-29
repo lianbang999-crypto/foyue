@@ -15,6 +15,77 @@ function highlight(text, query) {
   return safe.replace(new RegExp(`(${esc})`, 'gi'), '<mark class="search-hl">$1</mark>');
 }
 
+/* ===== 共享：音频搜索匹配 + 结果渲染 ===== */
+function _matchAudioQuery(q) {
+  const ql = q.toLowerCase();
+  const seriesResults = [];
+  const epResults = [];
+  state.data.categories.forEach(cat => {
+    cat.series.forEach(s => {
+      if (s.title.toLowerCase().includes(ql) || (s.titleEn || '').toLowerCase().includes(ql))
+        seriesResults.push({ series: s, catId: cat.id });
+      s.episodes.forEach((ep, idx) => {
+        if ((ep.title || ep.fileName || '').toLowerCase().includes(ql))
+          epResults.push({ series: s, ep, idx, catId: cat.id });
+      });
+    });
+  });
+  return { seriesResults, epResults };
+}
+
+function _buildAudioResultsDOM(q, seriesResults, epResults) {
+  const frag = document.createDocumentFragment();
+  const totalCount = seriesResults.length + epResults.length;
+  const label = document.createElement('div');
+  label.className = 'search-label';
+  label.textContent = `${t('search_results')} (${totalCount})`;
+  frag.appendChild(label);
+
+  if (seriesResults.length) {
+    const groupLabel = document.createElement('div');
+    groupLabel.className = 'search-group-label';
+    groupLabel.textContent = t('search_series') || '\u7CFB\u5217';
+    frag.appendChild(groupLabel);
+    const ul = document.createElement('ul');
+    ul.className = 'ep-list';
+    seriesResults.forEach(r => {
+      const li = document.createElement('li');
+      li.className = 'ep-item';
+      li.innerHTML = `<span class="ep-num" style="color:var(--accent)">\u2022</span><span class="ep-title">${highlight(r.series.title, q)} <small style="color:var(--text-muted)">(${r.series.totalEpisodes}${t('episodes')})</small></span>`;
+      li.addEventListener('click', () => {
+        closeSearchOverlay();
+        if (_showEpisodes) _showEpisodes(r.series, r.catId);
+      });
+      ul.appendChild(li);
+    });
+    frag.appendChild(ul);
+  }
+
+  if (epResults.length) {
+    const groupLabel = document.createElement('div');
+    groupLabel.className = 'search-group-label';
+    groupLabel.textContent = t('search_episodes') || '\u5355\u96C6';
+    frag.appendChild(groupLabel);
+    const ul = document.createElement('ul');
+    ul.className = 'ep-list';
+    epResults.slice(0, 50).forEach(r => {
+      const li = document.createElement('li');
+      li.className = 'ep-item';
+      li.innerHTML = `<span class="ep-num">${r.ep.id || r.idx + 1}</span><span class="ep-title">${highlight(r.ep.title || r.ep.fileName, q)} <small style="color:var(--text-muted)">\u00B7 ${escapeHtml(r.series.title)}</small></span>`;
+      li.addEventListener('click', () => {
+        closeSearchOverlay();
+        const hist = getHistory();
+        const hEntry = hist.find(h => h.seriesId === r.series.id && h.epIdx === r.idx);
+        playList(r.series.episodes, r.idx, r.series, hEntry ? hEntry.time : 0);
+      });
+      ul.appendChild(li);
+    });
+    frag.appendChild(ul);
+  }
+
+  return frag;
+}
+
 export function doSearch(q, showEpisodes, renderCategory, renderHomePage) {
   if (showEpisodes) _showEpisodes = showEpisodes;
   if (renderCategory) _renderCategory = renderCategory;
@@ -45,75 +116,17 @@ function doKeywordSearch(q, showEpisodes, renderCategory, renderHomePage) {
     return;
   }
   dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
-  const ql = q.toLowerCase();
-  const seriesResults = [];
-  const epResults = [];
-  state.data.categories.forEach(cat => {
-    cat.series.forEach(s => {
-      if (s.title.toLowerCase().includes(ql) || (s.titleEn || '').toLowerCase().includes(ql))
-        seriesResults.push({ series: s, catId: cat.id });
-      s.episodes.forEach((ep, idx) => {
-        if ((ep.title || ep.fileName || '').toLowerCase().includes(ql))
-          epResults.push({ series: s, ep, idx, catId: cat.id });
-      });
-    });
-  });
-  const totalCount = seriesResults.length + epResults.length;
+  const { seriesResults, epResults } = _matchAudioQuery(q);
   const wrap = document.createElement('div');
   wrap.className = 'view active';
 
-  if (!totalCount) {
+  if (!seriesResults.length && !epResults.length) {
     const noResult = document.createElement('div');
     noResult.className = 'loader-text';
     noResult.textContent = t('no_results');
     wrap.appendChild(noResult);
   } else {
-    const label = document.createElement('div');
-    label.className = 'search-label';
-    label.textContent = `${t('search_results')} (${totalCount})`;
-    wrap.appendChild(label);
-
-    if (seriesResults.length) {
-      const groupLabel = document.createElement('div');
-      groupLabel.className = 'search-group-label';
-      groupLabel.textContent = t('search_series') || '\u7CFB\u5217';
-      wrap.appendChild(groupLabel);
-      const ul = document.createElement('ul');
-      ul.className = 'ep-list';
-      seriesResults.forEach(r => {
-        const li = document.createElement('li');
-        li.className = 'ep-item';
-        li.innerHTML = `<span class="ep-num" style="color:var(--accent)">\u2022</span><span class="ep-title">${highlight(r.series.title, q)} <small style="color:var(--text-muted)">(${r.series.totalEpisodes}${t('episodes')})</small></span>`;
-        li.addEventListener('click', () => {
-          closeSearchOverlay();
-          if (_showEpisodes) _showEpisodes(r.series, r.catId);
-        });
-        ul.appendChild(li);
-      });
-      wrap.appendChild(ul);
-    }
-
-    if (epResults.length) {
-      const groupLabel = document.createElement('div');
-      groupLabel.className = 'search-group-label';
-      groupLabel.textContent = t('search_episodes') || '\u5355\u96C6';
-      wrap.appendChild(groupLabel);
-      const ul = document.createElement('ul');
-      ul.className = 'ep-list';
-      epResults.slice(0, 50).forEach(r => {
-        const li = document.createElement('li');
-        li.className = 'ep-item';
-        li.innerHTML = `<span class="ep-num">${r.ep.id || r.idx + 1}</span><span class="ep-title">${highlight(r.ep.title || r.ep.fileName, q)} <small style="color:var(--text-muted)">\u00B7 ${escapeHtml(r.series.title)}</small></span>`;
-        li.addEventListener('click', () => {
-          closeSearchOverlay();
-          const hist = getHistory();
-          const hEntry = hist.find(h => h.seriesId === r.series.id && h.epIdx === r.idx);
-          playList(r.series.episodes, r.idx, r.series, hEntry ? hEntry.time : 0);
-        });
-        ul.appendChild(li);
-      });
-      wrap.appendChild(ul);
-    }
+    wrap.appendChild(_buildAudioResultsDOM(q, seriesResults, epResults));
   }
   dom.contentArea.appendChild(wrap);
 }
@@ -254,72 +267,12 @@ function renderSearchResults(q, container) {
     return;
   }
 
-  const ql = q.toLowerCase();
-  const seriesResults = [];
-  const epResults = [];
-  state.data.categories.forEach(cat => {
-    cat.series.forEach(s => {
-      if (s.title.toLowerCase().includes(ql) || (s.titleEn || '').toLowerCase().includes(ql))
-        seriesResults.push({ series: s, catId: cat.id });
-      s.episodes.forEach((ep, idx) => {
-        if ((ep.title || ep.fileName || '').toLowerCase().includes(ql))
-          epResults.push({ series: s, ep, idx, catId: cat.id });
-      });
-    });
-  });
-
-  const totalCount = seriesResults.length + epResults.length;
-  if (!totalCount) {
+  const { seriesResults, epResults } = _matchAudioQuery(q);
+  if (!seriesResults.length && !epResults.length) {
     container.innerHTML = `<div class="search-overlay-hint">${t('no_results')}</div>`;
     return;
   }
-
-  const label = document.createElement('div');
-  label.className = 'search-label';
-  label.textContent = `${t('search_results')} (${totalCount})`;
-  container.appendChild(label);
-
-  if (seriesResults.length) {
-    const groupLabel = document.createElement('div');
-    groupLabel.className = 'search-group-label';
-    groupLabel.textContent = t('search_series') || '\u7CFB\u5217';
-    container.appendChild(groupLabel);
-    const ul = document.createElement('ul');
-    ul.className = 'ep-list';
-    seriesResults.forEach(r => {
-      const li = document.createElement('li');
-      li.className = 'ep-item';
-      li.innerHTML = `<span class="ep-num" style="color:var(--accent)">\u2022</span><span class="ep-title">${highlight(r.series.title, q)} <small style="color:var(--text-muted)">(${r.series.totalEpisodes}${t('episodes')})</small></span>`;
-      li.addEventListener('click', () => {
-        closeSearchOverlay();
-        if (_showEpisodes) _showEpisodes(r.series, r.catId);
-      });
-      ul.appendChild(li);
-    });
-    container.appendChild(ul);
-  }
-
-  if (epResults.length) {
-    const groupLabel = document.createElement('div');
-    groupLabel.className = 'search-group-label';
-    groupLabel.textContent = t('search_episodes') || '\u5355\u96C6';
-    container.appendChild(groupLabel);
-    const ul = document.createElement('ul');
-    ul.className = 'ep-list';
-    epResults.slice(0, 50).forEach(r => {
-      const li = document.createElement('li');
-      li.className = 'ep-item';
-      li.innerHTML = `<span class="ep-num">${r.ep.id || r.idx + 1}</span><span class="ep-title">${highlight(r.ep.title || r.ep.fileName, q)} <small style="color:var(--text-muted)">\u00B7 ${escapeHtml(r.series.title)}</small></span>`;
-      li.addEventListener('click', () => {
-        closeSearchOverlay();
-        const hist = getHistory();
-        const hEntry = hist.find(h => h.seriesId === r.series.id && h.epIdx === r.idx);
-        playList(r.series.episodes, r.idx, r.series, hEntry ? hEntry.time : 0);
-      });
-      ul.appendChild(li);
-    });
-    container.appendChild(ul);
-  }
+  container.appendChild(_buildAudioResultsDOM(q, seriesResults, epResults));
 }
 
 /* ===== Wenku semantic search results ===== */
