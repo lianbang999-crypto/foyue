@@ -20,6 +20,7 @@ export default defineConfig({
         ai: resolve(__dirname, 'ai.html'),
         wenku: resolve(__dirname, 'wenku.html'),
         nianfo: resolve(__dirname, 'nianfo.html'),
+        gongxiu: resolve(__dirname, 'gongxiu.html'),
       },
       output: {
         manualChunks: {

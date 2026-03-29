@@ -1,9 +1,22 @@
 const fs = require('fs');
 
-['src/js/dom.js', 'src/js/player.js', 'src/js/main.js'].forEach(file => {
-  let content = fs.readFileSync(file, 'utf-8');
-  // Remove lines containing centerPlayBtn, centerPlayIcon, centerRingFill
-  content = content.split('\n').filter(line => !/centerPlayBtn/.test(line) && !/centerPlayIcon/.test(line) && !/centerRingFill/.test(line)).join('\n');
-  fs.writeFileSync(file, content);
-});
-console.log('JS cleaned!');
+const jsPath = 'src/js/counter.js';
+let js = fs.readFileSync(jsPath, 'utf8');
+
+js = js.replace(
+`    const doCount = (cx, cy) => {
+      spawnRipple(cx, cy);
+      doCountCore();
+    };`,
+`    const doCount = (cx, cy) => {
+      if (navigator.vibrate) {
+        // 轻微触觉反馈
+        navigator.vibrate([15]);
+      }
+      spawnRipple(cx, cy);
+      doCountCore();
+    };`
+);
+
+fs.writeFileSync(jsPath, js);
+console.log('JS modified');

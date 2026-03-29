@@ -209,17 +209,6 @@
         </svg>
         <span data-i18n="tab_audiobooks">有声书</span>
       </button>
-      <div class="tab-center" id="tabCenter">
-        <button class="center-play-btn" id="centerPlayBtn" aria-label="Play">
-          <svg class="progress-ring" width="56" height="56" viewBox="0 0 56 56">
-            <circle class="progress-ring-bg" cx="28" cy="28" r="25" />
-            <circle class="progress-ring-fill" id="centerRingFill" cx="28" cy="28" r="25" />
-          </svg>
-          <svg class="center-play-icon" id="centerPlayIcon" width="22" height="22" viewBox="0 0 24 24">
-            <polygon points="8,4 20,12 8,20" />
-          </svg>
-        </button>
-      </div>
       <button class="tab" role="tab" data-tab="tingjingtai" aria-selected="false" aria-controls="contentArea">
         <svg class="tab-icon" width="24" height="24" viewBox="0 0 24 24">
           <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
@@ -265,19 +254,17 @@
         <div class="player-ctrls">
           <button class="ctrl" id="btnPrev" aria-label="Previous">
             <svg width="20" height="20" viewBox="0 0 24 24">
-              <polygon points="19,20 9,12 19,4" fill="currentColor" stroke="none" />
-              <line x1="5" y1="4" x2="5" y2="20" stroke-width="2" />
+              <path d="M19 20L9 12l10-8v16zM5 4v16" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
             </svg>
           </button>
           <button class="ctrl ctrl-play" id="btnPlay" aria-label="Play">
             <svg width="20" height="20" viewBox="0 0 24 24" id="playIcon">
-              <polygon points="6,3 20,12 6,21" />
+              <path d="M7 4v16l13-8z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
             </svg>
           </button>
           <button class="ctrl" id="btnNext" aria-label="Next">
             <svg width="20" height="20" viewBox="0 0 24 24">
-              <polygon points="5,4 15,12 5,20" fill="currentColor" stroke="none" />
-              <line x1="19" y1="4" x2="19" y2="20" stroke-width="2" />
+              <path d="M5 4v16l10-8L5 4zM19 4v16" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
             </svg>
           </button>
         </div>
@@ -380,20 +367,18 @@
             <span class="skip-label">15</span>
           </button>
           <button class="ctrl" id="expPrev" aria-label="Previous">
-            <svg width="20" height="20" viewBox="0 0 24 24">
-              <polygon points="19,20 9,12 19,4" fill="currentColor" stroke="none" />
-              <line x1="5" y1="4" x2="5" y2="20" stroke-width="2" />
+            <svg width="24" height="24" viewBox="0 0 24 24">
+              <path d="M19 20L9 12l10-8v16zM5 4v16" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
             </svg>
           </button>
           <button class="ctrl ctrl-play" id="expPlay" aria-label="Play">
-            <svg width="20" height="20" viewBox="0 0 24 24" id="expPlayIcon">
-              <polygon points="6,3 20,12 6,21" />
+            <svg width="24" height="24" viewBox="0 0 24 24" id="expPlayIcon">
+              <path d="M7 4v16l13-8z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
             </svg>
           </button>
           <button class="ctrl" id="expNext" aria-label="Next">
-            <svg width="20" height="20" viewBox="0 0 24 24">
-              <polygon points="5,4 15,12 5,20" fill="currentColor" stroke="none" />
-              <line x1="19" y1="4" x2="19" y2="20" stroke-width="2" />
+            <svg width="24" height="24" viewBox="0 0 24 24">
+              <path d="M5 4v16l10-8L5 4zM19 4v16" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
             </svg>
           </button>
           <button class="ctrl ctrl-skip" id="expSkipFwd" aria-label="Forward 15s">

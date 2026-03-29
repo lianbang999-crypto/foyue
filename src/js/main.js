@@ -885,7 +885,10 @@ async function ensureSeriesDetail(seriesId, categoryId) {
       if (c.effectiveType === '4g') {
         setNetworkWeak(false);
       }
-      if (dom.audio.src && !dom.audio.paused) preloadNextTrack();
+      const remaining = dom.audio.duration - dom.audio.currentTime;
+      if (dom.audio.src && !dom.audio.paused && Number.isFinite(remaining) && remaining <= 20) {
+        preloadNextTrack();
+      }
       tryNetworkRecovery();
     });
   }

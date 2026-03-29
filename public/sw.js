@@ -9,6 +9,8 @@ const AUDIO_CACHE = 'audio-v2';
 /* App-shell files to pre-cache on install */
 const APP_SHELL = [
   '/',
+  '/nianfo',
+  '/gongxiu',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png',

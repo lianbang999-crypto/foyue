@@ -90,6 +90,13 @@
     <priority>0.6</priority>
   </url>
 
+  <!-- Series: 西方发愿文 — 大安法师 · 4集 -->
+  <url>
+    <loc>https://foyue.org/?series=xifang-fayuanwen</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+
   <!-- ===== Category: 佛号 (Buddha's Name Chanting) ===== -->
   <!-- Series: 东林佛号 — 东林寺 · 7集 -->
   <url>
@@ -124,6 +131,20 @@
     <loc>https://foyue.org/?series=daanfashi-jiangushi</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
+  </url>
+
+  <!-- Series: 经典读诵专辑 · 3集 -->
+  <url>
+    <loc>https://foyue.org/?series=jingdiandusong-zhuanji</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+
+  <!-- Series: 万善先资 · 47集 -->
+  <url>
+    <loc>https://foyue.org/?series=wanshan-xianzi</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
   </url>
 
   <!-- ===== Category: 经典读诵 (Classic Recitations) ===== -->

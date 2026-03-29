@@ -16,8 +16,8 @@ function fmtRelTime(ts) {
 
 function buildHistItem(item, index) {
   const pct = item.duration > 0 ? Math.round(item.time / item.duration * 100) : 0;
-  return '<div class="my-history-item" data-hid="' + index + '">'
-    + '<div class="my-history-icon"><svg viewBox="0 0 24 24"><polygon points="8,4 20,12 8,20"/></svg></div>'
+  return '<div class="my-history-item glass-panel" data-hid="' + index + '">'
+    + '<div class="my-history-item-icon"><svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg></div>'
     + '<div class="my-history-body">'
     + '<div class="my-history-title">' + escapeHtml(item.seriesTitle) + '</div>'
     + '<div class="my-history-sub">' + escapeHtml(item.epTitle) + ' · ' + fmtRelTime(item.timestamp) + '</div>'

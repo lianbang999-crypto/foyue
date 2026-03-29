@@ -196,17 +196,7 @@
     color: var(--accent)
 }
 
-.my-history-item {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 16px 20px;
-    background: transparent;
-    cursor: pointer;
-    transition: background .15s;
-    min-height: 48px;
-    border-bottom: 1px solid var(--border);
-}
+
 
 .my-list .my-history-item:last-child {
     border-bottom: none;
@@ -216,17 +206,7 @@
     background: var(--bg-card-hover);
 }
 
-.my-history-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-card) 100%);
-    box-shadow: inset 0 0 0 1px var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
+
 
 .my-history-icon svg {
     width: 14px;
