@@ -20,6 +20,7 @@ init();
 
 function init() {
     wireContentClicks();
+    wireHomeShare();
     const params = new URLSearchParams(location.search);
     const docId = params.get('doc');
     const series = params.get('series');
@@ -258,6 +259,12 @@ function wireContentClicks() {
     wkContent.addEventListener('click', handleContentClick);
 }
 
+function wireHomeShare() {
+    document.getElementById('wkShareBtn')?.addEventListener('click', () => {
+        shareUrl('法音文库 · 净土讲记文稿', location.href);
+    });
+}
+
 function handleContentClick(e) {
     const el = e.target.closest('[data-action]');
     if (!el) return;
@@ -288,6 +295,9 @@ async function openReader(docId, highlightQuery, skipPush) {
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,18 9,12 15,6"/></svg>
       </button>
       <span class="wk-reader-topbar-title" id="readerTopTitle"></span>
+      <button class="wk-reader-btn" id="readerShareBtn" title="分享">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+      </button>
       <button class="wk-reader-btn" id="readerSettingsBtn">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2m-9-11h2m18 0h2m-4.22-5.78 1.42-1.42M4.22 19.78l1.42-1.42M19.78 19.78l-1.42-1.42M4.22 4.22l1.42 1.42"/></svg>
       </button>
@@ -308,6 +318,7 @@ async function openReader(docId, highlightQuery, skipPush) {
         <div class="wk-settings-group">
           <button class="wk-settings-btn ${settings.fontFamily === 'sans' ? 'active' : ''}" data-font="sans">黑体</button>
           <button class="wk-settings-btn ${settings.fontFamily === 'serif' ? 'active' : ''}" data-font="serif">宋体</button>
+          <button class="wk-settings-btn ${settings.fontFamily === 'kai' ? 'active' : ''}" data-font="kai">楷体</button>
         </div>
       </div>
       <div class="wk-settings-row">
@@ -316,6 +327,7 @@ async function openReader(docId, highlightQuery, skipPush) {
           <span class="wk-mode-dot ${settings.mode === 'light' ? 'active' : ''}" data-mode="light"></span>
           <span class="wk-mode-dot ${settings.mode === 'sepia' ? 'active' : ''}" data-mode="sepia"></span>
           <span class="wk-mode-dot ${settings.mode === 'dark' ? 'active' : ''}" data-mode="dark"></span>
+          <span class="wk-mode-dot ${settings.mode === 'eink' ? 'active' : ''}" data-mode="eink"></span>
         </div>
       </div>
     </div>`;
@@ -378,6 +390,7 @@ async function openReader(docId, highlightQuery, skipPush) {
     wireReaderScroll(scroll, docId);
     wireReaderSettings(settings);
     wireReaderNext(scroll);
+    wireReaderShare();
 
     // Preload next
     if (data.nextId) getWenkuDocument(data.nextId);
@@ -473,6 +486,15 @@ function wireReaderNext(scroll) {
     });
 }
 
+function wireReaderShare() {
+    wkReader.querySelector('#readerShareBtn')?.addEventListener('click', () => {
+        if (!_readerState) return;
+        const title = _readerState.title + (_readerState.series ? ' — ' + _readerState.series : '');
+        const url = location.href;
+        shareUrl(title, url);
+    });
+}
+
 /* ================================================================
    工具函数
    ================================================================ */
@@ -484,8 +506,12 @@ function esc(s) {
 }
 
 function textToHtml(text) {
-    if (!text) return '';
-    return text.split(/\n{2,}/).map(p => `<p>${esc(p.trim())}</p>`).join('');
+    if (!text) return '<p></p>';
+    return text
+        .split(/\n\n+/)
+        .filter(p => p.trim())
+        .map(p => `<p>${esc(p.trim()).replace(/\n/g, '<br>')}</p>`)
+        .join('');
 }
 
 function highlightText(query) {
@@ -534,4 +560,34 @@ function emptyState(isError, retryFn) {
         document.getElementById(id)?.addEventListener('click', () => retryFn());
     }, 0);
     return `<div class="wk-empty"><p>加载失败</p><button class="wk-retry-btn" id="${id}">重试</button></div>`;
+}
+
+/* --- 分享 --- */
+function shareUrl(title, url) {
+    if (navigator.share) {
+        navigator.share({ title, url }).catch(err => {
+            if (err.name === 'AbortError') return;
+            copyToClipboard(title + '\n' + url);
+        });
+        return;
+    }
+    copyToClipboard(title + '\n' + url);
+}
+
+function copyToClipboard(text) {
+    if (!navigator.clipboard) return;
+    navigator.clipboard.writeText(text).then(() => showWkToast('链接已复制')).catch(() => {});
+}
+
+function showWkToast(msg) {
+    let el = document.querySelector('.wk-toast');
+    if (!el) {
+        el = document.createElement('div');
+        el.className = 'wk-toast';
+        document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.style.opacity = '1';
+    clearTimeout(el._timer);
+    el._timer = setTimeout(() => { el.style.opacity = '0'; }, 2000);
 }

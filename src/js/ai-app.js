@@ -84,6 +84,20 @@ function wireEvents() {
         renderWelcomeOrHistory();
     });
 
+    // 分享
+    document.getElementById('btnShare')?.addEventListener('click', () => {
+        const title = '法音AI · 净土智慧问答';
+        const url = location.href;
+        if (navigator.share) {
+            navigator.share({ title, url }).catch(err => {
+                if (err.name === 'AbortError') return;
+                _aiCopy(title + '\n' + url);
+            });
+        } else {
+            _aiCopy(title + '\n' + url);
+        }
+    });
+
     // 推荐问题点击（事件委托）
     chatArea.addEventListener('click', (e) => {
         const chip = e.target.closest('.ai-suggest-chip');
@@ -421,4 +435,23 @@ function persistHistory() {
     try {
         localStorage.setItem(LS_KEY, JSON.stringify(chatHistory.slice(-MAX_PERSIST)));
     } catch { /* quota exceeded */ }
+}
+
+/* --- 分享工具 --- */
+function _aiCopy(text) {
+    if (!navigator.clipboard) return;
+    navigator.clipboard.writeText(text).then(() => showAiToast('链接已复制')).catch(() => {});
+}
+
+function showAiToast(msg) {
+    let el = document.querySelector('.ai-toast');
+    if (!el) {
+        el = document.createElement('div');
+        el.className = 'ai-toast';
+        document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.style.opacity = '1';
+    clearTimeout(el._timer);
+    el._timer = setTimeout(() => { el.style.opacity = '0'; }, 2000);
 }
