@@ -59,15 +59,15 @@ body {
     color: var(--ai-text);
     line-height: 1.6;
     overflow: hidden;
-    height: 100dvh;
-    height: 100vh;
+    min-height: 100vh;
+    min-height: 100dvh;
 }
 
 #ai-app {
     display: flex;
     flex-direction: column;
-    height: 100dvh;
-    height: 100vh;
+    min-height: 100vh;
+    min-height: 100dvh;
     max-width: 720px;
     margin: 0 auto;
 }
