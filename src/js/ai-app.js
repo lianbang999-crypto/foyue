@@ -31,11 +31,30 @@ function init() {
 
 /* --- 主题同步 --- */
 function syncTheme() {
+    const applyTheme = (isDark) => {
+        document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    };
+
+    if (typeof window.matchMedia !== 'function') {
+        applyTheme(false);
+        return;
+    }
+
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    document.documentElement.setAttribute('data-theme', mq.matches ? 'dark' : 'light');
-    mq.addEventListener('change', (e) => {
-        document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
-    });
+    applyTheme(mq.matches);
+
+    const handleChange = (e) => {
+        applyTheme(e.matches);
+    };
+
+    if (typeof mq.addEventListener === 'function') {
+        mq.addEventListener('change', handleChange);
+        return;
+    }
+
+    if (typeof mq.addListener === 'function') {
+        mq.addListener(handleChange);
+    }
 }
 
 /* --- 事件绑定 --- */

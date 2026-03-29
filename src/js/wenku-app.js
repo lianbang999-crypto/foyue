@@ -19,6 +19,7 @@ let currentView = 'home'; // 'home' | 'series' | 'reader'
 init();
 
 function init() {
+    wireContentClicks();
     const params = new URLSearchParams(location.search);
     const docId = params.get('doc');
     const series = params.get('series');
@@ -131,6 +132,7 @@ function persistSettings(s) {
 async function renderHome(skipPush) {
     currentView = 'home';
     if (!skipPush) history.pushState({}, '', '/wenku');
+    resetHeader();
     wkContent.innerHTML = skeleton(4);
 
     let data;
@@ -189,7 +191,6 @@ async function renderHome(skipPush) {
     html += '</div>';
 
     wkContent.innerHTML = html;
-    wireContentClicks();
 }
 
 /* ================================================================
@@ -228,7 +229,6 @@ async function renderSeries(seriesName, skipPush) {
     html += '</div>';
 
     wkContent.innerHTML = html;
-    wireContentClicks();
 }
 
 /* 更新顶栏为带返回按钮的样式 */
@@ -253,13 +253,17 @@ function resetHeader() {
 
 /* 内容区域点击事件委托 */
 function wireContentClicks() {
-    wkContent.addEventListener('click', (e) => {
-        const el = e.target.closest('[data-action]');
-        if (!el) return;
-        const action = el.dataset.action;
-        if (action === 'series') renderSeries(el.dataset.series);
-        else if (action === 'read') openReader(el.dataset.doc);
-    }, { once: false });
+    if (wkContent.dataset.bound === 'true') return;
+    wkContent.dataset.bound = 'true';
+    wkContent.addEventListener('click', handleContentClick);
+}
+
+function handleContentClick(e) {
+    const el = e.target.closest('[data-action]');
+    if (!el) return;
+    const action = el.dataset.action;
+    if (action === 'series') renderSeries(el.dataset.series);
+    else if (action === 'read') openReader(el.dataset.doc);
 }
 
 /* ================================================================
