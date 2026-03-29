@@ -400,7 +400,21 @@ function wireCounterEvents(view, data, _session) {
   };
 
   /* ── Full UI update (settings change, loop complete, goal done, reset) ── */
-  function updateUI(bump = false) {
+  function updateUI(data, view) {
+    const dimmerBtn = view.querySelector('#counterDimmerToggle');
+    if(dimmerBtn) isDimmerEnabled() ? dimmerBtn.classList.add('is-active') : dimmerBtn.classList.remove('is-active');
+
+    const muyuBtn = view.querySelector('#counterMuyuToggle');
+    if(muyuBtn) isMuyuEnabled() ? muyuBtn.classList.add('is-active') : muyuBtn.classList.remove('is-active');
+
+    
+
+    
+
+    
+
+    
+
     const ps = getPracticeStats(data);
     const beadPos = ps.total % BEADS_PER_LOOP;
     const circum = Math.round(2 * Math.PI * 88);
