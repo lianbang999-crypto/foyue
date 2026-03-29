@@ -1,6 +1,6 @@
 /* ===== Unified App Store ===== */
 /* Single localStorage key ('foyue_store') manages all lightweight persisted data.
- * Structure: { player, history, durations, appreciated, cachedUrls, ... }
+ * Structure: { player, history, durations, audioMeta, appreciated, cachedUrls, ... }
  * All modules should import from this file instead of touching localStorage directly.
  */
 
@@ -11,6 +11,7 @@ const _defaults = () => ({
   player:     { seriesId: null, epIdx: 0, time: 0, speed: 1, loop: 'all' },
   history:    [],
   durations:  {},
+  audioMeta:  {},
   appreciated: [],
   cachedUrls: [],
   profile: {
@@ -191,7 +192,7 @@ function _scheduleSave() {
 
 /**
  * Get a top-level section of the store.
- * @param {string} key  e.g. 'player' | 'history' | 'durations' | 'appreciated' | 'cachedUrls'
+ * @param {string} key  e.g. 'player' | 'history' | 'durations' | 'audioMeta' | 'appreciated' | 'cachedUrls'
  * @returns {*}
  */
 export function get(key) {

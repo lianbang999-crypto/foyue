@@ -1,4 +1,4 @@
-const THEMES = ['light', 'dark', 'terracotta', 'ink'];
+const THEMES = ['light', 'dark'];
 let theme = 'light';
 
 export function getTheme() {
@@ -6,7 +6,7 @@ export function getTheme() {
 }
 
 export function isDark() {
-  return theme === 'dark' || theme === 'ink';
+  return theme === 'dark';
 }
 
 export function applyTheme() {
@@ -14,7 +14,7 @@ export function applyTheme() {
   document.documentElement.removeAttribute('data-color');
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) {
-    const colors = { light: '#FAF9F6', dark: '#0F0F0F', terracotta: '#F7F2EA', ink: '#0E0F14' };
+    const colors = { light: '#F9F8F6', dark: '#1D1D1D' };
     meta.content = colors[theme] || colors.light;
   }
   localStorage.setItem('pl-theme', theme);
@@ -36,8 +36,15 @@ export function initTheme() {
   // Migrate old color scheme setting
   const oldColor = localStorage.getItem('pl-color');
   if (oldColor === 'terracotta' && saved !== 'terracotta') {
-    theme = 'terracotta';
+    theme = 'light';
     localStorage.removeItem('pl-color');
+  } else if (oldColor === 'ink' && saved !== 'ink') {
+    theme = 'dark';
+    localStorage.removeItem('pl-color');
+  } else if (saved === 'terracotta') {
+    theme = 'light';
+  } else if (saved === 'ink') {
+    theme = 'dark';
   } else if (saved && THEMES.includes(saved)) {
     theme = saved;
   }

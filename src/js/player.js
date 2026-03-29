@@ -7,8 +7,10 @@ import { fmt, showToast, haptic, fmtCount, escapeHtml, shareContent, isAppleMobi
 import { addHistory, syncHistoryProgress, getHistory } from './history.js';
 import { recordPlay, getAppreciateCount } from './api.js';
 import { cacheAudio, getCachedAudioUrl, isAudioCached, isCachedSync } from './audio-cache.js';
+import { getTrackWithCachedAudioMeta, primeAudioMetadata } from './audio-meta-cache.js';
 import { warmAudioUrl } from './audio-url.js';
 import { isInAppBrowser } from './pwa.js';
+import { getPlaybackPolicy } from './playback-policy.js';
 import { get, set, patch, saveNow } from './store.js';
 
 /* ===== Playback State ===== */
@@ -593,7 +595,6 @@ function _loadAppreciateCountAsync(seriesId) {
 function playCurrent() {
   const dom = getDOM();
   if (state.epIdx < 0 || state.epIdx >= state.playlist.length) return;
-  const preferDirectPlayback = isAppleMobile() && navigator.onLine !== false;
   finishRecovery();
 
   // A new track is starting — clear any pending play lock from a previous togglePlay() call
@@ -617,7 +618,27 @@ function playCurrent() {
   clearErrorState();
   cleanupBgFetch(); // Cancel any in-progress background fetch for previous track
   const tr = state.playlist[state.epIdx];
+  const trackForPolicy = getTrackWithCachedAudioMeta(tr);
+  const conn = navigator.connection || navigator.mozConnection;
+  const policy = getPlaybackPolicy({
+    track: trackForPolicy,
+    isApple: isAppleMobile(),
+    isInApp: _isInAppBrowser,
+    online: navigator.onLine,
+    connectionType: getConnType(),
+    effectiveType: conn?.effectiveType,
+    saveData: !!conn?.saveData,
+    networkWeak: _networkWeak,
+  });
+  const preferDirectPlayback = policy.preferDirectPlayback;
   const callId = ++_playCurrentId; // unique ID for this invocation
+  primeAudioMetadata(tr).then(meta => {
+    if (!meta?.bytes) return;
+    if (callId !== _playCurrentId) return;
+    const activeTrack = state.playlist[state.epIdx];
+    if (!activeTrack || activeTrack.url !== tr.url) return;
+    startBgFullLoad(tr.url);
+  }).catch(() => { });
 
   // Remove any stale listeners from previous rapid switches
   cleanupReadyListeners(dom);
@@ -640,7 +661,7 @@ function playCurrent() {
   let seekTime = _computeSeekTime(tr);
 
   // ✅ 优化：添加超时保护，防止isSwitching卡住（预加载时缩短到1.5秒）
-  const switchTimeout = usePreloaded ? 1500 : 8000;
+  const switchTimeout = usePreloaded ? policy.preloadedSwitchTimeoutMs : policy.switchTimeoutMs;
   clearSwitchingTimeout();
   _switchingTimeoutId = setTimeout(() => {
     _switchingTimeoutId = null;
@@ -749,7 +770,7 @@ function playCurrent() {
 
   // iOS 上用户点击后的首个 play() 尽量保持在直连链路里，避免先异步取 Cache Blob
   // 把手势窗口耗掉，导致体感上“点了要等一会儿才出声”。离线时仍然回退缓存。
-  if (preferDirectPlayback || !isCachedSync(tr.url)) {
+  if (preferDirectPlayback || !policy.allowBlobCachePlayback || !isCachedSync(tr.url)) {
     revokeOldBlob(); // ✅ 直连路径：新源已确定，安全释放旧Blob
     doLoad(tr.url, usePreloaded);
   } else {
@@ -1307,25 +1328,49 @@ export function preloadNextTrack() {
   const ni = getNextTrackIdx();
   if (ni < 0) { cleanupPreload(); return; }
   const currentTrack = state.playlist[state.epIdx];
-  const nurl = state.playlist[ni] && state.playlist[ni].url;
+  const nextTrack = state.playlist[ni];
+  const nurl = nextTrack && nextTrack.url;
   if (!nurl || nurl === preloadedUrl) return;
+  const nextTrackForPolicy = getTrackWithCachedAudioMeta(nextTrack);
+
+  const conn = navigator.connection || navigator.mozConnection;
+  const policy = getPlaybackPolicy({
+    track: nextTrackForPolicy,
+    isApple: isAppleMobile(),
+    isInApp: _isInAppBrowser,
+    online: navigator.onLine,
+    connectionType: getConnType(),
+    effectiveType: conn?.effectiveType,
+    saveData: !!conn?.saveData,
+    networkWeak: _networkWeak,
+  });
+
+  if (!policy.allowNextTrackWarmup) {
+    cleanupPreload();
+    return;
+  }
+
+  if (policy.profile.mediaClass === 'unknown') {
+    primeAudioMetadata(nextTrack).then(meta => {
+      if (!meta?.bytes) return;
+      const upcomingIdx = getNextTrackIdx();
+      const upcomingTrack = upcomingIdx >= 0 ? state.playlist[upcomingIdx] : null;
+      if (!upcomingTrack || upcomingTrack.url !== nurl) return;
+      if (!preloadedUrl) preloadNextTrack();
+    }).catch(() => { });
+    cleanupPreload();
+    return;
+  }
 
   // iPhone/iPad WebKit 内存预算更紧，不额外持有下一曲的 Audio 预加载对象。
-  if (isAppleMobile()) {
-    if (!_networkWeak && currentTrack?.categoryId === 'tingjingtai') warmAudioUrl(nurl);
+  if (!policy.allowAudioElementPreload) {
+    if (policy.profile.mediaClass === 'small') warmAudioUrl(nurl);
+    else if (!_networkWeak && currentTrack?.categoryId === 'tingjingtai' && policy.profile.mediaClass === 'medium') warmAudioUrl(nurl);
+    else cleanupPreload();
     return;
   }
 
   // Skip preload when network is weak, save-data is on, or connection is 2G/3G
-  if (_networkWeak) return;
-  if (getConnType() !== 'wifi') {
-    if (currentTrack?.categoryId === 'tingjingtai') warmAudioUrl(nurl);
-    return;
-  }
-  var conn = navigator.connection || navigator.mozConnection;
-  if (conn && conn.saveData) return;
-  if (conn && (conn.effectiveType === '2g' || conn.effectiveType === 'slow-2g')) return;
-
   cleanupPreload();
   preloadAudio = new Audio();
   // ✅ 关键优化：始终使用 preload="auto" 让浏览器真正缓冲音频数据
@@ -1383,12 +1428,22 @@ function cleanupBgFetch() {
 function startBgFullLoad(url) {
   if (bgFetchUrl === url || bgLoadScheduledUrl === url) return;
 
-  // iOS 上整文件拉成 Blob 再缓存的峰值内存很高，直接关闭这条后台链路。
-  if (isAppleMobile()) return;
-
+  const currentTrack = state.playlist[state.epIdx];
+  const trackForPolicy = getTrackWithCachedAudioMeta(currentTrack);
   const conn = navigator.connection || navigator.mozConnection;
-  if (getConnType() !== 'wifi') return;
-  if (!conn || conn.saveData || conn.effectiveType !== '4g') return;
+  const policy = getPlaybackPolicy({
+    track: trackForPolicy,
+    isApple: isAppleMobile(),
+    isInApp: _isInAppBrowser,
+    online: navigator.onLine,
+    connectionType: getConnType(),
+    effectiveType: conn?.effectiveType,
+    saveData: !!conn?.saveData,
+    networkWeak: _networkWeak,
+  });
+
+  // iOS 上整文件拉成 Blob 再缓存的峰值内存很高，直接关闭这条后台链路。
+  if (!policy.allowBackgroundFullLoad) return;
 
   bgLoadScheduledUrl = url;
   bgLoadDelayTimer = setTimeout(() => {

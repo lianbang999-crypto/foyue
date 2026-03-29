@@ -16,6 +16,7 @@ import { initLang, applyI18n, t } from './i18n.js';
 import { initTheme } from './theme.js';
 import { seekCalc, seekUI, seekCommit, showToast, showFloatText, haptic } from './utils.js';
 import { seedCachedDurationsFromData, seedCachedDurationsFromEpisodes } from './duration-cache.js';
+import { seedCachedAudioMetaFromData, seedCachedAudioMetaFromEpisodes } from './audio-meta-cache.js';
 import {
   playList, prepareList, togglePlay, prevTrack, nextTrack,
   cycleLoop, cycleSpeed, cycleSleepTimer,
@@ -284,12 +285,14 @@ function findSeriesInData(seriesId) {
 
 function applyLoadedData(data) {
   seedCachedDurationsFromData(data);
+  seedCachedAudioMetaFromData(data);
   state.data = data;
   state.isDataFull = data?.mode !== 'home';
 }
 
 function mergeCategoryIntoState(category) {
   seedCachedDurationsFromData({ categories: [category] });
+  seedCachedAudioMetaFromData({ categories: [category] });
   if (!state.data) {
     state.data = { mode: 'partial', categories: [category] };
     state.isDataFull = false;
@@ -306,6 +309,7 @@ function mergeCategoryIntoState(category) {
 
 function mergeSeriesIntoState(series) {
   seedCachedDurationsFromEpisodes(series?.episodes);
+  seedCachedAudioMetaFromEpisodes(series?.episodes);
   if (!state.data?.categories) return series;
   const categories = state.data.categories.map(cat => {
     if (cat.id !== series.categoryId) return cat;

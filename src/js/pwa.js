@@ -20,10 +20,6 @@ const REFRESH_DISMISS_TTL = 6 * 60 * 60 * 1000;
 const APP_CACHE_KEY_PATTERNS = [/^pl-data-cache-/, /^pl-home-cache-/];
 const APP_CACHE_NAME_PATTERNS = [/^static-/, /^data-/];
 const WATCHED_REGISTRATIONS = new WeakSet();
-const AUTO_REFRESH_DELAY_MS = 1500;
-
-let hasPendingRefreshUpdate = false;
-let autoRefreshTimer = 0;
 
 export function isInAppBrowser() {
   const ua = navigator.userAgent;
@@ -101,38 +97,8 @@ function clearRefreshDismissed() {
   localStorage.removeItem(REFRESH_DISMISSED_KEY);
 }
 
-function isAudioPlayingNow() {
-  const dom = getDOM();
-  const audio = dom?.audio || document.getElementById('audioEl');
-  if (!audio) return false;
-  return !!audio.src && !audio.paused && !audio.ended;
-}
-
-function scheduleAutoRefreshIfSafe() {
-  if (!hasPendingRefreshUpdate) return;
-  if (pendingRefreshReload) return;
-  if (isRefreshDismissedRecently()) return;
-  if (document.visibilityState !== 'hidden') return;
-  if (isAudioPlayingNow()) return;
-
-  window.clearTimeout(autoRefreshTimer);
-  autoRefreshTimer = window.setTimeout(() => {
-    if (!hasPendingRefreshUpdate) return;
-    if (pendingRefreshReload) return;
-    if (isRefreshDismissedRecently()) return;
-    if (document.visibilityState !== 'hidden') return;
-    if (isAudioPlayingNow()) return;
-
-    pendingRefreshReload = true;
-    clearRefreshDismissed();
-    refreshAppResources();
-  }, AUTO_REFRESH_DELAY_MS);
-}
-
 function markRefreshUpdateAvailable() {
-  hasPendingRefreshUpdate = true;
   showRefreshBanner();
-  scheduleAutoRefreshIfSafe();
 }
 
 function showRefreshBanner() {
@@ -372,15 +338,12 @@ function bindRefreshPromptListeners() {
   refreshDismiss.addEventListener('click', () => {
     hideRefreshBanner();
     rememberRefreshDismissed();
-    window.clearTimeout(autoRefreshTimer);
     updateInstallBannerVisibility();
   });
 
   refreshAccept.addEventListener('click', async () => {
     if (pendingRefreshReload) return;
     pendingRefreshReload = true;
-    hasPendingRefreshUpdate = false;
-    window.clearTimeout(autoRefreshTimer);
     refreshAccept.disabled = true;
     refreshAccept.textContent = '刷新中...';
     hideRefreshBanner();
@@ -431,9 +394,6 @@ async function clearAppCaches() {
 
 async function refreshAppResources() {
   try {
-    hasPendingRefreshUpdate = false;
-    window.clearTimeout(autoRefreshTimer);
-
     await clearAppCaches();
 
     if ('serviceWorker' in navigator) {
@@ -472,10 +432,7 @@ export function initRefreshPrompt() {
   }).catch(() => { });
 
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') {
-      scheduleAutoRefreshIfSafe();
-      return;
-    }
+    if (document.visibilityState !== 'visible') return;
 
     navigator.serviceWorker.getRegistration().then(registration => {
       if (!registration) return;

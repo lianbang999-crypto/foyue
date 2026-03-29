@@ -1038,6 +1038,18 @@ body.player-modal-open .content {
   transform: translateY(12px);
 }
 
+@media (prefers-reduced-motion: reduce) {
+
+  .expanded.show .exp-series-info,
+  .expanded.show .exp-progress,
+  .expanded.show .exp-ctrls,
+  .expanded.show .exp-secondary {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
 @keyframes expSlideFadeIn {
   from {
     opacity: 0;
