@@ -10,6 +10,10 @@ import { getConnType } from './player.js';
 const MAX_CONCURRENT_IDLE = 3;
 const MAX_CONCURRENT_PLAYING = 1;
 
+// iOS Safari 的 Audio 元素内存回收不完整，跳过探测以减少内存压力
+const _isAppleMobile = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
 function releaseProbeAudio(audio) {
   if (!audio) return;
   try {
@@ -61,7 +65,7 @@ function probeOne(url) {
   a.preload = 'metadata';
   let settled = false;
   let timeoutId = 0;
-  let resolvePromise = () => {};
+  let resolvePromise = () => { };
 
   const cleanup = () => {
     if (timeoutId) {
@@ -123,8 +127,8 @@ export function probeDurations(episodes, onDuration) {
   let aborted = false;
   const activeProbes = new Set();
 
-  // Skip probing entirely when network is weak
-  if (state.networkWeak) {
+  // Skip probing entirely when network is weak or on iOS (Audio elements leak memory on WebKit)
+  if (state.networkWeak || _isAppleMobile) {
     // Still report cached durations (for episodes without JSON duration)
     episodes.forEach((ep, idx) => {
       if (ep.duration) return; // already in JSON — no need to probe

@@ -2,7 +2,7 @@
 import { createRequestCache } from './request-cache.js';
 
 const API_BASE = '/api';
-const requestCache = createRequestCache({ ttlMs: 5 * 60 * 1000 });
+const requestCache = createRequestCache({ ttlMs: 5 * 60 * 1000, maxEntries: 50 });
 
 /**
  * Record a play event for a series/episode
@@ -57,7 +57,7 @@ export async function recordPlay(seriesId, episodeNum) {
       window.dispatchEvent(new CustomEvent('playcount:updated', {
         detail: { seriesId, episodeNum, playCount: data?.playCount }
       }));
-    } catch {}
+    } catch { }
     if (import.meta.env.DEV) console.log('[API] recordPlay ok', seriesId, episodeNum);
     return data;
   } catch (e) {

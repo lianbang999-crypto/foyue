@@ -5,7 +5,6 @@ import { getDOM } from './dom.js';
 import { playList } from './player.js';
 import { getHistory } from './history.js';
 import { escapeHtml } from './utils.js';
-import { aiSearch } from './ai-client.js';
 
 let _showEpisodes, _renderCategory, _renderHomePage;
 
@@ -343,6 +342,7 @@ async function renderWenkuResults(q, container) {
 
   const reqId = ++_wenkuReqId;
   try {
+    const { aiSearch } = await import('./ai-client.js');
     const data = await aiSearch(q);
     // Check if this is still the latest request
     if (reqId !== _wenkuReqId) return;

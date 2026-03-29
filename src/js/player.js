@@ -7,6 +7,7 @@ import { fmt, showToast, seekAt, haptic, fmtCount, escapeHtml, shareContent } fr
 import { addHistory, syncHistoryProgress, getHistory } from './history.js';
 import { recordPlay, getAppreciateCount } from './api.js';
 import { cacheAudio, getCachedAudioUrl, isAudioCached, isCachedSync } from './audio-cache.js';
+import { warmAudioUrl } from './audio-url.js';
 import { get, set, patch, saveNow } from './store.js';
 
 /* ===== Playback State ===== */
@@ -17,6 +18,12 @@ let _dragging = false;
 // Prevents a second play() from racing while the first is still resolving (rapid-click guard)
 let _playPending = false;
 let _switchingTimeoutId = null;
+// Prevents pause event from changing play state during stall/ghost recovery
+let _isRecovering = false;
+
+function finishRecovery() {
+  _isRecovering = false;
+}
 
 /**
  * Tracks explicit user intent: true when user pressed pause themselves.
@@ -41,6 +48,7 @@ function buildPlaylistEntries(episodes, series) {
       seriesId: series.id,
       seriesTitle: series.title,
       speaker: series.speaker,
+      categoryId: series.categoryId,
     };
   });
 }
@@ -207,6 +215,7 @@ function onGhostPlaybackDetected(safePosition) {
 
   setNetworkWeak(true);
   cleanupPreload();
+  _isRecovering = true; // ✅ 防止pause事件在恢复期间改变播放状态
 
   if (stallRetries <= MAX_STALL_RETRIES) {
     const src = dom.audio.src;
@@ -224,22 +233,25 @@ function onGhostPlaybackDetected(safePosition) {
 
     // 短暂延迟后重新加载，让 iOS 完成会话清理
     setTimeout(() => {
-      if (recoveryCallId !== _playCurrentId) return;
+      if (recoveryCallId !== _playCurrentId) { finishRecovery(); return; }
       dom.audio.src = src;
       dom.audio.load();
       dom.audio.addEventListener('loadeddata', function onLoad() {
         dom.audio.removeEventListener('loadeddata', onLoad);
-        if (recoveryCallId !== _playCurrentId) return;
+        if (recoveryCallId !== _playCurrentId) { finishRecovery(); return; }
         if (safePosition > 0) dom.audio.currentTime = safePosition;
         if (_userPaused) {
+          finishRecovery();
           setBuffering(false);
           setPlayState(false);
           return;
         }
         dom.audio.play().then(() => {
+          finishRecovery();
           setBuffering(false);
           startStallWatch();
         }).catch(() => {
+          finishRecovery();
           setBuffering(false);
           setErrorState(t('error_stall_tap'));
           setPlayState(false);
@@ -247,8 +259,12 @@ function onGhostPlaybackDetected(safePosition) {
       }, { once: true });
 
       setTimeout(() => {
-        if (recoveryCallId !== _playCurrentId) return;
+        if (recoveryCallId !== _playCurrentId) {
+          finishRecovery();
+          return;
+        }
         if (dom.audio.paused && !dom.audio.ended) {
+          finishRecovery();
           setBuffering(false);
           if (!_userPaused) setErrorState(t('error_stall_tap'));
           setPlayState(false);
@@ -256,6 +272,7 @@ function onGhostPlaybackDetected(safePosition) {
       }, 20000);
     }, 100);
   } else {
+    finishRecovery();
     setBuffering(false);
     dom.audio.pause();
     setPlayState(false);
@@ -275,6 +292,7 @@ function onStallDetected() {
   // Mark network as weak — this pauses preloading and reduces duration probe concurrency
   setNetworkWeak(true);
   cleanupPreload();
+  _isRecovering = true; // ✅ 防止pause事件在恢复期间改变播放状态
 
   if (stallRetries <= MAX_STALL_RETRIES) {
     // Auto-recover: save position, reload, and resume
@@ -292,18 +310,21 @@ function onStallDetected() {
     dom.audio.load();
     dom.audio.addEventListener('loadeddata', function onLoad() {
       dom.audio.removeEventListener('loadeddata', onLoad);
-      if (recoveryCallId !== _playCurrentId) return; // ✅ 新曲目已开始，放弃旧恢复
+      if (recoveryCallId !== _playCurrentId) { finishRecovery(); return; }
       if (currentTime > 0) dom.audio.currentTime = currentTime;
       // Guard: if user explicitly paused during this recovery, do NOT auto-resume
       if (_userPaused) {
+        finishRecovery();
         setBuffering(false);
         setPlayState(false);
         return;
       }
       dom.audio.play().then(() => {
+        finishRecovery();
         setBuffering(false);
         startStallWatch(); // Resume stall detection after successful recovery
       }).catch(() => {
+        finishRecovery();
         setBuffering(false);
         setErrorState(t('error_stall_tap'));
         setPlayState(false);
@@ -312,8 +333,12 @@ function onStallDetected() {
 
     // Timeout for this recovery attempt
     setTimeout(() => {
-      if (recoveryCallId !== _playCurrentId) return; // ✅ 新曲目已开始，忽略超时
+      if (recoveryCallId !== _playCurrentId) {
+        finishRecovery();
+        return;
+      }
       if (dom.audio.paused && !dom.audio.ended) {
+        finishRecovery();
         setBuffering(false);
         if (!_userPaused) setErrorState(t('error_stall_tap'));
         setPlayState(false);
@@ -321,6 +346,7 @@ function onStallDetected() {
     }, 20000);
   } else {
     // Exhausted retries — show persistent error
+    finishRecovery();
     setBuffering(false);
     setErrorState(t('error_stall_tap'));
     setPlayState(false);
@@ -459,6 +485,7 @@ function setExpandedViewportLock(locked) {
 }
 
 export function getIsSwitching() { return isSwitching; }
+export function getIsRecovering() { return _isRecovering; }
 export function getPlaylistVisible() { return playlistVisible; }
 export function setDragging(v) { _dragging = v; }
 
@@ -539,6 +566,7 @@ function cancelPendingTrackLoad() {
   if (!isSwitching) return;
   const dom = getDOM();
   _playCurrentId += 1;
+  finishRecovery();
   clearSwitchingTimeout();
   cleanupReadyListeners(dom);
   isSwitching = false;
@@ -550,6 +578,7 @@ function playCurrent() {
   const dom = getDOM();
   if (state.epIdx < 0 || state.epIdx >= state.playlist.length) return;
   const preferDirectPlayback = isAppleMobileBrowser() && navigator.onLine !== false;
+  finishRecovery();
 
   // A new track is starting — clear any pending play lock from a previous togglePlay() call
   _playPending = false;
@@ -627,7 +656,7 @@ function playCurrent() {
       if (callId !== _playCurrentId) return; // ✅ Fix 5: guard stale resolution
       clearSwitchingTimeout();
       isSwitching = false;
-      setPlayState(true);
+      // ✅ 修复Android：不在play()解析时设置播放状态，等待playing事件确认音频实际输出
       renderPlaylistItems(); // Remove loading indicator from playlist item
       startStallWatch();
       if (_networkWeak) setNetworkWeak(false);
@@ -661,8 +690,8 @@ function playCurrent() {
         if (callId !== _playCurrentId) return; // ✅ Fix 5
         clearSwitchingTimeout();
         isSwitching = false;
-        setBuffering(false);
-        setPlayState(true);
+        // ✅ 修复Android：不在play()解析时清除缓冲/设置播放状态
+        // playing事件会在音频实际输出时触发setPlayState和hideBufferingUI
         startStallWatch();
         if (_networkWeak) setNetworkWeak(false);
         startBgFullLoad(tr.url);
@@ -882,7 +911,19 @@ export function setPlayState(playing) {
 }
 
 export function highlightEp() {
-  document.querySelectorAll('.ep-item').forEach((el, i) => el.classList.toggle('playing', isCurrentTrack(state.seriesId, i)));
+  // 懒加载列表中可能存在哨兵节点，不能再把 DOM 子节点顺序当作业务索引。
+  const ul = document.querySelector('.ep-view .ep-list');
+  if (!ul) return;
+  ul.querySelectorAll('.ep-item.playing').forEach((el) => el.classList.remove('playing'));
+
+  if (state.epIdx < 0 || !state.playlist.length) return;
+  const current = state.playlist[state.epIdx];
+  if (!current || current.seriesId !== state.seriesId) return;
+
+  const activeEl = ul.querySelector(`.ep-item[data-idx="${state.epIdx}"]`);
+  if (activeEl) {
+    activeEl.classList.add('playing');
+  }
 }
 
 export function isCurrentTrack(sid, idx) {
@@ -1211,15 +1252,22 @@ function getNextTrackIdx() {
 export function preloadNextTrack() {
   const ni = getNextTrackIdx();
   if (ni < 0) { cleanupPreload(); return; }
+  const currentTrack = state.playlist[state.epIdx];
   const nurl = state.playlist[ni] && state.playlist[ni].url;
   if (!nurl || nurl === preloadedUrl) return;
 
   // iPhone/iPad WebKit 内存预算更紧，不额外持有下一曲的 Audio 预加载对象。
-  if (isAppleMobileBrowser()) return;
+  if (isAppleMobileBrowser()) {
+    if (!_networkWeak && currentTrack?.categoryId === 'tingjingtai') warmAudioUrl(nurl);
+    return;
+  }
 
   // Skip preload when network is weak, save-data is on, or connection is 2G/3G
   if (_networkWeak) return;
-  if (getConnType() !== 'wifi') return;
+  if (getConnType() !== 'wifi') {
+    if (currentTrack?.categoryId === 'tingjingtai') warmAudioUrl(nurl);
+    return;
+  }
   var conn = navigator.connection || navigator.mozConnection;
   if (conn && conn.saveData) return;
   if (conn && (conn.effectiveType === '2g' || conn.effectiveType === 'slow-2g')) return;

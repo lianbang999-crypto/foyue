@@ -17,14 +17,14 @@ const APP_URL = 'https://foyue.org';
 
 /* ── Color palette (matches light theme accent) ── */
 const COLORS = {
-  bg:       '#FAF9F6',
-  accent:   '#836A32',
-  accentDim:'rgba(131,106,50,0.45)',
-  text:     '#1A1A1A',
-  textSec:  'rgba(26,26,26,0.55)',
-  textMut:  'rgba(26,26,26,0.32)',
-  border:   'rgba(131,106,50,0.18)',
-  glow:     'rgba(131,106,50,0.06)',
+  bg: '#FAF9F6',
+  accent: '#836A32',
+  accentDim: 'rgba(131,106,50,0.45)',
+  text: '#1A1A1A',
+  textSec: 'rgba(26,26,26,0.55)',
+  textMut: 'rgba(26,26,26,0.32)',
+  border: 'rgba(131,106,50,0.18)',
+  glow: 'rgba(131,106,50,0.06)',
 };
 
 // formatCount is imported from utils.js
@@ -63,7 +63,7 @@ export async function generateSharePoster(stats) {
   const canvas = document.createElement('canvas');
   // Retina-quality output
   const dpr = Math.min(window.devicePixelRatio || 1, 3);
-  canvas.width  = W * dpr;
+  canvas.width = W * dpr;
   canvas.height = H * dpr;
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
@@ -227,7 +227,7 @@ export async function generateSharePoster(stats) {
   if (qrImageUrl) {
     const qrImg = new Image();
     await new Promise((resolve, reject) => {
-      qrImg.onload  = resolve;
+      qrImg.onload = resolve;
       qrImg.onerror = reject;
       qrImg.src = qrImageUrl;
     });
@@ -299,8 +299,10 @@ export async function showSharePoster(counterView, stats) {
   (counterView || document.getElementById('app')).appendChild(modal);
   requestAnimationFrame(() => modal.classList.add('counter-share-modal--in'));
 
+  let _previewBlobUrl = null;
   const close = () => {
     modal.classList.remove('counter-share-modal--in');
+    if (_previewBlobUrl) { URL.revokeObjectURL(_previewBlobUrl); _previewBlobUrl = null; }
     setTimeout(() => modal.remove(), 300);
   };
 
@@ -311,9 +313,9 @@ export async function showSharePoster(counterView, stats) {
   let blob = null;
   try {
     blob = await generateSharePoster(stats);
-    const imgUrl = URL.createObjectURL(blob);
+    _previewBlobUrl = URL.createObjectURL(blob);
     const img = new Image();
-    img.src = imgUrl;
+    img.src = _previewBlobUrl;
     img.style.cssText = 'width:100%;border-radius:12px;display:block;box-shadow:0 4px 20px rgba(0,0,0,0.12)';
     modal.querySelector('#csmPreview').innerHTML = '';
     modal.querySelector('#csmPreview').appendChild(img);

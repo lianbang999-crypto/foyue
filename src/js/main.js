@@ -23,7 +23,7 @@ import {
   onTimeUpdate, onEnded, onAudioError,
   setPlayState, highlightEp, preloadNextTrack, cleanupPreload,
   togglePlaylist, closePlaylist, getPlaylistVisible, saveState, restoreState,
-  getIsSwitching, setDragging, initPlaylistTabs, closeFullScreen,
+  getIsSwitching, getIsRecovering, setDragging, initPlaylistTabs, closeFullScreen,
   openFullScreen,
   markAppreciated, updateAppreciateBtn, appreciateSuccess, updateAppreciateCount, isAppreciated,
   retryPlayback, startStallWatch, clearStallWatch, setBuffering,
@@ -31,7 +31,51 @@ import {
 } from './player.js';
 import { renderHomePage, invalidateHomePage } from './pages-home.js';
 import { renderMyPage } from './pages-my.js';
-import { openAiChat, closeAiChat, isAiChatOpen, updateAiContext, checkAiDeepLink, prefetchAiChat } from './ai-chat.js';
+// ✅ 性能优化：AI 聊天模块改为动态导入，减小首屏 JS 体积
+// import { openAiChat, closeAiChat, isAiChatOpen, updateAiContext, checkAiDeepLink, prefetchAiChat } from './ai-chat.js';
+let _aiChatModule = null;
+let _aiChatModulePromise = null;
+let _pendingAiContext = { seriesId: null, episodeNum: null };
+
+function setPendingAiContext(seriesId, episodeNum) {
+  _pendingAiContext = {
+    seriesId: typeof seriesId === 'string' && seriesId ? seriesId : null,
+    episodeNum: Number.isFinite(Number(episodeNum)) && Number(episodeNum) > 0 ? Number(episodeNum) : null,
+  };
+}
+
+function syncAiContext(module) {
+  if (!module?.updateAiContext) return;
+  module.updateAiContext(_pendingAiContext.seriesId, _pendingAiContext.episodeNum);
+}
+
+async function getAiChatModule() {
+  if (_aiChatModule) {
+    syncAiContext(_aiChatModule);
+    return _aiChatModule;
+  }
+  if (!_aiChatModulePromise) {
+    _aiChatModulePromise = import('./ai-chat.js').then(module => {
+      _aiChatModule = module;
+      syncAiContext(module);
+      return module;
+    }).finally(() => {
+      _aiChatModulePromise = null;
+    });
+  }
+  _aiChatModule = await _aiChatModulePromise;
+  syncAiContext(_aiChatModule);
+  return _aiChatModule;
+}
+function openAiChat() { return getAiChatModule().then(m => m.openAiChat()); }
+function closeAiChat(opts) { return getAiChatModule().then(m => m.closeAiChat(opts)); }
+function isAiChatOpen() { return _aiChatModule ? _aiChatModule.isAiChatOpen() : false; }
+function updateAiContext(seriesId, episodeNum) {
+  setPendingAiContext(seriesId, episodeNum);
+  if (_aiChatModule) syncAiContext(_aiChatModule);
+}
+function checkAiDeepLink() { const p = new URLSearchParams(location.search); if (p.get('tab') === 'ai') getAiChatModule().then(m => m.checkAiDeepLink()); }
+function prefetchAiChat() { return getAiChatModule().then(m => m.prefetchAiChat()); }
 // ✅ 修复代码分割警告：统一使用动态导入，避免静态和动态导入混用
 // import { renderCategory, showEpisodes } from './pages-category.js';
 import { doSearch, openSearchOverlay, closeSearchOverlay, isSearchOverlayOpen } from './search.js';
@@ -70,7 +114,6 @@ const ROOT_TAB_I18N = {
 };
 
 const IN_APP_BROWSER = isInAppBrowser();
-let categoryWarmupScheduled = false;
 const APP_BOOT_TS = performance.now();
 const STANDALONE_LAUNCH_LOADER_MIN_MS = 900;
 
@@ -95,20 +138,50 @@ function getTextOrFallback(key, fallback) {
   return value === key ? fallback : value;
 }
 
-function scheduleCategoryWarmup() {
-  if (categoryWarmupScheduled || state.isDataFull) return;
-  categoryWarmupScheduled = true;
+let fullDataHydrationScheduled = false;
+function scheduleBackgroundFullDataRestore() {
+  if (state.isDataFull || state.fullDataPromise || fullDataHydrationScheduled) return;
+  fullDataHydrationScheduled = true;
 
-  // ✅ P1优化：并行预热两个分类数据
-  const runner = async () => {
-    await Promise.all([
-      ensureCategoryData('tingjingtai').catch(() => null),
-      ensureCategoryData('youshengshu').catch(() => null)
-    ]);
+  const playerState = storeGet('player');
+  const needsRestoreSoon = !!playerState?.seriesId && !canRestoreFromCurrentData();
+
+  const runner = () => {
+    ensureFullData({ rerenderHome: false }).then(() => {
+      if (!canRestoreFromCurrentData()) return;
+      const savedPlayer = storeGet('player');
+      if (savedPlayer?.seriesId && state.epIdx < 0) restoreState();
+    }).catch(() => { }).finally(() => {
+      fullDataHydrationScheduled = false;
+    });
   };
 
-  if (typeof requestIdleCallback === 'function') requestIdleCallback(() => { runner(); }, { timeout: 2500 });
-  else setTimeout(() => { runner(); }, 900);
+  if (needsRestoreSoon) {
+    setTimeout(runner, 250);
+    return;
+  }
+
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(runner, { timeout: 3500 });
+  else setTimeout(runner, 1200);
+}
+
+function shouldPrefetchAiChat() {
+  if (_aiChatModule || document.visibilityState !== 'visible') return false;
+  if (IN_APP_BROWSER) return false;
+  const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if (connection?.saveData) return false;
+  if (typeof connection?.effectiveType === 'string' && /(^|-)2g$/.test(connection.effectiveType)) return false;
+  return true;
+}
+
+function scheduleAiChatPrefetch() {
+  const runner = () => {
+    if (!shouldPrefetchAiChat()) return;
+    prefetchAiChat().catch(() => { });
+  };
+
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(runner, { timeout: 12000 });
+  else setTimeout(runner, 6000);
 }
 
 function showCategorySwitchLoader() {
@@ -465,7 +538,13 @@ async function ensureSeriesDetail(seriesId, categoryId) {
     dom.expProgressFill.style.transition = '';
     dom.expProgressThumb.style.transition = '';
     seekCommit(dragPct, dom.audio);
-    setDragging(false);
+    // ✅ 修复iOS：延迟清除拖拽标记，等待seek完成后再恢复timeupdate进度更新
+    // 避免iOS上seek期间currentTime短暂回弹导致进度条闪跳
+    const seekTimer = setTimeout(() => setDragging(false), 300);
+    dom.audio.addEventListener('seeked', () => {
+      clearTimeout(seekTimer);
+      setDragging(false);
+    }, { once: true });
   }
   dom.expProgressBar.addEventListener('mousedown', e => startDrag(e));
   dom.expProgressBar.addEventListener('touchstart', e => startDrag(e.touches[0]), { passive: true });
@@ -610,16 +689,18 @@ async function ensureSeriesDetail(seriesId, categoryId) {
 
   // Audio events
   dom.audio.addEventListener('timeupdate', onTimeUpdate);
-  // #5: Guard play event with isSwitching to avoid stale play events during rapid track switching
-  dom.audio.addEventListener('play', () => { if (!getIsSwitching()) setPlayState(true); });
+  // ✅ 修复Android：用playing事件代替play事件设置播放状态
+  // play()解析不保证音频实际输出，playing事件才是真正开始播放的信号
   dom.audio.addEventListener('playing', () => {
+    if (!getIsSwitching()) setPlayState(true);
     // Update AI chat context with current track info
     if (state.epIdx >= 0 && state.playlist[state.epIdx]) {
       const tr = state.playlist[state.epIdx];
       updateAiContext(tr.seriesId, tr.id || state.epIdx + 1);
     }
   });
-  dom.audio.addEventListener('pause', () => { if (!getIsSwitching()) { setPlayState(false); saveState(); } });
+  // ✅ 修复iOS：恢复期间不改变播放状态，避免UI闪烁
+  dom.audio.addEventListener('pause', () => { if (!getIsSwitching() && !getIsRecovering()) { setPlayState(false); saveState(); } });
   dom.audio.addEventListener('ended', onEnded);
   dom.audio.addEventListener('error', onAudioError);
 
@@ -727,6 +808,7 @@ async function ensureSeriesDetail(seriesId, categoryId) {
   dom.audio.addEventListener('waiting', showBufferingUI);
   dom.audio.addEventListener('playing', () => {
     hideBufferingUI();
+    setPlayState(true); // ✅ 确保playing事件始终同步播放状态
     // Restart stall detection whenever playback resumes
     startStallWatch();
   });
@@ -802,9 +884,7 @@ async function ensureSeriesDetail(seriesId, categoryId) {
   // Initialise the store's cached-URL set from the real Cache API (background, non-blocking)
   initCachedUrls().catch(() => { });
 
-  const _idlePrefetch = () => prefetchAiChat();
-  if (typeof requestIdleCallback === 'function') requestIdleCallback(_idlePrefetch, { timeout: 5000 });
-  else setTimeout(_idlePrefetch, 3000);
+  scheduleAiChatPrefetch();
 
   setInterval(saveState, 15000);
 
@@ -834,13 +914,13 @@ async function ensureSeriesDetail(seriesId, categoryId) {
     }).catch(() => { });
   }
 
-  // ✅ 监控：定期保存监控摘要到统一 store
+  // ✅ 监控：定期保存监控摘要到统一 store（5分钟一次，减少 localStorage 写入开销）
   setInterval(() => {
     try {
       const summary = monitor.getSummary();
       storePatch('monitor', { summary });
     } catch (e) { /* ignore */ }
-  }, 30000); // 每30秒保存一次
+  }, 300000); // 5分钟保存一次
 })();
 
 /* ===== DATA LOADING with cache + retry ===== */
@@ -892,14 +972,12 @@ function saveCachedHomeData(data) {
 function needsImmediateFullData() {
   const params = new URLSearchParams(window.location.search);
   const tab = params.get('tab');
-  const playerState = storeGet('player');
   return Boolean(
     location.hash ||
     params.get('series') ||
     params.get('doc') ||
     params.get('wenku') ||
-    (tab && !['home', 'ai', 'mypage', 'wenku'].includes(tab)) ||
-    (playerState?.seriesId && playerState.seriesId !== 'donglin-fohao')
+    (tab && !['home', 'ai', 'mypage', 'wenku'].includes(tab))
   );
 }
 
@@ -973,7 +1051,6 @@ async function loadData() {
       applyLoadedData(cachedHome);
       if (state.tab === 'mypage') renderMyPage();
       else renderHomePage();
-      if (IN_APP_BROWSER) scheduleCategoryWarmup();
       if (canRestoreFromCurrentData()) {
         restoreState();
         if (state.isFirstVisit && state.epIdx < 0) playDefaultTrack();
@@ -982,6 +1059,8 @@ async function loadData() {
       handleTabDeepLink();
       checkAiDeepLink();
       await hideBootLoader(dom);
+      // 首页轻量启动后再延后补全完整数据，避免首屏后立刻并发多波请求
+      scheduleBackgroundFullDataRestore();
       return;
     }
 
@@ -990,7 +1069,6 @@ async function loadData() {
       applyLoadedData(homeData);
       saveCachedHomeData(homeData);
       renderHomePage();
-      if (IN_APP_BROWSER) scheduleCategoryWarmup();
       if (canRestoreFromCurrentData()) {
         restoreState();
         if (state.isFirstVisit && state.epIdx < 0) playDefaultTrack();
@@ -1001,6 +1079,8 @@ async function loadData() {
       handleTabDeepLink();
       checkAiDeepLink();
       await hideBootLoader(dom);
+      // 首页轻量启动后再延后补全完整数据，避免首屏后立刻并发多波请求
+      scheduleBackgroundFullDataRestore();
       return;
     }
 

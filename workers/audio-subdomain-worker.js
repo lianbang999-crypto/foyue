@@ -12,6 +12,9 @@ const BUCKET_BINDING_BY_ID = {
   '09eef2d346704b409a5fbef97ce6464a': 'JINGDIANDUSONG',
 };
 
+const RANGE_CACHE_WARM_MAX_SIZE = 32 * 1024 * 1024;
+const RANGE_CACHE_WARM_MAX_CHUNK = 256 * 1024;
+
 function buildBaseHeaders(object) {
   const headers = new Headers();
   object.writeHttpMetadata(headers);
@@ -22,27 +25,6 @@ function buildBaseHeaders(object) {
   headers.set('Timing-Allow-Origin', 'https://foyue.org');
   headers.set('X-Content-Type-Options', 'nosniff');
   return headers;
-}
-
-function parseRangeHeader(rangeHeader, size) {
-  const match = /^bytes=(\d*)-(\d*)$/i.exec(rangeHeader || '');
-  if (!match) return null;
-
-  const [, startRaw, endRaw] = match;
-  if (!startRaw && !endRaw) return null;
-
-  if (!startRaw) {
-    const suffixLength = Number.parseInt(endRaw, 10);
-    if (!Number.isFinite(suffixLength) || suffixLength <= 0) return null;
-    const start = Math.max(size - suffixLength, 0);
-    return { start, end: size - 1 };
-  }
-
-  const start = Number.parseInt(startRaw, 10);
-  const end = endRaw ? Number.parseInt(endRaw, 10) : size - 1;
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
-  if (start < 0 || end < start || start >= size) return null;
-  return { start, end: Math.min(end, size - 1) };
 }
 
 function resolveBucketRequest(pathname, env) {
@@ -78,6 +60,81 @@ async function getObjectHead(bucket, candidateKeys) {
   return null;
 }
 
+async function getObjectBody(bucket, candidateKeys, options) {
+  for (const key of candidateKeys) {
+    const object = await bucket.get(key, options);
+    if (object) return { key, object };
+  }
+  return null;
+}
+
+function parseRequestedRange(rangeHeader) {
+  const match = /^bytes=(\d*)-(\d*)$/i.exec(rangeHeader || '');
+  if (!match) return null;
+
+  const [, startRaw, endRaw] = match;
+  if (!startRaw && !endRaw) return null;
+
+  if (!startRaw) {
+    const suffix = Number.parseInt(endRaw, 10);
+    if (!Number.isFinite(suffix) || suffix <= 0) return null;
+    return { suffix };
+  }
+
+  const start = Number.parseInt(startRaw, 10);
+  if (!Number.isFinite(start) || start < 0) return null;
+
+  if (!endRaw) {
+    return { offset: start };
+  }
+
+  const end = Number.parseInt(endRaw, 10);
+  if (!Number.isFinite(end) || end < start) return null;
+  return { offset: start, length: end - start + 1 };
+}
+
+function normalizeRange(range, size) {
+  if (!range) return null;
+
+  if (typeof range.suffix === 'number') {
+    const start = Math.max(size - range.suffix, 0);
+    return { start, end: size - 1 };
+  }
+
+  const start = range.offset;
+  if (start >= size) return null;
+
+  if (typeof range.length === 'number') {
+    return {
+      start,
+      end: Math.min(start + range.length - 1, size - 1)
+    };
+  }
+
+  return { start, end: size - 1 };
+}
+
+function createCacheKey(request) {
+  return new Request(request.url, { method: 'GET' });
+}
+
+function shouldWarmFullObjectFromRange(range, size) {
+  const normalizedRange = normalizeRange(range, size);
+  if (!normalizedRange) return false;
+  if (size > RANGE_CACHE_WARM_MAX_SIZE) return false;
+  if (normalizedRange.start !== 0) return false;
+  return normalizedRange.end - normalizedRange.start + 1 <= RANGE_CACHE_WARM_MAX_CHUNK;
+}
+
+async function warmFullObjectCache(bucket, key, cache, cacheKey) {
+  const fullObject = await bucket.get(key);
+  if (!fullObject) return;
+
+  const headers = buildBaseHeaders(fullObject);
+  headers.set('Content-Length', String(fullObject.size));
+  await cache.put(cacheKey, new Response(fullObject.body, { headers }));
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -88,49 +145,82 @@ export default {
 
     const { bucket, candidateKeys } = bucketRequest;
 
-    // 先读对象元信息，后续按需决定是否走分段读取
-    const resolvedObject = await getObjectHead(bucket, candidateKeys);
-    if (!resolvedObject) {
-      return new Response('Not Found', { status: 404 });
+    if (!['GET', 'HEAD'].includes(request.method)) {
+      return new Response('Method Not Allowed', {
+        status: 405,
+        headers: { Allow: 'GET, HEAD' }
+      });
     }
 
-    const { key, object } = resolvedObject;
+    const cache = caches.default;
+    const cacheKey = createCacheKey(request);
 
-    const headers = buildBaseHeaders(object);
+    if (request.method === 'HEAD') {
+      const resolvedHead = await getObjectHead(bucket, candidateKeys);
+      if (!resolvedHead) {
+        return new Response('Not Found', { status: 404 });
+      }
+
+      const headers = buildBaseHeaders(resolvedHead.object);
+      headers.set('Content-Length', String(resolvedHead.object.size));
+      return new Response(null, { status: 200, headers });
+    }
 
     // 正确处理Range请求，确保206响应和实际返回体一致
     const rangeHeader = request.headers.get('Range');
+    const cachedResponse = await cache.match(rangeHeader ? request : cacheKey);
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+
     if (rangeHeader) {
-      const parsedRange = parseRangeHeader(rangeHeader, object.size);
+      const parsedRange = parseRequestedRange(rangeHeader);
       if (!parsedRange) {
-        headers.set('Content-Range', `bytes */${object.size}`);
+        const resolvedHead = await getObjectHead(bucket, candidateKeys);
+        if (!resolvedHead) {
+          return new Response('Not Found', { status: 404 });
+        }
+
+        const invalidHeaders = buildBaseHeaders(resolvedHead.object);
+        invalidHeaders.set('Content-Range', `bytes */${resolvedHead.object.size}`);
+        return new Response(null, { status: 416, headers: invalidHeaders });
+      }
+
+      const resolvedObject = await getObjectBody(bucket, candidateKeys, { range: parsedRange });
+      if (!resolvedObject) {
+        return new Response('Not Found', { status: 404 });
+      }
+
+      const normalizedRange = normalizeRange(parsedRange, resolvedObject.object.size);
+      const headers = buildBaseHeaders(resolvedObject.object);
+      if (!normalizedRange) {
+        headers.set('Content-Range', `bytes */${resolvedObject.object.size}`);
         return new Response(null, { status: 416, headers });
       }
 
-      const chunkSize = parsedRange.end - parsedRange.start + 1;
-      const rangedObject = await bucket.get(key, {
-        range: { offset: parsedRange.start, length: chunkSize }
-      });
-      if (!rangedObject) {
-        headers.set('Content-Range', `bytes */${object.size}`);
-        return new Response(null, { status: 416, headers });
-      }
-
-      headers.set('Content-Range', `bytes ${parsedRange.start}-${parsedRange.end}/${object.size}`);
+      const chunkSize = normalizedRange.end - normalizedRange.start + 1;
+      headers.set('Content-Range', `bytes ${normalizedRange.start}-${normalizedRange.end}/${resolvedObject.object.size}`);
       headers.set('Content-Length', String(chunkSize));
 
-      return new Response(rangedObject.body, {
+      if (shouldWarmFullObjectFromRange(parsedRange, resolvedObject.object.size)) {
+        ctx.waitUntil(warmFullObjectCache(bucket, resolvedObject.key, cache, cacheKey).catch(() => { }));
+      }
+
+      return new Response(resolvedObject.object.body, {
         status: 206,
         headers
       });
     }
 
-    const fullObject = await bucket.get(key);
-    if (!fullObject) {
-      return new Response('Not Found', { status: 404, headers });
+    const resolvedObject = await getObjectBody(bucket, candidateKeys);
+    if (!resolvedObject) {
+      return new Response('Not Found', { status: 404 });
     }
 
-    headers.set('Content-Length', String(object.size));
-    return new Response(fullObject.body, { headers });
+    const headers = buildBaseHeaders(resolvedObject.object);
+    headers.set('Content-Length', String(resolvedObject.object.size));
+    const response = new Response(resolvedObject.object.body, { headers });
+    ctx.waitUntil(cache.put(cacheKey, response.clone()).catch(() => { }));
+    return response;
   }
 };

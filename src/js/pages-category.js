@@ -11,11 +11,12 @@ import { showToast, escapeHtml, showFloatText, fmtCount, fmtDuration } from './u
 import { getBatchCachedStatus } from './audio-cache.js';
 import { mountSummary } from './ai-summary.js';
 import { probeDurations, getCachedDuration } from './duration-cache.js';
+import { warmAudioUrl } from './audio-url.js';
 import { isInAppBrowser } from './pwa.js';
 // import { mountTranscript } from './transcript.js';
 // import { getTranscriptAvailability } from './ai-client.js';
 
-const EPISODE_CHUNK_THRESHOLD = isInAppBrowser() ? 28 : 60;
+const _isInApp = isInAppBrowser();
 
 function getTextOrFallback(key, fallback) {
   const value = t(key);
@@ -30,9 +31,21 @@ function deferNonCriticalWork(callback) {
   setTimeout(() => callback(), 80);
 }
 
+function getEpisodeItem(ul, idx) {
+  return ul.querySelector(`.ep-item[data-idx="${idx}"]`);
+}
+
+function applyCachedStateToItem(li, tooltip) {
+  if (!li) return;
+  li.classList.add('ep-cached');
+  const durEl = li.querySelector('.ep-duration');
+  if (durEl) durEl.title = tooltip;
+}
+
 function buildEpisodeItem(series, ep, idx, histMap) {
   const li = document.createElement('li');
   li.className = 'ep-item' + (isCurrentTrack(series.id, idx) ? ' playing' : '');
+  li.dataset.idx = idx;
   const introHtml = ep.intro ? `<span class="ep-intro">${escapeHtml(ep.intro)}</span>` : '';
   const hEntry = histMap.get(idx);
   let progressHtml = '';
@@ -46,34 +59,90 @@ function buildEpisodeItem(series, ep, idx, histMap) {
       <div class="eq-bars"><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span></div>
       <div class="ep-text"><span class="ep-title">${escapeHtml(ep.title || ep.fileName)}</span>${introHtml}${progressHtml}</div>
       <span class="ep-duration" data-idx="${idx}">${durText}</span>`;
-  li.addEventListener('click', () => {
-    if (isCurrentTrack(series.id, idx)) { togglePlay(); return; }
-    const hist = getHistory();
-    const entry = hist.find(h => h.seriesId === series.id && h.epIdx === idx);
-    const resumeTime = (entry && entry.time > 5 && (!entry.duration || entry.time < entry.duration - 5)) ? entry.time : 0;
-    playList(series.episodes, idx, series, resumeTime);
-  });
+  // 不再给每个 li 单独绑定 click，使用 ul 上的事件委托
   return li;
 }
 
-async function renderEpisodeItems(ul, series, histMap, requestId) {
-  const shouldChunk = series.episodes.length >= EPISODE_CHUNK_THRESHOLD;
-  const chunkSize = shouldChunk ? 24 : series.episodes.length;
+// 懒加载：首批渲染 LAZY_BATCH 项，滚动到哨兵时加载下一批
+const LAZY_BATCH = _isInApp ? 24 : 40;
 
-  for (let start = 0; start < series.episodes.length; start += chunkSize) {
-    if (!ul.isConnected || !isContentRequestCurrent(requestId)) return false;
-    const frag = document.createDocumentFragment();
-    const end = Math.min(start + chunkSize, series.episodes.length);
-    for (let idx = start; idx < end; idx++) {
-      frag.appendChild(buildEpisodeItem(series, series.episodes[idx], idx, histMap));
-    }
-    ul.appendChild(frag);
-    if (shouldChunk && end < series.episodes.length) {
-      await new Promise(resolve => requestAnimationFrame(resolve));
+function renderEpisodeItems(ul, series, histMap, requestId) {
+  const total = series.episodes.length;
+  let rendered = 0;
+
+  // 如果当前正在播放本系列的某个较后的集数，确保首批渲染覆盖到它
+  let initialEnd = LAZY_BATCH;
+  if (state.epIdx >= 0 && state.playlist.length > 0) {
+    const tr = state.playlist[state.epIdx];
+    if (tr && tr.seriesId === series.id && state.epIdx >= initialEnd) {
+      initialEnd = state.epIdx + 5; // 正在播放的集 + 几个缓冲
     }
   }
+  initialEnd = Math.min(initialEnd, total);
 
+  function renderBatch(count) {
+    if (!ul.isConnected || !isContentRequestCurrent(requestId)) return;
+    const end = Math.min(rendered + count, total);
+    const frag = document.createDocumentFragment();
+    for (let idx = rendered; idx < end; idx++) {
+      const li = buildEpisodeItem(series, series.episodes[idx], idx, histMap);
+      if (ul._cachedEpisodeIdxs && ul._cachedEpisodeIdxs.has(idx)) {
+        applyCachedStateToItem(li, ul._cachedEpisodeTooltip || '');
+      }
+      frag.appendChild(li);
+    }
+    ul.appendChild(frag);
+    rendered = end;
+  }
+
+  // 首批渲染（覆盖当前正在播放的集数）
+  renderBatch(initialEnd);
+
+  // 全部已渲染则无需 Observer
+  if (rendered >= total) return true;
+
+  // 哨兵元素 + IntersectionObserver 实现滚到底部自动加载
+  const sentinel = document.createElement('li');
+  sentinel.className = 'ep-sentinel';
+  sentinel.style.height = '1px';
+  ul.appendChild(sentinel);
+
+  const io = new IntersectionObserver((entries) => {
+    if (!entries[0].isIntersecting) return;
+    if (!ul.isConnected || !isContentRequestCurrent(requestId)) {
+      io.disconnect();
+      return;
+    }
+    // 移除旧哨兵
+    sentinel.remove();
+    // 渲染下一批
+    renderBatch(LAZY_BATCH);
+    // 如果还有更多，重新插入哨兵
+    if (rendered < total) {
+      ul.appendChild(sentinel);
+    } else {
+      io.disconnect();
+    }
+  }, { root: null, rootMargin: '200px' });
+  io.observe(sentinel);
+
+  // 存储清理引用供 MutationObserver 断开时调用
+  ul._lazyIo = io;
   return true;
+}
+
+function warmLikelyEpisodeAudio(series) {
+  if (!series?.episodes?.length) return;
+
+  let targetIdx = 0;
+  if (state.playlist.length && state.epIdx >= 0) {
+    const current = state.playlist[state.epIdx];
+    if (current?.seriesId === series.id) targetIdx = state.epIdx;
+  }
+
+  const targetEpisode = series.episodes[targetIdx] || series.episodes[0];
+  if (!targetEpisode?.url) return;
+  warmAudioUrl(targetEpisode.url);
 }
 
 export function renderCategory(tabId) {
@@ -187,6 +256,9 @@ export async function showEpisodes(series, tabId) {
       skipDeferredMetrics = true;
       cancelProbe();
       cleanupViewResources();
+      // 清理懒加载 IntersectionObserver
+      const epUl = view.querySelector('#epList');
+      if (epUl && epUl._lazyIo) { epUl._lazyIo.disconnect(); epUl._lazyIo = null; }
       obs.disconnect();
     }
   });
@@ -200,13 +272,38 @@ export async function showEpisodes(series, tabId) {
 
   const ul = view.querySelector('#epList');
 
-  // Sync the .playing highlight whenever actual playback starts (covers auto-advance via onEnded).
-  // Uses the local `ul` so indices always match this series' list, regardless of other .ep-item
-  // elements that might exist elsewhere in the document (e.g. search results).
+  // 事件委托：单个 ul 监听器处理所有 ep-item 点击，替代 151+ 个独立监听器
+  ul.addEventListener('click', (e) => {
+    const li = e.target.closest('.ep-item');
+    if (!li) return;
+    const idx = parseInt(li.dataset.idx, 10);
+    if (isNaN(idx)) return;
+    if (isCurrentTrack(series.id, idx)) { togglePlay(); return; }
+    const hist = getHistory();
+    const entry = hist.find(h => h.seriesId === series.id && h.epIdx === idx);
+    const resumeTime = (entry && entry.time > 5 && (!entry.duration || entry.time < entry.duration - 5)) ? entry.time : 0;
+    playList(series.episodes, idx, series, resumeTime);
+  });
+
+  // 优化：只切换前一个和当前正在播放的两个元素的 class，而非遍历 151 个 ep-item
+  let _prevHighlightIdx = -1;
   updateHighlight = () => {
-    ul.querySelectorAll('.ep-item').forEach((el, i) => {
-      el.classList.toggle('playing', isCurrentTrack(series.id, i));
-    });
+    // 清除旧高亮
+    if (_prevHighlightIdx >= 0) {
+      const oldEl = getEpisodeItem(ul, _prevHighlightIdx);
+      if (oldEl) oldEl.classList.remove('playing');
+    }
+    // 设置新高亮（音频结束时不高亮任何项）
+    let newIdx = -1;
+    if (!dom.audio.ended && state.epIdx >= 0 && state.playlist.length > 0) {
+      const tr = state.playlist[state.epIdx];
+      if (tr && tr.seriesId === series.id) newIdx = state.epIdx;
+    }
+    if (newIdx >= 0) {
+      const newEl = getEpisodeItem(ul, newIdx);
+      if (newEl) newEl.classList.add('playing');
+    }
+    _prevHighlightIdx = newIdx;
   };
   dom.audio.addEventListener('playing', updateHighlight);
   dom.audio.addEventListener('ended', updateHighlight);
@@ -216,8 +313,12 @@ export async function showEpisodes(series, tabId) {
   const histMap = new Map();
   hist.forEach(h => { if (h.seriesId === series.id) histMap.set(h.epIdx, h); });
   // Use DocumentFragment for batch DOM insertion (avoids 196+ reflows)
-  const renderCompleted = await renderEpisodeItems(ul, series, histMap, requestId);
+  const renderCompleted = renderEpisodeItems(ul, series, histMap, requestId);
   if (!renderCompleted || !isContentRequestCurrent(requestId) || !view.isConnected) return;
+
+  if (tabId === 'tingjingtai') {
+    deferNonCriticalWork(() => warmLikelyEpisodeAudio(series));
+  }
 
   // Real-time progress bar for the currently playing episode (~1 update/sec)
   let progressTick = 0;
@@ -231,7 +332,7 @@ export async function showEpisodes(series, tabId) {
     const dur = dom.audio.duration;
     if (!dur || !isFinite(dur) || dur <= 0) return;
     const pct = Math.min(100, Math.round(dom.audio.currentTime / dur * 100));
-    const li = ul.children[state.epIdx];
+    const li = getEpisodeItem(ul, state.epIdx);
     if (!li) return;
     let fillEl = li.querySelector('.ep-progress-fill');
     if (!fillEl) {
@@ -247,21 +348,23 @@ export async function showEpisodes(series, tabId) {
   dom.audio.addEventListener('timeupdate', onTimeUpdate);
 
   // Batch-check cache status for all episodes (single cache.open() call)
+  // 低端设备（应用内浏览器）跳过缓存状态检查，减少 Cache API 压力
   deferNonCriticalWork(() => {
     if (skipDeferredMetrics || !view.isConnected) return;
 
-    getBatchCachedStatus(series.episodes.map(ep => ep.url)).then(cachedArr => {
-      const tooltip = getTextOrFallback('ep_cached_tooltip', '已下载，可离线收听');
-      cachedArr.forEach((cached, idx) => {
-        if (!cached) return;
-        const li = ul.children[idx];
-        if (li) {
-          li.classList.add('ep-cached');
-          const durEl = li.querySelector('.ep-duration');
-          if (durEl) durEl.title = tooltip;
-        }
+    if (!_isInApp) {
+      getBatchCachedStatus(series.episodes.map(ep => ep.url)).then(cachedArr => {
+        const tooltip = getTextOrFallback('ep_cached_tooltip', '已下载，可离线收听');
+        ul._cachedEpisodeIdxs = new Set();
+        ul._cachedEpisodeTooltip = tooltip;
+        cachedArr.forEach((cached, idx) => {
+          if (!cached) return;
+          ul._cachedEpisodeIdxs.add(idx);
+          const li = getEpisodeItem(ul, idx);
+          applyCachedStateToItem(li, tooltip);
+        });
       });
-    });
+    }
 
     cancelProbe = probeDurations(series.episodes, (idx, seconds) => {
       const el = ul.querySelector(`.ep-duration[data-idx="${idx}"]`);
