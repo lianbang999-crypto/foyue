@@ -65,8 +65,21 @@
     background: var(--bg-card);
     border-radius: var(--radius);
     overflow: hidden;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02);
-    border: 1px solid rgba(131, 106, 50, 0.06);
+    box-shadow: var(--shadow-sm);
+    border: none;
+    position: relative;
+}
+
+.my-list::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px var(--border);
+    pointer-events: none;
 }
 
 .my-item {
@@ -186,27 +199,33 @@
 .my-history-item {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 14px 16px;
-    background: var(--bg-card);
+    gap: 16px;
+    padding: 16px 20px;
+    background: transparent;
     cursor: pointer;
     transition: background .15s;
-    min-height: 44px
+    min-height: 48px;
+    border-bottom: 1px solid var(--border);
+}
+
+.my-list .my-history-item:last-child {
+    border-bottom: none;
 }
 
 .my-history-item:hover {
-    background: var(--bg-card-hover)
+    background: var(--bg-card-hover);
 }
 
 .my-history-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    background: var(--accent-glow);
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-card) 100%);
+    box-shadow: inset 0 0 0 1px var(--border);
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0
+    flex-shrink: 0;
 }
 
 .my-history-icon svg {
@@ -499,31 +518,56 @@
 
 .home-chant-card {
     flex-shrink: 0;
-    width: 120px;
+    width: 130px;
     background: var(--bg-card);
-    border-radius: 8px;
-    padding: 12px 10px;
+    border-radius: var(--radius);
+    padding: 16px 12px;
     text-align: center;
-    border: 1px solid var(--border);
+    border: none;
     cursor: pointer;
-    transition: background .15s, border-color .15s;
+    transition: all .3s cubic-bezier(.22, 1, .36, 1);
+    box-shadow: var(--shadow-sm);
+    position: relative;
+}
+
+.home-chant-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px var(--border);
+    pointer-events: none;
+    transition: box-shadow 0.3s ease;
 }
 
 .home-chant-card:hover {
     background: var(--bg-card-hover);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.home-chant-card:hover::before {
+    box-shadow: inset 0 0 0 1px var(--border-active);
 }
 
 .home-chant-card.playing {
-    border-color: var(--accent);
     background: var(--accent-glow);
 }
 
+.home-chant-card.playing::before {
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+
 .home-chant-play {
-    width: 32px;
-    height: 32px;
-    margin: 0 auto 6px;
+    width: 44px;
+    height: 44px;
+    margin: 0 auto 10px;
     border-radius: 50%;
-    background: var(--accent-glow);
+    background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-card) 100%);
+    box-shadow: inset 0 0 0 1px var(--border);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -556,19 +600,39 @@
 .home-continue-card {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
     background: var(--bg-card);
-    border-radius: 8px;
-    padding: 12px 16px;
-    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    border: none;
     cursor: pointer;
-    transition: background .15s;
+    transition: all .3s cubic-bezier(.22, 1, .36, 1);
     position: relative;
     overflow: hidden;
+    box-shadow: var(--shadow-sm);
+}
+
+.home-continue-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px var(--border);
+    pointer-events: none;
+    transition: box-shadow 0.3s ease;
 }
 
 .home-continue-card:hover {
     background: var(--bg-card-hover);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.home-continue-card:hover::before {
+    box-shadow: inset 0 0 0 1px var(--border-active);
 }
 
 .home-continue-icon {
@@ -653,34 +717,56 @@
 .home-rec-list {
     display: flex;
     flex-direction: column;
-    gap: 1px;
-    background: var(--border);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    gap: 12px;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius);
     overflow: hidden;
 }
 
 .home-rec-card {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
     background: var(--bg-card);
-    padding: 12px 16px;
+    padding: 16px 18px;
     cursor: pointer;
-    transition: background .15s;
+    transition: all .3s cubic-bezier(.22, 1, .36, 1);
     border: none;
-    border-radius: 0;
+    border-radius: var(--radius);
+    position: relative;
+    box-shadow: var(--shadow-sm);
+}
+
+.home-rec-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px var(--border);
+    pointer-events: none;
+    transition: box-shadow 0.3s ease;
 }
 
 .home-rec-card:hover {
     background: var(--bg-card-hover);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.home-rec-card:hover::before {
+    box-shadow: inset 0 0 0 1px var(--border-active);
 }
 
 .home-rec-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
-    background: var(--accent-glow);
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-card) 100%);
+    box-shadow: inset 0 0 0 1px var(--border);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -830,32 +916,45 @@
 
 /* ── Quote — Radix Callout style ── */
 .home-quote-callout {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 20px;
+    background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%);
+    border: none;
+    border-radius: var(--radius);
+    padding: 24px;
     position: relative;
-    margin-bottom: 8px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow-sm);
+    text-align: center;
+}
+
+.home-quote-callout::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px var(--border);
+    pointer-events: none;
 }
 
 .home-quote-callout .home-quote-text {
-    font-size: .92rem;
-    line-height: 1.9;
+    font-size: 1rem;
+    line-height: 1.8;
     color: var(--text);
     font-weight: 400;
     letter-spacing: 0.04em;
     font-family: var(--font-serif);
-    text-align: center;
+    text-shadow: 0 1px 1px var(--bg);
 }
 
 .home-quote-callout .home-quote-author {
-    font-size: .72rem;
+    font-size: .8rem;
     color: var(--text-muted);
-    margin-top: 12px;
+    margin-top: 14px;
     text-align: right;
-    font-weight: 400;
+    font-weight: 500;
     letter-spacing: 0.02em;
-    font-family: var(--font-zh);
 }
 
 /* Old hero/quote classes kept for backward-compat but neutered */

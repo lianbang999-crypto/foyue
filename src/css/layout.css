@@ -78,29 +78,17 @@
   left: 0;
   right: 0;
   z-index: 190;
-  background: rgba(250, 249, 246, 0.82);
+  background: var(--bg-header);
   backdrop-filter: blur(32px) saturate(200%);
   -webkit-backdrop-filter: blur(32px) saturate(200%);
-  border-top: 1px solid rgba(131, 106, 50, 0.10);
-  box-shadow: 0 -1px 0 rgba(131, 106, 50, 0.06), 0 -8px 32px rgba(0, 0, 0, 0.05);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -8px 32px var(--shadow-sm);
   padding-bottom: var(--safe-bottom);
   display: flex;
   justify-content: space-around;
   align-items: flex-end;
   height: calc(64px + var(--safe-bottom));
   transition: transform .34s cubic-bezier(.22, 1, .36, 1)
-}
-
-[data-theme="dark"] .tab-bar {
-  background: rgba(18, 18, 18, 0.88);
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow: 0 -1px 0 rgba(255,255,255,0.04), 0 -8px 32px rgba(0, 0, 0, 0.3);
-}
-
-[data-theme="ink"] .tab-bar {
-  background: rgba(14, 15, 20, 0.92);
-  border-top: 1px solid rgba(232, 213, 176, 0.06);
-  box-shadow: 0 -1px 0 rgba(232,213,176,0.04), 0 -8px 32px rgba(0, 0, 0, 0.4);
 }
 
 .tab-bar.hide {
@@ -135,7 +123,7 @@
   stroke-width: 1.6;
   stroke-linecap: round;
   stroke-linejoin: round;
-  transition: transform .2s cubic-bezier(.34,1.56,.64,1)
+  transition: transform .2s cubic-bezier(.34, 1.56, .64, 1)
 }
 
 .tab.active {
@@ -160,12 +148,19 @@
   background: var(--accent-glow);
   border-radius: 10px;
   z-index: -1;
-  animation: tabPillIn .25s cubic-bezier(.22,1,.36,1) forwards
+  animation: tabPillIn .25s cubic-bezier(.22, 1, .36, 1) forwards
 }
 
 @keyframes tabPillIn {
-  from { opacity: 0; transform: translateX(-50%) scale(0.7) }
-  to   { opacity: 1; transform: translateX(-50%) scale(1) }
+  from {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.7)
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(-50%) scale(1)
+  }
 }
 
 .tab-sub {
@@ -195,8 +190,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 16px var(--accent-shadow);
-  transition: transform .15s, box-shadow .15s, opacity .3s;
+  box-shadow: 0 4px 16px var(--accent-shadow);
+  transition: all .2s cubic-bezier(.22,1,.36,1);
   z-index: 2;
   -webkit-appearance: none;
   appearance: none
@@ -525,54 +520,67 @@
     --text-secondary: rgba(238, 238, 238, 0.7)
   }
 }
+
 /* === AUDIO PLAYBACK INDICATOR === */
 .nav-audio-indicator {
-    display: none;
-    align-items: center;
-    justify-content: center;
-    padding: 0 8px;
-    cursor: pointer;
-    transition: opacity .2s;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  cursor: pointer;
+  transition: opacity .2s;
 }
 
 .nav-audio-indicator:hover {
-    opacity: 0.8;
+  opacity: 0.8;
 }
 
 .nav-audio-wave {
-    fill: var(--accent);
+  fill: var(--accent);
 }
 
 .wave-bar {
-    animation: audioWave 1s ease-in-out infinite;
+  animation: audioWave 1s ease-in-out infinite;
 }
 
 .wave-bar.bar-1 {
-    animation-delay: 0s;
+  animation-delay: 0s;
 }
 
 .wave-bar.bar-2 {
-    animation-delay: 0.2s;
+  animation-delay: 0.2s;
 }
 
 .wave-bar.bar-3 {
-    animation-delay: 0.4s;
+  animation-delay: 0.4s;
 }
 
 @keyframes audioWave {
-    0%, 100% {
-        transform: scaleY(0.5);
-        opacity: 0.6;
-    }
-    50% {
-        transform: scaleY(1);
-        opacity: 1;
-    }
+
+  0%,
+  100% {
+    transform: scaleY(0.5);
+    opacity: 0.6;
+  }
+
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
 }
 
 /* Hide when audio is paused */
 .nav-audio-indicator.paused .wave-bar {
-    animation: none;
-    transform: scaleY(0.3);
-    opacity: 0.4;
+  animation: none;
+  transform: scaleY(0.3);
+  opacity: 0.4;
 }
+@keyframes fadeSlideUp {
+  0% { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.stagger-1 { animation: fadeSlideUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.stagger-2 { animation: fadeSlideUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.1s forwards; opacity: 0; }
+.stagger-3 { animation: fadeSlideUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.2s forwards; opacity: 0; }
+.stagger-4 { animation: fadeSlideUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.3s forwards; opacity: 0; }

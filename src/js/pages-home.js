@@ -79,8 +79,8 @@ const DAILY_QUOTES = [
 
 /* ---------- Skeleton placeholder ---------- */
 function renderRecSkeletons(count) {
-  return Array.from({ length: count }, () => `
-    <div class="home-rec-card home-rec-skeleton">
+  return Array.from({ length: count }, (_, idx) => `
+    <div class="home-rec-card home-rec-skeleton stagger-${Math.min(idx + 1, 4)}">
       <div class="home-rec-icon skeleton-pulse"></div>
       <div class="home-rec-body">
         <div class="skeleton-line skeleton-pulse" style="width:60%"></div>
@@ -92,10 +92,10 @@ function renderRecSkeletons(count) {
 }
 
 /* ---------- Render a single AI recommendation card ---------- */
-function renderAiRecCard(rec) {
+function renderAiRecCard(rec, idx) {
   const icon = HOME_CATEGORY_ICONS[rec.category_id] || HOME_CATEGORY_ICONS.tingjingtai;
   return `
-    <div class="home-rec-card" data-sid="${rec.series_id}" data-cat="${rec.category_id}"
+    <div class="home-rec-card stagger-${Math.min(idx + 1, 4)}" data-sid="${rec.series_id}" data-cat="${rec.category_id}"
          data-epnum="${rec.episode_num}" data-url="${rec.play_url || ''}">
       <div class="home-rec-icon">${icon}</div>
       <div class="home-rec-body">
@@ -172,11 +172,11 @@ function renderFallbackRecs(recList) {
   const rotated = [...allSeries.slice(dayOffset), ...allSeries.slice(0, dayOffset)];
   const picks = rotated.slice(0, 3);
 
-  recList.innerHTML = picks.map(s => {
+  recList.innerHTML = picks.map((s, idx) => {
     const pc = s.playCount ? " · " + (s.playCount >= 10000 ? (s.playCount / 10000).toFixed(1) + "w" : s.playCount) + (t("play_count_unit") || "次") : "";
     const introHtml = s.intro ? `<div class="home-rec-intro">${s.intro}</div>` : '';
     return `
-    <div class="home-rec-card" data-sid="${s.id}" data-cat="${s.catId}">
+    <div class="home-rec-card stagger-${Math.min(idx + 1, 4)}" data-sid="${s.id}" data-cat="${s.catId}">
       <div class="home-rec-icon">${HOME_CATEGORY_ICONS[s.catId] || HOME_CATEGORY_ICONS.tingjingtai}</div>
       <div class="home-rec-body">
         <div class="home-rec-title">${s.title}</div>${introHtml}
@@ -467,7 +467,7 @@ export function renderHomePage() {
 
   const chantCards = fohaoEps.map((ep, idx) => {
     const isPlaying = nowSid === 'donglin-fohao' && state.epIdx === idx;
-    return `<div class="home-chant-card${isPlaying ? ' playing' : ''}" data-fh-idx="${idx}">
+    return `<div class="home-chant-card stagger-${Math.min(idx + 1, 4)}${isPlaying ? ' playing' : ''}" data-fh-idx="${idx}">
       <div class="home-chant-play"><svg viewBox="0 0 24 24"><polygon points="8,4 20,12 8,20"/></svg></div>
       <div class="home-chant-name">${ep.title}</div>
     </div>`;

@@ -1,9 +1,48 @@
 /* === RESET === */
-*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-html{font-size:16px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;scroll-behavior:smooth;overflow-x:hidden}
-body{-webkit-tap-highlight-color:transparent;font-family:var(--font-zh);background:var(--bg);background-image:linear-gradient(180deg,var(--body-gradient) 0%,transparent 40%);color:var(--text);min-height:100vh;overflow-x:hidden;max-width:100vw;transition:background .35s,color .35s}
-@supports(min-height:100dvh){body{min-height:100dvh}}
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box
+}
 
-@media(prefers-reduced-motion:reduce){
-  *,*::before,*::after{animation-duration:0.01ms!important;transition-duration:0.01ms!important}
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
+  overflow-x: hidden
+}
+
+body {
+  -webkit-tap-highlight-color: transparent;
+  font-family: var(--font-zh);
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(ellipse at top, var(--accent-glow) 0%, transparent 60%),
+    linear-gradient(180deg, var(--body-gradient) 0%, transparent 30%);
+  background-attachment: fixed;
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+  max-width: 100vw;
+  transition: background-color .35s, color .35s;
+  line-height: 1.6;
+}
+
+@supports(min-height:100dvh) {
+  body {
+    min-height: 100dvh
+  }
+}
+
+@media(prefers-reduced-motion:reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important
+  }
 }

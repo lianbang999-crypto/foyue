@@ -141,6 +141,24 @@ function createChatPage() {
     });
   });
 
+  // Copy button
+  chatMessages.addEventListener('click', async (e) => {
+    const copyBtn = e.target.closest('.ai-copy-btn');
+    if (!copyBtn) return;
+    e.preventDefault();
+    const msgBlock = copyBtn.closest('.ai-msg');
+    const content = msgBlock.querySelector('.ai-msg-content')?.innerText;
+    if (!content) return;
+    try {
+      await navigator.clipboard.writeText(content);
+      const originalHtml = copyBtn.innerHTML;
+      copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--token-success, #10b981)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+      setTimeout(() => copyBtn.innerHTML = originalHtml, 2000);
+    } catch(err) {
+      import('./utils.js').then(m => m.showToast('复制失败'));
+    }
+  });
+
   // Retry button on error messages
   chatMessages.addEventListener('click', (e) => {
     const retryBtn = e.target.closest('.ai-retry-btn');
@@ -367,6 +385,17 @@ function createChatPage() {
       html += `<p class="ai-disclaimer">${escapeHtml(disclaimer)}</p>`;
     }
     html += '</div>';
+
+    // Hover copy button
+    if (safeRole === 'bot') {
+      html += `
+      <div class="ai-msg-actions" aria-hidden="true" title="复制文本">
+        <button type="button" class="ai-msg-action-btn ai-copy-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+        </button>
+      </div>`;
+    }
+
     msg.innerHTML = html;
     chatMessages.appendChild(msg);
     if (!silent) chatMessages.scrollTop = chatMessages.scrollHeight;

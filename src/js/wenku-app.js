@@ -306,29 +306,24 @@ async function openReader(docId, highlightQuery, skipPush) {
       <div class="wk-empty" style="padding-top:30vh">加载中...</div>
     </div>
     <div class="wk-reader-settings" id="readerSettings">
-      <div class="wk-settings-row">
-        <span class="wk-settings-label">字号</span>
-        <div class="wk-settings-group">
-          <button class="wk-settings-btn" data-size="-">A-</button>
-          <button class="wk-settings-btn" data-size="+">A+</button>
-        </div>
+      <div class="wk-settings-title">字号</div>
+      <div class="wk-fontsize-row">
+        <span class="wk-fontsize-label wk-fontsize-sm">A</span>
+        <input class="wk-fontsize-slider" id="readerFontSlider" type="range" min="14" max="28" step="1" value="${settings.fontSize}">
+        <span class="wk-fontsize-label wk-fontsize-lg">A</span>
       </div>
-      <div class="wk-settings-row">
-        <span class="wk-settings-label">字体</span>
-        <div class="wk-settings-group">
-          <button class="wk-settings-btn ${settings.fontFamily === 'sans' ? 'active' : ''}" data-font="sans">黑体</button>
-          <button class="wk-settings-btn ${settings.fontFamily === 'serif' ? 'active' : ''}" data-font="serif">宋体</button>
-          <button class="wk-settings-btn ${settings.fontFamily === 'kai' ? 'active' : ''}" data-font="kai">楷体</button>
-        </div>
+      <div class="wk-settings-title">背景</div>
+      <div class="wk-modes-row">
+        <span class="wk-mode-dot ${settings.mode === 'light' ? 'active' : ''}" data-mode="light">白</span>
+        <span class="wk-mode-dot ${settings.mode === 'sepia' ? 'active' : ''}" data-mode="sepia">护眼</span>
+        <span class="wk-mode-dot ${settings.mode === 'dark' ? 'active' : ''}" data-mode="dark">暗黑</span>
+        <span class="wk-mode-dot ${settings.mode === 'eink' ? 'active' : ''}" data-mode="eink">墨水</span>
       </div>
-      <div class="wk-settings-row">
-        <span class="wk-settings-label">主题</span>
-        <div class="wk-settings-group">
-          <span class="wk-mode-dot ${settings.mode === 'light' ? 'active' : ''}" data-mode="light"></span>
-          <span class="wk-mode-dot ${settings.mode === 'sepia' ? 'active' : ''}" data-mode="sepia"></span>
-          <span class="wk-mode-dot ${settings.mode === 'dark' ? 'active' : ''}" data-mode="dark"></span>
-          <span class="wk-mode-dot ${settings.mode === 'eink' ? 'active' : ''}" data-mode="eink"></span>
-        </div>
+      <div class="wk-settings-title">字体</div>
+      <div class="wk-fonts-row">
+                <button class="wk-font-btn wk-font-sans ${settings.fontFamily === 'sans' ? 'active' : ''}" data-font="sans">黑体</button>
+                <button class="wk-font-btn wk-font-serif ${settings.fontFamily === 'serif' ? 'active' : ''}" data-font="serif">宋体</button>
+                <button class="wk-font-btn wk-font-kai ${settings.fontFamily === 'kai' ? 'active' : ''}" data-font="kai">楷体</button>
       </div>
     </div>`;
 
@@ -443,16 +438,16 @@ function wireReaderSettings(settings) {
         panel.classList.toggle('open');
     });
 
-    // Font size
-    panel.querySelectorAll('[data-size]').forEach(b => {
-        b.addEventListener('click', () => {
-            const delta = b.dataset.size === '+' ? 1 : -1;
-            settings.fontSize = Math.max(14, Math.min(24, settings.fontSize + delta));
+    // Font size slider
+    const slider = panel.querySelector('#readerFontSlider');
+    if (slider) {
+        slider.addEventListener('input', () => {
+            settings.fontSize = parseInt(slider.value, 10);
             const body = wkReader.querySelector('#readerBody');
             if (body) body.style.fontSize = settings.fontSize + 'px';
             persistSettings(settings);
         });
-    });
+    }
 
     // Font family
     panel.querySelectorAll('[data-font]').forEach(b => {
@@ -575,8 +570,35 @@ function shareUrl(title, url) {
 }
 
 function copyToClipboard(text) {
-    if (!navigator.clipboard) return;
-    navigator.clipboard.writeText(text).then(() => showWkToast('链接已复制')).catch(() => {});
+    if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text)
+            .then(() => showWkToast('链接已复制'))
+            .catch(() => fallbackCopyToClipboard(text));
+        return;
+    }
+    fallbackCopyToClipboard(text);
+}
+
+function fallbackCopyToClipboard(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', 'readonly');
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    ta.style.top = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+
+    let copied = false;
+    try {
+        copied = document.execCommand('copy');
+    } catch {
+        copied = false;
+    }
+
+    document.body.removeChild(ta);
+    showWkToast(copied ? '链接已复制' : '复制失败，请手动复制');
 }
 
 function showWkToast(msg) {

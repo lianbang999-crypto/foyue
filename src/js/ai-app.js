@@ -439,8 +439,35 @@ function persistHistory() {
 
 /* --- 分享工具 --- */
 function _aiCopy(text) {
-    if (!navigator.clipboard) return;
-    navigator.clipboard.writeText(text).then(() => showAiToast('链接已复制')).catch(() => {});
+    if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text)
+            .then(() => showAiToast('链接已复制'))
+            .catch(() => _aiLegacyCopy(text));
+        return;
+    }
+    _aiLegacyCopy(text);
+}
+
+function _aiLegacyCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', 'readonly');
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    ta.style.top = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+
+    let copied = false;
+    try {
+        copied = document.execCommand('copy');
+    } catch {
+        copied = false;
+    }
+
+    document.body.removeChild(ta);
+    showAiToast(copied ? '链接已复制' : '复制失败，请手动复制');
 }
 
 function showAiToast(msg) {

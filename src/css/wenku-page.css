@@ -76,8 +76,8 @@ body {
     flex-shrink: 0;
     padding-top: var(--wk-safe-top);
     background: var(--wk-bg-header);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--wk-border);
     z-index: 10;
 }
@@ -87,7 +87,7 @@ body {
     align-items: center;
     justify-content: space-between;
     padding: 0 16px;
-    height: 52px;
+    height: 44px;
 }
 
 .wk-header-brand {
@@ -189,10 +189,10 @@ body {
     width: 100%;
     appearance: none;
     border: 1px solid var(--wk-border);
-    border-radius: 20px;
-    padding: 8px 16px;
-    font-size: 14px;
-    background: var(--wk-bg);
+    border-radius: var(--wk-radius);
+    padding: 10px 14px;
+    font-size: .84rem;
+    background: var(--wk-bg-card);
     color: var(--wk-text);
     font-family: var(--wk-font-zh);
     outline: none;
@@ -219,13 +219,11 @@ body {
 
 /* 段落标题 */
 .wk-section-label {
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: uppercase;
+    font-size: .82rem;
+    color: var(--wk-text-secondary);
     letter-spacing: 0.04em;
-    color: var(--wk-text-muted);
-    margin-bottom: 12px;
-    padding-left: 4px;
+    padding: 0 4px 10px;
+    font-weight: 500;
 }
 
 /* --- 继续阅读卡片 --- */
@@ -306,11 +304,7 @@ body {
 .wk-series-list {
     display: flex;
     flex-direction: column;
-    gap: 1px;
-    background: var(--wk-border);
-    border-radius: var(--wk-radius);
-    overflow: hidden;
-    margin-bottom: 24px;
+    gap: 8px;
 }
 
 .wk-series-item {
@@ -319,6 +313,8 @@ body {
     gap: 14px;
     padding: 14px 16px;
     background: var(--wk-bg-card);
+    border-radius: var(--wk-radius);
+    border: 1px solid var(--wk-border);
     cursor: pointer;
     transition: background 0.15s;
 }
@@ -329,9 +325,9 @@ body {
 
 .wk-series-icon {
     flex-shrink: 0;
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
+    width: 44px;
+    height: 44px;
+    border-radius: var(--wk-radius-sm);
     background: var(--wk-accent-light);
     display: flex;
     align-items: center;
@@ -340,8 +336,8 @@ body {
 }
 
 .wk-series-icon svg {
-    width: 16px;
-    height: 16px;
+    width: 20px;
+    height: 20px;
     fill: none;
     stroke: currentColor;
     stroke-width: 1.8;
@@ -390,8 +386,8 @@ body {
 .wk-doc-item {
     display: flex;
     align-items: center;
-    gap: 14px;
-    padding: 12px 16px;
+    gap: 12px;
+    padding: 13px 16px;
     background: var(--wk-bg-card);
     cursor: pointer;
     transition: background 0.15s;
@@ -402,17 +398,11 @@ body {
 }
 
 .wk-doc-num {
-    flex-shrink: 0;
     width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: var(--wk-accent-light);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--wk-accent);
+    font-size: .78rem;
+    color: var(--wk-text-muted);
+    text-align: center;
+    flex-shrink: 0;
 }
 
 .wk-doc-title {
@@ -425,21 +415,20 @@ body {
 }
 
 .wk-doc-badge {
-    flex-shrink: 0;
-    font-size: 11px;
-    font-weight: 500;
+    font-size: .68rem;
     color: var(--wk-accent);
     background: var(--wk-accent-light);
-    border-radius: 4px;
     padding: 2px 6px;
+    border-radius: 10px;
+    flex-shrink: 0;
 }
 
 /* --- 空状态 / loading --- */
 .wk-empty {
     text-align: center;
-    padding: 48px 20px;
+    padding: 40px 16px;
     color: var(--wk-text-muted);
-    font-size: 14px;
+    font-size: .82rem;
 }
 
 .wk-retry-btn {
@@ -504,13 +493,13 @@ body {
 }
 
 .wk-reader[data-mode="light"] {
-    background: #FAFAF8;
-    color: #1C1917;
+    background: #FFFFFF;
+    color: #333333;
 }
 
 .wk-reader[data-mode="dark"] {
     background: #1A1A1A;
-    color: #D6D3D1;
+    color: #C8C8C8;
 }
 
 .wk-reader[data-mode="sepia"] {
@@ -535,18 +524,18 @@ body {
     flex-shrink: 0;
     display: flex;
     align-items: center;
-    height: 48px;
-    padding: 0 12px;
+    height: 44px;
+    padding: 0 8px;
     padding-top: var(--wk-safe-top);
-    gap: 8px;
+    gap: 4px;
 }
 
 .wk-reader-btn {
     appearance: none;
     background: none;
     border: none;
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -579,30 +568,29 @@ body {
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
-    padding: 0 20px 48px;
-    max-width: 680px;
+    padding: 60px 24px 80px;
+    max-width: 720px;
     margin: 0 auto;
     width: 100%;
 }
 
 .wk-reader-title {
-    font-size: 24px;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    margin: 24px 0 8px;
-    line-height: 1.4;
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: inherit;
+    margin-bottom: 6px;
+    line-height: 1.5;
 }
 
 .wk-reader-meta {
-    font-size: 13px;
+    font-size: .76rem;
     opacity: 0.45;
-    margin-bottom: 32px;
+    margin-bottom: 28px;
 }
 
 .wk-reader-body {
-    font-size: 17px;
-    line-height: 1.9;
-    letter-spacing: 0.02em;
+    font-size: var(--reader-size, 17px);
+    line-height: var(--reader-line-height, 1.9);
 }
 
 .wk-reader-body[data-font="serif"] {
@@ -618,7 +606,7 @@ body {
 }
 
 .wk-reader-body p {
-    margin-bottom: 1.2em;
+    margin: 0 0 .8em;
     text-indent: 2em;
 }
 
@@ -644,14 +632,20 @@ body {
     bottom: 0;
     left: 0;
     right: 0;
-    padding: 16px 20px;
-    padding-bottom: calc(16px + var(--wk-safe-bottom));
+    z-index: 28;
+    padding: 20px 20px 24px;
+    padding-bottom: calc(24px + var(--wk-safe-bottom));
     border-top: 1px solid rgba(128, 128, 128, 0.2);
-    display: none;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1);
+    transform: translateY(100%);
+    transition: transform .3s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .3s;
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .wk-reader[data-mode="light"] .wk-reader-settings {
-    background: #FAFAF8;
+    background: #FFFFFF;
 }
 
 .wk-reader[data-mode="dark"] .wk-reader-settings {
@@ -666,87 +660,155 @@ body {
     background: #FAFAF5;
 }
 
-.wk-reader-settings.open {
-    display: block;
+.wk-settings-title {
+    font-size: .78rem;
+    opacity: 0.5;
+    margin-bottom: 12px;
+    font-weight: 500;
 }
 
-.wk-settings-row {
+.wk-reader-settings.open {
+    transform: translateY(0);
+    visibility: visible;
+    pointer-events: auto;
+    transition: transform .3s cubic-bezier(.22, 1, .36, 1), visibility 0s;
+}
+
+.wk-fontsize-row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 8px;
     margin-bottom: 16px;
 }
 
-.wk-settings-row:last-child {
+.wk-fontsize-label {
+    font-size: 1.05rem;
+    line-height: 1;
+    opacity: 0.7;
+}
+
+.wk-fontsize-sm {
+    font-size: .82rem;
+}
+
+.wk-fontsize-lg {
+    font-size: 1.15rem;
+}
+
+.wk-fontsize-slider {
+    flex: 1;
+    width: 100%;
+    accent-color: var(--wk-accent);
+    height: 24px;
+    background: transparent;
+}
+
+.wk-modes-row,
+.wk-fonts-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.wk-fonts-row {
     margin-bottom: 0;
 }
 
-.wk-settings-label {
-    font-size: 13px;
-    opacity: 0.6;
-}
-
-.wk-settings-group {
-    display: flex;
-    gap: 8px;
-}
-
-.wk-settings-btn {
+.wk-font-btn {
+    flex: 1;
     appearance: none;
-    border: 1px solid rgba(128, 128, 128, 0.3);
+    border: 1.5px solid rgba(128, 128, 128, 0.3);
     background: transparent;
-    border-radius: 8px;
-    padding: 6px 14px;
-    font-size: 13px;
+    border-radius: var(--wk-radius-sm);
+    padding: 8px;
+    font-size: .74rem;
     color: inherit;
     cursor: pointer;
-    font-family: var(--wk-font-zh);
-    transition: border-color 0.15s, background 0.15s;
+    text-align: center;
+    transition: all 0.15s;
 }
 
-.wk-settings-btn.active {
+.wk-font-btn.active {
     border-color: var(--wk-accent);
-    background: var(--wk-accent-light);
     color: var(--wk-accent);
+    font-weight: 500;
+}
+
+.wk-font-sans {
+    font-family: 'Noto Sans SC', sans-serif;
+}
+
+.wk-font-serif {
+    font-family: 'Noto Serif SC', 'Songti SC', serif;
+}
+
+.wk-font-kai {
+    font-family: 'Kaiti', 'KaiTi', 'STKaiti', serif;
+}
+
+/* 阅读滚动条（暗黑模式可见） */
+.wk-reader-scroll::-webkit-scrollbar {
+    width: 4px;
+}
+
+.wk-reader-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.wk-reader-scroll::-webkit-scrollbar-thumb {
+    background: rgba(128, 128, 128, 0.3);
+    border-radius: 2px;
+}
+
+.wk-reader[data-mode="dark"] .wk-reader-scroll::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
 }
 
 .wk-mode-dot {
-    display: inline-block;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    border: 2px solid rgba(128, 128, 128, 0.3);
+    flex: 1;
+    padding: 8px;
+    border-radius: var(--wk-radius-sm);
+    border: 1.5px solid rgba(128, 128, 128, 0.3);
+    font-size: .74rem;
     cursor: pointer;
-    transition: border-color 0.15s;
+    text-align: center;
+    transition: all 0.15s;
+    appearance: none;
 }
 
 .wk-mode-dot.active {
     border-color: var(--wk-accent);
-    border-width: 3px;
+    color: var(--wk-accent);
+    font-weight: 500;
 }
 
 .wk-mode-dot[data-mode="light"] {
-    background: #FAFAF8;
+    background: #fff;
+    color: #333;
 }
 
 .wk-mode-dot[data-mode="dark"] {
     background: #1A1A1A;
+    color: #C8C8C8;
 }
 
 .wk-mode-dot[data-mode="sepia"] {
     background: #F5EDDC;
+    color: #3B3228;
 }
 
 .wk-mode-dot[data-mode="eink"] {
     background: #FAFAF5;
+    color: #1A1A1A;
     font-family: serif;
 }
 
 /* 高亮搜索 */
 .wk-highlight {
-    background: rgba(212, 165, 74, 0.3);
+    background: rgba(212, 175, 55, 0.35);
+    color: inherit;
     border-radius: 2px;
-    padding: 0 1px;
+    padding: 1px 0;
 }
 
 /* 下一讲卡片 */
@@ -782,6 +844,22 @@ body {
     opacity: 0.8;
 }
 
+/* 键盘可访问性 */
+.wk-series-item:focus-visible,
+.wk-doc-item:focus-visible,
+.wk-continue:focus-visible {
+    outline: 2px solid var(--wk-accent);
+    outline-offset: -2px;
+}
+
+.wk-reader-btn:focus-visible,
+.wk-mode-dot:focus-visible,
+.wk-font-btn:focus-visible,
+.wk-next-btn:focus-visible {
+    outline: 2px solid var(--wk-accent);
+    outline-offset: 2px;
+}
+
 /* --- Toast --- */
 .wk-toast {
     position: fixed;
@@ -805,10 +883,6 @@ body {
     .wk-content {
         padding: 24px;
     }
-
-    .wk-reader-scroll {
-        padding: 0 32px 64px;
-    }
 }
 
 @media (min-width: 1024px) {
@@ -816,21 +890,4 @@ body {
         border-left: 1px solid var(--wk-border);
         border-right: 1px solid var(--wk-border);
     }
-}
-
-/* --- Toast --- */
-.wk-toast {
-    position: fixed;
-    bottom: 80px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.75);
-    color: #fff;
-    padding: 8px 20px;
-    border-radius: 20px;
-    font-size: 14px;
-    opacity: 0;
-    transition: opacity 0.3s;
-    z-index: 10000;
-    pointer-events: none;
 }

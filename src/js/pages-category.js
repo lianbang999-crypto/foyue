@@ -160,10 +160,11 @@ export function renderCategory(tabId) {
   const nowTrack = getCurrentTrack();
   const nowSid = nowTrack ? nowTrack.seriesId : null;
 
-  cat.series.forEach(s => {
+  cat.series.forEach((s, idx) => {
     const card = document.createElement('div');
     const isPlaying = s.id === nowSid;
-    card.className = 'card' + (isPlaying ? ' now-playing' : '');
+    const staggerCls = idx < 6 ? ` stagger-${Math.min(idx + 1, 4)}` : '';
+    card.className = 'card' + (isPlaying ? ' now-playing' : '') + staggerCls;
     const introHtml = s.intro ? `<div class="card-intro">${escapeHtml(s.intro)}</div>` : '';
     const playTag = isPlaying ? `<span class="card-playing-tag">${t('now_playing')}</span>` : '';
     const playCountText = s.playCount ? ` \u00B7 ${fmtCount(s.playCount)}${t('play_count_unit') || '\u6B21'}` : '';
