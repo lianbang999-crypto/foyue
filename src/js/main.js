@@ -476,28 +476,34 @@ async function ensureSeriesDetail(seriesId, categoryId) {
   });
 
   // Center play button - start dimmed when no audio loaded
-  dom.centerPlayBtn.classList.add('no-audio');
+  if (dom.centerPlayBtn) dom.centerPlayBtn.classList.add('no-audio');
 
   // Center play button - open expanded player, or toggle play if already in expanded view
-  dom.centerPlayBtn.addEventListener('click', () => {
-    haptic();
-    if (!dom.audio.src && !state.playlist.length) return;
-    if (dom.audio.src) {
-      // If fullscreen is not open, open it without changing play state
-      if (!dom.expPlayer.classList.contains('show')) {
-        // If audio is paused, start playback then open
-        if (dom.audio.paused) {
-          dom.audio.play().catch(() => { });
-        }
-        openFullScreen();
-      } else {
-        // Fullscreen already open, toggle play/pause
-        togglePlay();
+  if (dom.centerPlayBtn) {
+    dom.centerPlayBtn.addEventListener('click', () => {
+      haptic();
+      if (dom.centerPlayBtn.classList.contains('error')) {
+        retryPlayback();
+        return;
       }
-    } else {
-      openFullScreen();
-    }
-  });
+      if (!dom.audio.src && !state.playlist.length) return;
+      if (dom.audio.src) {
+        // If fullscreen is not open, open it without changing play state
+        if (!dom.expPlayer.classList.contains('show')) {
+          // Reuse the main playback path so buffering / ghost recovery stays consistent.
+          if (dom.audio.paused) {
+            togglePlay();
+          }
+          openFullScreen();
+        } else {
+          // Fullscreen already open, toggle play/pause
+          togglePlay();
+        }
+      } else {
+        openFullScreen();
+      }
+    });
+  }
 
   // Player controls
   function bindTouchSafeActivation(el, handler) {
@@ -849,12 +855,6 @@ async function ensureSeriesDetail(seriesId, categoryId) {
   // Tap-to-retry on player track (when in error state)
   dom.playerTrack.addEventListener('click', () => {
     if (dom.playerTrack.classList.contains('error')) {
-      retryPlayback();
-    }
-  });
-  // Tap-to-retry on center play button (when in error state)
-  dom.centerPlayBtn.addEventListener('click', () => {
-    if (dom.centerPlayBtn.classList.contains('error')) {
       retryPlayback();
     }
   });

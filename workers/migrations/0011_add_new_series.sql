@@ -1,4 +1,4 @@
--- Migration 0011: Add new series and episodes from R2 opus/mp3 bucket sync
+-- Migration 0011: Add new series and episodes from R2 audio bucket sync
 -- Generated: 2026-03-10
 -- Adds 10 new series + supplements 专题讲座 + total ~391 episodes
 
@@ -59,9 +59,9 @@ INSERT INTO episodes (series_id, episode_num, title, file_name, url) VALUES ('qu
 INSERT INTO episodes (series_id, episode_num, title, file_name, url) VALUES ('quanren-jiyindewen', 3, '第3讲', '劝人积阴德文 第3讲.mp3', 'https://audio.foyue.org/7be57e30faae4f81bbd76b61006ac8fc/%E4%B8%93%E9%A2%98%E8%AE%B2%E5%BA%A7/%E5%8A%9D%E4%BA%BA%E7%A7%AF%E9%98%B4%E5%BE%B7%E6%96%87/%E5%8A%9D%E4%BA%BA%E7%A7%AF%E9%98%B4%E5%BE%B7%E6%96%87%20%E7%AC%AC3%E8%AE%B2.mp3');
 
 -- ============================================================
--- 1b. 听经台 — 3 个仅 Opus 系列 (无 MP3 回退)
--- file_name 存储 .mp3 扩展名以保持 DB 一致性
--- 客户端通过 audio-url.js 在运行时解析为 .opus
+-- 1b. 听经台 — 3 个历史上曾使用旧格式兼容链路的系列（现已补齐 MP3）
+-- file_name 保持 .mp3 扩展名与当前线上资源一致
+-- 以下数据现已统一走 audio.foyue.org 的 MP3 链路，本注释仅保留历史背景
 -- ============================================================
 
 -- 新系列: 《佛说无量寿经》述义 (97 集)

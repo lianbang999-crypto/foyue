@@ -31,7 +31,7 @@ npm run preview   # 预览构建结果
 | 托管 | Cloudflare Pages（Git 推送自动部署） |
 | 后端 API | Cloudflare Pages Functions |
 | 数据库 | Cloudflare D1（foyue-db） |
-| 音频存储 | Cloudflare R2（4 个存储桶） |
+| 音频存储 | Cloudflare R2（4 个存储桶，统一通过 MP3 分发） |
 | AI 服务 | Cloudflare Workers AI（BGE-M3 / GLM / Qwen） |
 | 向量搜索 | Cloudflare Vectorize（dharma-content 索引） |
 | 字体 | Google Fonts（Noto Sans SC + DM Sans） |
@@ -123,7 +123,7 @@ foyue/
 │
 ├── icons/                      # Logo 源文件
 ├── scripts/                    # 工具脚本（音频转码 / R2 上传 / 数据同步）
-└── workers/                    # D1 迁移脚本 + 子域 Worker
+└── workers/                    # D1 迁移脚本 + audio.foyue.org Worker
     └── migrations/             #   0001 ~ 0016 数据库迁移
 ```
 
@@ -132,6 +132,8 @@ foyue/
 ## 核心功能
 
 **音频播放器**：播放 / 暂停、上下曲、快进快退、倍速（0.5x ~ 2x）、定时停止、顺序 / 单曲 / 随机循环、迷你播放器与全屏播放器切换、锁屏控制（Media Session API）。
+
+**音频分发**：当前线上音频统一为 MP3，通过 audio.foyue.org 提供 Range 播放与缓存；仓库不再维护旧格式子域与相关部署链路。
 
 **离线与缓存**：Cache API 音频离线缓存、Service Worker 静态资源缓存、断点续播（localStorage 持久化）、音频预加载（网络感知）。
 

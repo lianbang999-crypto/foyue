@@ -168,7 +168,7 @@ function updateStallDetectInterval() {
 export function setBuffering(on) {
   const dom = getDOM();
   dom.playerTrack.classList.toggle('buffering', on);
-  dom.centerPlayBtn.classList.toggle('buffering', on);
+  if (dom.centerPlayBtn) dom.centerPlayBtn.classList.toggle('buffering', on);
   dom.expPlay.classList.toggle('buffering', on);
   // Clear error state when buffering starts (means we're retrying)
   if (on) clearErrorState();
@@ -219,14 +219,14 @@ function setErrorState(msg) {
   const dom = getDOM();
   dom.playerTrack.classList.add('error');
   dom.playerTrack.dataset.errorMsg = msg || t('error_tap_retry');
-  dom.centerPlayBtn.classList.add('error');
+  if (dom.centerPlayBtn) dom.centerPlayBtn.classList.add('error');
 }
 
 function clearErrorState() {
   const dom = getDOM();
   dom.playerTrack.classList.remove('error');
   delete dom.playerTrack.dataset.errorMsg;
-  dom.centerPlayBtn.classList.remove('error');
+  if (dom.centerPlayBtn) dom.centerPlayBtn.classList.remove('error');
 }
 
 /* ===== Stall Detection ===== */
@@ -819,7 +819,7 @@ function updateUI(tr) {
   dom.expBufferFill.style.transform = 'scaleX(0)';
   dom.expTimeCurr.textContent = '0:00';
   dom.expTimeTotal.textContent = '0:00';
-  dom.centerRingFill.style.strokeDashoffset = RING_CIRCUMFERENCE;
+  if (dom.centerRingFill) dom.centerRingFill.style.strokeDashoffset = RING_CIRCUMFERENCE;
 }
 
 /* ===== Appreciate State (per-series, persisted in unified store) ===== */
@@ -914,13 +914,15 @@ export function setPlayState(playing) {
   const icon = playing ? SVG.pause : SVG.play;
   dom.btnPlay.innerHTML = icon;
   dom.expPlay.innerHTML = icon;
-  dom.centerPlayIcon.innerHTML = playing ? CENTER_PLAY_INNER.pause : CENTER_PLAY_INNER.play;
-  dom.centerPlayBtn.classList.toggle('playing', playing);
-  // Remove dim state once audio is loaded
-  dom.centerPlayBtn.classList.remove('no-audio');
+  if (dom.centerPlayIcon) dom.centerPlayIcon.innerHTML = playing ? CENTER_PLAY_INNER.pause : CENTER_PLAY_INNER.play;
+  if (dom.centerPlayBtn) {
+    dom.centerPlayBtn.classList.toggle('playing', playing);
+    // Remove dim state once audio is loaded
+    dom.centerPlayBtn.classList.remove('no-audio');
+  }
   // Update accessible labels
   const label = playing ? 'Pause' : 'Play';
-  dom.centerPlayBtn.setAttribute('aria-label', label);
+  if (dom.centerPlayBtn) dom.centerPlayBtn.setAttribute('aria-label', label);
   dom.expPlay.setAttribute('aria-label', label);
   dom.btnPlay.setAttribute('aria-label', label);
 }
@@ -1007,7 +1009,7 @@ export function onTimeUpdate() {
     dom.expTimeCurr.textContent = fmt(ct);
     dom.expTimeTotal.textContent = fmt(dur);
     const offset = RING_CIRCUMFERENCE * (1 - ct / dur);
-    dom.centerRingFill.style.strokeDashoffset = offset;
+    if (dom.centerRingFill) dom.centerRingFill.style.strokeDashoffset = offset;
 
     if (dom.audio.buffered.length > 0) {
       const bufEnd = dom.audio.buffered.end(dom.audio.buffered.length - 1);
@@ -1156,12 +1158,16 @@ export function togglePlay() {
     _userPaused = false; // User explicitly wants to play
     // If audio reached the end, restart from the beginning
     if (dom.audio.ended) dom.audio.currentTime = 0;
-    setPlayState(true);
+    // 弱网 / iPhone 恢复播放时，先给出明确缓冲反馈，避免 UI 先进入“已播放”但实际还没出声。
+    setBuffering(true);
     dom.audio.play().then(() => {
       startStallWatch();
     }).catch((err) => {
       // AbortError means pause() was called before play() resolved — UI already handled
-      if (err.name !== 'AbortError') setPlayState(false);
+      if (err.name !== 'AbortError') {
+        setBuffering(false);
+        setPlayState(false);
+      }
     }).finally(() => {
       _playPending = false;
     });
@@ -1752,8 +1758,7 @@ function updateMediaSession(tr) {
       // The user can still explicitly resume via our UI play button (which calls
       // togglePlay() directly and bypasses this guard).
       if (document.body.hasAttribute('data-counter-active') && dom.audio.paused) return;
-      _userPaused = false;
-      if (dom.audio.paused && dom.audio.src) { dom.audio.play(); setPlayState(true); startStallWatch(); }
+      if (dom.audio.paused && dom.audio.src) togglePlay();
     });
     navigator.mediaSession.setActionHandler('pause', () => {
       _userPaused = true;
