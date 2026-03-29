@@ -178,7 +178,7 @@ export function renderMyPage() {
     });
   });
   page.querySelector('#myWenkuCard').addEventListener('click', () => {
-    import('./wenku.js').then(mod => mod.renderWenkuHome(() => renderMyPage()));
+    window.location.href = '/wenku';
   });
   page.querySelector('#myGongxiuCard')?.addEventListener('click', () => showGongxiuSubview());
 

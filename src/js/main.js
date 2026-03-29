@@ -227,10 +227,7 @@ function renderHomeRoot() {
 }
 
 function renderWenkuRoot(options = {}) {
-  activateRootTab('mypage');
-  import('./wenku.js').then(mod => {
-    mod.renderWenkuHome(renderMyPage, options);
-  });
+  window.location.href = '/wenku';
 }
 
 function buildCategoriesUrl({ home = false } = {}) {
@@ -391,10 +388,10 @@ async function ensureSeriesDetail(seriesId, categoryId) {
     if (e.target === aboutOverlay) aboutOverlay.classList.remove('show');
   });
 
-  // AI Chat button (header pill)
+  // AI Chat button (header pill) → 跳转独立 AI 页面
   document.getElementById('btnAiChat').addEventListener('click', () => {
     haptic();
-    openAiChat();
+    window.location.href = '/ai';
   });
 
   // Search button (header icon)
@@ -1292,19 +1289,14 @@ function handleWenkuDeepLink() {
   const tab = params.get('tab');
   if (!docId && !wenkuSeries && tab !== 'wenku') return;
 
+  // 重定向到独立文库页面
   if (docId) {
-    // Open reader directly for a specific document
-    activateRootTab('mypage');
-    import('./wenku-reader.js').then(mod => mod.openReader(docId));
+    const q = params.get('q');
+    window.location.href = `/wenku?doc=${encodeURIComponent(docId)}${q ? '&q=' + encodeURIComponent(q) : ''}`;
   } else if (wenkuSeries) {
-    // Open wenku series view — URL already correct, skip pushState
-    activateRootTab('mypage');
-    import('./wenku.js').then(mod => {
-      mod.renderWenkuSeries(wenkuSeries, renderMyPage, { skipPush: true });
-    });
+    window.location.href = `/wenku?series=${encodeURIComponent(wenkuSeries)}`;
   } else if (tab === 'wenku') {
-    // Open wenku home — URL already correct, skip pushState
-    renderWenkuRoot({ skipPush: true });
+    window.location.href = '/wenku';
   }
 }
 

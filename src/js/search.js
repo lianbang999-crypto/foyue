@@ -334,10 +334,10 @@ async function renderWenkuResults(q, container) {
         <div class="wenku-result-action">${t('search_wenku_read') || '\u9605\u8BFB\u539F\u6587'} \u2192</div>
       `;
 
-      // Open internal reader with highlight
+      // 跳转到独立文库阅读器
       card.addEventListener('click', () => {
         closeSearchOverlay();
-        import('./wenku-reader.js').then(mod => mod.openReader(r.doc_id, q));
+        window.location.href = `/wenku?doc=${encodeURIComponent(r.doc_id)}&q=${encodeURIComponent(q)}`;
       });
 
       list.appendChild(card);

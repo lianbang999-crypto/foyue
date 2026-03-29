@@ -17,6 +17,8 @@ export default defineConfig({
         main: resolve(__dirname, 'index.html'),
         admin: resolve(__dirname, 'admin.html'),
         iconsPreview: resolve(__dirname, 'icons-preview.html'),
+        ai: resolve(__dirname, 'ai.html'),
+        wenku: resolve(__dirname, 'wenku.html'),
       },
       output: {
         manualChunks: {

@@ -458,9 +458,7 @@ export async function showEpisodes(series, tabId) {
     <span>${t('read_transcript')}</span>`;
     wenkuBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      import('./wenku.js').then(mod => {
-        mod.renderWenkuSeries(series.wenkuSeries, () => showEpisodes(series, tabId));
-      });
+      window.location.href = `/wenku?series=${encodeURIComponent(series.wenkuSeries)}`;
     });
     actionsDiv.appendChild(wenkuBtn);
   }
