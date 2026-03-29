@@ -1,34 +1,23 @@
 /* ===== 念佛计数器 (Buddhist Chanting Counter) ===== */
 import { t } from './i18n.js';
 import { get, patch } from './store.js';
-import { haptic, showToast, escapeHtml, formatCount, HUIXIANG_TEXT, localTodayStr, beijingTodayStr, HUIXIANG_DISPLAY_AUTO_MS } from './utils.js';
+import { haptic, showToast, escapeHtml, formatCount, HUIXIANG_TEXT, localTodayStr, HUIXIANG_DISPLAY_AUTO_MS } from './utils.js';
 
-/* 条件导入：独立页面不加载 player / gongxiu-panel 模块 */
+/* 条件导入：独立页面不加载 player 模块 */
 let pausePlaybackForCounter = () => {};
-let FEATURE_GONGXIU_PLAZA = false;
-let showGongxiuSubview = () => {};
 let _standaloneDeps = false;
 
 /** 加载主站依赖（仅非独立页场景调用） */
 export async function loadMainAppDeps() {
   if (_standaloneDeps) return;
   try {
-    const [playerMod, flagMod, gxMod] = await Promise.all([
-      import('./player.js'),
-      import('./feature-flags.js'),
-      import('./gongxiu-panel.js'),
-    ]);
+    const playerMod = await import('./player.js');
     pausePlaybackForCounter = playerMod.pausePlaybackForCounter;
-    FEATURE_GONGXIU_PLAZA = flagMod.FEATURE_GONGXIU_PLAZA;
-    showGongxiuSubview = gxMod.showGongxiuSubview;
   } catch { /* standalone mode — deps unavailable */ }
   _standaloneDeps = true;
 }
 const BEADS_PER_LOOP = 108;
-/** @deprecated Kept only for data migration from old single-custom format */
-const CUSTOM_KEY = '__custom__';
 const MAX_RIPPLES = 6;
-const MAX_CUSTOM_PRACTICES = 5;
 
 /** Built-in presets — always present, cannot be removed */
 const PRACTICE_PRESETS = ['南无阿弥陀佛', '阿弥陀佛'];
@@ -117,25 +106,7 @@ function pruneDailyLog(data) {
 /* ── Wake Lock ── */
 let _wakeLock = null;
 
-function isWakeLockEnabled() {
-  const preferences = get('preferences') || {};
-  return preferences.wakeLockEnabled !== false;
-}
-function setWakeLockPref(on) {
-  patch('preferences', { wakeLockEnabled: !!on });
-}
-
-/** Toggle screen wake lock preference; returns new enabled state */
-function toggleWakeLockPreference() {
-  const nowOn = !isWakeLockEnabled();
-  setWakeLockPref(nowOn);
-  if (nowOn) requestWakeLock();
-  else releaseWakeLock();
-  return nowOn;
-}
-
 async function requestWakeLock() {
-  if (!isWakeLockEnabled()) return;
   if (_wakeLock) return;
   try {
     if ('wakeLock' in navigator) {
@@ -151,51 +122,45 @@ function releaseWakeLock() {
   }
 }
 
-/**
- * Migrate legacy single-custom-practice format to the new customPractices array.
- * Also upgrades old '自定义' and '__custom__' keys to actual practice names.
- */
-function migrateToCustomPractices(data) {
-  let changed = false;
+/* ── 木鱼音效 (Muyu Sound) ── */
+let _muyuAudioCtx = null;
+let _muyuBuffer = null;
 
-  // 1. Migrate very old '自定义' key (pre-CUSTOM_KEY era)
-  if (data.practices && data.practices['自定义']) {
-    const name = data.customPractice || '自定义';
-    if (!data.practices[name] || data.practices[name].total === 0) {
-      data.practices[name] = data.practices['自定义'];
+function isMuyuEnabled() {
+  return (get('preferences') || {}).muyuSound !== false;
+}
+function setMuyuPref(on) {
+  patch('preferences', { muyuSound: !!on });
+}
+
+async function _ensureMuyuLoaded() {
+  if (_muyuBuffer) return true;
+  try {
+    if (!_muyuAudioCtx) {
+      _muyuAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
-    delete data.practices['自定义'];
-    if (data.practice === '自定义') data.practice = name;
-    changed = true;
-  }
+    const resp = await fetch('/audio/muyu.mp3');
+    const buf = await resp.arrayBuffer();
+    _muyuBuffer = await _muyuAudioCtx.decodeAudioData(buf);
+    return true;
+  } catch { return false; }
+}
 
-  // 2. Migrate CUSTOM_KEY ('__custom__') to actual practice name
-  if (data.practices && data.practices[CUSTOM_KEY] && data.customPractice) {
-    if (!data.practices[data.customPractice] || data.practices[data.customPractice].total === 0) {
-      data.practices[data.customPractice] = data.practices[CUSTOM_KEY];
-    }
-    delete data.practices[CUSTOM_KEY];
-    changed = true;
-  } else if (data.practices && data.practices[CUSTOM_KEY]) {
-    // No customPractice name saved — just drop the orphan key
-    delete data.practices[CUSTOM_KEY];
-    changed = true;
-  }
-  if (data.practice === CUSTOM_KEY) {
-    data.practice = data.customPractice || PRACTICE_PRESETS[0];
-    changed = true;
-  }
+function playMuyuSound() {
+  if (!isMuyuEnabled() || !_muyuBuffer || !_muyuAudioCtx) return;
+  if (_muyuAudioCtx.state === 'suspended') _muyuAudioCtx.resume();
+  const src = _muyuAudioCtx.createBufferSource();
+  src.buffer = _muyuBuffer;
+  src.connect(_muyuAudioCtx.destination);
+  src.start(0);
+}
 
-  // 3. Migrate from single customPractice string to customPractices array
-  if (!Array.isArray(data.customPractices)) {
-    data.customPractices = [];
-    if (data.customPractice && !PRACTICE_PRESETS.includes(data.customPractice)) {
-      data.customPractices.push(data.customPractice);
-    }
-    changed = true;
-  }
-
-  return changed;
+/* ── 熄灯模式 (Dimmer / Lights-off) ── */
+function isDimmerEnabled() {
+  return (get('preferences') || {}).dimmerMode === true;
+}
+function setDimmerPref(on) {
+  patch('preferences', { dimmerMode: !!on });
 }
 
 function getCounterData() {
@@ -220,9 +185,6 @@ function getCounterData() {
     }
     patch('counter', data);
   }
-
-  // Run all migrations
-  if (migrateToCustomPractices(data)) shouldPersist = true;
 
   // Ensure dailyLog exists
   if (!data.dailyLog) { data.dailyLog = {}; shouldPersist = true; }
@@ -343,7 +305,18 @@ function buildCounterHTML(data, session) {
         </button>
       </div>
       <div class="counter-header-slot counter-header-slot--center">
-        <span class="counter-header-title">${t('counter_title')}</span>
+        <button type="button" class="counter-tool-icon${isMuyuEnabled() ? ' counter-tool-icon--active' : ''}" id="counterMuyuToggle" aria-label="木鱼音效" title="木鱼音效">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3C7 3 3 7.5 3 12c0 3 1.5 5.5 4 7h10c2.5-1.5 4-4 4-7 0-4.5-4-9-9-9z"/>
+            <line x1="12" y1="19" x2="12" y2="22"/>
+            <circle cx="12" cy="12" r="2.5"/>
+          </svg>
+        </button>
+        <button type="button" class="counter-tool-icon${isDimmerEnabled() ? ' counter-tool-icon--active' : ''}" id="counterDimmerToggle" aria-label="熄灯模式" title="熄灯模式">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
       </div>
       <div class="counter-header-slot counter-header-slot--end">
         <button type="button" class="counter-records-entry" id="counterRecordsBtn"
@@ -403,15 +376,6 @@ function closeCounter(view, sourceTab, popHandler, escHandler, visHandler, optio
     if (skipNavigation) return;
     const targetTab = document.querySelector(`.tab[data-tab="${sourceTab}"]`) || document.querySelector('.tab[data-tab="home"]');
     if (targetTab) targetTab.click();
-    try {
-      if (FEATURE_GONGXIU_PLAZA && sessionStorage.getItem('counter:goto-gongxiu')) {
-        sessionStorage.removeItem('counter:goto-gongxiu');
-        sessionStorage.setItem('gongxiu:scroll-to-submit', '1');
-        setTimeout(() => {
-          showGongxiuSubview();
-        }, 380);
-      }
-    } catch { /* ignore */ }
   };
 
   if (skipAnimation) {
@@ -487,37 +451,41 @@ function wireCounterEvents(view, data, _session) {
     r.addEventListener('animationend', () => r.remove());
   }
 
+  /* ── Core count logic (no ripple/position) ── */
+  function doCountCore() {
+    haptic(30);
+    playMuyuSound();
+    session++;
+    const ps = getPracticeStats(data);
+    checkAndResetDaily(ps);
+    ps.total++;
+    ps.daily++;
+    ps.dailyDate = localTodayStr();
+    recordDailyLog(data, data.practice, 1);
+    patch('counter', data);
+    const goalJustDone = ps.goal > 0 && ps.daily === ps.goal;
+    if (goalJustDone) {
+      haptic(60);
+      showToast(t('counter_daily_done'));
+      updateUI(true);
+      return true;
+    }
+    updateUIFast(true);
+    return false;
+  }
+
   /* ── Tap count (unified pointer handling to prevent double-fire) ── */
   const tapArea = view.querySelector('#counterTapArea');
   if (tapArea) {
     let touchHandled = false;
 
     const doCount = (cx, cy) => {
-      haptic(30);
-      session++;
-      const ps = getPracticeStats(data);
-      checkAndResetDaily(ps);
-      ps.total++;
-      ps.daily++;
-      ps.dailyDate = localTodayStr();
-
-      // Record to daily log — data.practice is now always the actual display name
-      recordDailyLog(data, data.practice, 1);
-
-      patch('counter', data);
-
-      // Spawn ripple at tap position
-      spawnRipple(cx, cy);
-
-      const goalJustDone = ps.goal > 0 && ps.daily === ps.goal;
-      if (goalJustDone) {
-        haptic(60);
-        showToast(t('counter_daily_done'));
-        updateUI(true);
-        return;
+      if (navigator.vibrate) {
+        // 轻微触觉反馈
+        navigator.vibrate([15]);
       }
-
-      updateUIFast(true);
+      spawnRipple(cx, cy);
+      doCountCore();
     };
 
     // Track touch start position to distinguish taps from swipes
@@ -594,6 +562,105 @@ function wireCounterEvents(view, data, _session) {
       showHuixiangSheet(view, data, session);
     });
   }
+
+  /* ── 木鱼音效开关 ── */
+  const muyuToggle = view.querySelector('#counterMuyuToggle');
+  if (muyuToggle) {
+    // 预加载音频
+    _ensureMuyuLoaded();
+    muyuToggle.addEventListener('click', () => {
+      const nowOn = !isMuyuEnabled();
+      setMuyuPref(nowOn);
+      muyuToggle.classList.toggle('counter-tool-icon--active', nowOn);
+      haptic(15);
+      if (nowOn) {
+        _ensureMuyuLoaded().then(() => playMuyuSound());
+      }
+    });
+  }
+
+  /* ── 熄灯模式 ── */
+  const dimmerToggle = view.querySelector('#counterDimmerToggle');
+  if (dimmerToggle) {
+    // 如果上次使用了熄灯模式，自动进入
+    if (isDimmerEnabled()) enterDimmerMode(view, () => session, doCountCore);
+
+    dimmerToggle.addEventListener('click', () => {
+      setDimmerPref(true);
+      dimmerToggle.classList.add('counter-tool-icon--active');
+      enterDimmerMode(view, () => session, doCountCore);
+    });
+  }
+}
+
+/**
+ * 熄灯模式 — 全黑屏幕，仅响应触摸计数，双指触退出
+ */
+function enterDimmerMode(counterView, getSession, doCount) {
+  // Remove any existing dimmer
+  counterView.querySelectorAll('.counter-dimmer').forEach(el => el.remove());
+
+  const dimmer = document.createElement('div');
+  dimmer.className = 'counter-dimmer';
+  dimmer.innerHTML = `
+    <div class="counter-dimmer__hint">双指轻触退出熄灯模式</div>
+  `;
+  counterView.appendChild(dimmer);
+
+  // Fade in
+  requestAnimationFrame(() => dimmer.classList.add('counter-dimmer--active'));
+
+  // Hide hint after 2s
+  const hint = dimmer.querySelector('.counter-dimmer__hint');
+  setTimeout(() => { if (hint) hint.style.opacity = '0'; }, 2000);
+
+  const exitDimmer = () => {
+    setDimmerPref(false);
+    const toggle = counterView.querySelector('#counterDimmerToggle');
+    if (toggle) toggle.classList.remove('counter-tool-icon--active');
+    dimmer.classList.remove('counter-dimmer--active');
+    setTimeout(() => dimmer.remove(), 300);
+  };
+
+  // Single-finger tap to count
+  let touchHandled = false;
+  let touchStartX = 0;
+  let touchStartY = 0;
+
+  dimmer.addEventListener('touchstart', (e) => {
+    // Two-finger touch → exit
+    if (e.touches.length >= 2) {
+      e.preventDefault();
+      exitDimmer();
+      return;
+    }
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: false });
+
+  dimmer.addEventListener('touchend', (e) => {
+    if (!e.changedTouches || !e.changedTouches[0]) return;
+    const dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
+    const dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
+    if (dx > 20 || dy > 20) return;
+    e.preventDefault();
+    touchHandled = true;
+    doCount();
+  }, { passive: false });
+
+  dimmer.addEventListener('click', (e) => {
+    if (touchHandled) { touchHandled = false; return; }
+    doCount();
+  });
+
+  // Escape to exit
+  const escHandler = (e) => {
+    if (e.key === 'Escape') {
+      exitDimmer();
+      window.removeEventListener('keydown', escHandler);
+    }
+  };
+  window.addEventListener('keydown', escHandler);
 }
 
 /**
@@ -601,7 +668,7 @@ function wireCounterEvents(view, data, _session) {
  *
  * 次序：个人回向（若有）→ 莲池大师回向文 → 南无阿弥陀佛 →（可选）参与共修广场
  */
-function showHuixiangDisplay(parentView, anotherVow, counterData, dailyCount) {
+function showHuixiangDisplay(parentView, anotherVow) {
   parentView.querySelectorAll('.huixiang-display').forEach(el => el.remove());
 
   const display = document.createElement('div');
@@ -611,10 +678,6 @@ function showHuixiangDisplay(parentView, anotherVow, counterData, dailyCount) {
     ? `<div class="hd-personal">${escapeHtml(anotherVow)}</div>`
     : '';
 
-  const gongxiuBtnHtml = FEATURE_GONGXIU_PLAZA
-    ? '<button type="button" class="hd-gongxiu-btn" id="hdGongxiuBtn">参与共修广场</button>'
-    : '';
-
   display.innerHTML = `
     <div class="hd-overlay">
       <div class="hd-content">
@@ -622,7 +685,6 @@ function showHuixiangDisplay(parentView, anotherVow, counterData, dailyCount) {
         ${personalLine}
         <div class="hd-main-text">${HUIXIANG_TEXT.replace(/\n/g, '<br>')}</div>
         <div class="hd-namo">南无阿弥陀佛</div>
-        ${gongxiuBtnHtml}
         <div class="hd-hint">点击其他区域关闭</div>
       </div>
     </div>`;
@@ -635,24 +697,10 @@ function showHuixiangDisplay(parentView, anotherVow, counterData, dailyCount) {
   };
   const autoClose = setTimeout(close, HUIXIANG_DISPLAY_AUTO_MS);
 
-  display.querySelector('.hd-overlay').addEventListener('click', (e) => {
-    if (FEATURE_GONGXIU_PLAZA && e.target.closest('#hdGongxiuBtn')) return;
+  display.querySelector('.hd-overlay').addEventListener('click', () => {
     clearTimeout(autoClose);
     close();
   });
-
-  const gxBtn = display.querySelector('#hdGongxiuBtn');
-  if (gxBtn) {
-    gxBtn.addEventListener('click', () => {
-      clearTimeout(autoClose);
-      if (counterData && dailyCount > 0) {
-        submitToGongxiu(counterData, dailyCount, { anotherVow: anotherVow || '' }).catch(() => { });
-      }
-      close();
-      try { sessionStorage.setItem('counter:goto-gongxiu', '1'); } catch { }
-      setTimeout(() => history.back(), 420);
-    });
-  }
 }
 
 /**
@@ -724,38 +772,8 @@ function showHuixiangSheet(parentView, data, _session) {
     const anotherVow = sheet.querySelector('#hxAnotherVow')?.value.trim() || '';
     patch('preferences', { huixiangAnotherVow: anotherVow });
     close();
-    setTimeout(() => showHuixiangDisplay(parentView, anotherVow, data, dailyCount), 260);
+    setTimeout(() => showHuixiangDisplay(parentView, anotherVow), 260);
   });
-}
-
-/* ── Submit to 共修广场 ── */
-async function submitToGongxiu(data, count, vowInfo) {
-  const practice = getPracticeDisplayName(data);
-
-  const body = {
-    practice,
-    count: Math.min(count, 150000),
-    vow_type: 'universal', // 回向文始终为"法界一切众生"（往生极乐）
-    vow_target: '',
-    vow_custom: vowInfo?.anotherVow || '', // 另愿（用户个人附加愿心）
-    nickname: '莲友',
-  };
-
-  const resp = await fetch('/api/gongxiu', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-
-  if (!resp.ok) {
-    const data = await resp.json().catch(() => ({}));
-    throw new Error(data.error || 'HTTP ' + resp.status);
-  }
-
-  // Mark as submitted today
-  patch('gongxiu', { submittedDate: beijingTodayStr() });
-
-  return resp.json();
 }
 
 /**
@@ -878,7 +896,6 @@ function showPracticePicker(parentView, data, onDone) {
   sheet.className = 'counter-practice-sheet';
 
   const renderSheetContent = () => {
-    const canAdd = data.customPractices.length < MAX_CUSTOM_PRACTICES;
     const allPractices = [
       ...PRACTICE_PRESETS.map(n => ({ name: n, isPreset: true })),
       ...data.customPractices.map(n => ({ name: n, isPreset: false })),
@@ -894,7 +911,6 @@ function showPracticePicker(parentView, data, onDone) {
           ).join('')}
         </div>
 
-        ${canAdd ? `
         <div class="practice-add-section" id="practiceAddSection">
           <div class="practice-add-input-row" id="practiceAddRow" style="display:none">
             <input class="counter-goal-custom-input" id="practiceNewInput" type="text"
@@ -903,9 +919,9 @@ function showPracticePicker(parentView, data, onDone) {
           </div>
           <button class="practice-add-btn" id="practiceAddBtn">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            添加自定义功课（还可添加 ${MAX_CUSTOM_PRACTICES - data.customPractices.length} 个）
+            添加自定义功课
           </button>
-        </div>` : `<div class="practice-add-hint">自定义功课已达上限（${MAX_CUSTOM_PRACTICES} 个）</div>`}
+        </div>
 
         <button class="counter-goal-cancel" id="practiceCancel">${t('cancel')}</button>
       </div>`;
@@ -997,10 +1013,6 @@ function showPracticePicker(parentView, data, onDone) {
       }
       if ([...PRACTICE_PRESETS, ...data.customPractices].includes(val)) {
         showToast('该功课已存在');
-        return;
-      }
-      if (data.customPractices.length >= MAX_CUSTOM_PRACTICES) {
-        showToast(`自定义功课最多 ${MAX_CUSTOM_PRACTICES} 个`);
         return;
       }
       data.customPractices.push(val);
@@ -1096,7 +1108,6 @@ function buildHistoryHTML(data, year, month) {
   const todayStr  = todayDateStr();
   const log       = data.dailyLog || {};
   const streak    = getStreak(data);
-  const wakeOn    = isWakeLockEnabled();
 
   // 累计总声数
   let grandTotal = 0;
@@ -1208,10 +1219,6 @@ function buildHistoryHTML(data, year, month) {
           <button type="button" class="chi-tool-row" id="chToolPractice">
             <span class="chi-tool-label">${t('counter_tool_practice')}</span>
             ${CHI_CHEVRON}
-          </button>
-          <button type="button" class="chi-tool-row chi-tool-row--toggle" id="chToolWake">
-            <span class="chi-tool-label">${t('counter_tool_wakelock')}</span>
-            <span class="chi-tool-meta chi-tool-meta--pill" id="chWakeState">${wakeOn ? t('counter_wakelock_on') : t('counter_wakelock_off')}</span>
           </button>
           <button type="button" class="chi-tool-row" id="chToolShare">
             <span class="chi-tool-label">${t('counter_tool_share')}</span>
@@ -1464,11 +1471,6 @@ export function openHistory(counterView, data, hooks = {}) {
     goToMonth(y, m);
   });
 
-  const syncWakeLabel = () => {
-    const el = hist.querySelector('#chWakeState');
-    if (el) el.textContent = isWakeLockEnabled() ? t('counter_wakelock_on') : t('counter_wakelock_off');
-  };
-
   hist.querySelector('#chToolGoal')?.addEventListener('click', () => {
     showGoalPicker(counterView, data, () => {
       onDataChange();
@@ -1482,13 +1484,6 @@ export function openHistory(counterView, data, hooks = {}) {
       onDataChange();
       refreshCalendar();
     });
-  });
-
-  hist.querySelector('#chToolWake')?.addEventListener('click', () => {
-    const nowOn = toggleWakeLockPreference();
-    syncWakeLabel();
-    haptic(15);
-    showToast(nowOn ? t('counter_toast_wakelock_on') : t('counter_toast_wakelock_off'));
   });
 
   hist.querySelector('#chToolShare')?.addEventListener('click', () => {
@@ -1522,7 +1517,6 @@ export function openHistory(counterView, data, hooks = {}) {
 /* ── 独立页面模式初始化 ── */
 export function initCounterStandalone(container) {
   const data = getCounterData();
-  const session = { count: 0 };
 
   // 构建页面内容（直接渲染，不使用覆盖层）
   container.innerHTML = buildCounterHTML(data);
@@ -1530,45 +1524,15 @@ export function initCounterStandalone(container) {
   document.body.setAttribute('data-counter-active', '');
 
   // Wake Lock
-  if (isWakeLockEnabled()) requestWakeLock();
+  requestWakeLock();
 
   const visHandler = () => {
-    if (document.visibilityState === 'visible' && isWakeLockEnabled()) requestWakeLock();
+    if (document.visibilityState === 'visible') requestWakeLock();
     else if (document.visibilityState === 'hidden') releaseWakeLock();
   };
   document.addEventListener('visibilitychange', visHandler);
 
-  // 返回按钮 → 导航到主站首页
-  const backBtn = container.querySelector('#counterBack');
-  if (backBtn) {
-    backBtn.addEventListener('click', () => {
-      window.location.href = '/';
-    });
-  }
-
-  // 绑定计点事件
-  wireCounterEvents(container, data, session.count);
-
-  // 功课记录 → 覆盖 gongxiu 跳转逻辑
-  const recordBtn = container.querySelector('#counterRecord');
-  if (recordBtn) {
-    recordBtn.addEventListener('click', () => {
-      openHistory(container, data, {
-        onDataChange: () => {
-          wireCounterEvents(container, data, session.count);
-        },
-        resetSessionWithToast: () => {
-          session.count = 0;
-          const numEl = container.querySelector('#counterNumber');
-          if (numEl) numEl.textContent = '0';
-          showToast(t('counter_toast_clear'));
-        },
-        resetSessionQuiet: () => {
-          session.count = 0;
-          const numEl = container.querySelector('#counterNumber');
-          if (numEl) numEl.textContent = '0';
-        },
-      });
-    });
-  }
+  // wireCounterEvents 会绑定 #counterBack (history.back)
+  // 和 #counterRecordsBtn (openHistory) 及 #counterHuixiang 等全部按钮
+  wireCounterEvents(container, data, 0);
 }

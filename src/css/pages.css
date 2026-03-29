@@ -1138,6 +1138,68 @@
     opacity: .85;
 }
 
+/* ── 计数器工具图标 (木鱼/熄灯) ── */
+.counter-tool-icon {
+    -webkit-appearance: none;
+    appearance: none;
+    border: none;
+    background: transparent;
+    padding: 6px;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    border-radius: 8px;
+    transition: color .2s, background .2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.counter-tool-icon svg {
+    fill: none;
+    stroke: currentColor;
+}
+
+.counter-tool-icon:hover {
+    background: var(--accent-glow);
+}
+
+.counter-tool-icon--active {
+    color: var(--accent);
+}
+
+.counter-header-slot--center {
+    gap: 4px;
+}
+
+/* ── 熄灯模式覆盖层 ── */
+.counter-dimmer {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #000;
+    opacity: 0;
+    transition: opacity .3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+}
+
+.counter-dimmer--active {
+    opacity: 1;
+}
+
+.counter-dimmer__hint {
+    color: rgba(255, 255, 255, .25);
+    font-size: .82rem;
+    font-family: var(--font-zh);
+    letter-spacing: .08em;
+    transition: opacity 1s ease;
+    pointer-events: none;
+}
+
 .counter-header-title {
     flex: 1;
     text-align: center;
