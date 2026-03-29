@@ -8,6 +8,7 @@ import { addHistory, syncHistoryProgress, getHistory } from './history.js';
 import { recordPlay, getAppreciateCount } from './api.js';
 import { cacheAudio, getCachedAudioUrl, isAudioCached, isCachedSync } from './audio-cache.js';
 import { warmAudioUrl } from './audio-url.js';
+import { isInAppBrowser } from './pwa.js';
 import { get, set, patch, saveNow } from './store.js';
 
 /* ===== Playback State ===== */
@@ -109,9 +110,47 @@ export function getConnType() {
 let stallTimer = null;       // Timer for detecting prolonged stall
 let stallRetries = 0;        // Auto-retry count for stalls
 let _ghostSuspectCount = 0;  // Consecutive checks where played ranges didn't advance
+let _ghostPlaybackDriftSince = 0;
+let _ghostPlaybackLastPlayedEnd = 0;
 const MAX_STALL_RETRIES = 3;
 // ✅ 优化：根据网络状况动态调整stall检测间隔
 let STALL_DETECT_MS = 12000; // 默认12s without progress → stalled
+const IOS_GHOST_PLAYED_LAG_S = 1.5;
+const IOS_IN_APP_GHOST_PLAYED_LAG_S = 0.8;
+const IOS_GHOST_RECOVERY_DELAY_MS = 2500;
+const IOS_IN_APP_GHOST_RECOVERY_DELAY_MS = 1200;
+const _isInAppBrowser = isInAppBrowser();
+
+function resetGhostPlaybackTracking() {
+  _ghostSuspectCount = 0;
+  _ghostPlaybackDriftSince = 0;
+  _ghostPlaybackLastPlayedEnd = 0;
+}
+
+function getGhostPlaybackThresholds() {
+  if (_isInAppBrowser) {
+    return {
+      lagSeconds: IOS_IN_APP_GHOST_PLAYED_LAG_S,
+      recoveryDelayMs: IOS_IN_APP_GHOST_RECOVERY_DELAY_MS,
+    };
+  }
+
+  return {
+    lagSeconds: IOS_GHOST_PLAYED_LAG_S,
+    recoveryDelayMs: IOS_GHOST_RECOVERY_DELAY_MS,
+  };
+}
+
+function getGhostPlaybackLag(audio) {
+  return audio.currentTime - getLastPlayedEnd(audio);
+}
+
+function shouldForceGhostRecovery(audio) {
+  if (!isAppleMobileBrowser()) return false;
+  if (!audio || audio.paused || audio.ended || audio.seeking) return false;
+  const thresholds = getGhostPlaybackThresholds();
+  return getGhostPlaybackLag(audio) >= thresholds.lagSeconds;
+}
 
 function updateStallDetectInterval() {
   // On a weak network the browser takes longer to buffer, so give it more time
@@ -358,13 +397,15 @@ export function startStallWatch() {
   const dom = getDOM();
   let lastTime = dom.audio.currentTime;
   let lastPlayedEnd = getLastPlayedEnd(dom.audio);
-  _ghostSuspectCount = 0;
+  resetGhostPlaybackTracking();
+  _ghostPlaybackLastPlayedEnd = lastPlayedEnd;
 
   stallTimer = setInterval(() => {
     if (document.visibilityState === 'hidden') {
       lastTime = dom.audio.currentTime;
       lastPlayedEnd = getLastPlayedEnd(dom.audio);
-      _ghostSuspectCount = 0;
+      resetGhostPlaybackTracking();
+      _ghostPlaybackLastPlayedEnd = lastPlayedEnd;
       return;
     }
     if (dom.audio.paused || dom.audio.ended || !dom.audio.src) {
@@ -404,6 +445,7 @@ export function startStallWatch() {
 
 export function clearStallWatch() {
   if (stallTimer) { clearInterval(stallTimer); stallTimer = null; }
+  resetGhostPlaybackTracking();
 }
 
 export function retryPlayback() {
@@ -957,6 +999,32 @@ export function onTimeUpdate() {
     const dur = dom.audio.duration;
     if (!dur || !isFinite(dur)) return;
     const ct = dom.audio.currentTime;
+
+    if (isAppleMobileBrowser() && !_isRecovering) {
+      if (!dom.audio.paused && !dom.audio.ended && !dom.audio.seeking && document.visibilityState === 'visible') {
+        const playedEnd = getLastPlayedEnd(dom.audio);
+        const playedAdvanced = playedEnd > _ghostPlaybackLastPlayedEnd + 0.35;
+        const thresholds = getGhostPlaybackThresholds();
+        const playedLag = ct - playedEnd;
+
+        if (playedAdvanced || ct < 5 || playedLag < thresholds.lagSeconds) {
+          _ghostPlaybackDriftSince = 0;
+        } else {
+          if (!_ghostPlaybackDriftSince) {
+            _ghostPlaybackDriftSince = performance.now();
+          } else if (performance.now() - _ghostPlaybackDriftSince >= thresholds.recoveryDelayMs) {
+            clearStallWatch();
+            onGhostPlaybackDetected(playedEnd > 0 ? playedEnd : Math.max(0, ct - 1));
+            return;
+          }
+        }
+
+        _ghostPlaybackLastPlayedEnd = Math.max(_ghostPlaybackLastPlayedEnd, playedEnd);
+      } else {
+        resetGhostPlaybackTracking();
+      }
+    }
+
     const p = Math.min(100, (ct / dur) * 100);
 
     // 批量更新DOM，减少重排/重绘
@@ -1066,6 +1134,10 @@ export function togglePlay() {
   const dom = getDOM();
   if (dom.audio.paused && dom.audio.src) {
     if (_playPending) return; // play() already in-flight, ignore duplicate tap
+    if (_isInAppBrowser && shouldForceGhostRecovery(dom.audio)) {
+      retryPlayback();
+      return;
+    }
     _playPending = true;
     _userPaused = false; // User explicitly wants to play
     // If audio reached the end, restart from the beginning
