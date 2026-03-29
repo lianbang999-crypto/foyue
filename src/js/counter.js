@@ -1533,7 +1533,7 @@ export function initCounterStandalone(container) {
   const data = getCounterData();
 
   // 构建页面内容（直接渲染，不使用覆盖层）
-  container.innerHTML = buildCounterHTML(data);
+  container.innerHTML = buildCounterHTML(data, 0);
   container.classList.add('counter-view', 'counter-view--visible');
   document.body.setAttribute('data-counter-active', '');
 

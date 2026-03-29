@@ -7,6 +7,10 @@ const BM_KEY = 'wenku-bookmarks';
 const BM_MAX = 100;
 const SCROLL_KEY = 'wenku-reader-scroll';
 const SETTINGS_KEY = 'wenku-reader-settings';
+const THEME_COLORS = {
+    light: '#FAF9F6',
+    dark: '#0F0F0F',
+};
 
 /* --- DOM 引用 --- */
 const wkContent = document.getElementById('wkContent');
@@ -30,6 +34,7 @@ function isActiveViewRequest(requestId, view) {
 init();
 
 function init() {
+    syncTheme();
     wireContentClicks();
     wireHomeShare();
     const params = new URLSearchParams(location.search);
@@ -46,6 +51,32 @@ function init() {
     }
 
     window.addEventListener('popstate', onPopState);
+}
+
+function syncTheme() {
+    const applyTheme = (isDark) => {
+        const theme = isDark ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', theme);
+        const meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', THEME_COLORS[theme]);
+    };
+
+    if (typeof window.matchMedia !== 'function') {
+        applyTheme(false);
+        return;
+    }
+
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    applyTheme(mq.matches);
+
+    if (typeof mq.addEventListener === 'function') {
+        mq.addEventListener('change', (e) => applyTheme(e.matches));
+        return;
+    }
+
+    if (typeof mq.addListener === 'function') {
+        mq.addListener((e) => applyTheme(e.matches));
+    }
 }
 
 function onPopState(e) {

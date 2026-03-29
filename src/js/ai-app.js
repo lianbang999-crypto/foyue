@@ -7,6 +7,10 @@ const MAX_INPUT_LEN = 500;
 const MAX_MESSAGES = 50;
 const MAX_PERSIST = 20;
 const LS_KEY = 'ai-page-history';
+const THEME_COLORS = {
+    light: '#FAFAFA',
+    dark: '#0C0A09',
+};
 
 /* --- 状态 --- */
 let isLoading = false;
@@ -32,7 +36,10 @@ function init() {
 /* --- 主题同步 --- */
 function syncTheme() {
     const applyTheme = (isDark) => {
-        document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+        const theme = isDark ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', theme);
+        const meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', THEME_COLORS[theme]);
     };
 
     if (typeof window.matchMedia !== 'function') {
