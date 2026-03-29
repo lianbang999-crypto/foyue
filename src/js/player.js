@@ -3,7 +3,7 @@ import { state } from './state.js';
 import { getDOM, RING_CIRCUMFERENCE } from './dom.js';
 import { SVG, CENTER_PLAY_INNER, ICON_PLAY, ICON_PAUSE, ICON_PLAY_FILLED, ICON_PAUSE_FILLED, ICON_APPRECIATE, ICON_APPRECIATE_FILLED } from './icons.js';
 import { t } from './i18n.js';
-import { fmt, showToast, seekAt, haptic, fmtCount, escapeHtml, shareContent } from './utils.js';
+import { fmt, showToast, haptic, fmtCount, escapeHtml, shareContent, isAppleMobile } from './utils.js';
 import { addHistory, syncHistoryProgress, getHistory } from './history.js';
 import { recordPlay, getAppreciateCount } from './api.js';
 import { cacheAudio, getCachedAudioUrl, isAudioCached, isCachedSync } from './audio-cache.js';
@@ -146,7 +146,7 @@ function getGhostPlaybackLag(audio) {
 }
 
 function shouldForceGhostRecovery(audio) {
-  if (!isAppleMobileBrowser()) return false;
+  if (!isAppleMobile()) return false;
   if (!audio || audio.paused || audio.ended || audio.seeking) return false;
   const thresholds = getGhostPlaybackThresholds();
   return getGhostPlaybackLag(audio) >= thresholds.lagSeconds;
@@ -619,7 +619,7 @@ function cancelPendingTrackLoad() {
 function playCurrent() {
   const dom = getDOM();
   if (state.epIdx < 0 || state.epIdx >= state.playlist.length) return;
-  const preferDirectPlayback = isAppleMobileBrowser() && navigator.onLine !== false;
+  const preferDirectPlayback = isAppleMobile() && navigator.onLine !== false;
   finishRecovery();
 
   // A new track is starting — clear any pending play lock from a previous togglePlay() call
@@ -1000,7 +1000,7 @@ export function onTimeUpdate() {
     if (!dur || !isFinite(dur)) return;
     const ct = dom.audio.currentTime;
 
-    if (isAppleMobileBrowser() && !_isRecovering) {
+    if (isAppleMobile() && !_isRecovering) {
       if (!dom.audio.paused && !dom.audio.ended && !dom.audio.seeking && document.visibilityState === 'visible') {
         const playedEnd = getLastPlayedEnd(dom.audio);
         const playedAdvanced = playedEnd > _ghostPlaybackLastPlayedEnd + 0.35;
@@ -1329,7 +1329,7 @@ export function preloadNextTrack() {
   if (!nurl || nurl === preloadedUrl) return;
 
   // iPhone/iPad WebKit 内存预算更紧，不额外持有下一曲的 Audio 预加载对象。
-  if (isAppleMobileBrowser()) {
+  if (isAppleMobile()) {
     if (!_networkWeak && currentTrack?.categoryId === 'tingjingtai') warmAudioUrl(nurl);
     return;
   }
@@ -1384,11 +1384,6 @@ export function cleanupPreload() {
 // to a local Blob URL so the rest of playback is fully local — zero network dependency.
 const BG_LOAD_MAX_SIZE = 150 * 1024 * 1024; // Skip files > 150 MB
 
-function isAppleMobileBrowser() {
-  const ua = navigator.userAgent || '';
-  return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-}
-
 function cleanupBgFetch() {
   if (bgFetchController) { bgFetchController.abort(); bgFetchController = null; }
   if (bgLoadDelayTimer) {
@@ -1407,7 +1402,7 @@ function startBgFullLoad(url) {
   if (bgFetchUrl === url || bgLoadScheduledUrl === url) return;
 
   // iOS 上整文件拉成 Blob 再缓存的峰值内存很高，直接关闭这条后台链路。
-  if (isAppleMobileBrowser()) return;
+  if (isAppleMobile()) return;
 
   const conn = navigator.connection || navigator.mozConnection;
   if (getConnType() !== 'wifi') return;

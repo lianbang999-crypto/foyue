@@ -87,6 +87,10 @@ self.addEventListener('fetch', event => {
             // Only cache successful full responses (not partial 206)
             if (response.ok && response.status === 200) {
               cache.put(event.request.url, response.clone());
+              // 通知主线程更新缓存 URL 集合
+              self.clients.matchAll().then(cls => {
+                cls.forEach(c => c.postMessage({ type: 'audio-cached', url: event.request.url }));
+              });
             }
             return response;
           });

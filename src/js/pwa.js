@@ -1,7 +1,7 @@
 /* ===== PWA Install Prompt ===== */
 import { getDOM } from './dom.js';
 import { t } from './i18n.js';
-import { showToast } from './utils.js';
+import { showToast, isAppleMobile } from './utils.js';
 
 let deferredPrompt = null;
 let installPromptInitialized = false;
@@ -21,9 +21,6 @@ const APP_CACHE_KEY_PATTERNS = [/^pl-data-cache-/, /^pl-home-cache-/];
 const APP_CACHE_NAME_PATTERNS = [/^static-/, /^data-/];
 const WATCHED_REGISTRATIONS = new WeakSet();
 
-export function getDeferredPrompt() { return deferredPrompt; }
-export function clearDeferredPrompt() { deferredPrompt = null; }
-
 export function isInAppBrowser() {
   const ua = navigator.userAgent;
   return /MicroMessenger|WeChat|QQ\/|Weibo|DingTalk|Alipay|baiduboxapp/i.test(ua);
@@ -31,7 +28,7 @@ export function isInAppBrowser() {
 
 function getInstallEnvironment() {
   const ua = navigator.userAgent;
-  const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isIOS = isAppleMobile();
   const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|Chrome/.test(ua);
   return {
     isStandalone: isStandaloneMode(),
@@ -305,7 +302,7 @@ export function initInstallPrompt() {
   const isInApp = isInAppBrowser();
   if (isInApp) return;
 
-  const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isIOS = isAppleMobile();
   const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|Chrome/.test(ua);
 
   if (isIOS && isSafari) {

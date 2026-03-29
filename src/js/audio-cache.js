@@ -3,7 +3,7 @@
 
 import { get, set } from './store.js';
 
-const AUDIO_CACHE = 'audio-v2'; // v2: cache key = actual URL (no canonicalization)
+export const AUDIO_CACHE = 'audio-v2'; // v2: cache key = actual URL (no canonicalization)
 const MAX_CACHE_BYTES = 500 * 1024 * 1024; // 500 MB cap
 
 /* ===== Store-backed cached URL set ===== */
@@ -40,6 +40,20 @@ function _dispatchChange() {
   try {
     window.dispatchEvent(new CustomEvent('audiocache:change'));
   } catch { }
+}
+
+/* ===== 接收 Service Worker 缓存通知，保持 store-backed URL 集合同步 ===== */
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'audio-cached') {
+      const s = _getCachedSet();
+      if (!s.has(e.data.url)) {
+        s.add(e.data.url);
+        _saveCachedSet(s);
+        _dispatchChange();
+      }
+    }
+  });
 }
 
 /**

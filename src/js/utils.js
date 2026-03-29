@@ -1,6 +1,14 @@
 /* ===== Utility Functions ===== */
 
 /**
+ * 统一的 iOS/iPadOS 检测（所有模块共用，不得各自定义）
+ * 覆盖 iPhone / iPad / iPod 及 iPadOS 桌面 UA 伪装。
+ */
+const _isAppleMobile = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+export function isAppleMobile() { return _isAppleMobile; }
+
+/**
  * 莲池大师回向文（固定，所有模块共用此常量，不得各自定义）
  * 以"同生极乐国"为一切功德的最终归宿。
  */
@@ -116,12 +124,6 @@ export function debounce(fn, wait) {
     clearTimeout(timer);
     timer = setTimeout(() => fn.apply(this, args), wait);
   };
-}
-
-/* Legacy — kept for any other callers */
-export function seekAt(e, el, audio) {
-  const p = seekCalc(e, el);
-  if (audio.duration && isFinite(audio.duration)) audio.currentTime = p * audio.duration;
 }
 
 /* Floating text animation — rises from an element and fades out */

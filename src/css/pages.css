@@ -1417,7 +1417,7 @@
     flex-shrink: 0;
     margin-top: 8px;
     padding: 0 24px 6px;
-    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(6px + var(--safe-bottom));
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1989,7 +1989,7 @@
     background: var(--bg-card);
     border-radius: var(--radius) var(--radius) 0 0;
     padding: 20px;
-    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(20px + var(--safe-bottom));
     transform: translateY(100%);
     transition: transform .25s cubic-bezier(0.22, 1, 0.36, 1);
     display: flex;
@@ -2176,7 +2176,7 @@
     background: var(--bg-card);
     border-radius: var(--radius) var(--radius) 0 0;
     padding: 20px;
-    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(20px + var(--safe-bottom));
     transform: translateY(100%);
     transition: transform .25s cubic-bezier(0.22, 1, 0.36, 1);
     display: flex;
@@ -2314,7 +2314,7 @@
     flex: 1;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    padding: 20px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+    padding: 20px 16px calc(24px + var(--safe-bottom));
 }
 
 /* Stats grid (2×2) */
@@ -2644,7 +2644,7 @@
     right: 0;
     background: var(--bg-card);
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    padding: 16px 16px calc(16px + var(--safe-bottom));
     max-height: 90vh;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;

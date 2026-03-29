@@ -5,14 +5,11 @@
 import { state } from './state.js';
 import { get, patch } from './store.js';
 import { getConnType } from './player.js';
+import { isAppleMobile } from './utils.js';
 
 // Reduce concurrency when audio is playing to avoid bandwidth competition
 const MAX_CONCURRENT_IDLE = 3;
 const MAX_CONCURRENT_PLAYING = 1;
-
-// iOS Safari 的 Audio 元素内存回收不完整，跳过探测以减少内存压力
-const _isAppleMobile = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 function releaseProbeAudio(audio) {
   if (!audio) return;
@@ -128,7 +125,7 @@ export function probeDurations(episodes, onDuration) {
   const activeProbes = new Set();
 
   // Skip probing entirely when network is weak or on iOS (Audio elements leak memory on WebKit)
-  if (state.networkWeak || _isAppleMobile) {
+  if (state.networkWeak || isAppleMobile()) {
     // Still report cached durations (for episodes without JSON duration)
     episodes.forEach((ep, idx) => {
       if (ep.duration) return; // already in JSON — no need to probe
