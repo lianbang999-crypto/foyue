@@ -408,7 +408,7 @@ async function ensureSeriesDetail(seriesId, categoryId) {
   // One-time setup: scroll listener for translucent header (must not be inside tab click handler)
   dom.contentArea.addEventListener('scroll', () => {
     const isScrolled = dom.contentArea.scrollTop > 10;
-    dom.header.classList.toggle('scrolled', isScrolled);
+    if (dom.header) dom.header.classList.toggle('scrolled', isScrolled);
   }, { passive: true });
 
   // One-time setup: audio playback indicator in header

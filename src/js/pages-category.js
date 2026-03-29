@@ -19,6 +19,8 @@ import { getPlaybackPolicy } from './playback-policy.js';
 // import { getTranscriptAvailability } from './ai-client.js';
 
 const _isInApp = isInAppBrowser();
+const CATEGORY_PREVIEW_COUNT = _isInApp ? 8 : 10;
+const categoryExpansionState = new Map();
 
 function getConnTypeForWarmup() {
   const conn = navigator.connection || navigator.mozConnection;
@@ -175,6 +177,27 @@ function warmLikelyEpisodeAudio(series) {
   warmAudioUrl(targetEpisode.url);
 }
 
+function getCollapsedSeriesCount(seriesList, currentSeriesId) {
+  const total = seriesList.length;
+  if (total <= CATEGORY_PREVIEW_COUNT) return total;
+  const currentIdx = currentSeriesId ? seriesList.findIndex(series => series.id === currentSeriesId) : -1;
+  if (currentIdx >= CATEGORY_PREVIEW_COUNT) return currentIdx + 1;
+  return CATEGORY_PREVIEW_COUNT;
+}
+
+function buildSeriesToggleLabel(visibleCount, totalCount, expanded) {
+  if (expanded) return '收起专辑';
+  const remaining = Math.max(0, totalCount - visibleCount);
+  if (remaining <= 0) return '收起专辑';
+  return `展开更多专辑（还有 ${remaining} 部）`;
+}
+
+function buildSeriesToggleMeta(visibleCount, totalCount, expanded) {
+  if (totalCount <= CATEGORY_PREVIEW_COUNT) return '';
+  if (expanded) return `已展开全部 ${totalCount} 部专辑`;
+  return `当前先显示 ${visibleCount} / ${totalCount} 部专辑`;
+}
+
 export function renderCategory(tabId) {
   beginContentRequest();
   const dom = getDOM();
@@ -189,8 +212,14 @@ export function renderCategory(tabId) {
   const unit = tabId === 'fohao' ? t('tracks') : t('episodes');
   const nowTrack = getCurrentTrack();
   const nowSid = nowTrack ? nowTrack.seriesId : null;
+  const expanded = categoryExpansionState.get(tabId) === true;
+  const visibleCount = expanded
+    ? cat.series.length
+    : getCollapsedSeriesCount(cat.series, nowSid);
+  const visibleSeries = cat.series.slice(0, visibleCount);
+  list.classList.toggle('is-collapsed', !expanded && cat.series.length > visibleCount);
 
-  cat.series.forEach((s, idx) => {
+  visibleSeries.forEach((s, idx) => {
     const card = document.createElement('div');
     const isPlaying = s.id === nowSid;
     const staggerCls = idx < 6 ? ` stagger-${Math.min(idx + 1, 4)}` : '';
@@ -205,6 +234,27 @@ export function renderCategory(tabId) {
     list.appendChild(card);
   });
   wrap.appendChild(list);
+
+  if (cat.series.length > CATEGORY_PREVIEW_COUNT) {
+    const toggleWrap = document.createElement('div');
+    toggleWrap.className = 'series-list-toggle-wrap';
+    const toggleMeta = document.createElement('div');
+    toggleMeta.className = 'series-list-toggle-meta';
+    toggleMeta.textContent = buildSeriesToggleMeta(visibleCount, cat.series.length, expanded);
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'series-list-toggle';
+    toggleBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    toggleBtn.textContent = buildSeriesToggleLabel(visibleCount, cat.series.length, expanded);
+    toggleBtn.addEventListener('click', () => {
+      categoryExpansionState.set(tabId, !expanded);
+      renderCategory(tabId);
+    });
+    toggleWrap.appendChild(toggleMeta);
+    toggleWrap.appendChild(toggleBtn);
+    wrap.appendChild(toggleWrap);
+  }
+
   dom.contentArea.appendChild(wrap);
 }
 

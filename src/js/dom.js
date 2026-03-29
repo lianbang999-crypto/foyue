@@ -7,7 +7,7 @@ let refs = null;
 export function initDOM() {
   refs = {
     audio: $('audioEl'),
-    header: document.querySelector('.header'),
+    header: document.querySelector('.header') || document.querySelector('header'),
     contentArea: $('contentArea'),
     loader: $('loader'),
     playerBar: $('playerBar'),
