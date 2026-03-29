@@ -149,12 +149,12 @@ function createChatPage() {
     const msgBlock = copyBtn.closest('.ai-msg');
     const content = msgBlock.querySelector('.ai-msg-content')?.innerText;
     if (!content) return;
-    try {
-      await navigator.clipboard.writeText(content);
+    const copied = await copyText(content);
+    if (copied) {
       const originalHtml = copyBtn.innerHTML;
       copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--token-success, #10b981)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
       setTimeout(() => copyBtn.innerHTML = originalHtml, 2000);
-    } catch(err) {
+    } else {
       import('./utils.js').then(m => m.showToast('复制失败'));
     }
   });
@@ -362,6 +362,37 @@ function createChatPage() {
   /* Lotus avatar — Buddhist Pure Land theme */
   const BOT_AVATAR = `<div class="ai-msg-avatar" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4c-1.5 2.5-2 5-2 7.5s.5 4 2 5c1.5-1 2-2.5 2-5s-.5-5-2-7.5z"/><path d="M7.5 8c-2 1-3.5 3.5-3.5 6.5 0 1 .4 2 1.5 2.5"/><path d="M16.5 8c2 1 3.5 3.5 3.5 6.5 0 1-.4 2-1.5 2.5"/><path d="M9.5 7.5c-1.5.5-2.5 2-3 4"/><path d="M14.5 7.5c1.5.5 2.5 2 3 4"/><line x1="12" y1="16.5" x2="12" y2="20"/><path d="M9.5 20c.7-.5 1.6-.5 2.5 0 .9-.5 1.8-.5 2.5 0"/></svg></div>`;
 
+  async function copyText(text) {
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch {
+        // Fall through to legacy copy for iOS/in-app browsers.
+      }
+    }
+
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', 'readonly');
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.top = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+
+    let copied = false;
+    try {
+      copied = document.execCommand('copy');
+    } catch {
+      copied = false;
+    }
+
+    document.body.removeChild(textarea);
+    return copied;
+  }
+
   function addMessage(role, content, sources, disclaimer, silent) {
     while (chatMessages.children.length > MAX_MESSAGES) {
       chatMessages.removeChild(chatMessages.children[1]);
@@ -389,8 +420,8 @@ function createChatPage() {
     // Hover copy button
     if (safeRole === 'bot') {
       html += `
-      <div class="ai-msg-actions" aria-hidden="true" title="复制文本">
-        <button type="button" class="ai-msg-action-btn ai-copy-btn">
+      <div class="ai-msg-actions" title="复制文本">
+        <button type="button" class="ai-msg-action-btn ai-copy-btn" aria-label="复制文本">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
         </button>
       </div>`;

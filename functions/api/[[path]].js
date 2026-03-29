@@ -33,6 +33,7 @@ import {
   handleAdminUpdateSeries,
   handleAdminDeleteSeries,
   handleAdminGetEpisodes,
+  handleAdminBackfillEpisodeAudioMeta,
   handleAdminCreateEpisode,
   handleAdminUpdateEpisode,
   handleAdminDeleteEpisode,
@@ -64,6 +65,35 @@ import {
   handleVoiceToText,
   handlePersonalizedRecommend,
 } from '../lib/ai-routes.js';
+
+let episodeMetaColumnCache = null;
+
+async function getEpisodeMetaColumns(db) {
+  if (episodeMetaColumnCache) return episodeMetaColumnCache;
+  const result = await db.prepare("PRAGMA table_info('episodes')").all();
+  const names = new Set((result.results || []).map(row => row.name));
+  episodeMetaColumnCache = {
+    duration: names.has('duration'),
+    bytes: names.has('bytes'),
+    mime: names.has('mime'),
+    etag: names.has('etag'),
+  };
+  return episodeMetaColumnCache;
+}
+
+function buildEpisodeMetaSelect(columns, tableAlias = '', aliasPrefix = '') {
+  const prefix = tableAlias ? `${tableAlias}.` : '';
+  const durationAlias = `${aliasPrefix}duration`;
+  const bytesAlias = `${aliasPrefix}bytes`;
+  const mimeAlias = `${aliasPrefix}mime`;
+  const etagAlias = `${aliasPrefix}etag`;
+  return [
+    columns.duration ? `${prefix}duration as ${durationAlias}` : `0 as ${durationAlias}`,
+    columns.bytes ? `${prefix}bytes as ${bytesAlias}` : `0 as ${bytesAlias}`,
+    columns.mime ? `${prefix}mime as ${mimeAlias}` : `'' as ${mimeAlias}`,
+    columns.etag ? `${prefix}etag as ${etagAlias}` : `'' as ${etagAlias}`,
+  ].join(', ');
+}
 
 export async function onRequest(context) {
   const { request, env, waitUntil } = context;
@@ -494,6 +524,14 @@ export async function onRequest(context) {
       return await handleAdminGetEpisodes(db, admEpGet[1], cors, json);
     }
 
+    // POST /api/admin/episodes/:seriesId/backfill-audio-meta
+    const admEpBackfill = path.match(/^\/api\/admin\/episodes\/([^/]+)\/backfill-audio-meta$/);
+    if (admEpBackfill && method === 'POST') {
+      const authErr = requireAdmin();
+      if (authErr) return authErr;
+      return await handleAdminBackfillEpisodeAudioMeta(db, admEpBackfill[1], cors, json);
+    }
+
     // POST /api/admin/episodes
     if (path === '/api/admin/episodes' && method === 'POST') {
       const authErr = requireAdmin();
@@ -575,6 +613,8 @@ export async function onRequest(context) {
 }
 
 async function getCategories(db) {
+  const episodeMetaColumns = await getEpisodeMetaColumns(db);
+  const episodeMetaSelect = buildEpisodeMetaSelect(episodeMetaColumns, 'e', 'ep_');
   // 一次性 JOIN categories + series + episodes，避免 N+1 查询
   const result = await db.prepare(`
     SELECT
@@ -582,7 +622,7 @@ async function getCategories(db) {
       s.id as series_id, s.title, s.title_en, s.speaker, s.speaker_en,
       s.bucket, s.folder, s.total_episodes, s.intro, s.play_count, s.sort_order,
       e.episode_num as ep_num, e.title as ep_title, e.file_name as ep_file,
-      e.intro as ep_intro, e.story_number as ep_story, e.duration as ep_duration,
+      e.intro as ep_intro, e.story_number as ep_story, ${episodeMetaSelect},
       e.play_count as ep_play_count
     FROM categories c
     LEFT JOIN series s ON c.id = s.category_id
@@ -594,13 +634,15 @@ async function getCategories(db) {
 }
 
 async function getHomeCategories(db) {
+  const episodeMetaColumns = await getEpisodeMetaColumns(db);
+  const episodeMetaSelect = buildEpisodeMetaSelect(episodeMetaColumns, 'e', 'ep_');
   const result = await db.prepare(`
     SELECT
       c.id as cat_id, c.title as cat_title, c.title_en as cat_title_en, c.sort_order as cat_sort,
       s.id as series_id, s.title, s.title_en, s.speaker, s.speaker_en,
       s.bucket, s.folder, s.total_episodes, s.intro, s.play_count, s.sort_order,
       e.episode_num as ep_num, e.title as ep_title, e.file_name as ep_file,
-      e.intro as ep_intro, e.story_number as ep_story, e.duration as ep_duration,
+      e.intro as ep_intro, e.story_number as ep_story, ${episodeMetaSelect},
       e.play_count as ep_play_count
     FROM categories c
     LEFT JOIN series s ON c.id = s.category_id
@@ -702,6 +744,9 @@ function assembleCategories(rows, mode = 'full') {
         fileName: row.ep_file,
         url,
         duration: row.ep_duration || 0,
+        bytes: row.ep_bytes || 0,
+        mime: row.ep_mime || '',
+        etag: row.ep_etag || '',
       };
       if (row.ep_intro) ep.intro = row.ep_intro;
       if (row.ep_story) ep.storyNumber = row.ep_story;
@@ -714,6 +759,8 @@ function assembleCategories(rows, mode = 'full') {
 }
 
 async function getSeriesDetail(db, seriesId) {
+  const episodeMetaColumns = await getEpisodeMetaColumns(db);
+  const episodeMetaSelect = buildEpisodeMetaSelect(episodeMetaColumns);
   const series = await db.prepare(
     `SELECT s.*, c.id as category_id, c.title as category_title
      FROM series s JOIN categories c ON s.category_id = c.id WHERE s.id = ?`
@@ -722,7 +769,7 @@ async function getSeriesDetail(db, seriesId) {
 
   const episodes = await db.prepare(
     `SELECT episode_num as id, title, file_name as fileName, intro,
-            story_number as storyNumber, play_count as playCount, duration
+            story_number as storyNumber, play_count as playCount, ${episodeMetaSelect}
      FROM episodes WHERE series_id = ? ORDER BY episode_num`
   ).bind(seriesId).all();
 
@@ -747,6 +794,9 @@ async function getSeriesDetail(db, seriesId) {
         id: ep.id, title: ep.title, fileName: ep.fileName,
         url,
         duration: ep.duration || 0,
+        bytes: ep.bytes || 0,
+        mime: ep.mime || '',
+        etag: ep.etag || '',
         playCount: ep.playCount
       };
       if (ep.intro) obj.intro = ep.intro;
@@ -757,6 +807,8 @@ async function getSeriesDetail(db, seriesId) {
 }
 
 async function getEpisodes(db, seriesId) {
+  const episodeMetaColumns = await getEpisodeMetaColumns(db);
+  const episodeMetaSelect = buildEpisodeMetaSelect(episodeMetaColumns);
   const series = await db.prepare(
     `SELECT s.bucket, s.folder
      FROM series s WHERE s.id = ?`
@@ -765,7 +817,7 @@ async function getEpisodes(db, seriesId) {
 
   const episodes = await db.prepare(
     `SELECT episode_num as id, title, file_name as fileName, intro,
-            story_number as storyNumber, play_count as playCount, duration
+            story_number as storyNumber, play_count as playCount, ${episodeMetaSelect}
      FROM episodes WHERE series_id = ? ORDER BY episode_num`
   ).bind(seriesId).all();
 
@@ -782,6 +834,9 @@ async function getEpisodes(db, seriesId) {
         id: ep.id, title: ep.title, fileName: ep.fileName,
         url,
         duration: ep.duration || 0,
+        bytes: ep.bytes || 0,
+        mime: ep.mime || '',
+        etag: ep.etag || '',
       };
       if (ep.intro) obj.intro = ep.intro;
       if (ep.storyNumber) obj.storyNumber = ep.storyNumber;

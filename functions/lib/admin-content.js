@@ -1,5 +1,88 @@
 import { buildAudioUrl } from './audio-utils.js';
 
+let episodeMetaColumnCache = null;
+
+async function getEpisodeMetaColumns(db) {
+  if (episodeMetaColumnCache) return episodeMetaColumnCache;
+  const result = await db.prepare("PRAGMA table_info('episodes')").all();
+  const names = new Set((result.results || []).map(row => row.name));
+  episodeMetaColumnCache = {
+    bytes: names.has('bytes'),
+    mime: names.has('mime'),
+    etag: names.has('etag'),
+  };
+  return episodeMetaColumnCache;
+}
+
+function buildEpisodeMetaSelect(columns) {
+  return [
+    columns.bytes ? 'bytes' : '0 as bytes',
+    columns.mime ? 'mime' : "'' as mime",
+    columns.etag ? 'etag' : "'' as etag",
+  ].join(', ');
+}
+
+function normalizeNonNegativeInteger(value) {
+  const num = parseInt(value, 10);
+  return Number.isFinite(num) && num >= 0 ? num : 0;
+}
+
+function normalizeOptionalText(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function parseContentRangeTotal(value) {
+  if (!value) return 0;
+  const match = String(value).match(/\/\s*(\d+)\s*$/);
+  if (!match) return 0;
+  const total = parseInt(match[1], 10);
+  return Number.isFinite(total) && total > 0 ? total : 0;
+}
+
+function extractAudioMetaFromResponse(response) {
+  const contentLength = normalizeNonNegativeInteger(response.headers.get('content-length'));
+  const contentRangeTotal = parseContentRangeTotal(response.headers.get('content-range'));
+  const mime = normalizeOptionalText((response.headers.get('content-type') || '').split(';')[0]);
+  const etag = normalizeOptionalText(response.headers.get('etag'));
+  return {
+    bytes: contentLength || contentRangeTotal || 0,
+    mime,
+    etag,
+  };
+}
+
+function hasUsefulAudioMeta(meta) {
+  return Boolean((meta?.bytes || 0) > 0 || meta?.mime || meta?.etag);
+}
+
+async function fetchEpisodeAudioMeta(url) {
+  const headResponse = await fetch(url, {
+    method: 'HEAD',
+    redirect: 'follow',
+    headers: { 'Cache-Control': 'no-store' },
+  });
+  if (!headResponse.ok) {
+    throw new Error(`HEAD ${headResponse.status}`);
+  }
+  const headMeta = extractAudioMetaFromResponse(headResponse);
+  if (hasUsefulAudioMeta(headMeta)) {
+    return headMeta;
+  }
+
+  const rangeResponse = await fetch(url, {
+    method: 'GET',
+    redirect: 'follow',
+    headers: {
+      Range: 'bytes=0-0',
+      'Cache-Control': 'no-store',
+    },
+  });
+  if (!rangeResponse.ok && rangeResponse.status !== 206) {
+    throw new Error(`Range ${rangeResponse.status}`);
+  }
+  return extractAudioMetaFromResponse(rangeResponse);
+}
+
 export async function handleAdminGetCategories(db, cors, json) {
   const { results } = await db.prepare(
     `SELECT c.id, c.title, c.title_en, c.sort_order,
@@ -139,23 +222,127 @@ export async function handleAdminDeleteSeries(db, id, cors, json) {
 }
 
 export async function handleAdminGetEpisodes(db, seriesId, cors, json) {
+  const episodeMetaColumns = await getEpisodeMetaColumns(db);
+  const episodeMetaSelect = buildEpisodeMetaSelect(episodeMetaColumns);
   const series = await db.prepare('SELECT id, title FROM series WHERE id=?').bind(seriesId).first();
   const { results } = await db.prepare(
-    'SELECT id, series_id, episode_num, title, file_name, url, intro, story_number, play_count FROM episodes WHERE series_id=? ORDER BY episode_num'
+    `SELECT id, series_id, episode_num, title, file_name, url, intro, story_number, play_count, duration, ${episodeMetaSelect}
+     FROM episodes WHERE series_id=? ORDER BY episode_num`
   ).bind(seriesId).all();
   return json({ episodes: results || [], series: series || { id: seriesId } }, cors, 200, 'no-store');
 }
 
+export async function handleAdminBackfillEpisodeAudioMeta(db, seriesId, cors, json) {
+  const episodeMetaColumns = await getEpisodeMetaColumns(db);
+  if (!episodeMetaColumns.bytes || !episodeMetaColumns.mime || !episodeMetaColumns.etag) {
+    return json({ error: 'Audio metadata columns are not ready. Apply migration 0021 first.' }, cors, 400, 'no-store');
+  }
+
+  const series = await db.prepare('SELECT id, title FROM series WHERE id=?').bind(seriesId).first();
+  if (!series) {
+    return json({ error: 'Series not found' }, cors, 404, 'no-store');
+  }
+
+  const { results } = await db.prepare(
+    `SELECT id, episode_num, title, file_name, url, bytes, mime, etag
+     FROM episodes WHERE series_id=? ORDER BY episode_num`
+  ).bind(seriesId).all();
+
+  const episodes = results || [];
+  const targets = episodes.filter(ep => (ep.bytes || 0) <= 0 || !ep.mime || !ep.etag);
+  const updates = [];
+  const failures = [];
+  const skippedEntries = [];
+  let skipped = 0;
+  let unchanged = 0;
+
+  for (const episode of targets) {
+    if (!episode.url) {
+      skipped += 1;
+      skippedEntries.push({
+        id: episode.id,
+        episodeNum: episode.episode_num,
+        title: episode.title,
+        reason: 'missing-url',
+      });
+      continue;
+    }
+
+    try {
+      const fetchedMeta = await fetchEpisodeAudioMeta(episode.url);
+      const nextMeta = {
+        bytes: fetchedMeta.bytes || episode.bytes || 0,
+        mime: fetchedMeta.mime || episode.mime || '',
+        etag: fetchedMeta.etag || episode.etag || '',
+      };
+
+      if (
+        nextMeta.bytes === (episode.bytes || 0) &&
+        nextMeta.mime === (episode.mime || '') &&
+        nextMeta.etag === (episode.etag || '')
+      ) {
+        unchanged += 1;
+        continue;
+      }
+
+      updates.push(
+        db.prepare('UPDATE episodes SET bytes=?, mime=?, etag=? WHERE id=?')
+          .bind(nextMeta.bytes, nextMeta.mime, nextMeta.etag, episode.id)
+      );
+    } catch (error) {
+      failures.push({
+        id: episode.id,
+        episodeNum: episode.episode_num,
+        title: episode.title,
+        reason: error?.message || 'fetch-failed',
+      });
+    }
+  }
+
+  if (updates.length) {
+    await db.batch(updates);
+  }
+
+  return json({
+    success: true,
+    seriesId,
+    seriesTitle: series.title,
+    scanned: episodes.length,
+    targeted: targets.length,
+    updated: updates.length,
+    unchanged,
+    skipped,
+    failed: failures.length,
+    failures: failures.slice(0, 20),
+    skippedEntries: skippedEntries.slice(0, 20),
+  }, cors, 200, 'no-store');
+}
+
 export async function handleAdminCreateEpisode(db, body, cors, json) {
-  const { series_id, episode_num, title, file_name, intro, story_number, duration } = body;
+  const { series_id, episode_num, title, file_name, intro, story_number, duration, bytes, mime, etag } = body;
   if (!series_id || !episode_num || !title || !file_name) {
     return json({ error: 'Missing required fields' }, cors, 400);
   }
   const series = await db.prepare('SELECT bucket, folder FROM series WHERE id = ?').bind(series_id).first();
   const url = series ? buildAudioUrl(series.bucket, series.folder, file_name) : '';
+  const episodeMetaColumns = await getEpisodeMetaColumns(db);
+  const insertColumns = ['series_id', 'episode_num', 'title', 'file_name', 'url', 'intro', 'story_number', 'duration'];
+  const insertValues = [series_id, episode_num, title, file_name, url, intro || null, story_number || null, duration || 0];
+  if (episodeMetaColumns.bytes) {
+    insertColumns.push('bytes');
+    insertValues.push(normalizeNonNegativeInteger(bytes));
+  }
+  if (episodeMetaColumns.mime) {
+    insertColumns.push('mime');
+    insertValues.push(normalizeOptionalText(mime));
+  }
+  if (episodeMetaColumns.etag) {
+    insertColumns.push('etag');
+    insertValues.push(normalizeOptionalText(etag));
+  }
   await db.prepare(
-    'INSERT INTO episodes (series_id, episode_num, title, file_name, url, intro, story_number, duration) VALUES (?,?,?,?,?,?,?,?)'
-  ).bind(series_id, episode_num, title, file_name, url, intro || null, story_number || null, duration || 0).run();
+    `INSERT INTO episodes (${insertColumns.join(', ')}) VALUES (${insertColumns.map(() => '?').join(',')})`
+  ).bind(...insertValues).run();
   const totalEpisodes = await syncSeriesEpisodeCount(db, series_id);
   return json({ success: true, totalEpisodes }, cors, 201, 'no-store');
 }
@@ -165,11 +352,17 @@ export async function handleAdminUpdateEpisode(db, id, body, cors, json) {
   if (!ep) return json({ error: 'Episode not found' }, cors, 404, 'no-store');
   const fields = [];
   const vals = [];
+  const episodeMetaColumns = await getEpisodeMetaColumns(db);
   const allowed = ['episode_num', 'title', 'file_name', 'intro', 'story_number', 'duration'];
+  if (episodeMetaColumns.bytes) allowed.push('bytes');
+  if (episodeMetaColumns.mime) allowed.push('mime');
+  if (episodeMetaColumns.etag) allowed.push('etag');
   for (const key of allowed) {
     if (body[key] !== undefined) {
       fields.push(`${key}=?`);
-      vals.push(body[key]);
+      if (key === 'bytes') vals.push(normalizeNonNegativeInteger(body[key]));
+      else if (key === 'mime' || key === 'etag') vals.push(normalizeOptionalText(body[key]));
+      else vals.push(body[key]);
     }
   }
   if (body.file_name !== undefined) {

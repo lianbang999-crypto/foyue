@@ -10,6 +10,10 @@ function esc(s) {
 
 let viewState = { level: 'categories', categoryId: null, categoryTitle: '', seriesId: null, seriesTitle: '' };
 
+function hasEpisodeAudioMeta(episode) {
+  return (episode?.bytes || 0) > 0 && !!episode?.mime && !!episode?.etag;
+}
+
 export function renderContent(container) {
   viewState = { level: 'categories', categoryId: null, categoryTitle: '', seriesId: null, seriesTitle: '' };
   renderCategories(container);
@@ -242,10 +246,46 @@ async function renderEpisodes(container) {
 
   const toolbar = document.createElement('div');
   toolbar.className = 'adm-toolbar';
-  toolbar.innerHTML = `<h2 class="adm-page-title" style="margin:0">集数列表 (${episodes.length})</h2>
-    <button class="adm-btn adm-btn-primary" id="addEpBtn">添加集数</button>`;
+  const hydratedCount = episodes.filter(hasEpisodeAudioMeta).length;
+  toolbar.innerHTML = `<div>
+      <h2 class="adm-page-title" style="margin:0">集数列表 (${episodes.length})</h2>
+      <div class="adm-text-muted">音频元数据已补齐 ${hydratedCount}/${episodes.length}</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="adm-btn" id="backfillAudioMetaBtn">回填音频元数据</button>
+      <button class="adm-btn adm-btn-primary" id="addEpBtn">添加集数</button>
+    </div>`;
   container.appendChild(toolbar);
   toolbar.querySelector('#addEpBtn').addEventListener('click', () => showEpisodeModal(null, container));
+  toolbar.querySelector('#backfillAudioMetaBtn').addEventListener('click', async () => {
+    if (!episodes.length) {
+      alert('当前系列还没有集数');
+      return;
+    }
+    const btn = toolbar.querySelector('#backfillAudioMetaBtn');
+    const missingCount = episodes.length - hydratedCount;
+    if (!confirm(`将为当前系列回填音频元数据。\n待补齐集数：${missingCount} / ${episodes.length}`)) return;
+    btn.disabled = true;
+    const prevText = btn.textContent;
+    btn.textContent = '回填中...';
+    const result = await api.post('/episodes/' + encodeURIComponent(viewState.seriesId) + '/backfill-audio-meta', {});
+    btn.disabled = false;
+    btn.textContent = prevText;
+    if (!result) return;
+    if (result.error) {
+      alert('回填失败：' + result.error);
+      return;
+    }
+    const summary = [
+      `扫描 ${result.scanned} 集`,
+      `目标 ${result.targeted} 集`,
+      `更新 ${result.updated} 集`,
+      `未变化 ${result.unchanged} 集`,
+      `失败 ${result.failed} 集`,
+    ].join('，');
+    alert('音频元数据回填完成：' + summary);
+    renderEpisodes(container);
+  });
 
   const section = document.createElement('div');
   section.className = 'adm-section';
@@ -282,7 +322,7 @@ async function renderEpisodes(container) {
 
 function showEpisodeModal(existing, container) {
   const isNew = !existing;
-  const e = existing || { episode_num:'', title:'', file_name:'', intro:'', story_number:'', duration:'' };
+  const e = existing || { episode_num:'', title:'', file_name:'', intro:'', story_number:'', duration:'', bytes:'', mime:'', etag:'' };
   const overlay = document.createElement('div');
   overlay.className = 'adm-modal-overlay';
   overlay.innerHTML = `<div class="adm-modal">
@@ -294,7 +334,14 @@ function showEpisodeModal(existing, container) {
       </div>
       <div class="adm-form-group"><label class="adm-form-label">标题</label><input class="adm-input" id="eTitle" value="${esc(e.title)}"></div>
       <div class="adm-form-group"><label class="adm-form-label">文件名</label><input class="adm-input" id="eFile" value="${esc(e.file_name)}" placeholder="例: 第1讲.mp3"></div>
-      <div class="adm-form-group"><label class="adm-form-label">时长(秒，可选)</label><input class="adm-input" id="eDur" type="number" value="${e.duration || ''}"></div>
+      <div class="adm-form-row">
+        <div class="adm-form-group"><label class="adm-form-label">时长(秒，可选)</label><input class="adm-input" id="eDur" type="number" value="${e.duration || ''}"></div>
+        <div class="adm-form-group"><label class="adm-form-label">文件大小 bytes (可选)</label><input class="adm-input" id="eBytes" type="number" value="${e.bytes || ''}"></div>
+      </div>
+      <div class="adm-form-row">
+        <div class="adm-form-group"><label class="adm-form-label">MIME (可选)</label><input class="adm-input" id="eMime" value="${esc(e.mime || '')}" placeholder="例: audio/mpeg"></div>
+        <div class="adm-form-group"><label class="adm-form-label">ETag (可选)</label><input class="adm-input" id="eEtag" value="${esc(e.etag || '')}"></div>
+      </div>
       <div class="adm-form-group"><label class="adm-form-label">简介 (可选)</label><textarea class="adm-input adm-textarea" id="eIntro">${esc(e.intro || '')}</textarea></div>
       <p class="adm-form-hint" style="color:#888;font-size:12px">音频 URL 由系统从 bucket + folder + 文件名自动生成</p>
     </div>
@@ -316,6 +363,9 @@ function showEpisodeModal(existing, container) {
       intro: overlay.querySelector('#eIntro').value.trim() || null,
       story_number: parseInt(overlay.querySelector('#eStory').value) || null,
       duration: parseInt(overlay.querySelector('#eDur').value) || 0,
+      bytes: parseInt(overlay.querySelector('#eBytes').value) || 0,
+      mime: overlay.querySelector('#eMime').value.trim(),
+      etag: overlay.querySelector('#eEtag').value.trim(),
     };
     if (isNew) {
       await api.post('/episodes', body);

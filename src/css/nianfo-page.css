@@ -1,0 +1,23 @@
+/* ===== 念佛计数 独立页面样式 ===== */
+
+/* 复用主站设计令牌与重置 */
+@import './tokens.css';
+@import './reset.css';
+
+/* 复用计数器 & 回向 & 功课记录等组件样式（定义在 pages.css 尾部） */
+@import './pages.css';
+
+/* ── 独立页面布局 ── */
+#nianfo-app {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    overflow: hidden;
+}
+
+/* 独立页面下计数器直接全屏展示，无需覆盖层动画 */
+#nianfo-app.counter-view {
+    z-index: 1;
+}

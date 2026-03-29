@@ -273,8 +273,11 @@ body {
 }
 
 .ai-message--bot .ai-message-content {
-    padding: 4px 0;
-    color: var(--ai-text);
+  background: transparent;
+  color: var(--text);
+  border: none;
+  box-shadow: none;
+  padding: 4px 8px; /* Lean pad */
 }
 
 .ai-message--bot .ai-message-content p {
@@ -354,40 +357,34 @@ body {
 /* 打字指示器 */
 .ai-typing {
     display: flex;
-    gap: 4px;
+    align-items: center;
+    gap: 8px;
     padding: 8px 0;
+    font-size: 13px;
+    color: var(--ai-accent);
 }
 
 .ai-typing-dot {
-    width: 6px;
-    height: 6px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
-    background: var(--ai-text-muted);
-    animation: ai-dot-bounce 1.4s ease-in-out infinite;
+    background: var(--ai-accent);
+    animation: ai-breathing 3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
-.ai-typing-dot:nth-child(2) {
-    animation-delay: 0.16s;
-}
-
-.ai-typing-dot:nth-child(3) {
-    animation-delay: 0.32s;
-}
-
-@keyframes ai-dot-bounce {
-
-    0%,
-    60%,
-    100% {
-        transform: translateY(0);
-        opacity: 0.4;
+@keyframes ai-breathing {
+    0%, 100% {
+        opacity: 0.2;
+        transform: scale(0.8);
+        box-shadow: 0 0 0 0 rgba(212, 165, 74, 0);
     }
-
-    30% {
-        transform: translateY(-6px);
-        opacity: 1;
+    50% {
+        opacity: 0.8;
+        transform: scale(1);
+        box-shadow: 0 0 12px 2px rgba(212, 165, 74, 0.4);
     }
 }
+
 
 /* 流式输出光标 */
 .ai-streaming::after {
@@ -437,24 +434,28 @@ body {
     flex-shrink: 0;
     padding: 12px 16px;
     padding-bottom: calc(12px + var(--ai-safe-bottom));
-    background: var(--ai-bg);
-    border-top: 1px solid var(--ai-border);
+    background: transparent;
+    position: relative;
+    z-index: 10;
 }
 
 .ai-input-wrap {
     display: flex;
     align-items: flex-end;
     gap: 8px;
-    background: var(--ai-bg-card);
+    background: var(--ai-bg-header); /* slightly transparent bg */
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     border: none;
-    box-shadow: inset 0 0 0 1px var(--ai-border);
-    border-radius: var(--ai-radius);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06), inset 0 0 0 1px rgba(128, 128, 128, 0.15);
+    border-radius: 24px;
     padding: 8px 8px 8px 16px;
-    transition: box-shadow 0.2s;
+    transition: box-shadow 0.2s, transform 0.2s;
 }
 
 .ai-input-wrap:focus-within {
-    box-shadow: inset 0 0 0 1px var(--ai-accent), 0 0 0 3px var(--accent-glow);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08), inset 0 0 0 1px var(--ai-accent);
+    transform: translateY(-1px);
 }
 
 .ai-input {

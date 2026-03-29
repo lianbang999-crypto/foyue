@@ -1,10 +1,29 @@
 /* ===== 念佛计数器 (Buddhist Chanting Counter) ===== */
 import { t } from './i18n.js';
 import { get, patch } from './store.js';
-import { pausePlaybackForCounter } from './player.js';
-import { FEATURE_GONGXIU_PLAZA } from './feature-flags.js';
-import { showGongxiuSubview } from './gongxiu-panel.js';
 import { haptic, showToast, escapeHtml, formatCount, HUIXIANG_TEXT, localTodayStr, beijingTodayStr, HUIXIANG_DISPLAY_AUTO_MS } from './utils.js';
+
+/* 条件导入：独立页面不加载 player / gongxiu-panel 模块 */
+let pausePlaybackForCounter = () => {};
+let FEATURE_GONGXIU_PLAZA = false;
+let showGongxiuSubview = () => {};
+let _standaloneDeps = false;
+
+/** 加载主站依赖（仅非独立页场景调用） */
+export async function loadMainAppDeps() {
+  if (_standaloneDeps) return;
+  try {
+    const [playerMod, flagMod, gxMod] = await Promise.all([
+      import('./player.js'),
+      import('./feature-flags.js'),
+      import('./gongxiu-panel.js'),
+    ]);
+    pausePlaybackForCounter = playerMod.pausePlaybackForCounter;
+    FEATURE_GONGXIU_PLAZA = flagMod.FEATURE_GONGXIU_PLAZA;
+    showGongxiuSubview = gxMod.showGongxiuSubview;
+  } catch { /* standalone mode — deps unavailable */ }
+  _standaloneDeps = true;
+}
 const BEADS_PER_LOOP = 108;
 /** @deprecated Kept only for data migration from old single-custom format */
 const CUSTOM_KEY = '__custom__';
@@ -241,7 +260,8 @@ function resetAllCounterData(data) {
 }
 
 /* ── Main render ── */
-export function openCounter() {
+export async function openCounter() {
+  await loadMainAppDeps();
   // Remove existing counter view if present
   document.querySelectorAll('.counter-view').forEach(el => {
     if (typeof el.__counterCleanup === 'function') {
@@ -1497,4 +1517,58 @@ export function openHistory(counterView, data, hooks = {}) {
     refreshCalendar();
     showToast(t('counter_reset_all'));
   });
+}
+
+/* ── 独立页面模式初始化 ── */
+export function initCounterStandalone(container) {
+  const data = getCounterData();
+  const session = { count: 0 };
+
+  // 构建页面内容（直接渲染，不使用覆盖层）
+  container.innerHTML = buildCounterHTML(data);
+  container.classList.add('counter-view', 'counter-view--visible');
+  document.body.setAttribute('data-counter-active', '');
+
+  // Wake Lock
+  if (isWakeLockEnabled()) requestWakeLock();
+
+  const visHandler = () => {
+    if (document.visibilityState === 'visible' && isWakeLockEnabled()) requestWakeLock();
+    else if (document.visibilityState === 'hidden') releaseWakeLock();
+  };
+  document.addEventListener('visibilitychange', visHandler);
+
+  // 返回按钮 → 导航到主站首页
+  const backBtn = container.querySelector('#counterBack');
+  if (backBtn) {
+    backBtn.addEventListener('click', () => {
+      window.location.href = '/';
+    });
+  }
+
+  // 绑定计点事件
+  wireCounterEvents(container, data, session.count);
+
+  // 功课记录 → 覆盖 gongxiu 跳转逻辑
+  const recordBtn = container.querySelector('#counterRecord');
+  if (recordBtn) {
+    recordBtn.addEventListener('click', () => {
+      openHistory(container, data, {
+        onDataChange: () => {
+          wireCounterEvents(container, data, session.count);
+        },
+        resetSessionWithToast: () => {
+          session.count = 0;
+          const numEl = container.querySelector('#counterNumber');
+          if (numEl) numEl.textContent = '0';
+          showToast(t('counter_toast_clear'));
+        },
+        resetSessionQuiet: () => {
+          session.count = 0;
+          const numEl = container.querySelector('#counterNumber');
+          if (numEl) numEl.textContent = '0';
+        },
+      });
+    });
+  }
 }

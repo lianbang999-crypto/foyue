@@ -14,6 +14,17 @@ const wkReader = document.getElementById('wkReader');
 
 /* --- 路由状态 --- */
 let currentView = 'home'; // 'home' | 'series' | 'reader'
+let activeViewRequestId = 0;
+
+function beginViewRequest(view) {
+    currentView = view;
+    activeViewRequestId += 1;
+    return activeViewRequestId;
+}
+
+function isActiveViewRequest(requestId, view) {
+    return activeViewRequestId === requestId && currentView === view;
+}
 
 /* --- 初始化 --- */
 init();
@@ -39,6 +50,9 @@ function init() {
 
 function onPopState(e) {
     const s = e.state;
+    if (!s?.doc && wkReader.style.display !== 'none') {
+        closeReader();
+    }
     if (s?.doc) {
         openReader(s.doc, s.q, true);
     } else if (s?.series) {
@@ -131,13 +145,15 @@ function persistSettings(s) {
    首页
    ================================================================ */
 async function renderHome(skipPush) {
-    currentView = 'home';
+    const requestId = beginViewRequest('home');
     if (!skipPush) history.pushState({}, '', '/wenku');
     resetHeader();
     wkContent.innerHTML = skeleton(4);
 
     let data;
     try { data = await getWenkuSeries(); } catch { data = null; }
+
+    if (!isActiveViewRequest(requestId, 'home')) return;
 
     if (!data?.series?.length) {
         wkContent.innerHTML = emptyState(data === null, () => renderHome());
@@ -197,7 +213,7 @@ async function renderHome(skipPush) {
    系列详情
    ================================================================ */
 async function renderSeries(seriesName, skipPush) {
-    currentView = 'series';
+    const requestId = beginViewRequest('series');
     if (!skipPush) history.pushState({ series: seriesName }, '', `/wenku?series=${encodeURIComponent(seriesName)}`);
 
     // 更新顶栏
@@ -207,6 +223,8 @@ async function renderSeries(seriesName, skipPush) {
 
     let data;
     try { data = await getWenkuDocuments(seriesName); } catch { data = null; }
+
+    if (!isActiveViewRequest(requestId, 'series')) return;
 
     if (!data?.documents?.length) {
         wkContent.innerHTML = emptyState(data === null, () => renderSeries(seriesName));
@@ -248,7 +266,11 @@ function updateHeader(title, backFn) {
 
 function resetHeader() {
     const inner = document.querySelector('.wk-header-inner');
-    if (inner?._original) { inner.innerHTML = inner._original; inner._original = null; }
+    if (inner?._original) {
+        inner.innerHTML = inner._original;
+        inner._original = null;
+        wireHomeShare();
+    }
 }
 
 /* 内容区域点击事件委托 */
@@ -259,7 +281,10 @@ function wireContentClicks() {
 }
 
 function wireHomeShare() {
-    document.getElementById('wkShareBtn')?.addEventListener('click', () => {
+    const btn = document.getElementById('wkShareBtn');
+    if (!btn || btn.dataset.bound === 'true') return;
+    btn.dataset.bound = 'true';
+    btn.addEventListener('click', () => {
         shareUrl('法音文库 · 净土讲记文稿', location.href);
     });
 }
@@ -278,7 +303,7 @@ function handleContentClick(e) {
 let _readerState = null;
 
 async function openReader(docId, highlightQuery, skipPush) {
-    currentView = 'reader';
+    const requestId = beginViewRequest('reader');
     if (!skipPush) history.pushState({ doc: docId, q: highlightQuery }, '', `/wenku?doc=${encodeURIComponent(docId)}${highlightQuery ? '&q=' + encodeURIComponent(highlightQuery) : ''}`);
 
     const settings = loadSettings();
@@ -329,6 +354,8 @@ async function openReader(docId, highlightQuery, skipPush) {
     // Fetch data
     let data;
     try { data = await getWenkuDocument(docId); } catch { data = null; }
+
+    if (!isActiveViewRequest(requestId, 'reader')) return;
 
     if (!data?.document) {
         const scroll = wkReader.querySelector('#readerScroll');
@@ -390,7 +417,7 @@ async function openReader(docId, highlightQuery, skipPush) {
     if (data.nextId) getWenkuDocument(data.nextId);
 }
 
-function closeReader(docId) {
+function closeReader() {
     if (_readerState) {
         const scroll = wkReader.querySelector('#readerScroll');
         if (scroll) {
@@ -408,7 +435,7 @@ function closeReader(docId) {
 
 function wireReaderClose(docId) {
     wkReader.querySelector('#readerClose')?.addEventListener('click', () => {
-        closeReader(docId);
+        closeReader();
         history.back();
     });
 }

@@ -632,13 +632,15 @@ function playCurrent() {
   });
   const preferDirectPlayback = policy.preferDirectPlayback;
   const callId = ++_playCurrentId; // unique ID for this invocation
-  primeAudioMetadata(tr).then(meta => {
-    if (!meta?.bytes) return;
-    if (callId !== _playCurrentId) return;
-    const activeTrack = state.playlist[state.epIdx];
-    if (!activeTrack || activeTrack.url !== tr.url) return;
-    startBgFullLoad(tr.url);
-  }).catch(() => { });
+  if (policy.profile.mediaClass === 'unknown' && policy.allowBackgroundFullLoadWhenResolved) {
+    primeAudioMetadata(tr).then(meta => {
+      if (!meta?.bytes) return;
+      if (callId !== _playCurrentId) return;
+      const activeTrack = state.playlist[state.epIdx];
+      if (!activeTrack || activeTrack.url !== tr.url) return;
+      startBgFullLoad(tr.url);
+    }).catch(() => { });
+  }
 
   // Remove any stale listeners from previous rapid switches
   cleanupReadyListeners(dom);

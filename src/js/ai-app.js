@@ -319,7 +319,7 @@ function createStreamingMessage() {
 function showTyping() {
     const el = document.createElement('div');
     el.className = 'ai-message ai-message--bot ai-typing-msg';
-    el.innerHTML = '<div class="ai-typing"><span class="ai-typing-dot"></span><span class="ai-typing-dot"></span><span class="ai-typing-dot"></span></div>';
+    el.innerHTML = '<div class="ai-typing"><span class="ai-typing-dot"></span><span>参悟中...</span></div>';
     chatArea.appendChild(el);
     scrollToBottom();
 }

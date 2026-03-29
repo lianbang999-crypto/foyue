@@ -19,6 +19,7 @@ export default defineConfig({
         iconsPreview: resolve(__dirname, 'icons-preview.html'),
         ai: resolve(__dirname, 'ai.html'),
         wenku: resolve(__dirname, 'wenku.html'),
+        nianfo: resolve(__dirname, 'nianfo.html'),
       },
       output: {
         manualChunks: {
