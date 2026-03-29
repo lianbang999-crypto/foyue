@@ -25,3 +25,8 @@ export function beginContentRequest() {
 export function isContentRequestCurrent(requestId) {
   return requestId === state.contentRequestId;
 }
+
+/** 获取当前正在播放的曲目，无有效播放时返回 null */
+export function getCurrentTrack() {
+  return state.epIdx >= 0 && state.playlist[state.epIdx] ? state.playlist[state.epIdx] : null;
+}

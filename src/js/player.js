@@ -1001,10 +1001,51 @@ export function onTimeUpdate() {
 export function onEnded() {
   clearStallWatch();
   const dom = getDOM();
-  if (state.loopMode === 'one') { dom.audio.currentTime = 0; dom.audio.play(); }
-  else if (state.loopMode === 'shuffle') { state.epIdx = Math.floor(Math.random() * state.playlist.length); playCurrent(); }
-  else if (state.epIdx < state.playlist.length - 1) { state.epIdx++; playCurrent(); }
-  else if (state.loopMode === 'all') { state.epIdx = 0; playCurrent(); }
+  if (!dom?.audio || !state.playlist.length) {
+    setPlayState(false);
+    return;
+  }
+
+  if (state.loopMode === 'one') {
+    _userPaused = false;
+    dom.audio.currentTime = 0;
+    setPlayState(true);
+    const replay = dom.audio.play();
+    if (replay && typeof replay.then === 'function') {
+      replay.then(() => {
+        startStallWatch();
+      }).catch((err) => {
+        if (err?.name !== 'AbortError') setPlayState(false);
+      });
+    } else {
+      startStallWatch();
+    }
+    return;
+  }
+
+  if (state.loopMode === 'shuffle') {
+    if (state.playlist.length > 1) {
+      let nextIdx = state.epIdx;
+      while (nextIdx === state.epIdx) nextIdx = Math.floor(Math.random() * state.playlist.length);
+      state.epIdx = nextIdx;
+    }
+    playCurrent();
+    return;
+  }
+
+  if (state.epIdx < state.playlist.length - 1) {
+    state.epIdx++;
+    playCurrent();
+    return;
+  }
+
+  if (state.loopMode === 'all') {
+    state.epIdx = 0;
+    playCurrent();
+    return;
+  }
+
+  setPlayState(false);
 }
 
 export function onAudioError() {
@@ -1184,6 +1225,7 @@ export function cycleLoop() {
   const i = (modes.indexOf(state.loopMode) + 1) % modes.length;
   state.loopMode = modes[i];
   applyLoopUI();
+  saveState();
 }
 
 /* ===== Share ===== */
@@ -1209,16 +1251,6 @@ export function cycleSpeed() {
   dom.audio.playbackRate = s;
   document.getElementById('expSpeed').textContent = s === 1 ? '1.0x' : s + 'x';
   document.getElementById('expSpeed').classList.toggle('active', s !== 1);
-}
-
-export function getSpeedIdx() { return speedIdx; }
-export function getSpeeds() { return SPEEDS; }
-export function setSpeedIdx(idx) {
-  speedIdx = idx;
-  const dom = getDOM();
-  dom.audio.playbackRate = SPEEDS[speedIdx];
-  document.getElementById('expSpeed').textContent = SPEEDS[speedIdx] === 1 ? '1.0x' : SPEEDS[speedIdx] + 'x';
-  document.getElementById('expSpeed').classList.toggle('active', SPEEDS[speedIdx] !== 1);
 }
 
 /* ===== Sleep Timer ===== */

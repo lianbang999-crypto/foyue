@@ -10,7 +10,7 @@ import '../css/pages.css';
 import '../css/components.css';
 // ✅ 性能优化：ai.css / message-wall.css / gongxiu.css / wenku.css
 // 已移至各自模块中按需加载，减小首屏 CSS 体积
-import { state, beginContentRequest, isContentRequestCurrent } from './state.js';
+import { state, beginContentRequest, isContentRequestCurrent, getCurrentTrack } from './state.js';
 import { initDOM, getDOM } from './dom.js';
 import { initLang, applyI18n, t } from './i18n.js';
 import { initTheme } from './theme.js';
@@ -499,19 +499,32 @@ async function ensureSeriesDetail(seriesId, categoryId) {
   });
 
   // Player controls
+  function bindTouchSafeActivation(el, handler) {
+    let lastTouchEndAt = 0;
+    el.addEventListener('touchend', (e) => {
+      lastTouchEndAt = Date.now();
+      e.preventDefault();
+      handler();
+    }, { passive: false });
+    el.addEventListener('click', () => {
+      if (Date.now() - lastTouchEndAt < 700) return;
+      handler();
+    });
+  }
+
   dom.btnPlay.addEventListener('click', () => { haptic(); togglePlay(); });
   dom.expPlay.addEventListener('click', () => { haptic(); togglePlay(); });
   document.getElementById('btnPrev').addEventListener('click', () => { haptic(); prevTrack(); });
   document.getElementById('expPrev').addEventListener('click', () => { haptic(); prevTrack(); });
   document.getElementById('btnNext').addEventListener('click', () => { haptic(); nextTrack(); });
   document.getElementById('expNext').addEventListener('click', () => { haptic(); nextTrack(); });
-  document.getElementById('expLoop').addEventListener('click', () => { haptic(); cycleLoop(); });
+  bindTouchSafeActivation(document.getElementById('expLoop'), () => { haptic(); cycleLoop(); });
   document.getElementById('expSkipBack').addEventListener('click', () => { haptic(); if (dom.audio.duration) dom.audio.currentTime = Math.max(0, dom.audio.currentTime - 15); });
   document.getElementById('expSkipFwd').addEventListener('click', () => { haptic(); if (dom.audio.duration) dom.audio.currentTime = Math.min(dom.audio.duration, dom.audio.currentTime + 15); });
   document.getElementById('expShare').addEventListener('click', () => {
     haptic();
-    if (state.epIdx >= 0 && state.playlist[state.epIdx]) {
-      const tr = state.playlist[state.epIdx];
+    const tr = getCurrentTrack();
+    if (tr) {
       shareTrack(tr, { title: tr.seriesTitle, id: tr.seriesId });
     }
   });
@@ -694,8 +707,8 @@ async function ensureSeriesDetail(seriesId, categoryId) {
   dom.audio.addEventListener('playing', () => {
     if (!getIsSwitching()) setPlayState(true);
     // Update AI chat context with current track info
-    if (state.epIdx >= 0 && state.playlist[state.epIdx]) {
-      const tr = state.playlist[state.epIdx];
+    const tr = getCurrentTrack();
+    if (tr) {
       updateAiContext(tr.seriesId, tr.id || state.epIdx + 1);
     }
   });

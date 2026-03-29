@@ -1,5 +1,5 @@
 /* ===== Home Page ===== */
-import { state } from './state.js';
+import { state, getCurrentTrack } from './state.js';
 import { t, getLang } from './i18n.js';
 import { getDOM } from './dom.js';
 import { ICON_PLAY, ICON_PAUSE, HOME_CATEGORY_ICONS } from './icons.js';
@@ -37,8 +37,8 @@ function attachHomeAudioListeners(page) {
 
   function updateHomePlayState() {
     if (getIsSwitching()) return;
-    const curSid = state.epIdx >= 0 && state.playlist.length
-      ? state.playlist[state.epIdx].seriesId : null;
+    const curTrack = getCurrentTrack();
+    const curSid = curTrack ? curTrack.seriesId : null;
     const playing = !dom.audio.paused;
     const contCard = page.querySelector('.home-continue-card');
     if (contCard) {
@@ -255,8 +255,8 @@ function buildDynamicSectionHtml() {
         const duration = ep?.duration || 0;
         const pct = duration > 0
           ? Math.min(100, Math.round((st.time || 0) / duration * 100)) : 0;
-        const nowSid = state.epIdx >= 0 && state.playlist.length
-          ? state.playlist[state.epIdx].seriesId : null;
+        const nowTrack = getCurrentTrack();
+        const nowSid = nowTrack ? nowTrack.seriesId : null;
         const isPlaying = nowSid === st.seriesId && state.epIdx === cIdx && !dom.audio.paused;
         const icon = isPlaying ? ICON_PAUSE : ICON_PLAY;
         html += `<div class="home-section home-section-tight"><div class="home-section-title">${t('home_continue')}</div>
@@ -297,8 +297,8 @@ function wireContinueCard(page) {
     const catId = contCard.dataset.cat;
     const idx = parseInt(contCard.dataset.idx) || 0;
     const restoreTime = parseFloat(contCard.dataset.time) || 0;
-    const curSid = state.epIdx >= 0 && state.playlist.length
-      ? state.playlist[state.epIdx].seriesId : null;
+    const curTrack = getCurrentTrack();
+    const curSid = curTrack ? curTrack.seriesId : null;
     if (curSid === sid && state.epIdx === idx) {
       dom.expPlayer.classList.add('show');
       return;
@@ -322,7 +322,7 @@ function wireGuideCard(page) {
   if (!guideCard) return;
   guideCard.addEventListener('click', () => {
     const dom = getDOM();
-    if (state.playlist.length && state.epIdx >= 0) {
+    if (getCurrentTrack()) {
       dom.expPlayer.classList.add('show');
       togglePlay();
       return;
@@ -462,8 +462,8 @@ export function renderHomePage() {
   const fohaoCat = state.data.categories.find(c => c.id === 'fohao');
   const fohaoSeries = fohaoCat ? fohaoCat.series.find(s => s.id === 'donglin-fohao') : null;
   const fohaoEps = fohaoSeries ? fohaoSeries.episodes : [];
-  const nowSid = state.epIdx >= 0 && state.playlist.length
-    ? state.playlist[state.epIdx].seriesId : null;
+  const fohaoTrack = getCurrentTrack();
+  const nowSid = fohaoTrack ? fohaoTrack.seriesId : null;
 
   const chantCards = fohaoEps.map((ep, idx) => {
     const isPlaying = nowSid === 'donglin-fohao' && state.epIdx === idx;
@@ -511,9 +511,8 @@ export function renderHomePage() {
     card.addEventListener('click', () => {
       const idx = parseInt(card.dataset.fhIdx);
       if (!fohaoSeries) return;
-      const curSid = state.epIdx >= 0 && state.playlist.length
-        ? state.playlist[state.epIdx].seriesId : null;
-      if (curSid === 'donglin-fohao' && state.epIdx === idx) { togglePlay(); return; }
+      const curTrack = getCurrentTrack();
+      if (curTrack && curTrack.seriesId === 'donglin-fohao' && state.epIdx === idx) { togglePlay(); return; }
       playList(fohaoSeries.episodes, idx, fohaoSeries);
     });
   });

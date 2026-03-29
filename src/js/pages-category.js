@@ -1,5 +1,5 @@
 /* ===== Category & Episode Views ===== */
-import { state, beginContentRequest, isContentRequestCurrent } from './state.js';
+import { state, beginContentRequest, isContentRequestCurrent, getCurrentTrack } from './state.js';
 import { t } from './i18n.js';
 import { getDOM } from './dom.js';
 import { CATEGORY_ICONS, ICON_PLAY_FILLED, ICON_PAUSE_FILLED } from './icons.js';
@@ -72,9 +72,9 @@ function renderEpisodeItems(ul, series, histMap, requestId) {
 
   // 如果当前正在播放本系列的某个较后的集数，确保首批渲染覆盖到它
   let initialEnd = LAZY_BATCH;
-  if (state.epIdx >= 0 && state.playlist.length > 0) {
-    const tr = state.playlist[state.epIdx];
-    if (tr && tr.seriesId === series.id && state.epIdx >= initialEnd) {
+  const curTrack = getCurrentTrack();
+  if (curTrack) {
+    if (curTrack.seriesId === series.id && state.epIdx >= initialEnd) {
       initialEnd = state.epIdx + 5; // 正在播放的集 + 几个缓冲
     }
   }
@@ -157,7 +157,8 @@ export function renderCategory(tabId) {
   const list = document.createElement('div');
   list.className = 'series-list';
   const unit = tabId === 'fohao' ? t('tracks') : t('episodes');
-  const nowSid = state.epIdx >= 0 && state.playlist.length ? state.playlist[state.epIdx].seriesId : null;
+  const nowTrack = getCurrentTrack();
+  const nowSid = nowTrack ? nowTrack.seriesId : null;
 
   cat.series.forEach(s => {
     const card = document.createElement('div');
@@ -230,7 +231,8 @@ export async function showEpisodes(series, tabId) {
   const playAllBtn = view.querySelector('#playAllBtn');
   function updatePlayAllBtn() {
     if (getIsSwitching()) return;
-    const isThisSeries = state.playlist.length && state.epIdx >= 0 && state.playlist[state.epIdx] && state.playlist[state.epIdx].seriesId === series.id;
+    const ct = getCurrentTrack();
+    const isThisSeries = ct && ct.seriesId === series.id;
     const playing = isThisSeries && !dom.audio.paused;
     playAllBtn.innerHTML = playing ? ICON_PAUSE_FILLED : ICON_PLAY_FILLED;
   }
@@ -265,8 +267,8 @@ export async function showEpisodes(series, tabId) {
   obs.observe(dom.contentArea, { childList: true });
 
   playAllBtn.addEventListener('click', () => {
-    const isThisSeries = state.playlist.length && state.epIdx >= 0 && state.playlist[state.epIdx] && state.playlist[state.epIdx].seriesId === series.id;
-    if (isThisSeries) { togglePlay(); }
+    const ct = getCurrentTrack();
+    if (ct && ct.seriesId === series.id) { togglePlay(); }
     else { playList(series.episodes, 0, series); }
   });
 
@@ -295,8 +297,8 @@ export async function showEpisodes(series, tabId) {
     }
     // 设置新高亮（音频结束时不高亮任何项）
     let newIdx = -1;
-    if (!dom.audio.ended && state.epIdx >= 0 && state.playlist.length > 0) {
-      const tr = state.playlist[state.epIdx];
+    if (!dom.audio.ended) {
+      const tr = getCurrentTrack();
       if (tr && tr.seriesId === series.id) newIdx = state.epIdx;
     }
     if (newIdx >= 0) {
@@ -326,9 +328,8 @@ export async function showEpisodes(series, tabId) {
     const now = performance.now();
     if (now - progressTick < 1000) return;
     progressTick = now;
-    const isThisSeries = state.playlist.length && state.epIdx >= 0
-      && state.playlist[state.epIdx] && state.playlist[state.epIdx].seriesId === series.id;
-    if (!isThisSeries) return;
+    const ct = getCurrentTrack();
+    if (!ct || ct.seriesId !== series.id) return;
     const dur = dom.audio.duration;
     if (!dur || !isFinite(dur) || dur <= 0) return;
     const pct = Math.min(100, Math.round(dom.audio.currentTime / dur * 100));
