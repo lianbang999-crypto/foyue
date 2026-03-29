@@ -633,11 +633,13 @@ body {
     left: 0;
     right: 0;
     z-index: 28;
-    padding: 20px 20px 24px;
+    padding: 24px 20px;
     padding-bottom: calc(24px + var(--wk-safe-bottom));
-    border-top: 1px solid rgba(128, 128, 128, 0.2);
-    border-radius: 16px 16px 0 0;
-    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1);
+    background: var(--wk-bg-card);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(128, 128, 128, 0.15);
+    border-radius: 20px 20px 0 0;
     transform: translateY(100%);
     transition: transform .3s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .3s;
     visibility: hidden;
@@ -645,19 +647,79 @@ body {
 }
 
 .wk-reader[data-mode="light"] .wk-reader-settings {
-    background: #FFFFFF;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 28;
+    padding: 24px 20px;
+    padding-bottom: calc(24px + var(--wk-safe-bottom));
+    background: var(--wk-bg-card);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(128, 128, 128, 0.15);
+    border-radius: 20px 20px 0 0;
+    transform: translateY(100%);
+    transition: transform .3s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .3s;
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .wk-reader[data-mode="dark"] .wk-reader-settings {
-    background: #1A1A1A;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 28;
+    padding: 24px 20px;
+    padding-bottom: calc(24px + var(--wk-safe-bottom));
+    background: var(--wk-bg-card);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(128, 128, 128, 0.15);
+    border-radius: 20px 20px 0 0;
+    transform: translateY(100%);
+    transition: transform .3s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .3s;
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .wk-reader[data-mode="sepia"] .wk-reader-settings {
-    background: #F5EDDC;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 28;
+    padding: 24px 20px;
+    padding-bottom: calc(24px + var(--wk-safe-bottom));
+    background: var(--wk-bg-card);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(128, 128, 128, 0.15);
+    border-radius: 20px 20px 0 0;
+    transform: translateY(100%);
+    transition: transform .3s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .3s;
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .wk-reader[data-mode="eink"] .wk-reader-settings {
-    background: #FAFAF5;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 28;
+    padding: 24px 20px;
+    padding-bottom: calc(24px + var(--wk-safe-bottom));
+    background: var(--wk-bg-card);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(128, 128, 128, 0.15);
+    border-radius: 20px 20px 0 0;
+    transform: translateY(100%);
+    transition: transform .3s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .3s;
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .wk-settings-title {
@@ -719,19 +781,19 @@ body {
     appearance: none;
     border: none;
     box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.2);
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           lign: center;
+    background: transparent;
+    color: inherit;
+    padding: 10px;
+    font-size: .85rem;
+    cursor: pointer;
     transition: all 0.2s cubic-bezier(.22, 1, .36, 1);
-    appear    appear    appear    appear   }
-    appear    appear    appear    appear   }
- .36, 1);
- ve ve ve ve ve ve ve ve viv ve ve ve ve ve ve ve ve viv ve ve ve ve ve ve ve ve vivAc ve ve ve ve ve ve ve ve viv ve ve ve ve ve ve ve ve wk-font-btn.active {
-    box-shadow:     box-shadow5px     box-shadow:     box-shadow5px     box-shadow:     boround: var(--wk-accent-light);
+    border-radius: 12px;
 }
 
 .wk-font-btn.active {
-    border-color: var(--wk-accent);
+    box-shadow: inset 0 0 0 1.5px var(--wk-accent);
     color: var(--wk-accent);
-    font-weight: 500;
+    background: var(--wk-accent-light);
 }
 
 .wk-font-sans {
@@ -766,13 +828,14 @@ body {
 
 .wk-mode-dot {
     flex: 1;
-    padding: 8px;
-    border-radius: var(--wk-radius-sm);
-    border: 1.5px solid rgba(128, 128, 128, 0.3);
-    font-size: .74rem;
+    padding: 12px 8px;
+    border-radius: 12px;
+    border: none;
+    box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.15);
+    font-size: .8rem;
     cursor: pointer;
     text-align: center;
-    transition: all 0.15s;
+    transition: all 0.2s cubic-bezier(.22, 1, .36, 1);
     appearance: none;
 }
 
