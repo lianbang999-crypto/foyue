@@ -186,7 +186,6 @@ async function renderHome(skipPush) {
           <div class="wk-series-name">${esc(s.series_name)}</div>
           <div class="wk-series-meta">${metaParts.join(' · ')}</div>
         </div>
-        <svg class="wk-series-arrow" viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg>
       </div>`;
     });
     html += '</div>';
@@ -314,10 +313,10 @@ async function openReader(docId, highlightQuery, skipPush) {
       </div>
       <div class="wk-settings-title">背景</div>
       <div class="wk-modes-row">
-        <span class="wk-mode-dot ${settings.mode === 'light' ? 'active' : ''}" data-mode="light">白</span>
-        <span class="wk-mode-dot ${settings.mode === 'sepia' ? 'active' : ''}" data-mode="sepia">护眼</span>
-        <span class="wk-mode-dot ${settings.mode === 'dark' ? 'active' : ''}" data-mode="dark">暗黑</span>
-        <span class="wk-mode-dot ${settings.mode === 'eink' ? 'active' : ''}" data-mode="eink">墨水</span>
+                <button type="button" class="wk-mode-dot ${settings.mode === 'light' ? 'active' : ''}" data-mode="light" aria-pressed="${settings.mode === 'light' ? 'true' : 'false'}">白</button>
+                <button type="button" class="wk-mode-dot ${settings.mode === 'sepia' ? 'active' : ''}" data-mode="sepia" aria-pressed="${settings.mode === 'sepia' ? 'true' : 'false'}">护眼</button>
+                <button type="button" class="wk-mode-dot ${settings.mode === 'dark' ? 'active' : ''}" data-mode="dark" aria-pressed="${settings.mode === 'dark' ? 'true' : 'false'}">暗黑</button>
+                <button type="button" class="wk-mode-dot ${settings.mode === 'eink' ? 'active' : ''}" data-mode="eink" aria-pressed="${settings.mode === 'eink' ? 'true' : 'false'}">墨水</button>
       </div>
       <div class="wk-settings-title">字体</div>
       <div class="wk-fonts-row">
@@ -465,7 +464,11 @@ function wireReaderSettings(settings) {
         dot.addEventListener('click', () => {
             settings.mode = dot.dataset.mode;
             wkReader.setAttribute('data-mode', settings.mode);
-            panel.querySelectorAll('.wk-mode-dot').forEach(d => d.classList.toggle('active', d.dataset.mode === settings.mode));
+            panel.querySelectorAll('.wk-mode-dot').forEach(d => {
+                const active = d.dataset.mode === settings.mode;
+                d.classList.toggle('active', active);
+                d.setAttribute('aria-pressed', active ? 'true' : 'false');
+            });
             persistSettings(settings);
         });
     });
