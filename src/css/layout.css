@@ -42,9 +42,10 @@
 }
 
 .logo-icon {
-  width: 30px;
-  height: 30px;
+  width: auto;
+  height: 22px;
   object-fit: contain;
+  vertical-align: middle;
   transition: opacity .2s
 }
 
