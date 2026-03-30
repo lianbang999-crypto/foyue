@@ -25,11 +25,11 @@ export function showGongxiuSubview() {
     panel.classList.remove('gx-fullscreen--in');
     setTimeout(() => {
       panel.remove();
-      import('./counter.js').then(mod => mod.openCounter());
+      import('./counter-lazy.js').then(mod => mod.openCounter());
     }, 320);
   };
 
-  import('./gongxiu.js').then(mod => {
+  import('./gongxiu-lazy.js').then(mod => {
     mod.renderGongxiu(panel.querySelector('#gxContent'), openCounter);
   });
 

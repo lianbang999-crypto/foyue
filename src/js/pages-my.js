@@ -170,7 +170,7 @@ export function renderMyPage() {
 
   page.querySelector('#myHistoryCard').addEventListener('click', () => renderHistoryView(() => renderMyPage()));
   page.querySelector('#myCounterCard').addEventListener('click', () => {
-    import('./counter.js').then(mod => mod.openCounter()).catch(err => {
+    import('./counter-lazy.js').then(mod => mod.openCounter()).catch(err => {
       console.error('[Counter] load failed:', err);
       showToast('计数器加载失败，请刷新页面重试');
     });
