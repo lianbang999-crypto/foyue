@@ -79,7 +79,9 @@ function getStreak(data) {
   if (!data.dailyLog) return 0;
   const today = new Date();
   let streak = 0;
-  for (let i = 0; i < 9999; i++) {
+  const keys = Object.keys(data.dailyLog);
+  if (keys.length === 0) return 0;
+  for (let i = 0; ; i++) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
     const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -400,12 +402,12 @@ function wireCounterEvents(view, data, _session) {
   };
 
   /* ── Full UI update (settings change, loop complete, goal done, reset) ── */
-  function updateUI(data, view) {
+  function updateUI(bump = false) {
     const dimmerBtn = view.querySelector('#counterDimmerToggle');
-    if(dimmerBtn) isDimmerEnabled() ? dimmerBtn.classList.add('is-active') : dimmerBtn.classList.remove('is-active');
+    if(dimmerBtn) dimmerBtn.classList.toggle('counter-tool-icon--active', isDimmerEnabled());
 
     const muyuBtn = view.querySelector('#counterMuyuToggle');
-    if(muyuBtn) isMuyuEnabled() ? muyuBtn.classList.add('is-active') : muyuBtn.classList.remove('is-active');
+    if(muyuBtn) muyuBtn.classList.toggle('counter-tool-icon--active', isMuyuEnabled());
 
     
 
@@ -491,48 +493,30 @@ function wireCounterEvents(view, data, _session) {
   /* ── Tap count (unified pointer handling to prevent double-fire) ── */
   const tapArea = view.querySelector('#counterTapArea');
   if (tapArea) {
-    let touchHandled = false;
-
     const doCount = (cx, cy) => {
-      if (navigator.vibrate) {
-        // 轻微触觉反馈
-        navigator.vibrate([15]);
-      }
       spawnRipple(cx, cy);
       doCountCore();
     };
 
-    // Track touch start position to distinguish taps from swipes
-    let touchStartX = 0;
-    let touchStartY = 0;
-    tapArea.addEventListener('touchstart', (e) => {
-      touchStartX = e.touches[0].clientX;
-      touchStartY = e.touches[0].clientY;
+    // Use Pointer Events API: single code path for touch, stylus, and mouse.
+    // pointerup fires once per interaction; calling preventDefault() suppresses
+    // the synthetic click event the browser would otherwise generate on touch,
+    // eliminating the touchend→click double-fire race condition entirely.
+    let pointerStartX = 0;
+    let pointerStartY = 0;
+    tapArea.addEventListener('pointerdown', (e) => {
+      if (e.button > 0) return; // ignore right/middle mouse buttons
+      pointerStartX = e.clientX;
+      pointerStartY = e.clientY;
     }, { passive: true });
 
-    tapArea.addEventListener('touchend', (e) => {
-      // If touch data is unavailable, fall back
-      if (!e.changedTouches || !e.changedTouches[0]) {
-        e.preventDefault();
-        touchHandled = true;
-        doCount(0, 0);
-        return;
-      }
-      // If the touch moved more than 20px it's a swipe — let the browser handle it
-      const dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
-      const dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
+    tapArea.addEventListener('pointerup', (e) => {
+      if (e.button > 0) return;
+      // If the pointer moved more than 20px it's a swipe — skip
+      const dx = Math.abs(e.clientX - pointerStartX);
+      const dy = Math.abs(e.clientY - pointerStartY);
       if (dx > 20 || dy > 20) return;
-      e.preventDefault();
-      touchHandled = true;
-      doCount(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
-    }, { passive: false });
-
-    tapArea.addEventListener('click', (e) => {
-      // Skip if already handled by touchend (prevents double-count on touch devices)
-      if (touchHandled) {
-        touchHandled = false;
-        return;
-      }
+      e.preventDefault(); // suppress synthetic click
       doCount(e.clientX, e.clientY);
     });
 
@@ -582,13 +566,19 @@ function wireCounterEvents(view, data, _session) {
   if (muyuToggle) {
     // 预加载音频
     _ensureMuyuLoaded();
-    muyuToggle.addEventListener('click', () => {
+    muyuToggle.addEventListener('click', async () => {
       const nowOn = !isMuyuEnabled();
       setMuyuPref(nowOn);
       muyuToggle.classList.toggle('counter-tool-icon--active', nowOn);
       haptic(15);
       if (nowOn) {
-        _ensureMuyuLoaded().then(() => playMuyuSound());
+        if (!_muyuBuffer) {
+          // First load: disable toggle until decode completes to avoid silent state
+          muyuToggle.disabled = true;
+          await _ensureMuyuLoaded();
+          muyuToggle.disabled = false;
+        }
+        playMuyuSound();
       }
     });
   }
@@ -636,35 +626,39 @@ function enterDimmerMode(counterView, getSession, doCount) {
     setTimeout(() => dimmer.remove(), 300);
   };
 
-  // Single-finger tap to count
-  let touchHandled = false;
-  let touchStartX = 0;
-  let touchStartY = 0;
+  // Single-finger tap to count; two-finger touch to exit
+  // Use Pointer Events to avoid the touchend→click double-fire race.
+  // A Set of active pointer IDs lets us detect multi-touch without touchstart.
+  const activePointers = new Set();
+  let dimmerStartX = 0;
+  let dimmerStartY = 0;
 
-  dimmer.addEventListener('touchstart', (e) => {
-    // Two-finger touch → exit
-    if (e.touches.length >= 2) {
+  dimmer.addEventListener('pointerdown', (e) => {
+    activePointers.add(e.pointerId);
+    // Two or more simultaneous touches → exit dimmer mode
+    if (activePointers.size >= 2) {
       e.preventDefault();
+      activePointers.clear();
       exitDimmer();
       return;
     }
-    touchStartX = e.touches[0].clientX;
-    touchStartY = e.touches[0].clientY;
+    dimmerStartX = e.clientX;
+    dimmerStartY = e.clientY;
   }, { passive: false });
 
-  dimmer.addEventListener('touchend', (e) => {
-    if (!e.changedTouches || !e.changedTouches[0]) return;
-    const dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
-    const dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
+  dimmer.addEventListener('pointerup', (e) => {
+    activePointers.delete(e.pointerId);
+    // Skip if another pointer is still down (trailing finger after two-finger gesture)
+    if (activePointers.size > 0) return;
+    const dx = Math.abs(e.clientX - dimmerStartX);
+    const dy = Math.abs(e.clientY - dimmerStartY);
     if (dx > 20 || dy > 20) return;
-    e.preventDefault();
-    touchHandled = true;
+    e.preventDefault(); // suppress synthetic click
     doCount();
-  }, { passive: false });
+  });
 
-  dimmer.addEventListener('click', (e) => {
-    if (touchHandled) { touchHandled = false; return; }
-    doCount();
+  dimmer.addEventListener('pointercancel', (e) => {
+    activePointers.delete(e.pointerId);
   });
 
   // Escape to exit
@@ -867,7 +861,7 @@ function showGoalPicker(parentView, data, onDone) {
   const confirmCustom = () => {
     const input = sheet.querySelector('#goalCustomInput');
     const val = parseInt(input.value);
-    if (isNaN(val) || val < 1) {
+    if (isNaN(val) || val < 1 || val > 999999) {
       input.classList.add('counter-goal-custom-input--error');
       showToast(t('counter_goal_invalid'));
       setTimeout(() => input.classList.remove('counter-goal-custom-input--error'), 600);
