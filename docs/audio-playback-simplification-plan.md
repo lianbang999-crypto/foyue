@@ -479,3 +479,53 @@ if (response.status === 200) {
 
 - AI 页面 Markdown 链接现仅允许 `http:`、`https:` 与站内相对地址，阻断不可信协议注入
 - AI 页面“重新生成”现收口为只支持最后一条回答，且不再重复追加用户消息，避免对话历史错位
+
+## 2026-03-30 联调记录
+
+### Cloudflare 线上音频链路核验
+
+已基于生产真实音频 URL 做在线核验，结果如下：
+
+- HEAD 请求返回 `200`
+- `Range: bytes=0-1` 返回 `206`
+- 无效 Range 返回 `416`
+- 响应头包含 `accept-ranges: bytes`
+- 响应头包含正确的 `content-range`、`content-length`、`content-type: audio/mpeg`
+- 响应头包含稳定的 `etag`
+- CORS 头为精确放行 `https://foyue.org`
+
+本次核验说明：
+
+- 音频 Worker 在线上真实对象上的协议行为符合播放器当前简化方案要求
+- `https://audio.foyue.org/` 根路径返回 `404` 不构成问题，真实播放依赖的是具体音频对象路径
+
+### Pages 当前部署状态
+
+检查结果：
+
+- Pages 项目 `amituofo` 最近一条生产部署为成功状态
+- 当前生产部署对应提交为 `fa3423c`
+- 部署列表中存在历史失败记录，但不是当前线上版本
+
+这说明：
+
+- 当前生产站点可用
+- 但不能把当前生产结果直接等同于本地最新播放器修复已完成生产验证
+
+### 本地 main 合并记录
+
+2026-03-30 已将本轮播放器简化修复、本地 AI 页面修复及方案文档变更提交到本地 `main`：
+
+- 本地提交：`06ade51`
+- 提交信息：`fix(player): simplify audio playback flow`
+
+记录该次提交时：
+
+- 本地工作区已清空
+- `main` 相对 `origin/main` 处于 `ahead 3`
+
+含义：
+
+- 最新修复已经合入本地主线
+- 但尚未推送到 GitHub
+- 也不能视为已经随 GitHub 同步完成正式生产发布
