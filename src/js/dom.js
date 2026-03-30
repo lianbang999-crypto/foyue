@@ -32,7 +32,6 @@ export function initDOM() {
     playlistPanel: $('playlistPanel'),
     plItems: $('plItems'),
     plCount: $('plCount'),
-    navTitle: $('navTitle'),
     centerPlayBtn: $('centerPlayBtn'),
     centerPlayIcon: $('centerPlayIcon'),
     centerRingFill: $('centerRingFill'),
