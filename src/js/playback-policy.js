@@ -34,9 +34,6 @@ export function getPlaybackPolicy(input) {
   return {
     profile,
     shouldFullLoadCurrent: profile.mediaClass === 'short',
-    shouldWarmCurrentWindow: profile.mediaClass === 'long',
-    shouldWarmNextTrack: profile.mediaClass === 'long',
     switchTimeoutMs: 8000,
-    preloadedSwitchTimeoutMs: profile.mediaClass === 'short' ? 1200 : 1500,
   };
 }

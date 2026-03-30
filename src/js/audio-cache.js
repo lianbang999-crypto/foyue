@@ -3,7 +3,7 @@
 
 import { get, set } from './store.js';
 
-export const AUDIO_CACHE = 'audio-v2'; // v2: cache key = actual URL (no canonicalization)
+export const AUDIO_CACHE = 'audio-v3'; // v3: bump cache namespace to drop legacy long-audio entries
 const MAX_CACHE_BYTES = 500 * 1024 * 1024; // 500 MB cap
 
 /* ===== Store-backed cached URL set ===== */

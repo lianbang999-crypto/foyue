@@ -22,7 +22,7 @@ import {
   cycleLoop, cycleSpeed, cycleSleepTimer,
   shareTrack,
   onTimeUpdate, onEnded, onAudioError,
-  setPlayState, highlightEp, cleanupPreload,
+  setPlayState, highlightEp,
   togglePlaylist, closePlaylist, getPlaylistVisible, saveState, restoreState,
   getIsSwitching, getIsRecovering, setDragging, initPlaylistTabs, closeFullScreen,
   openFullScreen,
@@ -839,9 +839,8 @@ async function ensureSeriesDetail(seriesId, categoryId) {
       showBufferingUI();
     }
   });
-  // canplay: no longer triggers preload — preload is only triggered by onTimeUpdate at 80% progress.
-  // This prevents preload from competing with current track during initial buffering or stall recovery.
-  // dom.audio.addEventListener('canplay', () => { preloadNextTrack(); });
+  // canplay: preload mechanism removed — short audio uses background full-load instead.
+  // dom.audio.addEventListener('canplay', () => { });
 
   // Tap-to-retry on player track (when in error state)
   dom.playerTrack.addEventListener('click', () => {

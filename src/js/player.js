@@ -41,13 +41,7 @@ let _userPaused = false;
 let bgFetchController = null;
 let bgFetchUrl = '';
 let bgBlobUrl = '';
-let currentWarmController = null;
-let currentWarmUrl = '';
-
 const SHORT_AUDIO_DURATION_S = 15 * 60;
-const LONG_AUDIO_WINDOW_S = 15 * 60;
-const LONG_AUDIO_WARM_MAX_BYTES = 24 * 1024 * 1024;
-const NEXT_TRACK_PRELOAD_RATIO = 0.8;
 
 function buildPlaylistEntries(episodes, series) {
   return episodes.map(ep => {
@@ -244,7 +238,6 @@ function _recoverAudio(safePosition, fullReset) {
   const dom = getDOM();
   stallRetries++;
   setNetworkWeak(true);
-  cleanupPreload();
   _isRecovering = true;
 
   if (stallRetries > MAX_STALL_RETRIES) {
@@ -451,9 +444,7 @@ let timerIdx = 0;
 let sleepTimerId = null;
 let sleepRemaining = 0;
 
-/* ===== Preload ===== */
-let preloadAudio = null;
-let preloadedUrl = '';
+
 
 /* ===== Playlist Panel ===== */
 let playlistVisible = false;
@@ -468,7 +459,6 @@ export function getPlaylistVisible() { return playlistVisible; }
 export function setDragging(v) { _dragging = v; }
 
 export function playList(episodes, idx, series, restoreTime) {
-  cleanupPreload();
   _userPaused = false; // User is explicitly requesting playback of a new track
   // #8: Always rebuild playlist — even for same series, episodes data may have been refreshed
   state.playlist = buildPlaylistEntries(episodes, series);
@@ -480,7 +470,6 @@ export function playList(episodes, idx, series, restoreTime) {
 // Prepare playlist + UI without calling play() — for autoplay-blocked contexts
 // (first visit default track, restore from saved state without user gesture)
 export function prepareList(episodes, idx, series, restoreTime) {
-  cleanupPreload();
   state.playlist = buildPlaylistEntries(episodes, series);
   state.epIdx = idx;
   pendingSeek = restoreTime || 0;
@@ -553,62 +542,14 @@ function cancelPendingTrackLoad() {
   renderPlaylistItems();
 }
 
-function cleanupCurrentWarmup() {
-  if (currentWarmController) {
-    currentWarmController.abort();
-    currentWarmController = null;
-  }
-  currentWarmUrl = '';
-}
-
 function cleanupPlaybackPreparations() {
   cleanupBgFetch();
-  cleanupCurrentWarmup();
-  cleanupPreload();
-}
-
-function computeLongWarmBytes(track) {
-  const duration = Number(track?.duration) || 0;
-  const bytes = Number(track?.bytes ?? track?.size ?? track?.fileSize ?? track?.contentLength) || 0;
-  if (!duration || !bytes || duration <= SHORT_AUDIO_DURATION_S) return 0;
-  const ratio = Math.min(1, LONG_AUDIO_WINDOW_S / duration);
-  const windowBytes = Math.ceil(bytes * ratio);
-  return Math.max(64 * 1024, Math.min(windowBytes, LONG_AUDIO_WARM_MAX_BYTES, bytes));
-}
-
-function startCurrentTrackWarmup(track) {
-  if (!track?.url || currentWarmUrl === track.url) return;
-  const warmBytes = computeLongWarmBytes(track);
-  if (!warmBytes) return;
-
-  cleanupCurrentWarmup();
-  currentWarmUrl = track.url;
-  currentWarmController = typeof AbortController === 'function' ? new AbortController() : null;
-
-  fetch(track.url, {
-    headers: { Range: `bytes=0-${warmBytes - 1}` },
-    signal: currentWarmController ? currentWarmController.signal : undefined,
-  }).then(resp => {
-    if (!resp.ok && resp.status !== 206) throw new Error('HTTP ' + resp.status);
-    return drainResponseBody(resp);
-  }).catch(err => {
-    if (err.name !== 'AbortError') {
-      console.warn('[Warmup] Failed:', err.message);
-    }
-  }).finally(() => {
-    currentWarmController = null;
-    if (currentWarmUrl === track.url) currentWarmUrl = '';
-  });
 }
 
 function scheduleCurrentTrackLoading(track) {
   const policy = getPlaybackPolicy({ track: getTrackWithCachedAudioMeta(track) });
   if (policy.shouldFullLoadCurrent) {
     startBgFullLoad(track?.url);
-    return;
-  }
-  if (policy.shouldWarmCurrentWindow) {
-    startCurrentTrackWarmup(getTrackWithCachedAudioMeta(track));
   }
 }
 
@@ -682,18 +623,11 @@ function playCurrent() {
   dom.audio.removeAttribute('src');
   dom.audio.load();
 
-  // ✅ 核心优化：如果预加载的音频匹配当前要播放的URL，直接复用已缓冲的数据
-  let usePreloaded = false;
-  if (preloadAudio && preloadedUrl === tr.url && preloadAudio.readyState >= 2) {
-    usePreloaded = true;
-    cleanupPreload(); // Release preload element; HTTP cache is now primed
-  }
-
   // ✅ Fix 3: Compute seek time — pendingSeek > history resume > 0
   let seekTime = _computeSeekTime(tr);
 
-  // ✅ 优化：添加超时保护，防止isSwitching卡住（预加载时缩短到1.5秒）
-  const switchTimeout = usePreloaded ? policy.preloadedSwitchTimeoutMs : policy.switchTimeoutMs;
+  // ✅ 优化：添加超时保护，防止isSwitching卡住
+  const switchTimeout = policy.switchTimeoutMs;
   clearSwitchingTimeout();
   _switchingTimeoutId = setTimeout(() => {
     _switchingTimeoutId = null;
@@ -735,14 +669,12 @@ function playCurrent() {
   }
 
   // ✅ Fix 1+4: doLoad sets src after cache check; all async paths guarded by callId
-  function doLoad(srcUrl, skipLoad) {
+  function doLoad(srcUrl) {
     if (callId !== _playCurrentId) return;
     dom.audio.src = srcUrl;
     dom.audio.playbackRate = SPEEDS[speedIdx];
-    if (!skipLoad) {
-      dom.audio.load();
-      setBuffering(true);
-    }
+    dom.audio.load();
+    setBuffering(true);
     if (dom.audio.readyState >= 2) {
       tryPlay();
     } else {
@@ -803,7 +735,7 @@ function playCurrent() {
   // 在线时直接走原始音频地址；离线且已有缓存时才回退本地 Blob。
   if (navigator.onLine !== false || !isCachedSync(tr.url)) {
     revokeOldBlob(); // ✅ 直连路径：新源已确定，安全释放旧Blob
-    doLoad(tr.url, usePreloaded);
+    doLoad(tr.url);
   } else {
     getCachedAudioUrl(tr.url).then(cachedUrl => {
       if (callId !== _playCurrentId) {
@@ -813,11 +745,10 @@ function playCurrent() {
       }
       revokeOldBlob(); // ✅ 新缓存源已确认，安全释放旧Blob
       if (cachedUrl) dom.audio._cachedBlobUrl = cachedUrl;
-      const skipLoad = !cachedUrl && usePreloaded;
-      doLoad(cachedUrl || tr.url, skipLoad);
+      doLoad(cachedUrl || tr.url);
     }).catch(() => {
       revokeOldBlob(); // ✅ 缓存失败回退直连，也释放旧Blob
-      doLoad(tr.url, usePreloaded);
+      doLoad(tr.url);
     });
   }
 
@@ -1045,9 +976,7 @@ export function onTimeUpdate() {
       dom.expBufferFill.style.transform = `scaleX(${Math.min(1, bufEnd / dur)})`;
     }
 
-    if (dur > SHORT_AUDIO_DURATION_S && p >= (NEXT_TRACK_PRELOAD_RATIO * 100) && !preloadedUrl) {
-      preloadNextTrack();
-    }
+
   });
 }
 
@@ -1355,58 +1284,7 @@ export function cycleSleepTimer() {
   }
 }
 
-/* ===== Preload Next Track ===== */
-function getNextTrackIdx() {
-  if (!state.playlist.length) return -1;
-  if (state.loopMode === 'shuffle') return -1;
-  if (state.epIdx < state.playlist.length - 1) return state.epIdx + 1;
-  if (state.loopMode === 'all') return 0;
-  return -1;
-}
 
-export function preloadNextTrack() {
-  const ni = getNextTrackIdx();
-  if (ni < 0) { cleanupPreload(); return; }
-  const currentTrack = state.playlist[state.epIdx];
-  const currentPolicy = getPlaybackPolicy({ track: getTrackWithCachedAudioMeta(currentTrack) });
-  if (!currentPolicy.shouldWarmNextTrack) {
-    cleanupPreload();
-    return;
-  }
-  const nextTrack = state.playlist[ni];
-  const nurl = nextTrack && nextTrack.url;
-  if (!nurl || nurl === preloadedUrl) return;
-
-  cleanupPreload();
-  preloadAudio = new Audio();
-  preloadAudio.preload = 'auto';
-  preloadAudio.src = nurl;
-  preloadedUrl = nurl;
-  // Error handler: silently discard failed preloads so they aren't reused
-  preloadAudio.addEventListener('error', () => {
-    console.warn('[Preload] Failed to preload:', nurl);
-    cleanupPreload();
-  });
-  const timeoutMs = 20000;
-
-  // Timeout: if preload hasn't loaded enough data, discard it
-  preloadAudio._preloadTimeout = setTimeout(() => {
-    if (preloadAudio && preloadAudio.readyState < 2) {
-      console.warn('[Preload] Timeout, discarding stalled preload');
-      cleanupPreload();
-    }
-  }, timeoutMs);
-}
-
-export function cleanupPreload() {
-  if (preloadAudio) {
-    if (preloadAudio._preloadTimeout) clearTimeout(preloadAudio._preloadTimeout);
-    preloadAudio.src = '';
-    preloadAudio.load();
-    preloadAudio = null;
-  }
-  preloadedUrl = '';
-}
 
 /* ===== Background Full-Load ===== */
 // Silently fetches the entire audio file via fetch(), then swaps <audio>.src
@@ -1506,11 +1384,11 @@ export function onVisibilityResume() {
   }
   const bufAhead = bufEnd - ct;
 
-  // If less than 5s buffered ahead, nudge the audio to re-trigger buffering
+  // If less than 5s buffered ahead, keep buffering UI visible and let the
+  // browser continue the stream naturally instead of forcing a same-position seek.
   if (bufAhead < 5) {
-    console.log('[Player] Low buffer on resume (' + bufAhead.toFixed(1) + 's), nudging playback');
+    console.log('[Player] Low buffer on resume (' + bufAhead.toFixed(1) + 's), waiting for stream recovery');
     setBuffering(true);
-    dom.audio.currentTime = ct; // Triggers a new Range request
     startStallWatch();
     return;
   }

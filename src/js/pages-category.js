@@ -9,12 +9,9 @@ import { getHistory } from './history.js';
 import { getPlayCount, appreciate } from './api.js';
 import { showToast, escapeHtml, showFloatText, fmtCount, fmtDuration } from './utils.js';
 import { getBatchCachedStatus } from './audio-cache.js';
-import { getTrackWithCachedAudioMeta } from './audio-meta-cache.js';
 import { mountSummary } from './ai-summary.js';
 import { probeDurations, getCachedDuration } from './duration-cache.js';
-import { warmAudioUrl } from './audio-url.js';
 import { isInAppBrowser } from './pwa.js';
-import { getPlaybackPolicy } from './playback-policy.js';
 // import { mountTranscript } from './transcript.js';
 // import { getTranscriptAvailability } from './ai-client.js';
 
@@ -135,25 +132,7 @@ function renderEpisodeItems(ul, series, histMap, requestId) {
   return true;
 }
 
-function warmLikelyEpisodeAudio(series) {
-  if (!series?.episodes?.length || getIsSwitching()) return;
 
-  let targetIdx = 0;
-  if (state.playlist.length && state.epIdx >= 0) {
-    const current = state.playlist[state.epIdx];
-    if (current?.seriesId === series.id) targetIdx = state.epIdx;
-  }
-
-  const currentTrack = getCurrentTrack();
-  if (currentTrack?.seriesId === series.id && state.epIdx === targetIdx) return;
-
-  const targetEpisode = series.episodes[targetIdx] || series.episodes[0];
-  if (!targetEpisode?.url) return;
-  const episodeForPolicy = getTrackWithCachedAudioMeta(targetEpisode);
-  const policy = getPlaybackPolicy({ track: episodeForPolicy });
-  if (!policy.shouldWarmCurrentWindow) return;
-  warmAudioUrl(targetEpisode.url);
-}
 
 function getCollapsedSeriesCount(seriesList, currentSeriesId) {
   const total = seriesList.length;
@@ -378,10 +357,7 @@ export async function showEpisodes(series, tabId) {
   if (!renderCompleted || !isContentRequestCurrent(requestId) || !view.isConnected) return;
 
   if (tabId === 'tingjingtai') {
-    deferNonCriticalWork(() => {
-      if (!view.isConnected || !isContentRequestCurrent(requestId) || getIsSwitching()) return;
-      warmLikelyEpisodeAudio(series);
-    });
+    // warmup removed — Plan A: short audio uses background full-load after play starts
   }
 
   // Real-time progress bar for the currently playing episode (~1 update/sec)

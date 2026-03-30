@@ -1,10 +1,10 @@
 /* Service Worker — 净土法音 Offline Cache */
 'use strict';
 
-const CACHE_VERSION = 'v8';
+const CACHE_VERSION = 'v9';
 const STATIC_CACHE = 'static-' + CACHE_VERSION;
 const DATA_CACHE = 'data-' + CACHE_VERSION;
-const AUDIO_CACHE = 'audio-v2';
+const AUDIO_CACHE = 'audio-v3';
 
 /* App-shell files to pre-cache on install */
 const APP_SHELL = [
@@ -78,24 +78,15 @@ self.addEventListener('fetch', event => {
   // ✅ 修复：Range请求直接走网络，避免缓存冲突
   if (event.request.headers.get('range')) return;
 
-  /* Cached audio: serve from audio cache if available.
-   * Cache key = the actual URL the player uses. */
+  /* Cached audio: serve from audio cache if available, but do NOT auto-cache.
+   * 主线程 audio-cache.js 的 cacheAudio() 已负责显式缓存短音频，
+   * SW 不再自动缓存所有音频响应，避免长音频（80-120MB）撑爆缓存。 */
   if (url.hostname.includes('audio.foyue.org') || /\.(mp3|m4a|ogg)(\?|$)/.test(url.pathname)) {
     event.respondWith(
       caches.open(AUDIO_CACHE).then(cache =>
         cache.match(event.request.url).then(cached => {
           if (cached) return cached;
-          return fetch(event.request).then(response => {
-            // Only cache successful full responses (not partial 206)
-            if (response.ok && response.status === 200) {
-              cache.put(event.request.url, response.clone());
-              // 通知主线程更新缓存 URL 集合
-              self.clients.matchAll().then(cls => {
-                cls.forEach(c => c.postMessage({ type: 'audio-cached', url: event.request.url }));
-              });
-            }
-            return response;
-          });
+          return fetch(event.request);
         })
       )
     );
