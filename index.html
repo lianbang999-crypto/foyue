@@ -8,14 +8,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="净土法音">
-  <meta name="theme-color" content="#F7F2EA">
+  <meta name="theme-color" content="#F9F8F6">
   <meta name="description" content="净土法音 - 佛教净土宗音频与讲记文库。提供大安法师讲经音频、佛号念诵、有声书及讲义文稿在线阅读。南无阿弥陀佛 Namo Amitabha">
   <link rel="canonical" href="https://foyue.org/">
-  <!-- Hreflang: multi-language support -->
-  <link rel="alternate" hreflang="zh" href="https://foyue.org/">
-  <link rel="alternate" hreflang="en" href="https://foyue.org/">
-  <link rel="alternate" hreflang="fr" href="https://foyue.org/">
-  <link rel="alternate" hreflang="x-default" href="https://foyue.org/">
   <!-- Open Graph -->
   <meta property="og:type" content="website">
   <meta property="og:title" content="净土法音 - Pure Land Dharma Audio">
@@ -61,88 +56,29 @@
   <script type="application/ld+json">
 {
   "@context": "https://schema.org",
-  "@type": "WebApplication",
-  "name": "净土法音",
-  "alternateName": "Pure Land Dharma Audio",
-  "url": "https://foyue.org",
-  "description": "佛教净土宗音频与讲记文库，提供佛号念诵、法师讲经音频及讲义文稿在线阅读服务。",
-  "applicationCategory": "MultimediaApplication",
-  "operatingSystem": "All",
-  "inLanguage": ["zh-CN", "en", "fr"],
-  "offers": {
-    "@type": "Offer",
-    "price": "0",
-    "priceCurrency": "CNY"
-  },
-  "author": {
-    "@type": "Organization",
-    "name": "净土法音",
-    "url": "https://foyue.org"
-  }
-}
-</script>
-  <script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "PodcastSeries",
-  "name": "净土法音 - 听经台",
-  "description": "大安法师净土宗讲经系列音频，包含净土资粮信愿行、观经四帖疏、阿弥陀佛四十八大愿等系列。",
-  "url": "https://foyue.org/?tab=tingjingtai",
-  "inLanguage": "zh-CN",
-  "author": {
-    "@type": "Person",
-    "name": "大安法师",
-    "description": "庐山东林寺方丈，净土宗当代高僧"
-  },
-  "publisher": {
-    "@type": "Organization",
-    "name": "净土法音",
-    "url": "https://foyue.org"
-  },
-  "genre": "Buddhism",
-  "accessMode": "auditory",
-  "isAccessibleForFree": true
-}
-</script>
-  <script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "PodcastSeries",
-  "name": "净土法音 - 有声书",
-  "description": "印光大师永怀录、净土圣贤录、大安法师讲故事等佛教有声书系列。",
-  "url": "https://foyue.org/?tab=youshengshu",
-  "inLanguage": "zh-CN",
-  "publisher": {
-    "@type": "Organization",
-    "name": "净土法音",
-    "url": "https://foyue.org"
-  },
-  "genre": "Buddhism",
-  "accessMode": "auditory",
-  "isAccessibleForFree": true
-}
-</script>
-  <script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "CollectionPage",
-  "name": "法音文库 - 净土宗讲记文稿",
-  "description": "大安法师净土宗讲经文字稿，包含净土资粮信愿行、大势至菩萨念佛圆通章、观经四帖疏、净土宗教程、阿弥陀佛四十八大愿等系列讲记全文。",
-  "url": "https://foyue.org/?tab=wenku",
-  "inLanguage": "zh-CN",
-  "isPartOf": {
-    "@type": "WebSite",
-    "name": "净土法音",
-    "url": "https://foyue.org"
-  },
-  "author": {
-    "@type": "Person",
-    "name": "大安法师",
-    "description": "庐山东林寺方丈，净土宗当代高僧"
-  },
-  "genre": "Buddhism",
-  "accessMode": "textual",
-  "isAccessibleForFree": true
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "name": "净土法音",
+      "alternateName": "Pure Land Dharma Audio",
+      "url": "https://foyue.org",
+      "description": "佛教净土宗音频与讲记文库，提供大安法师讲经音频、佛号念诵、有声书及讲义文稿在线阅读。",
+      "inLanguage": "zh-CN",
+      "publisher": {
+        "@type": "Organization",
+        "name": "净土法音",
+        "url": "https://foyue.org"
+      }
+    },
+    {
+      "@type": "WebApplication",
+      "name": "净土法音",
+      "url": "https://foyue.org",
+      "applicationCategory": "MultimediaApplication",
+      "operatingSystem": "All",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "CNY" }
+    }
+  ]
 }
 </script>
 </head>
@@ -154,16 +90,27 @@
     <header class="header">
       <nav class="nav">
         <div class="logo" aria-label="净土法音">
-          <picture>
-            <source srcset="/icons/nav-logo.webp" type="image/webp"><img src="/icons/nav-logo.png" alt="净土法音"
-              style="height:22px;width:auto;">
-          </picture>
+          <svg class="logo-icon" viewBox="0 0 48 34" fill="none" stroke="currentColor" stroke-width="1.5"
+            stroke-linecap="round" stroke-linejoin="round">
+            <!-- 外层花瓣 -->
+            <path d="M24 32 C18 28 6 20 5 12 C4 6 10 5 16 10 C19 12 22 20 24 28" />
+            <path d="M24 32 C30 28 42 20 43 12 C44 6 38 5 32 10 C29 12 26 20 24 28" />
+            <!-- 内层花瓣 -->
+            <path d="M24 30 C21 26 14 18 14 11 C14 5 19 5 21 10 C22 14 23 22 24 28" />
+            <path d="M24 30 C27 26 34 18 34 11 C34 5 29 5 27 10 C26 14 25 22 24 28" />
+            <!-- 中心花瓣 -->
+            <path d="M24 29 C23 22 21 14 22 7 C23 3 25 3 26 7 C27 14 25 22 24 29" />
+            <!-- 音波 -->
+            <line x1="22" y1="18" x2="22" y2="14" stroke-width="1.2" />
+            <line x1="23.3" y1="19" x2="23.3" y2="12" stroke-width="1.2" />
+            <line x1="24.5" y1="20" x2="24.5" y2="10" stroke-width="1.2" />
+            <line x1="25.7" y1="19" x2="25.7" y2="12" stroke-width="1.2" />
+            <line x1="27" y1="18" x2="27" y2="14" stroke-width="1.2" />
+          </svg>
           <span class="logo-title">净土法音</span>
         </div>
 
-        <span class="nav-center" id="navTitle" data-i18n="tab_lectures">听经台</span>
-
-        <!-- ✅ Audio playback indicator in header -->
+        <!-- 播放指示器 -->
         <div class="nav-audio-indicator" id="navAudioIndicator" style="display:none">
           <svg class="nav-audio-wave" viewBox="0 0 24 24" width="16" height="16">
             <rect x="4" y="8" width="2" height="8" rx="1" class="wave-bar bar-1" />
@@ -265,17 +212,20 @@
         <div class="player-ctrls">
           <button class="ctrl" id="btnPrev" aria-label="Previous">
             <svg width="20" height="20" viewBox="0 0 24 24">
-              <path d="M19 20L9 12l10-8v16zM5 4v16" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+              <path d="M19 20L9 12l10-8v16zM5 4v16" fill="currentColor" stroke="currentColor" stroke-width="2"
+                stroke-linejoin="round" stroke-linecap="round" />
             </svg>
           </button>
           <button class="ctrl ctrl-play" id="btnPlay" aria-label="Play">
             <svg width="20" height="20" viewBox="0 0 24 24" id="playIcon">
-              <path d="M7 4v16l13-8z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+              <path d="M7 4v16l13-8z" fill="currentColor" stroke="currentColor" stroke-width="2"
+                stroke-linejoin="round" />
             </svg>
           </button>
           <button class="ctrl" id="btnNext" aria-label="Next">
             <svg width="20" height="20" viewBox="0 0 24 24">
-              <path d="M5 4v16l10-8L5 4zM19 4v16" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+              <path d="M5 4v16l10-8L5 4zM19 4v16" fill="currentColor" stroke="currentColor" stroke-width="2"
+                stroke-linejoin="round" stroke-linecap="round" />
             </svg>
           </button>
         </div>
@@ -379,17 +329,20 @@
           </button>
           <button class="ctrl" id="expPrev" aria-label="Previous">
             <svg width="24" height="24" viewBox="0 0 24 24">
-              <path d="M19 20L9 12l10-8v16zM5 4v16" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+              <path d="M19 20L9 12l10-8v16zM5 4v16" fill="currentColor" stroke="currentColor" stroke-width="2"
+                stroke-linejoin="round" stroke-linecap="round" />
             </svg>
           </button>
           <button class="ctrl ctrl-play" id="expPlay" aria-label="Play">
             <svg width="24" height="24" viewBox="0 0 24 24" id="expPlayIcon">
-              <path d="M7 4v16l13-8z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+              <path d="M7 4v16l13-8z" fill="currentColor" stroke="currentColor" stroke-width="2"
+                stroke-linejoin="round" />
             </svg>
           </button>
           <button class="ctrl" id="expNext" aria-label="Next">
             <svg width="24" height="24" viewBox="0 0 24 24">
-              <path d="M5 4v16l10-8L5 4zM19 4v16" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+              <path d="M5 4v16l10-8L5 4zM19 4v16" fill="currentColor" stroke="currentColor" stroke-width="2"
+                stroke-linejoin="round" stroke-linecap="round" />
             </svg>
           </button>
           <button class="ctrl ctrl-skip" id="expSkipFwd" aria-label="Forward 15s">

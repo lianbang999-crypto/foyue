@@ -36,39 +36,27 @@
 .logo {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-shrink: 0;
-  color: var(--text)
+  color: var(--accent)
 }
 
-.logo svg {
-  width: 34px;
-  height: 22px
+.logo-icon {
+  width: 30px;
+  height: 22px;
+  transition: color .2s
 }
 
 .logo-title {
-  font-size: .8rem;
-  font-weight: 500;
-  color: var(--accent);
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--text);
   white-space: nowrap;
-  opacity: 0.7;
-  letter-spacing: .04em
+  letter-spacing: .06em
 }
 
 .nav-spacer {
   flex: 1
-}
-
-.nav-center {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: .88rem;
-  font-weight: 600;
-  color: var(--text);
-  white-space: nowrap;
-  pointer-events: none;
-  letter-spacing: .04em
 }
 
 /* === BOTTOM TAB BAR === */
