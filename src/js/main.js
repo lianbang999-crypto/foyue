@@ -3,13 +3,13 @@
 // CSS imports (Vite will bundle these)
 import '../css/tokens.css';
 import '../css/reset.css';
+import '../css/ui.css';
 import '../css/layout.css';
 import '../css/player.css';
 import '../css/cards.css';
 import '../css/pages.css';
 import '../css/components.css';
-// ✅ 性能优化：ai.css / message-wall.css / gongxiu.css / wenku.css
-// 已移至各自模块中按需加载，减小首屏 CSS 体积
+// AI / 文库 / 共修等独立页样式在各自入口中按需加载，主站仅保留共享 UI。
 import { state, beginContentRequest, isContentRequestCurrent, getCurrentTrack } from './state.js';
 import { initDOM, getDOM } from './dom.js';
 import { initLang, applyI18n, t } from './i18n.js';
@@ -32,51 +32,22 @@ import {
 } from './player.js';
 import { renderHomePage, invalidateHomePage } from './pages-home.js';
 import { renderMyPage } from './pages-my.js';
-// ✅ 性能优化：AI 聊天模块改为动态导入，减小首屏 JS 体积
-// import { openAiChat, closeAiChat, isAiChatOpen, updateAiContext, checkAiDeepLink, prefetchAiChat } from './ai-chat.js';
-let _aiChatModule = null;
-let _aiChatModulePromise = null;
-let _pendingAiContext = { seriesId: null, episodeNum: null };
+const AI_CONTEXT_KEY = 'ai-latest-context';
 
-function setPendingAiContext(seriesId, episodeNum) {
-  _pendingAiContext = {
+function updateAiContext(seriesId, episodeNum) {
+  const payload = {
     seriesId: typeof seriesId === 'string' && seriesId ? seriesId : null,
     episodeNum: Number.isFinite(Number(episodeNum)) && Number(episodeNum) > 0 ? Number(episodeNum) : null,
+    updatedAt: Date.now(),
   };
+  try {
+    sessionStorage.setItem(AI_CONTEXT_KEY, JSON.stringify(payload));
+  } catch { }
 }
-
-function syncAiContext(module) {
-  if (!module?.updateAiContext) return;
-  module.updateAiContext(_pendingAiContext.seriesId, _pendingAiContext.episodeNum);
+function checkAiDeepLink() {
+  const p = new URLSearchParams(location.search);
+  if (p.get('tab') === 'ai') window.location.href = '/ai';
 }
-
-async function getAiChatModule() {
-  if (_aiChatModule) {
-    syncAiContext(_aiChatModule);
-    return _aiChatModule;
-  }
-  if (!_aiChatModulePromise) {
-    _aiChatModulePromise = import('./ai-chat.js').then(module => {
-      _aiChatModule = module;
-      syncAiContext(module);
-      return module;
-    }).finally(() => {
-      _aiChatModulePromise = null;
-    });
-  }
-  _aiChatModule = await _aiChatModulePromise;
-  syncAiContext(_aiChatModule);
-  return _aiChatModule;
-}
-function openAiChat() { return getAiChatModule().then(m => m.openAiChat()); }
-function closeAiChat(opts) { return getAiChatModule().then(m => m.closeAiChat(opts)); }
-function isAiChatOpen() { return _aiChatModule ? _aiChatModule.isAiChatOpen() : false; }
-function updateAiContext(seriesId, episodeNum) {
-  setPendingAiContext(seriesId, episodeNum);
-  if (_aiChatModule) syncAiContext(_aiChatModule);
-}
-function checkAiDeepLink() { const p = new URLSearchParams(location.search); if (p.get('tab') === 'ai') getAiChatModule().then(m => m.checkAiDeepLink()); }
-function prefetchAiChat() { return getAiChatModule().then(m => m.prefetchAiChat()); }
 // ✅ 修复代码分割警告：统一使用动态导入，避免静态和动态导入混用
 // import { renderCategory, showEpisodes } from './pages-category.js';
 import { doSearch, openSearchOverlay, closeSearchOverlay, isSearchOverlayOpen } from './search.js';
@@ -98,14 +69,6 @@ export function showEpisodes(...args) {
 import { initInstallPrompt, initBackGuard, initRefreshPrompt, observeRefreshRegistration, isInAppBrowser } from './pwa.js';
 import { appreciate } from './api.js';
 import { monitor } from './monitor.js';
-
-// Close wenku reader if open — uses DOM check to avoid pulling wenku chunk into main bundle
-function closeWenkuReader() {
-  const el = document.querySelector('.wenku-reader');
-  if (el) {
-    import('./wenku-reader.js').then(mod => mod.closeReader());
-  }
-}
 
 const IN_APP_BROWSER = isInAppBrowser();
 const APP_BOOT_TS = performance.now();
@@ -159,28 +122,9 @@ function scheduleBackgroundFullDataRestore() {
   else setTimeout(runner, 1200);
 }
 
-function shouldPrefetchAiChat() {
-  if (_aiChatModule || document.visibilityState !== 'visible') return false;
-  if (IN_APP_BROWSER) return false;
-  const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-  if (connection?.saveData) return false;
-  if (typeof connection?.effectiveType === 'string' && /(^|-)2g$/.test(connection.effectiveType)) return false;
-  return true;
-}
-
-function scheduleAiChatPrefetch() {
-  const runner = () => {
-    if (!shouldPrefetchAiChat()) return;
-    prefetchAiChat().catch(() => { });
-  };
-
-  if (typeof requestIdleCallback === 'function') requestIdleCallback(runner, { timeout: 12000 });
-  else setTimeout(runner, 6000);
-}
-
 function showCategorySwitchLoader() {
   const dom = getDOM();
-  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el => el.remove());
   const wrap = document.createElement('div');
   wrap.className = 'view active';
   wrap.innerHTML = `<div class="loader"><div class="loader-text">${getTextOrFallback('loading_retry', '加载中，请稍候...')}</div></div>`;
@@ -189,7 +133,7 @@ function showCategorySwitchLoader() {
 
 function showCategorySwitchError(tabId) {
   const dom = getDOM();
-  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el => el.remove());
   const wrap = document.createElement('div');
   wrap.className = 'view active';
   wrap.innerHTML = `<div class="error-msg">${getTextOrFallback('loading_fail', '加载失败，请稍后重试')}<br><button id="retryCategoryLoadBtn">${t('retry')}</button></div>`;
@@ -216,10 +160,6 @@ function activateRootTab(tabId) {
 function renderHomeRoot() {
   activateRootTab('home');
   renderHomePage();
-}
-
-function renderWenkuRoot(options = {}) {
-  window.location.href = '/wenku';
 }
 
 function buildCategoriesUrl({ home = false } = {}) {
@@ -428,8 +368,6 @@ async function ensureSeriesDetail(seriesId, categoryId) {
   document.querySelectorAll('.tab').forEach(btn => {
     btn.addEventListener('click', async () => {
       const requestId = beginContentRequest();
-      // Close any open reader overlay before switching tabs
-      closeWenkuReader();
       const nextTab = btn.dataset.tab;
       state.seriesId = null;
       activateRootTab(nextTab);
@@ -733,75 +671,15 @@ async function ensureSeriesDetail(seriesId, categoryId) {
   initInstallPrompt();
   initRefreshPrompt();
 
-  // Back navigation guard (extended to handle AI chat)
+  // Back navigation guard
   initBackGuard(renderCategory, state, { closeFullScreen, getPlaylistVisible, closePlaylist, renderHomePage });
 
-  // Handle browser back button for wenku, search overlay, and AI chat
-  window.addEventListener('popstate', (e) => {
-    const st = e.state;
-    const readerOpen = !!document.querySelector('.wenku-reader');
-
-    // Helper: re-push back guard after wenku exits (keeps guard intact for non-PWA)
-    function rePushGuard() {
-      if (!window.matchMedia('(display-mode: standalone)').matches) {
-        history.pushState({ page: 'guard' }, '');
-      }
-    }
-
-    if (isAiChatOpen()) {
-      closeAiChat({ fromPopState: true });
-      return;
-    }
-
+  // Handle browser back button for search overlay
+  window.addEventListener('popstate', () => {
     if (isSearchOverlayOpen()) {
       closeSearchOverlay();
       return;
     }
-
-    // Wenku reader is open — close it and route to correct wenku view
-    if (readerOpen) {
-      closeWenkuReader();
-      activateRootTab('mypage');
-      if (st && st.wenku) {
-        if (st.wenku === 'home') {
-          renderWenkuRoot({ skipPush: true });
-        } else {
-          import('./wenku.js').then(mod => mod.renderWenkuSeries(st.wenku, () => {
-            renderWenkuRoot();
-          }, { skipPush: true }));
-        }
-        return;
-      }
-      // Reader was opened without wenku context (or state lost) — return to 我的
-      renderMyPage();
-      rePushGuard();
-      return;
-    }
-
-    // Wenku page is showing (home or series view) — navigate back
-    const wenkuPage = document.querySelector('.wenku-page');
-    if (wenkuPage) {
-      wenkuPage.remove();
-      // Route based on the state we're navigating TO
-      if (st && st.wenku) {
-        activateRootTab('mypage');
-        if (st.wenku === 'home') {
-          // Going back TO wenku home (e.g. from series → home)
-          renderWenkuRoot({ skipPush: true });
-        } else {
-          // Going back TO a specific series
-          import('./wenku.js').then(mod => mod.renderWenkuSeries(st.wenku, () => {
-            renderWenkuRoot();
-          }, { skipPush: true }));
-        }
-      } else {
-        // Going back from wenku home → 我的
-        renderMyPage();
-        rePushGuard();
-      }
-      return;
-    }
-
   });
 
   // Check for ?tab=ai deep link after data loads
@@ -875,8 +753,6 @@ async function ensureSeriesDetail(seriesId, categoryId) {
 
   // Initialise the store's cached-URL set from the real Cache API (background, non-blocking)
   initCachedUrls().catch(() => { });
-
-  scheduleAiChatPrefetch();
 
   setInterval(saveState, 15000);
 
@@ -1284,7 +1160,7 @@ function handleWenkuDeepLink() {
 
 /* ===== TAB DEEP LINK — from PWA shortcuts or external links ===== */
 // Handles ?tab=home, ?tab=tingjingtai, ?tab=youshengshu, ?tab=mypage
-// ?tab=ai is handled by checkAiDeepLink(); ?tab=wenku is handled by handleWenkuDeepLink()
+// ?tab=ai / ?tab=wenku 都重定向到独立页处理
 function handleTabDeepLink() {
   const params = new URLSearchParams(window.location.search);
   const tab = params.get('tab');

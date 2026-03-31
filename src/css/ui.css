@@ -1,0 +1,185 @@
+/* === UI COMPONENTS: BUTTONS & ICONS ===
+   Follows Foyue UI/UX Guidelines:
+   - Claude-like calm aesthetics
+   - Touch-friendly (min 44px for primary actions)
+   - Smooth transitions and scale transforms
+======================================= */
+
+/* --- ICONS --- */
+.icon {
+  display: inline-block;
+  vertical-align: middle;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.icon-sm {
+  width: 20px;
+  height: 20px;
+}
+
+.icon-lg {
+  width: 28px;
+  height: 28px;
+}
+
+/* --- BUTTONS BASE --- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-sizing: border-box;
+  font-family: var(--font-zh);
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1;
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid transparent;
+  outline: none;
+  border-radius: var(--radius-sm, 8px);
+  padding: 0 20px;
+  min-height: 44px;
+  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.btn-pill {
+  border-radius: 999px;
+}
+
+.btn-sm {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 0.85rem;
+  border-radius: 6px;
+}
+
+@media (hover: hover) {
+  .btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.96) !important;
+  transition-duration: 0.05s;
+}
+
+.btn:disabled,
+.btn[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+  transform: none !important;
+}
+
+/* --- BUTTON VARIANTS --- */
+.btn-primary {
+  background-color: var(--accent);
+  color: var(--text-inverse);
+  box-shadow: 0 4px 12px var(--accent-shadow);
+}
+
+@media (hover: hover) {
+  .btn-primary:hover:not(:disabled) {
+    filter: brightness(1.05);
+    box-shadow: 0 6px 16px var(--accent-shadow);
+  }
+}
+
+.btn-secondary {
+  background-color: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+@media (hover: hover) {
+  .btn-secondary:hover:not(:disabled) {
+    background-color: var(--bg-card-hover);
+    border-color: var(--border-active);
+  }
+}
+
+.btn-ghost {
+  background-color: transparent;
+  color: var(--text-secondary);
+}
+
+@media (hover: hover) {
+  .btn-ghost:hover:not(:disabled) {
+    background-color: var(--bg-secondary);
+    color: var(--text);
+  }
+}
+
+.btn-ghost:active:not(:disabled) {
+  background-color: var(--bg-card-hover);
+}
+
+.btn-danger {
+  background-color: transparent;
+  color: #ea4335;
+  border: 1px solid rgba(234, 67, 53, 0.2);
+}
+
+@media (hover: hover) {
+  .btn-danger:hover:not(:disabled) {
+    background-color: rgba(234, 67, 53, 0.05);
+  }
+}
+
+.btn-danger:active:not(:disabled) {
+  background-color: rgba(234, 67, 53, 0.1);
+}
+
+/* --- ICON ONLY BUTTONS --- */
+.btn-icon {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  color: var(--text-secondary);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+@media (hover: hover) {
+  .btn-icon:hover:not(:disabled) {
+    background-color: var(--bg-secondary);
+    color: var(--text);
+  }
+}
+
+.btn-icon:active:not(:disabled) {
+  transform: scale(0.92) !important;
+  background-color: var(--bg-card-hover);
+  transition-duration: 0.05s;
+}
+
+.btn-icon:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  pointer-events: none;
+}

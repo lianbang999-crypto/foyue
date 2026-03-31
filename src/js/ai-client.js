@@ -43,7 +43,7 @@ export async function askQuestion(question, context = {}) {
  * @param {string} question
  * @param {object} context - { history?, series_id? }
  * @param {function} onToken - 回调，每收到一个 token 调用: onToken(tokenStr)
- * @returns {Promise<{ sources, disclaimer }>} 流结束后返回最终数据
+ * @returns {Promise<{ sources, disclaimer, answer, followUps }>} 流结束后返回最终数据
  */
 export async function askQuestionStream(question, context = {}, onToken) {
   const controller = new AbortController();
@@ -64,14 +64,19 @@ export async function askQuestionStream(question, context = {}, onToken) {
       if (data.error) throw new Error(data.error);
       // Fallback: non-stream response with full answer
       if (data.answer && onToken) onToken(data.answer);
-      return { sources: data.sources || [], disclaimer: data.disclaimer || '' };
+      return {
+        sources: data.sources || [],
+        disclaimer: data.disclaimer || '',
+        answer: data.answer || '',
+        followUps: Array.isArray(data.followUps) ? data.followUps : [],
+      };
     }
 
     // Parse SSE stream
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
-    let finalData = { sources: [], disclaimer: '' };
+    let finalData = { sources: [], disclaimer: '', answer: '', followUps: [] };
 
     while (true) {
       const { done, value } = await reader.read();

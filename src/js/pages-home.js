@@ -7,6 +7,18 @@ import { playList, togglePlay, getIsSwitching } from './player.js';
 import { getDailyRecommendation } from './ai-client.js';
 import { getHistory } from './history.js';
 import { get as storeGet } from './store.js';
+import { escapeHtml } from './utils.js';
+
+/* ===== HTML escaping — prevent XSS from API/LLM data ===== */
+function esc(s) {
+  if (!s) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 /* ===== Home Page DOM Cache ===== */
 // Keep the home page element alive across tab switches to avoid full re-renders.
@@ -95,13 +107,13 @@ function renderRecSkeletons(count) {
 function renderAiRecCard(rec, idx) {
   const icon = HOME_CATEGORY_ICONS[rec.category_id] || HOME_CATEGORY_ICONS.tingjingtai;
   return `
-    <div class="home-rec-card stagger-${Math.min(idx + 1, 4)}" data-sid="${rec.series_id}" data-cat="${rec.category_id}"
-         data-epnum="${rec.episode_num}" data-url="${rec.play_url || ''}">
+    <div class="home-rec-card stagger-${Math.min(idx + 1, 4)}" data-sid="${escapeHtml(rec.series_id)}" data-cat="${escapeHtml(rec.category_id)}"
+         data-epnum="${rec.episode_num}" data-url="${escapeHtml(rec.play_url || '')}">
       <div class="home-rec-icon">${icon}</div>
       <div class="home-rec-body">
-        <div class="home-rec-title">${rec.series_title} · ${rec.episode_title}</div>
-        <div class="home-rec-ai-intro">${rec.ai_intro}</div>
-        <div class="home-rec-sub">${rec.speaker || ''} · ${rec.episode_num}/${rec.total_episodes} ${t('episodes')}</div>
+        <div class="home-rec-title">${escapeHtml(rec.series_title)} · ${escapeHtml(rec.episode_title)}</div>
+        <div class="home-rec-ai-intro">${escapeHtml(rec.ai_intro)}</div>
+        <div class="home-rec-sub">${escapeHtml(rec.speaker || '')} · ${rec.episode_num}/${rec.total_episodes} ${t('episodes')}</div>
       </div>
     </div>`;
 }
@@ -174,13 +186,13 @@ function renderFallbackRecs(recList) {
 
   recList.innerHTML = picks.map((s, idx) => {
     const pc = s.playCount ? " · " + (s.playCount >= 10000 ? (s.playCount / 10000).toFixed(1) + "w" : s.playCount) + (t("play_count_unit") || "次") : "";
-    const introHtml = s.intro ? `<div class="home-rec-intro">${s.intro}</div>` : '';
+    const introHtml = s.intro ? `<div class="home-rec-intro">${escapeHtml(s.intro)}</div>` : '';
     return `
-    <div class="home-rec-card stagger-${Math.min(idx + 1, 4)}" data-sid="${s.id}" data-cat="${s.catId}">
+    <div class="home-rec-card stagger-${Math.min(idx + 1, 4)}" data-sid="${escapeHtml(s.id)}" data-cat="${escapeHtml(s.catId)}">
       <div class="home-rec-icon">${HOME_CATEGORY_ICONS[s.catId] || HOME_CATEGORY_ICONS.tingjingtai}</div>
       <div class="home-rec-body">
-        <div class="home-rec-title">${s.title}</div>${introHtml}
-        <div class="home-rec-sub">${s.speaker || ''} · ${s.totalEpisodes} ${t('episodes')}${pc}</div>
+        <div class="home-rec-title">${escapeHtml(s.title)}</div>${introHtml}
+        <div class="home-rec-sub">${escapeHtml(s.speaker || '')} · ${s.totalEpisodes} ${t('episodes')}${pc}</div>
       </div>
     </div>`;
   }).join('');
@@ -260,11 +272,11 @@ function buildDynamicSectionHtml() {
         const isPlaying = nowSid === st.seriesId && state.epIdx === cIdx && !dom.audio.paused;
         const icon = isPlaying ? ICON_PAUSE : ICON_PLAY;
         html += `<div class="home-section home-section-tight"><div class="home-section-title">${t('home_continue')}</div>
-          <div class="home-continue-card${isPlaying ? ' playing' : ''}" data-sid="${cSeries.id}" data-cat="${cCat.id}" data-idx="${cIdx}" data-time="${st.time || 0}">
+          <div class="home-continue-card${isPlaying ? ' playing' : ''}" data-sid="${escapeHtml(cSeries.id)}" data-cat="${escapeHtml(cCat.id)}" data-idx="${cIdx}" data-time="${st.time || 0}">
             <div class="home-continue-icon">${icon}</div>
             <div class="home-continue-body">
-              <div class="home-continue-title">${cSeries.title}</div>
-              <div class="home-continue-sub">${epTitle} · ${cIdx + 1}/${cSeries.totalEpisodes}</div>
+              <div class="home-continue-title">${escapeHtml(cSeries.title)}</div>
+              <div class="home-continue-sub">${escapeHtml(epTitle)} · ${cIdx + 1}/${cSeries.totalEpisodes}</div>
             </div>
             <div class="home-continue-progress"><div class="home-continue-progress-fill" style="width:${pct}%"></div></div>
           </div>
@@ -379,14 +391,14 @@ async function loadDailyRecommendations(page) {
   const maxAttempts = 3;
   let fetchDone = false;
 
-  // Fallback timer: if API hasn't responded in 5 seconds, show fallback content
+  // Fallback timer: if API hasn't responded in 2.5 seconds, show fallback content
   // immediately so the user sees something useful.  The background fetch continues
   // and will update the list if/when it succeeds.
   const fallbackTimer = setTimeout(() => {
     if (!fetchDone && recList.querySelector('.home-rec-skeleton')) {
       renderFallbackRecs(recList);
     }
-  }, 5000);
+  }, 2500);
 
   async function tryLoad() {
     try {
@@ -436,7 +448,7 @@ async function loadDailyRecommendations(page) {
 /* ========== MAIN RENDER ========== */
 export function renderHomePage() {
   const dom = getDOM();
-  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el => el.remove());
 
   // ── Fast path: reuse cached home page element ──
   if (_homePageEl) {
@@ -488,7 +500,7 @@ export function renderHomePage() {
   </div>`;
 
   page.innerHTML = `
-    <div class="home-quote-callout">
+    <div class="home-quote-callout" id="homeQuoteCallout">
       <div class="home-quote-text">${quoteText}</div>
       <div class="home-quote-author">— ${quote.author}</div>
     </div>
@@ -496,15 +508,36 @@ export function renderHomePage() {
     <div id="homeDynamic">${buildDynamicSectionHtml()}</div>
 
     <div class="home-section home-section-tight">
-      <div class="home-section-title">${t('home_chanting')}</div>
+      <div class="home-section-header">
+        <div class="home-section-title">${t('home_chanting')}</div>
+        <div class="home-chant-count">${fohaoEps.length}${lang === 'zh' ? ' 首' : ''}</div>
+      </div>
       <div class="home-chanting-wrap">
         <div class="home-chanting-scroll">${chantCards}</div>
+        <div class="home-chanting-arrow"><svg viewBox="0 0 24 24" width="16" height="16"><polyline points="9,6 15,12 9,18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       </div>
     </div>
 
     ${recHtml}
   `;
   dom.contentArea.appendChild(page);
+
+  // Wire quote callout — click to cycle through quotes
+  const quoteEl = page.querySelector('#homeQuoteCallout');
+  if (quoteEl) {
+    let quoteIdx = dayIdx;
+    quoteEl.addEventListener('click', () => {
+      quoteIdx = (quoteIdx + 1) % DAILY_QUOTES.length;
+      const q = DAILY_QUOTES[quoteIdx];
+      const txt = lang === 'zh' ? q.zh : q.en;
+      quoteEl.style.opacity = '0';
+      setTimeout(() => {
+        quoteEl.querySelector('.home-quote-text').textContent = txt;
+        quoteEl.querySelector('.home-quote-author').textContent = '— ' + q.author;
+        quoteEl.style.opacity = '';
+      }, 150);
+    });
+  }
 
   // Wire chanting cards
   page.querySelectorAll('.home-chant-card').forEach(card => {

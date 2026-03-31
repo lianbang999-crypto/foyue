@@ -5,7 +5,7 @@ import { getDOM } from './dom.js';
 import { CATEGORY_ICONS, ICON_PLAY_FILLED, ICON_PAUSE_FILLED } from './icons.js';
 import { playList, togglePlay, isCurrentTrack, getIsSwitching, markAppreciated, isAppreciated, shareSeries } from './player.js';
 import { renderHomePage } from './pages-home.js';
-import { getHistory } from './history.js';
+import { getHistory, findHistoryEntryForEpisode, resolveHistoryEpisodeIndex } from './history.js';
 import { getPlayCount, appreciate } from './api.js';
 import { showToast, escapeHtml, showFloatText, fmtCount, fmtDuration } from './utils.js';
 import { getBatchCachedStatus } from './audio-cache.js';
@@ -17,7 +17,9 @@ import { isInAppBrowser } from './pwa.js';
 
 const _isInApp = isInAppBrowser();
 const CATEGORY_PREVIEW_COUNT = _isInApp ? 8 : 10;
+const EPISODE_PREVIEW_COUNT = _isInApp ? 20 : 24;
 const categoryExpansionState = new Map();
+const episodeExpansionState = new Map();
 
 function getTextOrFallback(key, fallback) {
   const value = t(key);
@@ -32,8 +34,25 @@ function deferNonCriticalWork(callback) {
   setTimeout(() => callback(), 80);
 }
 
-function getEpisodeItem(ul, idx) {
-  return ul.querySelector(`.ep-item[data-idx="${idx}"]`);
+function getEpisodeItem(container, idx) {
+  return container.querySelector(`.ep-item[data-idx="${idx}"]`);
+}
+
+function getPreferredEpisodeIndex(series, historyEntries) {
+  const currentTrack = getCurrentTrack();
+  if (currentTrack?.seriesId === series.id && state.epIdx >= 0) return state.epIdx;
+  const latestEntry = historyEntries.find(entry => entry.seriesId === series.id);
+  if (!latestEntry) return 0;
+  const historyIdx = resolveHistoryEpisodeIndex(latestEntry, series);
+  return historyIdx >= 0 ? historyIdx : 0;
+}
+
+function getCollapsedEpisodeCount(series, historyEntries) {
+  const total = series.episodes.length;
+  if (total <= EPISODE_PREVIEW_COUNT) return total;
+  const preferredIdx = getPreferredEpisodeIndex(series, historyEntries);
+  if (preferredIdx >= EPISODE_PREVIEW_COUNT) return Math.min(total, preferredIdx + 1);
+  return EPISODE_PREVIEW_COUNT;
 }
 
 function applyCachedStateToItem(li, tooltip) {
@@ -62,6 +81,19 @@ function buildEpisodeItem(series, ep, idx, histMap) {
       <span class="ep-duration" data-idx="${idx}">${durText}</span>`;
   // 不再给每个 li 单独绑定 click，使用 ul 上的事件委托
   return li;
+}
+
+function renderEpisodeRange(listEl, series, histMap, startIdx, endIdx) {
+  if (!listEl || listEl.childElementCount > 0) return;
+  const frag = document.createDocumentFragment();
+  for (let idx = startIdx; idx < endIdx; idx++) {
+    const li = buildEpisodeItem(series, series.episodes[idx], idx, histMap);
+    if (listEl._cachedEpisodeIdxs && listEl._cachedEpisodeIdxs.has(idx)) {
+      applyCachedStateToItem(li, listEl._cachedEpisodeTooltip || '');
+    }
+    frag.appendChild(li);
+  }
+  listEl.appendChild(frag);
 }
 
 // 懒加载：首批渲染 LAZY_BATCH 项，滚动到哨兵时加载下一批
@@ -142,24 +174,24 @@ function getCollapsedSeriesCount(seriesList, currentSeriesId) {
   return CATEGORY_PREVIEW_COUNT;
 }
 
-function buildSeriesToggleLabel(visibleCount, totalCount, expanded) {
-  if (expanded) return '收起专辑';
+function buildToggleLabel(visibleCount, totalCount, expanded, noun, unit) {
+  if (expanded) return `收起${noun}`;
   const remaining = Math.max(0, totalCount - visibleCount);
-  if (remaining <= 0) return '收起专辑';
-  return `展开更多专辑（还有 ${remaining} 部）`;
+  if (remaining <= 0) return `收起${noun}`;
+  return `展开更多${noun}（还有 ${remaining} ${unit}）`;
 }
 
-function buildSeriesToggleMeta(visibleCount, totalCount, expanded) {
-  if (totalCount <= CATEGORY_PREVIEW_COUNT) return '';
-  if (expanded) return `已展开全部 ${totalCount} 部专辑`;
-  return `当前先显示 ${visibleCount} / ${totalCount} 部专辑`;
+function buildToggleMeta(visibleCount, totalCount, expanded, unit, noun = '') {
+  const suffix = noun ? `${unit}${noun}` : unit;
+  if (expanded) return `已展开全部 ${totalCount} ${suffix}`;
+  return `当前先显示 ${visibleCount} / ${totalCount} ${suffix}`;
 }
 
 export function renderCategory(tabId) {
   beginContentRequest();
   const dom = getDOM();
   if (!state.data) return;
-  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el => el.remove());
   const cat = state.data.categories.find(c => c.id === tabId);
   if (!cat) { dom.contentArea.innerHTML = `<div class="loader-text">${t('no_content')}</div>`; return; }
   const wrap = document.createElement('div');
@@ -197,12 +229,12 @@ export function renderCategory(tabId) {
     toggleWrap.className = 'series-list-toggle-wrap';
     const toggleMeta = document.createElement('div');
     toggleMeta.className = 'series-list-toggle-meta';
-    toggleMeta.textContent = buildSeriesToggleMeta(visibleCount, cat.series.length, expanded);
+    toggleMeta.textContent = buildToggleMeta(visibleCount, cat.series.length, expanded, '部', '专辑');
     const toggleBtn = document.createElement('button');
     toggleBtn.type = 'button';
     toggleBtn.className = 'series-list-toggle';
     toggleBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-    toggleBtn.textContent = buildSeriesToggleLabel(visibleCount, cat.series.length, expanded);
+    toggleBtn.textContent = buildToggleLabel(visibleCount, cat.series.length, expanded, '专辑', '部');
     toggleBtn.addEventListener('click', () => {
       categoryExpansionState.set(tabId, !expanded);
       renderCategory(tabId);
@@ -218,7 +250,7 @@ export function renderCategory(tabId) {
 export async function showEpisodes(series, tabId) {
   const requestId = beginContentRequest();
   const dom = getDOM();
-  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el => el.remove());
   state.seriesId = series.id;
   let fullSeries = series;
 
@@ -320,7 +352,7 @@ export async function showEpisodes(series, tabId) {
     if (isNaN(idx)) return;
     if (isCurrentTrack(series.id, idx)) { togglePlay(); return; }
     const hist = getHistory();
-    const entry = hist.find(h => h.seriesId === series.id && h.epIdx === idx);
+    const entry = findHistoryEntryForEpisode(hist, series, idx);
     const resumeTime = (entry && entry.time > 5 && (!entry.duration || entry.time < entry.duration - 5)) ? entry.time : 0;
     playList(series.episodes, idx, series, resumeTime);
   });
@@ -340,7 +372,12 @@ export async function showEpisodes(series, tabId) {
       if (tr && tr.seriesId === series.id) newIdx = state.epIdx;
     }
     if (newIdx >= 0) {
-      const newEl = getEpisodeItem(ul, newIdx);
+      let newEl = getEpisodeItem(ul, newIdx);
+      if (!newEl && series.episodes.length > EPISODE_PREVIEW_COUNT && episodeExpansionState.get(series.id) !== true) {
+        episodeExpansionState.set(series.id, true);
+        showEpisodes(series, tabId);
+        return;
+      }
       if (newEl) newEl.classList.add('playing');
     }
     _prevHighlightIdx = newIdx;
@@ -351,9 +388,38 @@ export async function showEpisodes(series, tabId) {
   const hist = getHistory();
   // Build a history lookup map for O(1) access instead of O(n) .find() per episode
   const histMap = new Map();
-  hist.forEach(h => { if (h.seriesId === series.id) histMap.set(h.epIdx, h); });
+  series.episodes.forEach((_, episodeIdx) => {
+    const entry = findHistoryEntryForEpisode(hist, series, episodeIdx);
+    if (entry) histMap.set(episodeIdx, entry);
+  });
+  const episodesExpanded = episodeExpansionState.get(series.id) === true;
+  const visibleEpisodeCount = episodesExpanded
+    ? series.episodes.length
+    : getCollapsedEpisodeCount(series, hist);
+  ul.classList.toggle('is-collapsed', !episodesExpanded && series.episodes.length > visibleEpisodeCount);
+  if (series.episodes.length > EPISODE_PREVIEW_COUNT) {
+    const toggleWrap = document.createElement('div');
+    toggleWrap.className = 'series-list-toggle-wrap';
+    const toggleMeta = document.createElement('div');
+    toggleMeta.className = 'series-list-toggle-meta';
+    toggleMeta.textContent = buildToggleMeta(visibleEpisodeCount, series.episodes.length, episodesExpanded, '集');
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'series-list-toggle';
+    toggleBtn.setAttribute('aria-expanded', episodesExpanded ? 'true' : 'false');
+    toggleBtn.textContent = buildToggleLabel(visibleEpisodeCount, series.episodes.length, episodesExpanded, '章节', '集');
+    toggleBtn.addEventListener('click', () => {
+      episodeExpansionState.set(series.id, !episodesExpanded);
+      showEpisodes(series, tabId);
+    });
+    toggleWrap.appendChild(toggleMeta);
+    toggleWrap.appendChild(toggleBtn);
+    view.appendChild(toggleWrap);
+  }
   // Use DocumentFragment for batch DOM insertion (avoids 196+ reflows)
-  const renderCompleted = renderEpisodeItems(ul, series, histMap, requestId);
+  const renderCompleted = episodesExpanded
+    ? renderEpisodeItems(ul, series, histMap, requestId)
+    : (renderEpisodeRange(ul, series, histMap, 0, visibleEpisodeCount), true);
   if (!renderCompleted || !isContentRequestCurrent(requestId) || !view.isConnected) return;
 
   if (tabId === 'tingjingtai') {

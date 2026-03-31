@@ -31,6 +31,32 @@ export function setTheme(t) {
   applyTheme();
 }
 
+/**
+ * 子页面用：跟随系统深色/浅色偏好（不读 localStorage）
+ * @param {{ light?: string, dark?: string }} [themeColors] meta theme-color 映射
+ */
+export function syncSystemTheme(themeColors) {
+  const applyTheme = (isDark) => {
+    const t = isDark ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', t);
+    if (themeColors) {
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', themeColors[t] || '');
+    }
+  };
+
+  if (typeof window.matchMedia !== 'function') { applyTheme(false); return; }
+
+  const mq = window.matchMedia('(prefers-color-scheme: dark)');
+  applyTheme(mq.matches);
+
+  if (typeof mq.addEventListener === 'function') {
+    mq.addEventListener('change', (e) => applyTheme(e.matches));
+  } else if (typeof mq.addListener === 'function') {
+    mq.addListener((e) => applyTheme(e.matches));
+  }
+}
+
 export function initTheme() {
   const saved = localStorage.getItem('pl-theme');
   // Migrate old color scheme setting

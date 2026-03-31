@@ -455,11 +455,7 @@ export function initBackGuard(renderCategory, stateRef, { closeFullScreen, getPl
   history.pushState({ page: 'guard' }, '');
 
   window.addEventListener('popstate', (e) => {
-    // Let wenku/reader navigation handle its own popstate (handled in main.js)
-    const st = e.state;
-    if (st && (st.wenku || st.doc)) return;
-    if (document.querySelector('.wenku-reader') || document.querySelector('.wenku-page')) return;
-    if (document.getElementById('aiFullscreen')?.classList.contains('show')) return;
+    // AI / 文库已拆到独立页面，主站这里只处理自身的弹层与导航回退。
     if (document.getElementById('searchOverlay')?.classList.contains('show')) return;
 
     // Priority: close playlist first, then fullscreen player, then navigate back

@@ -4,7 +4,7 @@ import { getDOM, RING_CIRCUMFERENCE } from './dom.js';
 import { SVG, CENTER_PLAY_INNER, ICON_PLAY, ICON_PAUSE, ICON_PLAY_FILLED, ICON_PAUSE_FILLED, ICON_APPRECIATE, ICON_APPRECIATE_FILLED } from './icons.js';
 import { t } from './i18n.js';
 import { fmt, showToast, haptic, fmtCount, escapeHtml, shareContent, isAppleMobile } from './utils.js';
-import { addHistory, syncHistoryProgress, getHistory } from './history.js';
+import { addHistory, syncHistoryProgress, getHistory, findHistoryEntryForTrack, resolveHistoryTarget } from './history.js';
 import { recordPlay, getAppreciateCount } from './api.js';
 import { cacheAudio, getCachedAudioUrl, isAudioCached, isCachedSync } from './audio-cache.js';
 import { getTrackWithCachedAudioMeta } from './audio-meta-cache.js';
@@ -562,7 +562,7 @@ function _computeSeekTime(tr) {
   }
   pendingSeek = 0;
   const hist = getHistory();
-  const histEntry = hist.find(h => h.seriesId === tr.seriesId && h.epIdx === state.epIdx);
+  const histEntry = findHistoryEntryForTrack(hist, tr, state.epIdx);
   if (histEntry && histEntry.time > 5 && (!histEntry.duration || histEntry.time < histEntry.duration - 5)) {
     return histEntry.time;
   }
@@ -1484,8 +1484,6 @@ export function renderPlaylistItems() {
   dom.plCount.textContent = state.playlist.length + ' ' + t(state.tab === 'fohao' ? 'tracks' : 'episodes');
   dom.plItems.innerHTML = '';
   const hist = getHistory();
-  const histMap = new Map();
-  hist.forEach(h => { const key = h.seriesId + ':' + h.epIdx; histMap.set(key, h); });
   const frag = document.createDocumentFragment();
   items.forEach((tr, displayIdx) => {
     const realIdx = plSortAsc ? displayIdx : state.playlist.length - 1 - displayIdx;
@@ -1501,7 +1499,7 @@ export function renderPlaylistItems() {
       metaHTML += `<span class="pl-item-duration">${fmt(tr.duration)}</span>`;
     }
     // Show progress from history if available
-    const hEntry = histMap.get(tr.seriesId + ':' + realIdx);
+    const hEntry = findHistoryEntryForTrack(hist, tr, realIdx);
     if (hEntry && hEntry.duration > 0) {
       const pct = Math.round(hEntry.time / hEntry.duration * 100);
       if (pct > 0 && pct < 100) metaHTML += `<span class="pl-item-progress">${t('pl_played')}${pct}%</span>`;
@@ -1567,13 +1565,14 @@ function renderHistoryTab(dom) {
     if (h.duration > 0) metaHTML += `<span class="pl-item-duration">${fmt(h.duration)}</span>`;
     if (pct > 0) metaHTML += `<span class="pl-item-progress">${t('pl_played')}${pct}%</span>`;
     div.innerHTML = `<span class="pl-item-num">\u25B6</span><div class="pl-item-body"><div class="pl-item-title">${escapeHtml(h.epTitle)}</div><div class="pl-hist-sub">${escapeHtml(h.seriesTitle)}${h.speaker ? ' \u00B7 ' + escapeHtml(h.speaker) : ''}</div>${metaHTML ? '<div class="pl-item-meta">' + metaHTML + '</div>' : ''}</div>`;
-    div.addEventListener('click', () => {
+    div.addEventListener('click', async () => {
       haptic();
-      if (!state.data) return;
-      for (const cat of state.data.categories) {
-        const sr = cat.series.find(s => s.id === h.seriesId);
-        if (sr) { playList(sr.episodes, h.epIdx, sr, h.time); return; }
+      if (!state.isDataFull && state.ensureFullData) {
+        await state.ensureFullData({ rerenderHome: false });
       }
+      const target = resolveHistoryTarget(h);
+      if (!target) return;
+      playList(target.series.episodes, target.epIdx, target.series, h.time);
     });
     dom.plItems.appendChild(div);
   });

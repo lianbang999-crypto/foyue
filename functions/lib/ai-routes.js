@@ -14,6 +14,16 @@ import {
   stripThinkTags,
   runAIWithLogging,
 } from './ai-utils.js';
+import {
+  AI_EMPTY_ANSWER,
+  AI_NO_RESULT_ANSWER,
+  AI_RESPONSE_DISCLAIMER,
+  AI_TEMPORARY_UNAVAILABLE_ANSWER,
+  buildRecommendMessages,
+  normalizeAiAnswerContract,
+} from './ai-prompts.js';
+
+const SEARCH_STOP_WORDS_RE = /什么|怎么|怎样|如何|为什么|哪些|哪个|可以|能够|应该|是不是|有没有|到底|究竟|请问|一下|的|了|吗|呢|吧|啊|在|是|有|和|与|或|也|都|就|把|被|对|又|要|让|给|从|用|以|而|但|却|不|很|最|更|还|这|那|它|你|我|他|她|们|个|着/g;
 
 function buildSourceList(matches, docs) {
   const seenDocIds = new Set();
@@ -41,13 +51,14 @@ async function keywordSearchDocs(env, query, { seriesId = null, limit = 10 } = {
   if (!keyword) return [];
 
   if (seriesId) {
+    const like = `%${keyword}%`;
     const { results } = await env.DB.prepare(
       `SELECT id, title, content, category, series_name, audio_series_id
        FROM documents
-       WHERE audio_series_id = ? AND content IS NOT NULL
+       WHERE audio_series_id = ? AND content IS NOT NULL AND (title LIKE ? OR content LIKE ?)
        ORDER BY audio_episode_num ASC
        LIMIT ?`
-    ).bind(seriesId, limit).all();
+    ).bind(seriesId, like, like, limit).all();
     return results || [];
   }
 
@@ -61,14 +72,70 @@ async function keywordSearchDocs(env, query, { seriesId = null, limit = 10 } = {
   return results || [];
 }
 
+function extractSearchKeywords(question) {
+  return String(question || '')
+    .replace(SEARCH_STOP_WORDS_RE, ' ')
+    .split(/[\s，。！？、；：,.!?()[\]【】《》“”"'‘’/\\|+-]+/)
+    .map(item => item.trim())
+    .filter(item => item.length >= 2)
+    .slice(0, 4);
+}
+
+function buildKeywordSnippet(content, keywords) {
+  const text = String(content || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  const hitIndex = keywords.reduce((best, keyword) => {
+    const index = text.indexOf(keyword);
+    if (index === -1) return best;
+    if (best === -1) return index;
+    return Math.min(best, index);
+  }, -1);
+
+  if (hitIndex === -1) return text.slice(0, 220);
+
+  const start = Math.max(0, hitIndex - 90);
+  const end = Math.min(text.length, hitIndex + 130);
+  const prefix = start > 0 ? '…' : '';
+  const suffix = end < text.length ? '…' : '';
+  return prefix + text.slice(start, end) + suffix;
+}
+
+function mergeDocs(primaryDocs, extraDocs) {
+  const merged = [...primaryDocs];
+  for (const doc of extraDocs) {
+    if (!doc?.id || merged.some(item => item.id === doc.id)) continue;
+    merged.push(doc);
+  }
+  return merged;
+}
+
+function appendPseudoMatch(matches, doc, snippet, score = 0.58) {
+  if (!doc?.id || !snippet) return matches;
+  if (matches.some(item => item.metadata?.doc_id === doc.id)) return matches;
+  return [
+    ...matches,
+    {
+      score,
+      metadata: {
+        doc_id: doc.id,
+        title: doc.title || '',
+        text: snippet,
+        category: doc.category || '',
+        series_name: doc.series_name || '',
+      },
+    },
+  ];
+}
+
 async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
   const filter = {};
   if (seriesId && typeof seriesId === 'string') filter.audio_series_id = seriesId.slice(0, 100);
+  const keywords = extractSearchKeywords(question);
 
   let matches = [];
   try {
     matches = await semanticSearch(env, question, {
-      topK: 5,
+      topK: 6,
       filter: Object.keys(filter).length > 0 ? filter : undefined,
       ctx,
     });
@@ -76,14 +143,11 @@ async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
     console.warn('Vectorize search failed, falling back to D1:', err.message);
   }
 
-  if (matches.length >= 2) {
-    matches = await rerankResults(env, question, matches, { topK: 5, ctx });
-  }
-
   let docs = await retrieveDocuments(env, matches);
+  let exactDoc = null;
 
   if (seriesId && Number.isInteger(episodeNum) && episodeNum > 0) {
-    const exactDoc = await env.DB.prepare(
+    exactDoc = await env.DB.prepare(
       `SELECT id, title, content, category, series_name, audio_series_id, audio_episode_num
        FROM documents
        WHERE audio_series_id = ? AND audio_episode_num = ? AND content IS NOT NULL AND content != ''
@@ -92,6 +156,27 @@ async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
     if (exactDoc && !docs.some(doc => doc.id === exactDoc.id)) {
       docs = [exactDoc, ...docs];
     }
+  }
+
+  let keywordDocs = [];
+  try {
+    keywordDocs = await keywordSearchDocs(env, question, { seriesId, limit: seriesId ? 8 : 5 });
+  } catch (err) {
+    console.warn('Keyword search supplement failed:', err.message);
+  }
+
+  docs = mergeDocs(docs, keywordDocs);
+
+  if (exactDoc) {
+    matches = appendPseudoMatch(matches, exactDoc, buildKeywordSnippet(exactDoc.content, keywords), 0.78);
+  }
+
+  for (const doc of keywordDocs.slice(0, 3)) {
+    matches = appendPseudoMatch(matches, doc, buildKeywordSnippet(doc.content, keywords), 0.56);
+  }
+
+  if (matches.length >= 2) {
+    matches = await rerankResults(env, question, matches, { topK: 6, ctx });
   }
 
   if (matches.length > 0 && docs.length > 0) {
@@ -106,7 +191,7 @@ async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
         fallbackQuery = env.DB.prepare(
           `SELECT id, title, content, category, series_name FROM documents
            WHERE audio_series_id = ? AND content IS NOT NULL
-           ORDER BY episode_num ASC LIMIT 5`
+           ORDER BY audio_episode_num ASC LIMIT 5`
         ).bind(seriesId);
       } else {
         fallbackQuery = env.DB.prepare(
@@ -151,10 +236,12 @@ export async function handleAiAsk(env, request, cors, ctx, json) {
   const { matches, docs } = await loadAiDocs(env, question, series_id, episodeNum, ctx);
 
   if (!docs.length) {
+    const normalized = normalizeAiAnswerContract(AI_NO_RESULT_ANSWER, question, { forceNoResult: true });
     return json({
-      answer: '抱歉，暂未找到与您问题相关的内容。请尝试换一种方式提问。',
+      answer: normalized.answer,
+      followUps: normalized.followUps,
       sources: [],
-      disclaimer: '以上回答由AI生成，仅供参考，请以原始经典为准。',
+      disclaimer: AI_RESPONSE_DISCLAIMER,
     }, cors);
   }
 
@@ -167,26 +254,33 @@ export async function handleAiAsk(env, request, cors, ctx, json) {
     });
   } catch (err) {
     console.error('RAG answer failed:', err.message);
+    const normalized = normalizeAiAnswerContract(AI_TEMPORARY_UNAVAILABLE_ANSWER, question);
     return json({
-      answer: '抱歉，AI 服务暂时不可用，请稍后再试。',
+      answer: normalized.answer,
+      followUps: normalized.followUps,
       sources: [],
-      disclaimer: '以上回答由AI生成，仅供参考，请以原始经典为准。',
+      disclaimer: AI_RESPONSE_DISCLAIMER,
     }, cors, 503, 'no-store');
   }
 
   const answer = result?.response?.trim();
   if (!answer) {
+    const normalized = normalizeAiAnswerContract(AI_EMPTY_ANSWER, question);
     return json({
-      answer: '抱歉，AI 暂时无法生成回答，请稍后再试。',
+      answer: normalized.answer,
+      followUps: normalized.followUps,
       sources: [],
-      disclaimer: '以上回答由AI生成，仅供参考，请以原始经典为准。',
+      disclaimer: AI_RESPONSE_DISCLAIMER,
     }, cors, 200, 'no-store');
   }
 
+  const normalized = normalizeAiAnswerContract(answer, question);
+
   return json({
-    answer,
+    answer: normalized.answer,
+    followUps: normalized.followUps,
     sources: buildSourceList(matches, docs),
-    disclaimer: '以上回答由AI生成，仅供参考，请以原始经典为准。',
+    disclaimer: AI_RESPONSE_DISCLAIMER,
   }, cors, 200, 'no-store');
 }
 
@@ -214,10 +308,12 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
 
   const { matches, docs } = await loadAiDocs(env, question, series_id, episodeNum, ctx);
   if (!docs.length) {
+    const normalized = normalizeAiAnswerContract(AI_NO_RESULT_ANSWER, question, { forceNoResult: true });
     return json({
-      answer: '抱歉，暂未找到与您问题相关的内容。请尝试换一种方式提问。',
+      answer: normalized.answer,
+      followUps: normalized.followUps,
       sources: [],
-      disclaimer: '以上回答由AI生成，仅供参考，请以原始经典为准。',
+      disclaimer: AI_RESPONSE_DISCLAIMER,
     }, cors);
   }
 
@@ -250,19 +346,21 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
       );
     } catch {
       return json({
-        answer: '抱歉，AI 服务暂时不可用，请稍后再试。',
+        answer: normalizeAiAnswerContract(AI_TEMPORARY_UNAVAILABLE_ANSWER, question).answer,
+        followUps: normalizeAiAnswerContract(AI_TEMPORARY_UNAVAILABLE_ANSWER, question).followUps,
         sources: [],
-        disclaimer: '以上回答由AI生成，仅供参考，请以原始经典为准。',
+        disclaimer: AI_RESPONSE_DISCLAIMER,
       }, cors, 503, 'no-store');
     }
   }
 
   const encoder = new TextEncoder();
-  const disclaimer = '以上回答由AI生成，仅供参考，请以原始经典为准。';
+  const disclaimer = AI_RESPONSE_DISCLAIMER;
 
   const sseStream = new ReadableStream({
     async start(controller) {
       let tokenCount = 0;
+      let rawAnswer = '';
       let inThinkBlock = false;
       let thinkBuffer = '';
       try {
@@ -308,6 +406,7 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
                     const before = thinkBuffer.slice(0, startIdx);
                     if (before.trim()) {
                       tokenCount++;
+                      rawAnswer += before;
                       controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: before })}\n\n`));
                     }
                     const endIdx = thinkBuffer.indexOf('</think>', startIdx);
@@ -321,11 +420,12 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
                   }
                   if (thinkBuffer.trim()) {
                     tokenCount++;
+                    rawAnswer += thinkBuffer;
                     controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: thinkBuffer })}\n\n`));
                   }
                   thinkBuffer = '';
                 }
-              } catch {}
+              } catch { }
               continue;
             }
 
@@ -335,9 +435,10 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
                 const token = parsed.response || parsed.choices?.[0]?.delta?.content || parsed.text || '';
                 if (token) {
                   tokenCount++;
+                  rawAnswer += token;
                   controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token })}\n\n`));
                 }
-              } catch {}
+              } catch { }
             }
           }
         }
@@ -352,9 +453,10 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
                 const token = parsed.response || parsed.choices?.[0]?.delta?.content || '';
                 if (token) {
                   tokenCount++;
+                  rawAnswer += token;
                   controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token })}\n\n`));
                 }
-              } catch {}
+              } catch { }
             }
           }
         }
@@ -369,10 +471,11 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
             );
             const answer = stripThinkTags(extractAIResponse(fallbackResult));
             if (answer) {
+              rawAnswer += answer;
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: answer })}\n\n`));
               tokenCount++;
             }
-          } catch {}
+          } catch { }
         }
         if (tokenCount === 0) {
           controller.enqueue(encoder.encode(
@@ -393,6 +496,7 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
           );
           const answer = stripThinkTags(extractAIResponse(fallbackResult));
           if (answer) {
+            rawAnswer += answer;
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: answer })}\n\n`));
             tokenCount++;
           }
@@ -408,15 +512,22 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
             );
             const answer2 = stripThinkTags(extractAIResponse(fallback2));
             if (answer2) {
+              rawAnswer += answer2;
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: answer2 })}\n\n`));
               tokenCount++;
             }
-          } catch {}
+          } catch { }
         }
       }
 
+      const normalized = normalizeAiAnswerContract(rawAnswer, question, { forceNoResult: tokenCount === 0 });
       controller.enqueue(encoder.encode(
-        `event: done\ndata: ${JSON.stringify({ sources, disclaimer })}\n\n`
+        `event: done\ndata: ${JSON.stringify({
+          sources,
+          disclaimer,
+          answer: normalized.answer,
+          followUps: normalized.followUps,
+        })}\n\n`
       ));
       controller.close();
     }
@@ -657,37 +768,7 @@ async function getEpisodeContext(db, seriesId, episodeNum) {
 }
 
 async function generateRecommendIntros(env, episodes, contexts, ctx) {
-  const epDesc = episodes.map((ep, i) => {
-    let d = `${i + 1}. 系列：${ep.series_title}\n`;
-    d += `   系列简介：${ep.series_intro}\n`;
-    d += `   讲者：${ep.speaker}\n`;
-    d += `   本集标题：${ep.episode_title}（第${ep.episode_num}讲，共${ep.total_episodes}讲）\n`;
-    if (contexts[i]) d += `   本集开头内容：${contexts[i].slice(0, 500)}\n`;
-    return d;
-  }).join('\n');
-
-  const messages = [
-    {
-      role: 'system',
-      content: `你是净土法音平台的内容编辑，负责每日为用户撰写简短的收听推荐语。
-要求：
-1. 为每集音频写一段50-80字的推荐语，引导用户想去收听
-2. 推荐语应点明该集的核心内容或亮点，用亲切自然的语气
-3. 如果有本集内容，应基于实际内容来写；如果没有，则根据系列简介和集数位置推测
-4. 不要使用"本集"两字开头，用更自然的表达
-5. 严格按JSON数组格式输出，不要输出其他内容
-6. 使用简体中文`,
-    },
-    {
-      role: 'user',
-      content: `请为以下${episodes.length}集音频各写一段推荐语：
-
-${epDesc}
-
-请按以下JSON格式输出（只输出JSON数组，不要其他文字）：
-[{"index":1,"intro":"推荐语..."}${episodes.length >= 2 ? ',{"index":2,"intro":"..."}' : ''}${episodes.length >= 3 ? ',{"index":3,"intro":"..."}' : ''}]`,
-    },
-  ];
+  const messages = buildRecommendMessages(episodes, contexts);
 
   let response;
   try {

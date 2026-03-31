@@ -36,7 +36,7 @@ export const HUIXIANG_DISPLAY_AUTO_MS = 8000;
 export function formatCount(n) {
   if (!n || n <= 0) return '0';
   if (n >= 100000000) return (n / 100000000).toFixed(1).replace(/\.0$/, '') + '亿';
-  if (n >= 10000)     return (n / 10000).toFixed(1).replace(/\.0$/, '') + '万';
+  if (n >= 10000) return (n / 10000).toFixed(1).replace(/\.0$/, '') + '万';
   return n.toLocaleString ? n.toLocaleString('zh-CN') : String(n);
 }
 
@@ -47,9 +47,9 @@ export function formatRelTime(isoStr) {
   if (!isoStr) return '';
   try {
     const diff = (Date.now() - new Date(isoStr).getTime()) / 1000;
-    if (diff < 60)     return '刚刚';
-    if (diff < 3600)   return Math.floor(diff / 60) + '分钟前';
-    if (diff < 86400)  return Math.floor(diff / 3600) + '小时前';
+    if (diff < 60) return '刚刚';
+    if (diff < 3600) return Math.floor(diff / 60) + '分钟前';
+    if (diff < 86400) return Math.floor(diff / 3600) + '小时前';
     if (diff < 604800) return Math.floor(diff / 86400) + '天前';
     const d = new Date(isoStr);
     return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
@@ -120,7 +120,7 @@ export function escapeHtml(str) {
 /* Debounce — delays fn execution until after wait ms of inactivity */
 export function debounce(fn, wait) {
   let timer;
-  return function(...args) {
+  return function (...args) {
     clearTimeout(timer);
     timer = setTimeout(() => fn.apply(this, args), wait);
   };
@@ -132,7 +132,7 @@ export function showFloatText(anchorEl, text) {
   el.className = 'appreciate-float';
   el.textContent = text;
   anchorEl.appendChild(el);
-  el.addEventListener('animationend', function() { el.remove(); });
+  el.addEventListener('animationend', function () { el.remove(); });
 }
 
 /* Format large numbers: 1234 -> 1.2k, 12345 -> 1.2万 */
@@ -206,4 +206,10 @@ export async function shareImageBlob(imageBlob, filename, title) {
   a.download = filename;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** 安全数值转换：非正数或非有限数返回 0 */
+export function toFiniteNumber(value) {
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? num : 0;
 }

@@ -3,7 +3,7 @@ import { state } from './state.js';
 import { t } from './i18n.js';
 import { getDOM } from './dom.js';
 import { playList } from './player.js';
-import { getHistory } from './history.js';
+import { getHistory, findHistoryEntryForEpisode } from './history.js';
 import { escapeHtml } from './utils.js';
 
 let _showEpisodes, _renderCategory, _renderHomePage;
@@ -75,7 +75,7 @@ function _buildAudioResultsDOM(q, seriesResults, epResults) {
       li.addEventListener('click', () => {
         closeSearchOverlay();
         const hist = getHistory();
-        const hEntry = hist.find(h => h.seriesId === r.series.id && h.epIdx === r.idx);
+        const hEntry = findHistoryEntryForEpisode(hist, r.series, r.idx);
         playList(r.series.episodes, r.idx, r.series, hEntry ? hEntry.time : 0);
       });
       ul.appendChild(li);
@@ -102,7 +102,7 @@ function doKeywordSearch(q, showEpisodes, renderCategory, renderHomePage) {
     return;
   }
   if (!state.isDataFull && state.ensureFullData) {
-    dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
+    dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el => el.remove());
     const wrap = document.createElement('div');
     wrap.className = 'view active';
     wrap.innerHTML = `<div class="loader-text">${t('loading_retry') || '连接中，请稍候...'}</div>`;
@@ -115,7 +115,7 @@ function doKeywordSearch(q, showEpisodes, renderCategory, renderHomePage) {
     });
     return;
   }
-  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el => el.remove());
   const { seriesResults, epResults } = _matchAudioQuery(q);
   const wrap = document.createElement('div');
   wrap.className = 'view active';

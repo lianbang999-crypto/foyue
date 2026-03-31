@@ -196,76 +196,139 @@
     color: var(--accent)
 }
 
-
-
 .my-list .my-history-item:last-child {
     border-bottom: none;
+}
+
+.my-history-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 16px 18px;
+    background: transparent;
+    cursor: pointer;
+    transition: background .2s, transform .2s;
+    border-bottom: 1px solid var(--border);
 }
 
 .my-history-item:hover {
     background: var(--bg-card-hover);
 }
 
+.my-history-item-icon,
+.my-history-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background: color-mix(in srgb, var(--accent-glow) 78%, var(--bg-card) 22%);
+    color: var(--accent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 12%, var(--border) 88%);
+}
 
-
+.my-history-item-icon svg,
 .my-history-icon svg {
-    width: 14px;
-    height: 14px;
-    stroke: var(--accent);
+    width: 18px;
+    height: 18px;
+    stroke: currentColor;
     fill: none;
-    stroke-width: 2
+    stroke-width: 2;
 }
 
 .my-history-body {
     flex: 1;
-    min-width: 0
+    min-width: 0;
+}
+
+.my-history-kicker {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 6px;
+}
+
+.my-history-series,
+.my-history-when {
+    font-size: .72rem;
+    color: var(--text-muted);
+}
+
+.my-history-series {
+    font-weight: 600;
+    letter-spacing: .02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.my-history-when {
+    flex-shrink: 0;
 }
 
 .my-history-title {
-    font-size: .84rem;
+    font-size: .88rem;
     color: var(--text);
-    font-weight: 500;
-    white-space: nowrap;
+    font-weight: 600;
+    line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
     overflow: hidden;
-    text-overflow: ellipsis
 }
 
-.my-history-sub {
+.my-history-sub,
+.my-history-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
     font-size: .76rem;
     color: var(--text-secondary);
-    margin-top: 2px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis
+    margin-top: 6px;
+}
+
+.my-history-episode {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent-glow) 70%, transparent 30%);
+    color: var(--accent);
+}
+
+.my-history-progress-text {
+    color: var(--text-secondary);
 }
 
 .my-history-bar {
     height: 3px;
     background: var(--border);
     border-radius: 2px;
-    margin-top: 5px;
-    overflow: hidden
+    margin-top: 10px;
+    overflow: hidden;
 }
 
 .my-history-bar-fill {
     height: 100%;
     background: var(--accent);
     border-radius: 2px;
-    transition: width .3s
+    transition: width .3s;
 }
 
 .my-history-time {
     font-size: .72rem;
     color: var(--text-muted);
     flex-shrink: 0;
-    white-space: nowrap
+    white-space: nowrap;
 }
 
 .my-history-empty {
     text-align: center;
     padding: 20px 16px;
     color: var(--text-muted);
-    font-size: .8rem
+    font-size: .8rem;
 }
 
 .my-history-more {
@@ -275,11 +338,11 @@
     color: var(--accent);
     cursor: pointer;
     background: var(--bg-card);
-    transition: background .15s
+    transition: background .15s;
 }
 
 .my-history-more:hover {
-    background: var(--bg-card-hover)
+    background: var(--bg-card-hover);
 }
 
 /* install guide card */
@@ -481,6 +544,27 @@
 
 .home-chanting-wrap.scrolled-end::after {
     opacity: 0;
+}
+
+.home-chanting-arrow {
+    position: absolute;
+    right: -4px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    pointer-events: none;
+    transition: opacity .3s;
+    z-index: 1;
+}
+
+.home-chanting-wrap.scrolled-end .home-chanting-arrow {
+    opacity: 0;
+}
+
+.home-chant-count {
+    font-size: .72rem;
+    color: var(--text-muted);
+    font-weight: 400;
 }
 
 .home-chanting-scroll {
@@ -904,6 +988,13 @@
     margin-bottom: 12px;
     box-shadow: var(--shadow-sm);
     text-align: center;
+    cursor: pointer;
+    transition: opacity .15s ease-out;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.home-quote-callout:active {
+    opacity: 0.7;
 }
 
 .home-quote-callout::before {
@@ -935,95 +1026,6 @@
     text-align: right;
     font-weight: 500;
     letter-spacing: 0.02em;
-}
-
-/* Old hero/quote classes kept for backward-compat but neutered */
-.home-hero {
-    display: none;
-}
-
-.home-quote {
-    display: none;
-}
-
-.home-quote-compact {
-    display: none;
-}
-
-.home-hero-title {
-    display: none;
-}
-
-.home-hero-content {
-    display: none;
-}
-
-.home-hero-subtitle {
-    display: none;
-}
-
-/* === HOME QUICK ACCESS GRID === */
-.home-quick-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-    padding: 0 4px;
-}
-
-.home-quick-card {
-    background: var(--bg-card);
-    border-radius: var(--radius);
-    padding: 16px 8px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    border: 1px solid var(--border);
-    cursor: pointer;
-    transition: all .2s;
-}
-
-.home-quick-card:hover {
-    background: var(--bg-card-hover);
-    border-color: var(--accent);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(131, 106, 50, 0.1);
-}
-
-.home-quick-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    background: var(--accent-glow);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-
-.home-quick-icon svg {
-    width: 18px;
-    height: 18px;
-    stroke: var(--accent);
-    fill: none;
-    stroke-width: 1.8;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-}
-
-.home-quick-label {
-    font-size: 0.72rem;
-    color: var(--text-secondary);
-    text-align: center;
-    line-height: 1.3;
-    font-weight: 500;
-}
-
-/* Responsive: 2 columns on very small screens */
-@media (max-width: 340px) {
-    .home-quick-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
 }
 
 /* === COUNTER VIEW — 极简念佛首页 === */

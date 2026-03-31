@@ -60,7 +60,7 @@ function buildInstallSection() {
 export function renderMyPage() {
   const dom = getDOM();
   const lang = getLang();
-  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page,.wenku-page').forEach(el => el.remove());
+  dom.contentArea.querySelectorAll('.view,.ep-view,.my-page,.home-page').forEach(el => el.remove());
 
   try {
     if (FEATURE_GONGXIU_PLAZA && sessionStorage.getItem('counter:goto-gongxiu')) {

@@ -16,44 +16,25 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         admin: resolve(__dirname, 'admin.html'),
-        iconsPreview: resolve(__dirname, 'icons-preview.html'),
         ai: resolve(__dirname, 'ai.html'),
         wenku: resolve(__dirname, 'wenku.html'),
         nianfo: resolve(__dirname, 'nianfo.html'),
         gongxiu: resolve(__dirname, 'gongxiu.html'),
       },
       output: {
-        manualChunks: {
-          // 将公共模块分离
-          'common': [
-            './src/js/state.js',
-            './src/js/dom.js',
-            './src/js/utils.js',
-            './src/js/i18n.js'
-          ],
-          // 将播放器模块分离
-          'player': [
-            './src/js/player.js',
-            './src/js/history.js',
-            './src/js/api.js',
-            './src/js/audio-cache.js',
-            './src/js/audio-url.js'
-          ],
-          // 将页面模块分离（含计数器，避免微信内置浏览器动态import失败）
-          'pages': [
-            './src/js/pages-home.js',
-            './src/js/pages-category.js',
-            './src/js/history-view.js',
-            './src/js/counter.js',
-            './src/js/gongxiu.js',
-            './src/js/gongxiu-panel.js',
-          ],
-          // 文库模块分离（按需加载）
-          'wenku': [
-            './src/js/wenku.js',
-            './src/js/wenku-api.js',
-            './src/js/wenku-reader.js'
-          ]
+        manualChunks(id) {
+          // 独立页入口尽量保持自包含，避免再拆出旧实现相关 chunk
+          if (id.includes('/wenku-app.js') || id.includes('/wenku-page.css')) return undefined;
+          if (id.includes('/ai-app.js') || id.includes('/ai-page.css')) return undefined;
+
+          // 公共模块
+          if (id.includes('/state.js') || id.includes('/dom.js') || id.includes('/utils.js') || id.includes('/i18n.js')) return 'common';
+          // 播放器
+          if (id.includes('/player.js') || id.includes('/history.js') || id.includes('/api.js') || id.includes('/audio-cache.js') || id.includes('/audio-url.js')) return 'player';
+          // 页面
+          if (id.includes('/pages-home.js') || id.includes('/pages-category.js') || id.includes('/history-view.js') || id.includes('/counter.js') || id.includes('/gongxiu.js') || id.includes('/gongxiu-panel.js')) return 'pages';
+          // 文库共享客户端
+          if (id.includes('/wenku-api.js')) return 'wenku';
         }
       }
     },

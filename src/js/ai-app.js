@@ -1,6 +1,10 @@
 /* ===== 法音AI 独立页面入口 ===== */
 import '../css/ai-page.css';
+import { syncSystemTheme } from './theme.js';
 import { askQuestionStream } from './ai-client.js';
+import { getWenkuDocument } from './wenku-api.js';
+
+const AI_CONTEXT_KEY = 'ai-latest-context';
 
 /* --- 常量 --- */
 const MAX_INPUT_LEN = 500;
@@ -76,6 +80,7 @@ function ensureActiveConv() {
 /* --- 状态 --- */
 let isLoading = false;
 let _lastQuestion = '';
+let aiContext = loadAiContext();
 
 /* 兼容性：chatHistory 代理到当前对话 */
 function getChatHistory() {
@@ -89,47 +94,31 @@ const chatInput = document.getElementById('chatInput');
 const btnSend = document.getElementById('btnSend');
 const btnClear = document.getElementById('btnClear');
 const charCount = document.getElementById('charCount');
+const previewDrawer = document.getElementById('previewDrawer');
+const previewBackdrop = document.getElementById('previewBackdrop');
+const previewTitle = document.getElementById('previewTitle');
+const previewMeta = document.getElementById('previewMeta');
+const previewBody = document.getElementById('previewBody');
+const previewOpenBtn = document.getElementById('previewOpenBtn');
+const previewCloseBtn = document.getElementById('previewClose');
 
-/* --- 初始化 --- */
-init();
+const previewState = {
+    requestId: 0,
+    docId: '',
+    query: '',
+    title: '',
+    excerpt: [],
+    activeIndex: 0,
+    matchIndex: -1,
+    hasMatch: false,
+};
 
 function init() {
     renderWelcomeOrHistory();
     renderConvList();
     wireEvents();
-    syncTheme();
+    syncSystemTheme(THEME_COLORS);
     initOfflineDetection();
-}
-
-/* --- 主题同步 --- */
-function syncTheme() {
-    const applyTheme = (isDark) => {
-        const theme = isDark ? 'dark' : 'light';
-        document.documentElement.setAttribute('data-theme', theme);
-        const meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) meta.setAttribute('content', THEME_COLORS[theme]);
-    };
-
-    if (typeof window.matchMedia !== 'function') {
-        applyTheme(false);
-        return;
-    }
-
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    applyTheme(mq.matches);
-
-    const handleChange = (e) => {
-        applyTheme(e.matches);
-    };
-
-    if (typeof mq.addEventListener === 'function') {
-        mq.addEventListener('change', handleChange);
-        return;
-    }
-
-    if (typeof mq.addListener === 'function') {
-        mq.addListener(handleChange);
-    }
 }
 
 /* --- 事件绑定 --- */
@@ -178,6 +167,10 @@ function wireEvents() {
         }
     });
 
+    previewBackdrop?.addEventListener('click', closeWenkuPreview);
+    previewCloseBtn?.addEventListener('click', closeWenkuPreview);
+    previewBody?.addEventListener('click', handlePreviewBodyClick);
+
     // 推荐问题点击（事件委托）
     chatArea.addEventListener('click', (e) => {
         const chip = e.target.closest('.ai-suggest-chip');
@@ -198,7 +191,7 @@ function wireEvents() {
             const docId = tag.dataset.docId;
             const query = tag.dataset.query || _lastQuestion;
             if (docId) {
-                openInlineReader(docId, query);
+                openWenkuPreview(docId, query, tag.textContent.trim());
             }
             return;
         }
@@ -250,6 +243,18 @@ function wireEvents() {
         window.visualViewport.addEventListener('resize', onViewportResize);
         window.visualViewport.addEventListener('scroll', onViewportResize);
     }
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            if (previewDrawer?.classList.contains('open')) {
+                closeWenkuPreview();
+                return;
+            }
+            if (convDrawer?.classList.contains('open')) {
+                closeConvDrawer();
+            }
+        }
+    });
 }
 
 /* --- 渲染欢迎页或历史记录 --- */
@@ -258,12 +263,41 @@ function renderWelcomeOrHistory() {
     if (chatHistory.length > 0) {
         chatArea.innerHTML = '';
         for (const [index, msg] of chatHistory.entries()) {
-            addMessage(msg.role === 'user' ? 'user' : 'bot', msg.content, msg.sources, msg.disclaimer, true, index);
+            const sourceQuery = msg.role === 'assistant'
+                ? getMessageSourceQuery(chatHistory, index, msg)
+                : '';
+            addMessage(msg.role === 'user' ? 'user' : 'bot', msg.content, msg.sources, msg.disclaimer, true, index, sourceQuery);
         }
         scrollToBottom();
     } else {
         chatArea.innerHTML = buildWelcomeHTML();
     }
+}
+
+function getMessageSourceQuery(chatHistory, messageIndex, message) {
+    const savedQuery = Array.isArray(message?.sources)
+        ? message.sources.find(item => typeof item?.preview_query === 'string' && item.preview_query.trim())?.preview_query
+        : '';
+
+    if (savedQuery) return savedQuery.trim();
+
+    for (let index = messageIndex - 1; index >= 0; index -= 1) {
+        if (chatHistory[index]?.role === 'user') {
+            return extractHighlightQuery(chatHistory[index].content || '');
+        }
+    }
+
+    return '';
+}
+
+function attachSourcePreviewQuery(sources, question) {
+    if (!Array.isArray(sources) || !sources.length) return [];
+
+    const previewQuery = extractHighlightQuery(question);
+    return sources.map(source => ({
+        ...source,
+        preview_query: source?.preview_query || previewQuery || '',
+    }));
 }
 
 /* --- 提交问题 --- */
@@ -298,10 +332,11 @@ async function handleSubmit(options = {}) {
         let msgContent = null;
         let textEl = null;
         let fullText = '';
+        const requestHistory = buildRequestHistory(conv.messages, question);
 
         const finalData = await askQuestionStream(
             question,
-            { history: conv.messages.slice(-6) },
+            buildAskContext(requestHistory),
             (token) => {
                 if (!textEl) {
                     removeTyping();
@@ -325,13 +360,19 @@ async function handleSubmit(options = {}) {
         // 完成：格式化 HTML
         textEl.classList.remove('ai-streaming');
         const { cleanText, followUps } = extractFollowUps(fullText);
-        textEl.innerHTML = formatAnswer(cleanText);
+        const answerText = String(finalData.answer || cleanText || '').trim();
+        const finalFollowUps = Array.isArray(finalData.followUps) && finalData.followUps.length
+            ? finalData.followUps
+            : followUps;
+        textEl.innerHTML = formatAnswer(answerText);
+
+        const renderedSources = attachSourcePreviewQuery(finalData.sources, question);
 
         // 来源标签
-        if (finalData.sources?.length) {
+        if (renderedSources.length) {
             const srcDiv = document.createElement('div');
             srcDiv.className = 'ai-sources';
-            srcDiv.innerHTML = finalData.sources.map(s => renderSourceTag(s)).join(' ');
+            srcDiv.innerHTML = renderedSources.map(s => renderSourceTag(s)).join(' ');
             msgContent.appendChild(srcDiv);
         }
 
@@ -344,10 +385,10 @@ async function handleSubmit(options = {}) {
         }
 
         // 追问建议
-        if (followUps.length > 0) {
+        if (finalFollowUps.length > 0) {
             const wrap = document.createElement('div');
             wrap.className = 'ai-followups';
-            followUps.forEach(q => {
+            finalFollowUps.forEach(q => {
                 const chip = document.createElement('button');
                 chip.className = 'ai-suggest-chip';
                 chip.textContent = q;
@@ -375,8 +416,8 @@ async function handleSubmit(options = {}) {
         scrollToBottom();
 
         // 持久化
-        const answer = cleanText.trim() || '抱歉，AI 暂时无法生成回答。';
-        conv.messages.push({ role: 'assistant', content: answer, sources: finalData.sources, disclaimer: finalData.disclaimer });
+        const answer = answerText || '抱歉，AI 暂时无法生成回答。';
+        conv.messages.push({ role: 'assistant', content: answer, sources: renderedSources, disclaimer: finalData.disclaimer });
         if (conv.messages.length > MAX_PERSIST) conv.messages.splice(0, conv.messages.length - MAX_PERSIST);
         if (parentMsg) parentMsg.dataset.messageIndex = String(conv.messages.length - 1);
         conv.updatedAt = Date.now();
@@ -394,7 +435,7 @@ async function handleSubmit(options = {}) {
 }
 
 /* --- 消息渲染 --- */
-function addMessage(role, content, sources, disclaimer, silent, messageIndex) {
+function addMessage(role, content, sources, disclaimer, silent, messageIndex, sourceQuery = '') {
     while (chatArea.children.length > MAX_MESSAGES) {
         chatArea.removeChild(chatArea.children[0]);
     }
@@ -415,7 +456,7 @@ function addMessage(role, content, sources, disclaimer, silent, messageIndex) {
         if (sources?.length) {
             const srcDiv = document.createElement('div');
             srcDiv.className = 'ai-sources';
-            srcDiv.innerHTML = sources.map(s => renderSourceTag(s)).join(' ');
+            srcDiv.innerHTML = sources.map(s => renderSourceTag(s, sourceQuery)).join(' ');
             contentEl.appendChild(srcDiv);
         }
         if (disclaimer) {
@@ -511,13 +552,332 @@ function removeTyping() {
 }
 
 /* --- 来源标签渲染 --- */
-function renderSourceTag(s) {
+function renderSourceTag(s, fallbackQuery = '') {
     const title = escapeHtml(s.title);
     if (s.doc_id) {
-        const hlQuery = escapeHtml(s.snippet || extractHighlightQuery(_lastQuestion));
-        return `<button class="ai-source-tag" data-doc-id="${escapeHtml(s.doc_id)}" data-query="${hlQuery}">${title}</button>`;
+        const rawQuery = String(s.preview_query || s.snippet || fallbackQuery || extractHighlightQuery(_lastQuestion) || '').trim();
+        const queryAttr = rawQuery ? ` data-query="${escapeHtml(rawQuery)}"` : '';
+        return `<button class="ai-source-tag" data-doc-id="${escapeHtml(s.doc_id)}"${queryAttr}>${title}</button>`;
     }
     return `<span class="ai-source-tag">${title}</span>`;
+}
+
+function loadAiContext() {
+    try {
+        const raw = sessionStorage.getItem(AI_CONTEXT_KEY);
+        if (!raw) return { seriesId: null, episodeNum: null };
+        const parsed = JSON.parse(raw);
+        return {
+            seriesId: typeof parsed?.seriesId === 'string' && parsed.seriesId ? parsed.seriesId : null,
+            episodeNum: Number.isFinite(Number(parsed?.episodeNum)) && Number(parsed.episodeNum) > 0 ? Number(parsed.episodeNum) : null,
+        };
+    } catch {
+        return { seriesId: null, episodeNum: null };
+    }
+}
+
+function buildAskContext(history) {
+    const context = { history: history.slice(-6) };
+    if (aiContext.seriesId) context.series_id = aiContext.seriesId;
+    if (aiContext.episodeNum) context.episode_num = aiContext.episodeNum;
+    return context;
+}
+
+function buildRequestHistory(messages, question) {
+    const history = Array.isArray(messages) ? messages.slice() : [];
+    const last = history[history.length - 1];
+    if (last?.role === 'user' && String(last.content || '').trim() === String(question || '').trim()) {
+        history.pop();
+    }
+    return history;
+}
+
+function buildWenkuUrl(docId, query) {
+    return `/wenku?doc=${encodeURIComponent(docId)}${query ? `&q=${encodeURIComponent(query)}` : ''}`;
+}
+
+async function openWenkuPreview(docId, query, fallbackTitle = '') {
+    if (!previewDrawer || !previewBody || !previewOpenBtn) {
+        window.location.href = buildWenkuUrl(docId, query);
+        return;
+    }
+
+    const requestId = Date.now();
+    previewState.requestId = requestId;
+    previewState.docId = docId;
+    previewState.query = query || '';
+    previewState.title = fallbackTitle || '';
+    previewState.excerpt = [];
+    previewState.activeIndex = 0;
+    previewState.matchIndex = -1;
+    previewState.hasMatch = false;
+
+    previewDrawer.classList.add('open');
+    previewBackdrop?.classList.add('open');
+    previewDrawer.setAttribute('aria-hidden', 'false');
+    previewTitle.textContent = fallbackTitle || '文库引用';
+    previewMeta.textContent = '正在提取原文片段…';
+    previewBody.innerHTML = buildPreviewSkeleton();
+    previewOpenBtn.href = buildWenkuUrl(docId, query);
+
+    try {
+        const data = await getWenkuDocument(docId);
+        if (previewState.requestId !== requestId) return;
+
+        const doc = data?.document;
+        if (!doc) throw new Error('文稿加载失败');
+
+        previewTitle.textContent = doc.title || fallbackTitle || '文库引用';
+        previewMeta.textContent = buildPreviewMeta(doc);
+        const previewData = buildPreviewData(doc, query);
+        previewState.title = doc.title || fallbackTitle || '文库引用';
+        previewState.excerpt = previewData.excerpt;
+        previewState.matchIndex = previewData.matchIndex;
+        previewState.hasMatch = previewData.hasMatch;
+        previewState.activeIndex = previewData.matchIndex >= 0 ? previewData.matchIndex : 0;
+        renderPreviewView();
+        previewBody.scrollTop = 0;
+        previewOpenBtn.href = buildWenkuUrl(docId, query);
+    } catch (_error) {
+        if (previewState.requestId !== requestId) return;
+        previewMeta.textContent = '暂时无法提取引用原文';
+        previewBody.innerHTML = `
+            <div class="ai-preview-state ai-preview-state--error">
+                <p>当前无法在 AI 页内加载这篇讲记的预览。</p>
+                <p>你仍可直接进入文库独立页阅读全文。</p>
+            </div>`;
+        previewOpenBtn.href = buildWenkuUrl(docId, query);
+    }
+}
+
+function closeWenkuPreview() {
+    previewDrawer?.classList.remove('open');
+    previewBackdrop?.classList.remove('open');
+    previewDrawer?.setAttribute('aria-hidden', 'true');
+}
+
+function handlePreviewBodyClick(e) {
+    const button = e.target.closest('[data-preview-action]');
+    if (!button) return;
+
+    const action = button.dataset.previewAction;
+    if (action === 'prev' && previewState.activeIndex > 0) {
+        previewState.activeIndex -= 1;
+        renderPreviewView();
+    } else if (action === 'next' && previewState.activeIndex < previewState.excerpt.length - 1) {
+        previewState.activeIndex += 1;
+        renderPreviewView();
+    } else if (action === 'focus' && previewState.matchIndex >= 0) {
+        previewState.activeIndex = previewState.matchIndex;
+        renderPreviewView();
+    }
+}
+
+function buildPreviewMeta(doc) {
+    const parts = [];
+    if (doc.series_name) parts.push(doc.series_name);
+    if (Number.isFinite(Number(doc.episode_num)) && Number(doc.episode_num) > 0) {
+        parts.push(`第 ${Number(doc.episode_num)} 讲`);
+    }
+    return parts.join(' · ') || '大安法师讲记';
+}
+
+function buildPreviewSkeleton() {
+    return `
+        <div class="ai-preview-skeleton">
+            <div class="ai-preview-skeleton-line"></div>
+            <div class="ai-preview-skeleton-line"></div>
+            <div class="ai-preview-skeleton-line ai-preview-skeleton-line--short"></div>
+            <div class="ai-preview-skeleton-block"></div>
+            <div class="ai-preview-skeleton-line"></div>
+            <div class="ai-preview-skeleton-line ai-preview-skeleton-line--mid"></div>
+        </div>`;
+}
+
+function buildPreviewData(doc, query) {
+    const paragraphs = splitPreviewParagraphs(doc.content || '');
+    const terms = getPreviewTerms(query);
+    const excerpt = pickPreviewExcerpt(paragraphs, terms);
+    const hasMatch = excerpt.some(item => item.isMatch);
+
+    return {
+        excerpt: excerpt.map(item => ({
+            ...item,
+            focusText: extractFocusSentence(item.text, terms),
+            terms,
+        })),
+        hasMatch,
+        matchIndex: excerpt.findIndex(item => item.isMatch),
+    };
+}
+
+function renderPreviewView() {
+    if (!previewBody) return;
+
+    const excerpt = previewState.excerpt || [];
+    const current = excerpt[previewState.activeIndex];
+
+    if (!current) {
+        previewBody.innerHTML = `
+            <div class="ai-preview-state">
+                <p>这篇讲记暂时没有可展示的段落预览。</p>
+            </div>`;
+        return;
+    }
+
+    const hasMatch = previewState.hasMatch;
+    const canPrev = previewState.activeIndex > 0;
+    const canNext = previewState.activeIndex < excerpt.length - 1;
+    const sectionLabel = current.isMatch
+        ? '当前片段'
+        : previewState.activeIndex < (previewState.matchIndex >= 0 ? previewState.matchIndex : 1)
+            ? '前文'
+            : '后文';
+
+    previewBody.innerHTML = `
+        <div class="ai-preview-summary">
+            <span class="ai-preview-badge">${hasMatch ? '相关原文' : '相关内容'}</span>
+            <p class="ai-preview-tip">${hasMatch ? '已为你找到相关原文。' : '先为你展示相关内容。'}</p>
+        </div>
+        <div class="ai-preview-quote-card">
+            <div class="ai-preview-quote-head">
+                <span class="ai-preview-quote-kicker">${sectionLabel}</span>
+                <span class="ai-preview-quote-index">${previewState.activeIndex + 1} / ${excerpt.length}</span>
+            </div>
+            ${current.focusText ? `<blockquote class="ai-preview-focusquote">${renderHighlightedParagraph(current.focusText, current.terms)}</blockquote>` : ''}
+            <div class="ai-preview-excerpt">
+                <p>${renderHighlightedParagraph(current.text, current.terms)}</p>
+            </div>
+        </div>
+        <div class="ai-preview-nav">
+            <button class="ai-preview-nav-btn" data-preview-action="prev" ${canPrev ? '' : 'disabled'}>上一段</button>
+            ${hasMatch ? `<button class="ai-preview-nav-btn ai-preview-nav-btn--accent" data-preview-action="focus" ${current.isMatch ? 'disabled' : ''}>回到相关片段</button>` : ''}
+            <button class="ai-preview-nav-btn" data-preview-action="next" ${canNext ? '' : 'disabled'}>下一段</button>
+        </div>`;
+
+    previewBody.scrollTop = 0;
+}
+
+function extractFocusSentence(text, terms) {
+    if (!text) return '';
+    if (!terms.length) return text.length > 66 ? text.slice(0, 66) + '…' : text;
+
+    const sentences = text.split(/(?<=[。！？!?])/).map(item => item.trim()).filter(Boolean);
+    const hit = sentences.find(sentence => terms.some(term => sentence.includes(term)));
+    if (hit) return hit;
+    return text.length > 66 ? text.slice(0, 66) + '…' : text;
+}
+
+function splitPreviewParagraphs(text) {
+    const blocks = String(text || '')
+        .replace(/\r\n/g, '\n')
+        .split(/\n\n+/)
+        .map(item => item.replace(/\s+/g, ' ').trim())
+        .filter(Boolean);
+
+    return blocks.flatMap(splitLongPreviewBlock);
+}
+
+function splitLongPreviewBlock(text) {
+    const maxPreviewChars = 360;
+    if (text.length <= maxPreviewChars) return [text];
+
+    const sentences = text
+        .split(/(?<=[。！？!?])/)
+        .map(item => item.trim())
+        .filter(Boolean);
+
+    if (sentences.length <= 1) {
+        return hardSplitPreviewBlock(text, maxPreviewChars);
+    }
+
+    const chunks = [];
+    let current = '';
+
+    for (const sentence of sentences) {
+        if (!current) {
+            current = sentence;
+            continue;
+        }
+
+        if ((current + sentence).length <= maxPreviewChars) {
+            current += sentence;
+            continue;
+        }
+
+        chunks.push(current);
+        current = sentence;
+    }
+
+    if (current) chunks.push(current);
+
+    return chunks.flatMap(chunk => chunk.length > maxPreviewChars ? hardSplitPreviewBlock(chunk, maxPreviewChars) : [chunk]);
+}
+
+function hardSplitPreviewBlock(text, maxChars) {
+    const chunks = [];
+    for (let start = 0; start < text.length; start += maxChars) {
+        chunks.push(text.slice(start, start + maxChars).trim());
+    }
+    return chunks.filter(Boolean);
+}
+
+function getPreviewTerms(query) {
+    const raw = String(query || '').trim();
+    if (!raw) return [];
+
+    const parts = raw
+        .split(/[\s，。！？、；：,.!?()[\]【】《》“”"'‘’/\\|+-]+/)
+        .map(item => item.trim())
+        .filter(item => item.length >= 2);
+
+    const merged = parts.length ? parts : [raw];
+    const unique = [];
+    for (const item of merged) {
+        if (item.length < 2) continue;
+        if (!unique.includes(item)) unique.push(item);
+        if (unique.length >= 6) break;
+    }
+    return unique;
+}
+
+function pickPreviewExcerpt(paragraphs, terms) {
+    if (!paragraphs.length) return [];
+
+    const matchIndex = paragraphs.findIndex(paragraph => {
+        if (!terms.length) return false;
+        return terms.some(term => paragraph.includes(term));
+    });
+
+    if (matchIndex >= 0) {
+        const start = Math.max(0, matchIndex - 1);
+        const end = Math.min(paragraphs.length, matchIndex + 2);
+        return paragraphs.slice(start, end).map((text, index) => ({
+            text,
+            isMatch: start + index === matchIndex,
+        }));
+    }
+
+    return paragraphs.slice(0, 3).map(text => ({ text, isMatch: false }));
+}
+
+function renderHighlightedParagraph(text, terms) {
+    if (!terms.length) return escapeHtml(text);
+
+    const regex = new RegExp(`(${terms.map(escapeRegExp).join('|')})`, 'g');
+    return text
+        .split(regex)
+        .map(segment => {
+            if (!segment) return '';
+            return terms.includes(segment)
+                ? `<mark>${escapeHtml(segment)}</mark>`
+                : escapeHtml(segment);
+        })
+        .join('');
+}
+
+function escapeRegExp(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 const STOP_WORDS_RE = /什么|怎么|怎样|如何|为什么|哪些|哪个|可以|能够|应该|是不是|有没有|到底|究竟|请问|的|了|吗|呢|吧|啊|在|是|有|和|与|或|也|都|就|把|被|对|又|要|让|给|从|用|以|而|但|却|不|很|最|更|还|这|那|它|你|我|他|她|们|个|着/g;
@@ -674,22 +1034,10 @@ function buildWelcomeHTML() {
     <div class="ai-suggestions">
       <p class="ai-suggestions-label">试试这些问题</p>
       <div class="ai-suggestions-grid">
-        <button class="ai-suggest-chip ai-suggest-card">
-          <span class="ai-suggest-icon">🙏</span>
-          <span>什么是念佛法门</span>
-        </button>
-        <button class="ai-suggest-chip ai-suggest-card">
-          <span class="ai-suggest-icon">🪷</span>
-          <span>如何往生净土</span>
-        </button>
-        <button class="ai-suggest-chip ai-suggest-card">
-          <span class="ai-suggest-icon">📿</span>
-          <span>信愿行是什么</span>
-        </button>
-        <button class="ai-suggest-chip ai-suggest-card">
-          <span class="ai-suggest-icon">🕯️</span>
-          <span>临终助念方法</span>
-        </button>
+        <button class="ai-suggest-chip ai-suggest-card">什么是念佛法门</button>
+        <button class="ai-suggest-chip ai-suggest-card">如何往生净土</button>
+        <button class="ai-suggest-chip ai-suggest-card">信愿行是什么</button>
+        <button class="ai-suggest-chip ai-suggest-card">临终助念方法</button>
       </div>
     </div>`;
 }
@@ -984,120 +1332,8 @@ function showAiToast(msg) {
     el._timer = setTimeout(() => { el.style.opacity = '0'; }, 2000);
 }
 
-/* --- 内嵌文库阅读器 --- */
-const readerOverlay = document.getElementById('aiReader');
-const readerTitle = document.getElementById('aiReaderTitle');
-const readerBody = document.getElementById('aiReaderBody');
-const readerProgress = document.getElementById('aiReaderProgress');
-const readerWenkuLink = document.getElementById('aiReaderOpenWenku');
-const FONT_SIZES = ['', 'font-small', 'font-large'];
-let _readerFontIdx = 0;
-
-document.getElementById('aiReaderBack')?.addEventListener('click', closeInlineReader);
-
-// 字号切换
-document.getElementById('aiReaderFontSize')?.addEventListener('click', () => {
-    _readerFontIdx = (_readerFontIdx + 1) % FONT_SIZES.length;
-    readerBody.classList.remove('font-small', 'font-large');
-    if (FONT_SIZES[_readerFontIdx]) readerBody.classList.add(FONT_SIZES[_readerFontIdx]);
-    const labels = ['中', '小', '大'];
-    showAiToast(`字号：${labels[_readerFontIdx]}`);
-});
-
-// 阅读进度条
-readerBody?.addEventListener('scroll', () => {
-    if (!readerProgress) return;
-    const { scrollTop, scrollHeight, clientHeight } = readerBody;
-    const max = scrollHeight - clientHeight;
-    const pct = max > 0 ? Math.min(100, (scrollTop / max) * 100) : 0;
-    readerProgress.style.width = pct + '%';
-});
-
-// Escape 关闭
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && readerOverlay?.classList.contains('open')) {
-        closeInlineReader();
-    }
-});
-
-async function openInlineReader(docId, query) {
-    if (!readerOverlay) return;
-    readerTitle.textContent = '加载中…';
-    // 骨架屏
-    readerBody.innerHTML = `<div class="ai-reader-skeleton">
-        <div class="ai-reader-skeleton-line"></div>
-        <div class="ai-reader-skeleton-line"></div>
-        <div class="ai-reader-skeleton-line"></div>
-        <div class="ai-reader-skeleton-line"></div>
-        <div class="ai-reader-skeleton-line"></div>
-    </div>`;
-    if (readerProgress) readerProgress.style.width = '0%';
-    // 更新文库跳转链接
-    if (readerWenkuLink) readerWenkuLink.href = `/wenku?doc=${encodeURIComponent(docId)}`;
-    readerOverlay.classList.add('open');
-
-    try {
-        const res = await fetch(`/api/wenku/documents/${encodeURIComponent(docId)}`);
-        if (!res.ok) throw new Error('文档加载失败');
-        const data = await res.json();
-        const doc = data.document || data;
-        readerTitle.textContent = doc.title || '文库文稿';
-
-        let html = '';
-        const content = doc.content || '';
-        const paragraphs = content.split(/\n{2,}/);
-        for (const p of paragraphs) {
-            const trimmed = p.trim();
-            if (!trimmed) continue;
-            html += `<p>${escapeHtml(trimmed)}</p>`;
-        }
-        readerBody.innerHTML = html || '<p class="ai-reader-empty">暂无内容</p>';
-
-        if (query) {
-            highlightInReader(query);
-        }
-    } catch (err) {
-        readerBody.innerHTML = `<p class="ai-reader-error">${escapeHtml(err.message)}</p>
-          <p style="margin-top:12px"><a href="/wenku?doc=${encodeURIComponent(docId)}" class="ai-reader-fallback-link">在文库中打开 →</a></p>`;
-    }
-}
-
-function closeInlineReader() {
-    readerOverlay?.classList.remove('open');
-}
-
-function highlightInReader(query) {
-    if (!query || !readerBody) return;
-    const keywords = query.split(/\s+/).filter(k => k.length >= 2).slice(0, 5);
-    if (!keywords.length) return;
-
-    const walker = document.createTreeWalker(readerBody, NodeFilter.SHOW_TEXT);
-    const matches = [];
-    let node;
-    while ((node = walker.nextNode())) {
-        for (const kw of keywords) {
-            if (node.textContent.includes(kw)) {
-                matches.push({ node, kw });
-                break;
-            }
-        }
-    }
-
-    // 高亮所有匹配段落（最多5个）
-    for (let i = 0; i < Math.min(matches.length, 5); i++) {
-        const el = matches[i].node.parentElement;
-        if (el) el.classList.add('ai-reader-highlight');
-    }
-
-    // 滚动到首个匹配
-    if (matches.length > 0) {
-        const firstEl = matches[0].node.parentElement;
-        if (firstEl) {
-            requestAnimationFrame(() => firstEl.scrollIntoView({ behavior: 'smooth', block: 'center' }));
-        }
-    }
-}
-
+/* --- 初始化 --- */
+init();
 /* --- 离线检测 --- */
 function initOfflineDetection() {
     const updateOnlineStatus = () => {

@@ -3,6 +3,12 @@
  * 供 Pages Functions 路由处理器使用
  */
 
+import {
+  buildRagSystemPrompt,
+  buildSummaryMessages,
+  normalizeHistoryMessages,
+} from './ai-prompts.js';
+
 // ============================================================
 // 配置常量
 // ============================================================
@@ -368,47 +374,8 @@ export function stripThinkTags(text) {
 // RAG 问答 — 检索增强生成
 // ============================================================
 export async function ragAnswer(env, question, contextDocs, options = {}) {
-  const { maxContextLength = 10000, history = [], vectorMatches = [], ctx = null } = options;
-
-  // 优先使用 Vectorize 匹配到的 chunk 文本（更精准），而非从文档开头截断
-  let context = '';
-  if (vectorMatches.length > 0) {
-    const seen = new Set();
-    for (const m of vectorMatches) {
-      const docId = m.metadata?.doc_id;
-      const chunkText = m.metadata?.text || '';
-      const doc = contextDocs.find(d => d.id === docId);
-      const title = doc?.title || m.metadata?.title || '未知';
-      if (chunkText && context.length + chunkText.length < maxContextLength) {
-        const key = `${docId}:${m.metadata?.chunk_index}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        context += `【${title}】\n${chunkText}\n\n`;
-      }
-    }
-  }
-  // Fallback: 如果 chunk 文本为空，按文档截断
-  if (!context) {
-    const perDocLimit = Math.floor(maxContextLength / Math.max(contextDocs.length, 1));
-    for (const doc of contextDocs) {
-      const snippet = doc.content ? doc.content.slice(0, perDocLimit) : '';
-      context += `【${doc.title}】\n${snippet}\n\n`;
-    }
-  }
-
-  const systemPrompt = `/no_think
-你是佛学文库搜索助手，根据用户问题从下方资料中找出最相关的原文段落并直接引用回答。不要输出分析过程，不要自己创作内容，只引用资料原文。回答简短，不超150字。如果资料中没有相关内容就回复"未找到相关内容"。回答末尾另起一行写：[FOLLOWUP]相关问题一|相关问题二[/FOLLOWUP]
-
-资料：
-${context}`;
-
-  const messages = [{ role: 'system', content: systemPrompt }];
-  for (const h of history.slice(-4)) {
-    if (h.role === 'user' || h.role === 'assistant') {
-      messages.push({ role: h.role, content: String(h.content || '').slice(0, 300) });
-    }
-  }
-  messages.push({ role: 'user', content: question });
+  const { history = [], vectorMatches = [], ctx = null } = options;
+  const messages = buildRAGMessages(question, contextDocs, { history, vectorMatches });
 
   let response;
   try {
@@ -473,18 +440,8 @@ export function buildRAGMessages(question, contextDocs, options = {}) {
     }
   }
 
-  const systemPrompt = `/no_think
-你是佛学文库搜索助手，根据用户问题从下方资料中找出最相关的原文段落并直接引用回答。不要输出分析过程，不要自己创作内容，只引用资料原文。回答简短，不超150字。如果资料中没有相关内容就回复"未找到相关内容"。回答末尾另起一行写：[FOLLOWUP]相关问题一|相关问题二[/FOLLOWUP]
-
-资料：
-${context}`;
-
-  const messages = [{ role: 'system', content: systemPrompt }];
-  for (const h of history.slice(-4)) {
-    if (h.role === 'user' || h.role === 'assistant') {
-      messages.push({ role: h.role, content: String(h.content || '').slice(0, 300) });
-    }
-  }
+  const messages = [{ role: 'system', content: buildRagSystemPrompt(context) }];
+  messages.push(...normalizeHistoryMessages(history));
   messages.push({ role: 'user', content: question });
   return messages;
 }
@@ -495,19 +452,7 @@ ${context}`;
 export async function generateSummary(env, title, content, options = {}) {
   const { ctx = null } = options;
   const truncated = content.slice(0, 6000);
-
-  const messages = [
-    {
-      role: 'system',
-      content: `你是一位佛学内容编辑。请为以下佛法开示内容生成一段简洁的摘要（100-200字）。
-摘要应概括主要的佛法要点，使用简体中文，语言简洁明了。
-不要添加个人观点，忠实于原文。`,
-    },
-    {
-      role: 'user',
-      content: `标题：${title}\n\n内容：${truncated}`,
-    },
-  ];
+  const messages = buildSummaryMessages(title, truncated);
 
   let response;
   try {
@@ -665,7 +610,7 @@ export async function runAIWithLogging(env, model, input, gatewayOptions, scenar
     if (ctx?.waitUntil) {
       ctx.waitUntil(logPromise);
     } else {
-      logPromise.catch(() => {});
+      logPromise.catch(() => { });
     }
   }
 }

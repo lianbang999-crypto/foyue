@@ -50,17 +50,18 @@ foyue/
 ├── wrangler.toml               # Cloudflare D1 + AI + Vectorize 绑定
 │
 ├── src/
-│   ├── css/                    # 11 个 CSS 模块
+│   ├── css/                    # CSS 模块
 │   │   ├── tokens.css          #   CSS 变量（浅色 + 深色主题）
 │   │   ├── reset.css           #   CSS Reset
+│   │   ├── ui.css              #   共享按钮 / 图标 / 基础 UI
 │   │   ├── layout.css          #   应用壳（Header / TabBar / Content）
 │   │   ├── player.css          #   播放器（迷你 + 全屏 + 播放列表）
 │   │   ├── cards.css           #   系列卡片 + 集数列表
 │   │   ├── pages.css           #   首页 + 我的页面
 │   │   ├── components.css      #   通用组件（Modal / Toast / Banner）
-│   │   ├── ai.css              #   AI 组件（聊天 / 摘要）
+│   │   ├── ai-page.css         #   AI 独立页
 │   │   ├── message-wall.css    #   留言墙
-│   │   ├── wenku.css           #   文库阅读器
+│   │   ├── wenku-page.css      #   文库独立页 + 阅读器
 │   │   └── admin.css           #   管理后台
 │   │
 │   ├── js/                     # 前端 ES Module
@@ -85,13 +86,12 @@ foyue/
 │   │   ├── pages-category.js   #   分类 / 集数页面
 │   │   ├── pages-my.js         #   "我的"页面
 │   │   ├── ai-client.js        #   AI API 客户端
-│   │   ├── ai-chat.js          #   AI 聊天面板
+│   │   ├── ai-app.js           #   AI 独立页入口
 │   │   ├── ai-summary.js       #   内容摘要组件
 │   │   ├── transcript.js       #   文稿展示组件
 │   │   ├── message-wall.js     #   留言墙
-│   │   ├── wenku.js            #   文库入口
 │   │   ├── wenku-api.js        #   文库 API
-│   │   └── wenku-reader.js     #   文库阅读器
+│   │   └── wenku-app.js        #   文库独立页入口 + 阅读器
 │   │
 │   └── locales/                # i18n 翻译文件
 │       ├── zh.json

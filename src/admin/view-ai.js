@@ -82,9 +82,9 @@ export async function renderAI(container) {
 }
 
 /* ── Tab 1: 调用统计 ── */
-async function renderStats(el) {
+async function renderStats(el, days = 7) {
   el.innerHTML = '<div class="adm-loading">加载 AI 调用统计...</div>';
-  const data = await api.get('/ai-stats?days=7');
+  const data = await api.get('/ai-stats?days=' + encodeURIComponent(days));
   if (!data) { el.innerHTML = '<div class="adm-empty">加载失败</div>'; return; }
   if (!data.success) { el.innerHTML = `<div class="adm-empty">${esc(data.error || '未知错误')}</div>`; return; }
 
@@ -108,16 +108,13 @@ async function renderStats(el) {
   toolbar.className = 'adm-toolbar';
   toolbar.innerHTML = `<div class="adm-text-muted">近 ${data.days} 天数据</div>
     <div style="display:flex;gap:6px">
-      <button class="adm-btn adm-btn-sm" data-days="1">1天</button>
-      <button class="adm-btn adm-btn-sm" data-days="7">7天</button>
-      <button class="adm-btn adm-btn-sm" data-days="30">30天</button>
+      <button class="adm-btn adm-btn-sm${data.days === 1 ? ' active' : ''}" data-days="1">1天</button>
+      <button class="adm-btn adm-btn-sm${data.days === 7 ? ' active' : ''}" data-days="7">7天</button>
+      <button class="adm-btn adm-btn-sm${data.days === 30 ? ' active' : ''}" data-days="30">30天</button>
     </div>`;
   toolbar.querySelectorAll('[data-days]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      el.innerHTML = '<div class="adm-loading">加载中...</div>';
-      const d = await api.get('/ai-stats?days=' + btn.dataset.days);
-      if (d && d.success) { data.stats.splice(0); data.stats.push(...(d.stats || [])); data.days = d.days; }
-      renderStats(el);
+      await renderStats(el, Number.parseInt(btn.dataset.days, 10) || 7);
     });
   });
   el.appendChild(toolbar);
@@ -144,9 +141,9 @@ async function renderStats(el) {
         <th>场景</th><th>模型</th><th>调用</th><th>成功</th><th>缓存</th><th>平均耗时</th><th>最快</th><th>最慢</th>
       </tr></thead>
       <tbody>${stats.length ? stats.map(r => {
-        const label = SCENARIO_LABELS[r.scenario] || r.scenario;
-        const model = (r.model || '').split('/').pop();
-        return `<tr class="no-click">
+    const label = SCENARIO_LABELS[r.scenario] || r.scenario;
+    const model = (r.model || '').split('/').pop();
+    return `<tr class="no-click">
           <td>${esc(label)}</td>
           <td><code style="font-size:.72rem">${esc(model)}</code></td>
           <td>${r.total_calls}</td>
@@ -156,7 +153,7 @@ async function renderStats(el) {
           <td>${fmtMs(r.min_duration_ms)}</td>
           <td>${fmtMs(r.max_duration_ms)}</td>
         </tr>`;
-      }).join('') : '<tr><td colspan="8" style="text-align:center">暂无数据（系统刚部署，请稍后再查看）</td></tr>'}</tbody>
+  }).join('') : '<tr><td colspan="8" style="text-align:center">暂无数据（系统刚部署，请稍后再查看）</td></tr>'}</tbody>
     </table></div>`;
   el.appendChild(section);
 
@@ -168,10 +165,10 @@ async function renderStats(el) {
     <div class="adm-table-wrap"><table class="adm-table">
       <thead><tr><th>Profile</th><th>场景</th><th>缓存策略</th><th>TTL</th></tr></thead>
       <tbody>${entries.map(([key, p]) => {
-        const label = SCENARIO_LABELS[key] || key;
-        const strategy = p.skipCache ? '<span class="adm-badge adm-badge-yellow">跳过缓存</span>' : '<span class="adm-badge adm-badge-green">启用缓存</span>';
-        return `<tr class="no-click"><td><code style="font-size:.72rem">${key}</code></td><td>${esc(label)}</td><td>${strategy}</td><td>${fmtTtl(p.cacheTtl)}</td></tr>`;
-      }).join('')}</tbody>
+    const label = SCENARIO_LABELS[key] || key;
+    const strategy = p.skipCache ? '<span class="adm-badge adm-badge-yellow">跳过缓存</span>' : '<span class="adm-badge adm-badge-green">启用缓存</span>';
+    return `<tr class="no-click"><td><code style="font-size:.72rem">${key}</code></td><td>${esc(label)}</td><td>${strategy}</td><td>${fmtTtl(p.cacheTtl)}</td></tr>`;
+  }).join('')}</tbody>
     </table></div>`;
   el.appendChild(profSection);
 }
@@ -234,8 +231,8 @@ function renderOps(el) {
         ${op.params.map(p => `<div class="adm-form-group" style="display:inline-block;margin-right:12px">
           <label class="adm-form-label">${p.label}</label>
           ${p.type === 'checkbox'
-            ? `<label style="display:flex;align-items:center;gap:8px;height:38px"><input type="checkbox" data-key="${p.key}" ${p.checked ? 'checked' : ''}><span class="adm-text-muted">启用</span></label>`
-            : `<input class="adm-input" style="width:100px" type="${p.type}" data-key="${p.key}" value="${p.value}" min="${p.min || ''}" max="${p.max || ''}">`}
+        ? `<label style="display:flex;align-items:center;gap:8px;height:38px"><input type="checkbox" data-key="${p.key}" ${p.checked ? 'checked' : ''}><span class="adm-text-muted">启用</span></label>`
+        : `<input class="adm-input" style="width:100px" type="${p.type}" data-key="${p.key}" value="${p.value}" min="${p.min || ''}" max="${p.max || ''}">`}
         </div>`).join('')}
       </div>
       <div style="display:flex;align-items:center;gap:12px;margin-top:8px">

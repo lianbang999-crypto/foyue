@@ -1,11 +1,7 @@
 /* ===== Playback Policy ===== */
+import { toFiniteNumber } from './utils.js';
 
 const SHORT_AUDIO_DURATION_S = 15 * 60;
-
-function toFiniteNumber(value) {
-  const num = Number(value);
-  return Number.isFinite(num) && num > 0 ? num : 0;
-}
 
 export function getTrackMediaProfile(track) {
   const bytes = toFiniteNumber(

@@ -2,11 +2,7 @@
 /* 仅持久化数据源里已有的音频元数据，不再运行时主动探测。 */
 
 import { get, patch } from './store.js';
-
-function toFiniteNumber(value) {
-  const num = Number(value);
-  return Number.isFinite(num) && num > 0 ? num : 0;
-}
+import { toFiniteNumber } from './utils.js';
 
 function normalizeAudioMeta(raw) {
   if (!raw || typeof raw !== 'object') return null;

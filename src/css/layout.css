@@ -186,8 +186,21 @@
 }
 
 .center-play-btn.no-audio {
-  opacity: 0.4;
-  box-shadow: none
+  opacity: 0.55;
+  box-shadow: 0 0 0 3px var(--border);
+  animation: centerBtnPulse 2.5s ease-in-out infinite;
+}
+
+@keyframes centerBtnPulse {
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px var(--border);
+  }
+
+  50% {
+    box-shadow: 0 0 0 6px transparent;
+  }
 }
 
 .center-play-btn:active {
@@ -581,17 +594,17 @@
 }
 
 .stagger-2 {
-  animation: fadeSlideUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.1s forwards;
+  animation: fadeSlideUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.13s forwards;
   opacity: 0;
 }
 
 .stagger-3 {
-  animation: fadeSlideUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.2s forwards;
+  animation: fadeSlideUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.26s forwards;
   opacity: 0;
 }
 
 .stagger-4 {
-  animation: fadeSlideUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.3s forwards;
+  animation: fadeSlideUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.39s forwards;
   opacity: 0;
 }
 
