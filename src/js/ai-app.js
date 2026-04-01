@@ -136,6 +136,9 @@ function syncChatBottomOffset() {
 function setupInputAreaResizeSync() {
     if (!inputArea) return;
 
+    // 等 DOM 布局完成后再同步一次，避免首次取到 offsetHeight=0
+    requestAnimationFrame(() => requestAnimationFrame(syncChatBottomOffset));
+
     if (typeof ResizeObserver !== 'undefined') {
         _inputAreaResizeObserver = new ResizeObserver(() => {
             syncChatBottomOffset();
@@ -1004,6 +1007,13 @@ function cleanupAiPage() {
 /* --- 初始化 --- */
 init();
 window.addEventListener('pagehide', cleanupAiPage, { once: true });
+
+// bfcache 恢复时关闭所有抽屉，避免遮挡输入框
+window.addEventListener('pageshow', (e) => {
+    if (!e.persisted) return;
+    previewController.closePreview();
+    closeConvDrawer();
+});
 /* --- 离线检测 --- */
 function initOfflineDetection() {
     const updateOnlineStatus = () => {

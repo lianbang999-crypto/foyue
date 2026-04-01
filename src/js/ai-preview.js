@@ -178,6 +178,8 @@ export function createAiPreviewController(options) {
     }
 
     syncDockOffset();
+    // 等 DOM 布局完成后再同步一次，防止首次 inputArea.offsetHeight=0
+    requestAnimationFrame(() => requestAnimationFrame(syncDockOffset));
 
     if (inputArea && typeof ResizeObserver !== 'undefined') {
         inputAreaResizeObserver = new ResizeObserver(() => {
