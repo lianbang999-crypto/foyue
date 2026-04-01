@@ -1,6 +1,7 @@
 /* ===== AI 摘要组件 ===== */
 import { getEpisodeSummary } from './ai-client.js';
 import { escapeHtml } from './utils.js';
+import { mountCollapsible } from './collapsible.js';
 
 /**
  * 在目标容器中挂载 AI 摘要按钮
@@ -27,25 +28,24 @@ export function mountSummary(container, documentId, options = {}) {
   const btn = wrapper.querySelector('.ai-summary-btn');
   const body = wrapper.querySelector('.ai-summary-body');
 
-  btn.addEventListener('click', async () => {
-    body.classList.toggle('hidden');
-    const expanded = !body.classList.contains('hidden');
-    btn.classList.toggle('active', expanded);
-    btn.setAttribute('aria-expanded', String(expanded));
-
-    if (!loaded && !loading && expanded) {
-      loading = true;
-      body.innerHTML = '<div class="ai-summary-loading"><span class="ai-loading-dot"></span>正在生成摘要...</div>';
-      try {
-        const data = await getEpisodeSummary(documentId);
-        const summary = data.summary?.trim();
-        if (!summary) throw new Error('empty');
-        body.innerHTML = `<p>${escapeHtml(summary)}</p><p class="ai-disclaimer">${escapeHtml(data.disclaimer || 'AI生成，仅供参考')}</p>`;
-        loaded = true;
-      } catch (err) {
-        body.innerHTML = '<p class="ai-error">摘要暂不可用，请稍后重试</p>';
-      } finally {
-        loading = false;
+  mountCollapsible(btn, body, {
+    rememberKey: `ai-summary:${documentId}`,
+    animate: true,
+    onToggle: async (expanded) => {
+      if (!loaded && !loading && expanded) {
+        loading = true;
+        body.innerHTML = '<div class="ai-summary-loading"><span class="ai-loading-dot"></span>正在生成摘要...</div>';
+        try {
+          const data = await getEpisodeSummary(documentId);
+          const summary = data.summary?.trim();
+          if (!summary) throw new Error('empty');
+          body.innerHTML = `<p>${escapeHtml(summary)}</p><p class="ai-disclaimer">${escapeHtml(data.disclaimer || 'AI生成，仅供参考')}</p>`;
+          loaded = true;
+        } catch (err) {
+          body.innerHTML = '<p class="ai-error">摘要暂不可用，请稍后重试</p>';
+        } finally {
+          loading = false;
+        }
       }
     }
   });

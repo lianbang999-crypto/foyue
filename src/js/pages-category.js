@@ -10,6 +10,7 @@ import { getPlayCount, appreciate } from './api.js';
 import { showToast, escapeHtml, showFloatText, fmtCount, fmtDuration } from './utils.js';
 import { getBatchCachedStatus } from './audio-cache.js';
 import { mountSummary } from './ai-summary.js';
+import { getRememberedState, initCollapsibleButton } from './collapsible.js';
 import { probeDurations, getCachedDuration } from './duration-cache.js';
 import { isInAppBrowser } from './pwa.js';
 // import { mountTranscript } from './transcript.js';
@@ -201,7 +202,9 @@ export function renderCategory(tabId) {
   const unit = tabId === 'fohao' ? t('tracks') : t('episodes');
   const nowTrack = getCurrentTrack();
   const nowSid = nowTrack ? nowTrack.seriesId : null;
-  const expanded = categoryExpansionState.get(tabId) === true;
+  let expanded = categoryExpansionState.get(tabId) === true;
+  const _memCat = getRememberedState(`category:${tabId}`);
+  if (_memCat !== null) expanded = !!_memCat;
   const visibleCount = expanded
     ? cat.series.length
     : getCollapsedSeriesCount(cat.series, nowSid);
@@ -233,11 +236,11 @@ export function renderCategory(tabId) {
     const toggleBtn = document.createElement('button');
     toggleBtn.type = 'button';
     toggleBtn.className = 'series-list-toggle';
-    toggleBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
     toggleBtn.textContent = buildToggleLabel(visibleCount, cat.series.length, expanded, '专辑', '部');
-    toggleBtn.addEventListener('click', () => {
-      categoryExpansionState.set(tabId, !expanded);
-      renderCategory(tabId);
+    initCollapsibleButton(toggleBtn, {
+      initialExpanded: expanded,
+      rememberKey: `category:${tabId}`,
+      onToggle: (newExp) => { categoryExpansionState.set(tabId, newExp); renderCategory(tabId); }
     });
     toggleWrap.appendChild(toggleMeta);
     toggleWrap.appendChild(toggleBtn);
@@ -392,7 +395,9 @@ export async function showEpisodes(series, tabId) {
     const entry = findHistoryEntryForEpisode(hist, series, episodeIdx);
     if (entry) histMap.set(episodeIdx, entry);
   });
-  const episodesExpanded = episodeExpansionState.get(series.id) === true;
+  let episodesExpanded = episodeExpansionState.get(series.id) === true;
+  const _memEp = getRememberedState(`episode:${series.id}`);
+  if (_memEp !== null) episodesExpanded = !!_memEp;
   const visibleEpisodeCount = episodesExpanded
     ? series.episodes.length
     : getCollapsedEpisodeCount(series, hist);
@@ -406,11 +411,11 @@ export async function showEpisodes(series, tabId) {
     const toggleBtn = document.createElement('button');
     toggleBtn.type = 'button';
     toggleBtn.className = 'series-list-toggle';
-    toggleBtn.setAttribute('aria-expanded', episodesExpanded ? 'true' : 'false');
     toggleBtn.textContent = buildToggleLabel(visibleEpisodeCount, series.episodes.length, episodesExpanded, '章节', '集');
-    toggleBtn.addEventListener('click', () => {
-      episodeExpansionState.set(series.id, !episodesExpanded);
-      showEpisodes(series, tabId);
+    initCollapsibleButton(toggleBtn, {
+      initialExpanded: episodesExpanded,
+      rememberKey: `episode:${series.id}`,
+      onToggle: (newExp) => { episodeExpansionState.set(series.id, newExp); showEpisodes(series, tabId); }
     });
     toggleWrap.appendChild(toggleMeta);
     toggleWrap.appendChild(toggleBtn);

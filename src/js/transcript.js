@@ -2,6 +2,7 @@
 import { getTranscript } from './ai-client.js';
 import { escapeHtml } from './utils.js';
 import { t } from './i18n.js';
+import { mountCollapsible } from './collapsible.js';
 
 /**
  * 在目标容器中挂载讲义文稿展开按钮
@@ -27,35 +28,32 @@ export function mountTranscript(container, seriesId, episodeNum) {
   const btn = wrapper.querySelector('.transcript-btn');
   const body = wrapper.querySelector('.transcript-body');
 
-  btn.addEventListener('click', async (e) => {
-    e.stopPropagation(); // 防止冒泡触发 ep-item 的播放事件
+  mountCollapsible(btn, body, {
+    rememberKey: `transcript:${seriesId}:${episodeNum}`,
+    animate: true,
+    onToggle: async (expanded) => {
+      if (!loaded && !loading && expanded) {
+        loading = true;
+        body.innerHTML = `<div class="transcript-loading"><span class="ai-loading-dot"></span>${escapeHtml(t('transcript_loading'))}</div>`;
+        try {
+          const data = await getTranscript(seriesId, episodeNum);
+          const content = data.content?.trim();
+          if (!content) throw new Error('empty');
 
-    body.classList.toggle('hidden');
-    const expanded = !body.classList.contains('hidden');
-    btn.classList.toggle('active', expanded);
-    btn.setAttribute('aria-expanded', String(expanded));
+          // 按双换行分段，单换行转 <br>
+          const paragraphs = content.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+          const html = paragraphs.map(p =>
+            `<p>${escapeHtml(p).replace(/\n/g, '<br>')}</p>`
+          ).join('');
 
-    if (!loaded && !loading && expanded) {
-      loading = true;
-      body.innerHTML = `<div class="transcript-loading"><span class="ai-loading-dot"></span>${escapeHtml(t('transcript_loading'))}</div>`;
-      try {
-        const data = await getTranscript(seriesId, episodeNum);
-        const content = data.content?.trim();
-        if (!content) throw new Error('empty');
-
-        // 按双换行分段，单换行转 <br>
-        const paragraphs = content.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
-        const html = paragraphs.map(p =>
-          `<p>${escapeHtml(p).replace(/\n/g, '<br>')}</p>`
-        ).join('');
-
-        body.innerHTML = `<div class="transcript-content">${html}</div>
-          <div class="transcript-meta">${escapeHtml(data.title || '')}</div>`;
-        loaded = true;
-      } catch {
-        body.innerHTML = `<p class="transcript-error">${escapeHtml(t('transcript_unavailable'))}</p>`;
-      } finally {
-        loading = false;
+          body.innerHTML = `<div class="transcript-content">${html}</div>
+            <div class="transcript-meta">${escapeHtml(data.title || '')}</div>`;
+          loaded = true;
+        } catch {
+          body.innerHTML = `<p class="transcript-error">${escapeHtml(t('transcript_unavailable'))}</p>`;
+        } finally {
+          loading = false;
+        }
       }
     }
   });
