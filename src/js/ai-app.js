@@ -157,7 +157,8 @@ function setupInputAreaResizeSync() {
 }
 
 function setupVisualViewportSync() {
-    if (!window.visualViewport || !isAndroid()) return;
+    // 所有平台均同步真实可见高度，修复 iOS Safari 100vh > 可视区域导致输入框消失的问题
+    if (!window.visualViewport) return;
 
     const app = document.getElementById('ai-app');
     if (!app) return;
@@ -166,7 +167,10 @@ function setupVisualViewportSync() {
         const vv = window.visualViewport;
         const offset = Math.max(0, window.innerHeight - vv.height);
         app.style.height = `${vv.height}px`;
-        app.style.transform = `translateY(${vv.offsetTop}px)`;
+        // Android 需要额外的 translateY 抵消软键盘顶推；iOS 不需要
+        if (isAndroid()) {
+            app.style.transform = `translateY(${vv.offsetTop}px)`;
+        }
         syncChatBottomOffset();
         if (offset > 50) scrollToBottom();
     };
@@ -179,7 +183,7 @@ function setupVisualViewportSync() {
         app.style.height = '';
         app.style.transform = '';
     };
-    onViewportResize();
+    onViewportResize(); // 立即同步，修复首屏渲染时 iOS 地址栏遮挡问题
 }
 
 /* --- 事件绑定 --- */
