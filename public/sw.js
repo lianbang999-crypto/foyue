@@ -1,7 +1,7 @@
 /* Service Worker — 净土法音 Offline Cache */
 'use strict';
 
-const CACHE_VERSION = 'v10';
+const CACHE_VERSION = 'v11';
 const STATIC_CACHE = 'static-' + CACHE_VERSION;
 const DATA_CACHE = 'data-' + CACHE_VERSION;
 const AUDIO_CACHE = 'audio-v3';
@@ -186,35 +186,32 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  /* HTML navigation: network-first, fall back to cached shell */
+  /* HTML navigation: 网络优先，仅离线时回退缓存。
+   * 原来的 stale-while-revalidate 有多页应用 bug：
+   * /ai 未缓存时会把首页 HTML 赋值给 /ai 请求，导致用户在 /ai 看到主页界面。
+   */
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      caches.open(STATIC_CACHE).then(async cache => {
-        const cached = await cache.match(event.request) || await cache.match('/');
-        const networkFetch = (async () => {
-          try {
-            const preloadResponse = await event.preloadResponse;
-            const response = preloadResponse || await fetch(event.request);
-            if (response && response.ok) {
-              await cache.put(event.request, response.clone());
-              if (url.pathname === '/' || url.pathname === '/index.html') {
-                await cache.put('/', response.clone());
-              }
+      (async () => {
+        const cache = await caches.open(STATIC_CACHE);
+        try {
+          // 在线：始终从网络拉取最新 HTML
+          const preloadResponse = await event.preloadResponse;
+          const response = preloadResponse || await fetch(event.request);
+          if (response && response.ok) {
+            await cache.put(event.request, response.clone());
+            if (url.pathname === '/' || url.pathname === '/index.html') {
+              await cache.put('/', response.clone());
             }
-            return response;
-          } catch {
-            return null;
           }
-        })();
-
-        if (cached) {
-          event.waitUntil(networkFetch);
-          return cached;
+          return response;
+        } catch {
+          // 离线：优先返回当前页面缓存，其次首页缓存
+          const cached = await cache.match(event.request) || await cache.match('/');
+          if (cached) return cached;
+          return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
         }
-
-        const response = await networkFetch;
-        return response || cache.match('/');
-      })
+      })()
     );
     return;
   }
