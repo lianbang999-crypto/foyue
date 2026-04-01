@@ -1572,10 +1572,12 @@
     appearance: none;
     width: 100%;
     max-width: 320px;
-    border: none;
+    border: 1px solid color-mix(in srgb, var(--accent) 72%, var(--border) 28%);
     border-radius: 999px;
     padding: 14px 24px;
-    background: linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 75%, #2a1810) 100%);
+    background: linear-gradient(135deg,
+            color-mix(in srgb, var(--accent) 82%, white 18%) 0%,
+            var(--accent) 100%);
     color: var(--text-inverse);
     font-family: var(--font-zh);
     font-size: .9rem;
@@ -1587,7 +1589,7 @@
 }
 
 .counter-huixiang-primary:hover {
-    filter: brightness(1.04);
+    filter: saturate(1.03) brightness(1.02);
     box-shadow: 0 14px 32px -10px var(--accent-shadow);
 }
 

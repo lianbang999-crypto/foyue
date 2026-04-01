@@ -12,6 +12,7 @@ import { drainResponseBody } from './audio-url.js';
 import { isInAppBrowser } from './pwa.js';
 import { getPlaybackPolicy } from './playback-policy.js';
 import { get, set, patch, saveNow } from './store.js';
+import { createPlaybackSessionManager } from './player/session.js';
 
 /* ===== Playback State ===== */
 let pendingSeek = 0;
@@ -71,7 +72,7 @@ function episodeNumForPlayCount(tr) {
 }
 
 function maybeRecordPlayCount(tr, callId) {
-  if (callId !== _playCurrentId) return;
+  if (!isPlaybackSessionCurrent(callId)) return;
   const epNum = episodeNumForPlayCount(tr);
   const key = `${tr.seriesId}:${epNum}`;
   const now = Date.now();
@@ -99,8 +100,15 @@ let _ghostSuspectCount = 0;  // Consecutive checks where played ranges didn't ad
 let _ghostPlaybackDriftSince = 0;
 let _ghostPlaybackLastPlayedEnd = 0;
 const MAX_STALL_RETRIES = 3;
+// 体感优先：3秒级提示，9秒级硬超时；弱网阈值稍放宽避免误判
+const STALL_DETECT_NORMAL_MS = 3500;
+const STALL_DETECT_WEAK_MS = 6000;
+const READY_SLOW_HINT_MS = 3000;
+const READY_HARD_TIMEOUT_MS = 9000;
+const RECOVERY_HARD_TIMEOUT_MS = 9000;
+const RETRY_HARD_TIMEOUT_MS = 12000;
 // ✅ 优化：根据网络状况动态调整stall检测间隔
-let STALL_DETECT_MS = 12000; // 默认12s without progress → stalled
+let STALL_DETECT_MS = STALL_DETECT_NORMAL_MS;
 const IOS_GHOST_PLAYED_LAG_S = 1.5;
 const IOS_IN_APP_GHOST_PLAYED_LAG_S = 0.8;
 const IOS_GHOST_RECOVERY_DELAY_MS = 2500;
@@ -142,9 +150,9 @@ function updateStallDetectInterval() {
   // On a weak network the browser takes longer to buffer, so give it more time
   // before declaring a stall (shorter threshold → more false positives, not fewer).
   if (_networkWeak) {
-    STALL_DETECT_MS = 25000; // 网络弱时延长到25秒，避免把正常缓冲误判为卡顿
+    STALL_DETECT_MS = STALL_DETECT_WEAK_MS;
   } else {
-    STALL_DETECT_MS = 12000; // 正常情况12秒
+    STALL_DETECT_MS = STALL_DETECT_NORMAL_MS;
   }
 }
 
@@ -251,17 +259,17 @@ function _recoverAudio(safePosition, fullReset) {
   }
 
   const src = dom.audio.src;
-  const recoveryCallId = _playCurrentId;
+  const recoveryCallId = currentPlaybackSession();
   setBuffering(true);
   if (stallRetries >= 2) showToast(t('error_stall'));
 
   function doReload() {
-    if (recoveryCallId !== _playCurrentId) { finishRecovery(); return; }
+    if (!isPlaybackSessionCurrent(recoveryCallId)) { finishRecovery(); return; }
     dom.audio.src = src;
     dom.audio.load();
     dom.audio.addEventListener('loadeddata', function onLoad() {
       dom.audio.removeEventListener('loadeddata', onLoad);
-      if (recoveryCallId !== _playCurrentId) { finishRecovery(); return; }
+      if (!isPlaybackSessionCurrent(recoveryCallId)) { finishRecovery(); return; }
       if (safePosition > 0) dom.audio.currentTime = safePosition;
       if (_userPaused) {
         finishRecovery();
@@ -281,16 +289,16 @@ function _recoverAudio(safePosition, fullReset) {
       });
     }, { once: true });
 
-    // 20秒超时保护
+    // 硬超时保护：超时后直接进入可重试错误态，避免长时间无反馈
     setTimeout(() => {
-      if (recoveryCallId !== _playCurrentId) { finishRecovery(); return; }
+      if (!isPlaybackSessionCurrent(recoveryCallId)) { finishRecovery(); return; }
       if (dom.audio.paused && !dom.audio.ended) {
         finishRecovery();
         setBuffering(false);
         if (!_userPaused) setErrorState(t('error_stall_tap'));
         setPlayState(false);
       }
-    }, 20000);
+    }, RECOVERY_HARD_TIMEOUT_MS);
   }
 
   if (fullReset) {
@@ -391,7 +399,7 @@ export function retryPlayback() {
   // ✅ iOS 修复：用 played 范围确定真实播放位置（防止幽灵播放后 currentTime 虚高）
   const lastPlayed = getLastPlayedEnd(dom.audio);
   pendingSeek = (lastPlayed > 0 && lastPlayed < savedTime - 2) ? lastPlayed : savedTime;
-  const retryCallId = _playCurrentId; // ✅ 修复：用callId防护stale回调
+  const retryCallId = currentPlaybackSession(); // ✅ 修复：用callId防护stale回调
 
   // ✅ iOS 修复：完全重置音频元素，清除损坏的音频会话
   const src = dom.audio.src;
@@ -402,7 +410,7 @@ export function retryPlayback() {
 
   dom.audio.load();
   dom.audio.play().then(() => {
-    if (retryCallId !== _playCurrentId) return; // ✅ 已切曲目，忽略
+    if (!isPlaybackSessionCurrent(retryCallId)) return; // ✅ 已切曲目，忽略
     setBuffering(false);
     setPlayState(true);
     startStallWatch(); // Resume stall detection after manual retry
@@ -410,7 +418,7 @@ export function retryPlayback() {
     // Fall back to waiting for canplay
     dom.audio.addEventListener('canplay', function onReady() {
       dom.audio.removeEventListener('canplay', onReady);
-      if (retryCallId !== _playCurrentId) return; // ✅ 已切曲目，忽略stale回调
+      if (!isPlaybackSessionCurrent(retryCallId)) return; // ✅ 已切曲目，忽略stale回调
       setBuffering(false);
       // ✅ 使用pendingSeek而不是直接设置currentTime
       if (pendingSeek > 0) {
@@ -428,9 +436,9 @@ export function retryPlayback() {
     }, { once: true });
     // Timeout
     setTimeout(() => {
-      if (retryCallId !== _playCurrentId) return; // ✅ 已切曲目，忽略
+      if (!isPlaybackSessionCurrent(retryCallId)) return; // ✅ 已切曲目，忽略
       setBuffering(false);
-    }, 30000);
+    }, RETRY_HARD_TIMEOUT_MS);
   });
 }
 
@@ -476,14 +484,14 @@ export function prepareList(episodes, idx, series, restoreTime) {
   const tr = state.playlist[state.epIdx];
   if (!tr) return;
   const dom = getDOM();
-  const capturedId = _playCurrentId; // guard against rapid calls overwriting each other
+  const capturedId = currentPlaybackSession(); // guard against rapid calls overwriting each other
   if (!isCachedSync(tr.url)) {
-    if (_playCurrentId !== capturedId) return;
+    if (!isPlaybackSessionCurrent(capturedId)) return;
     dom.audio.src = tr.url;
     dom.audio.load();
   } else {
     getCachedAudioUrl(tr.url).then(cachedUrl => {
-      if (_playCurrentId !== capturedId) {
+      if (!isPlaybackSessionCurrent(capturedId)) {
         if (cachedUrl) URL.revokeObjectURL(cachedUrl);
         return;
       }
@@ -492,7 +500,7 @@ export function prepareList(episodes, idx, series, restoreTime) {
       dom.audio.src = srcUrl;
       dom.audio.load();
     }).catch(() => {
-      if (_playCurrentId !== capturedId) return;
+      if (!isPlaybackSessionCurrent(capturedId)) return;
       dom.audio.src = tr.url;
       dom.audio.load();
     });
@@ -504,7 +512,30 @@ export function prepareList(episodes, idx, series, restoreTime) {
   setPlayState(false);
 }
 
+const _sessionManager = createPlaybackSessionManager();
 let _playCurrentId = 0; // monotonic ID to detect stale callbacks
+
+function beginPlaybackSession() {
+  _playCurrentId = _sessionManager.begin();
+  return _playCurrentId;
+}
+
+function invalidatePlaybackSession() {
+  _playCurrentId = _sessionManager.begin();
+  return _playCurrentId;
+}
+
+function isPlaybackSessionCurrent(id) {
+  return _sessionManager.isCurrent(id);
+}
+
+function guardPlaybackSession(id, fn) {
+  return _sessionManager.guard(id, fn);
+}
+
+function currentPlaybackSession() {
+  return _sessionManager.current();
+}
 
 function cleanupReadyListeners(dom) {
   if (dom.audio._onReady) {
@@ -532,7 +563,7 @@ function clearSwitchingTimeout() {
 function cancelPendingTrackLoad() {
   if (!isSwitching) return;
   const dom = getDOM();
-  _playCurrentId += 1;
+  invalidatePlaybackSession();
   finishRecovery();
   clearSwitchingTimeout();
   cleanupPlaybackPreparations();
@@ -548,9 +579,18 @@ function cleanupPlaybackPreparations() {
 
 function scheduleCurrentTrackLoading(track) {
   const policy = getPlaybackPolicy({ track: getTrackWithCachedAudioMeta(track) });
-  if (policy.shouldFullLoadCurrent) {
+  if (policy.shouldFullLoadCurrent && !shouldSkipBgLoadByNetwork()) {
     startBgFullLoad(track?.url);
   }
+}
+
+function shouldSkipBgLoadByNetwork() {
+  if (_networkWeak) return true;
+  const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if (!conn) return false;
+  if (conn.saveData) return true;
+  const type = String(conn.effectiveType || '').toLowerCase();
+  return type === 'slow-2g' || type === '2g';
 }
 
 /** 计算本次播放的起始位置：pendingSeek > 历史续播位置 > 0 */
@@ -611,7 +651,7 @@ function playCurrent() {
   const tr = state.playlist[state.epIdx];
   const trackForPolicy = getTrackWithCachedAudioMeta(tr);
   const policy = getPlaybackPolicy({ track: trackForPolicy });
-  const callId = ++_playCurrentId; // unique ID for this invocation
+  const callId = beginPlaybackSession(); // unique ID for this invocation
 
   // Remove any stale listeners from previous rapid switches
   cleanupReadyListeners(dom);
@@ -631,46 +671,50 @@ function playCurrent() {
   clearSwitchingTimeout();
   _switchingTimeoutId = setTimeout(() => {
     _switchingTimeoutId = null;
-    if (isSwitching && callId === _playCurrentId) {
+    guardPlaybackSession(callId, () => {
+      if (!isSwitching) return;
       console.warn('[Player] isSwitching timeout, auto-reset');
       cleanupReadyListeners(dom); // ✅ 修复：超时时也必须清理孤儿监听器，否则后续事件触发过期回调
       isSwitching = false;
       setBuffering(false);
       renderPlaylistItems(); // Remove loading indicator from playlist item
-    }
+    });
   }, switchTimeout);
 
   function tryPlay() {
-    if (callId !== _playCurrentId) {
+    if (!isPlaybackSessionCurrent(callId)) {
       setBuffering(false);
       return; // stale callback from previous switch
     }
     setBuffering(false);
     if (seekTime > 0) dom.audio.currentTime = seekTime;
     dom.audio.play().then(() => {
-      if (callId !== _playCurrentId) return; // ✅ Fix 5: guard stale resolution
-      clearSwitchingTimeout();
-      isSwitching = false;
-      // ✅ 修复Android：不在play()解析时设置播放状态，等待playing事件确认音频实际输出
-      renderPlaylistItems(); // Remove loading indicator from playlist item
-      startStallWatch();
-      if (_networkWeak) setNetworkWeak(false);
-      scheduleCurrentTrackLoading(tr);
-      maybeRecordPlayCount(tr, callId);
+      guardPlaybackSession(callId, () => {
+        clearSwitchingTimeout();
+        isSwitching = false;
+        // ✅ 修复Android：不在play()解析时设置播放状态，等待playing事件确认音频实际输出
+        renderPlaylistItems(); // Remove loading indicator from playlist item
+        startStallWatch();
+        if (_networkWeak) setNetworkWeak(false);
+        scheduleCurrentTrackLoading(tr);
+        maybeRecordPlayCount(tr, callId);
+      });
     }).catch(err => {
       clearSwitchingTimeout();
       isSwitching = false;
       setBuffering(false);
-      if (callId === _playCurrentId && err.name !== 'AbortError') {
-        setPlayState(false);
-        renderPlaylistItems(); // Remove loading indicator from playlist item
+      if (err.name !== 'AbortError') {
+        guardPlaybackSession(callId, () => {
+          setPlayState(false);
+          renderPlaylistItems(); // Remove loading indicator from playlist item
+        });
       }
     });
   }
 
   // ✅ Fix 1+4: doLoad sets src after cache check; all async paths guarded by callId
   function doLoad(srcUrl) {
-    if (callId !== _playCurrentId) return;
+    if (!isPlaybackSessionCurrent(callId)) return;
     dom.audio.src = srcUrl;
     dom.audio.playbackRate = SPEEDS[speedIdx];
     dom.audio.load();
@@ -680,20 +724,21 @@ function playCurrent() {
     } else {
       if (seekTime > 0) dom.audio.currentTime = seekTime;
       dom.audio.play().then(() => {
-        if (callId !== _playCurrentId) return; // ✅ Fix 5
-        clearSwitchingTimeout();
-        isSwitching = false;
-        // ✅ 修复Android：不在play()解析时清除缓冲/设置播放状态
-        // playing事件会在音频实际输出时触发setPlayState和hideBufferingUI
-        startStallWatch();
-        if (_networkWeak) setNetworkWeak(false);
-        scheduleCurrentTrackLoading(tr);
-        maybeRecordPlayCount(tr, callId);
+        guardPlaybackSession(callId, () => {
+          clearSwitchingTimeout();
+          isSwitching = false;
+          // ✅ 修复Android：不在play()解析时清除缓冲/设置播放状态
+          // playing事件会在音频实际输出时触发setPlayState和hideBufferingUI
+          startStallWatch();
+          if (_networkWeak) setNetworkWeak(false);
+          scheduleCurrentTrackLoading(tr);
+          maybeRecordPlayCount(tr, callId);
+        });
       }).catch(err => {
         if (err.name === 'AbortError') return;
         // Otherwise fall back to waiting for canplay/loadeddata events
         function onReady() {
-          if (callId !== _playCurrentId) return;
+          if (!isPlaybackSessionCurrent(callId)) return;
           cleanupReadyListeners(dom);
           tryPlay();
         }
@@ -701,51 +746,61 @@ function playCurrent() {
         dom.audio.addEventListener('canplay', onReady);
         dom.audio.addEventListener('loadeddata', onReady);
 
-        // #18: Soft timeout at 15s — show "loading slow" hint but keep waiting
+        // 3秒提示慢加载，尽早给用户可感知反馈
         dom.audio._slowTimeout = setTimeout(() => {
           dom.audio._slowTimeout = null;
-          if (callId !== _playCurrentId) return;
-          if (dom.audio._onReady) {
-            showToast(t('loading_slow'));
-          }
-        }, 15000);
+          guardPlaybackSession(callId, () => {
+            if (dom.audio._onReady) {
+              showToast(t('loading_slow'));
+            }
+          });
+        }, READY_SLOW_HINT_MS);
 
-        // #18: Hard timeout at 20s — give up if still not ready
+        // 9秒硬超时：仍未就绪则进入重试态，避免用户长时间等待
         dom.audio._readyTimeout = setTimeout(() => {
           dom.audio._readyTimeout = null;
-          if (callId !== _playCurrentId) return;
-          if (dom.audio._onReady) {
-            cleanupReadyListeners(dom);
-            if (dom.audio.readyState >= 2) {
-              tryPlay();
-            } else {
-              isSwitching = false;
-              setBuffering(false);
-              setPlayState(false);
-              setErrorState(t('error_tap_retry'));
-              showToast(t('error_play'));
-              renderPlaylistItems(); // Remove loading indicator from playlist item
+          guardPlaybackSession(callId, () => {
+            if (dom.audio._onReady) {
+              cleanupReadyListeners(dom);
+              if (dom.audio.readyState >= 2) {
+                tryPlay();
+              } else {
+                isSwitching = false;
+                setBuffering(false);
+                setPlayState(false);
+                setErrorState(t('error_tap_retry'));
+                showToast(t('error_play'));
+                renderPlaylistItems(); // Remove loading indicator from playlist item
+              }
             }
-          }
-        }, 20000);
+          });
+        }, READY_HARD_TIMEOUT_MS);
       });
     }
   }
 
-  // 在线时直接走原始音频地址；离线且已有缓存时才回退本地 Blob。
-  if (navigator.onLine !== false || !isCachedSync(tr.url)) {
+  // 优先策略：
+  // 1) 弱网/省流且本地已有缓存时，在线也优先本地缓存，减少晚高峰链路抖动影响
+  // 2) 其他在线场景走直连；离线场景仍优先缓存
+  const hasLocalCache = isCachedSync(tr.url);
+  const conn = navigator.connection || {};
+  const connType = String(conn.effectiveType || '').toLowerCase();
+  const connWeak = connType === 'slow-2g' || connType === '2g' || connType === '3g';
+  const shouldPreferLocalCache = hasLocalCache && (_networkWeak || !!conn.saveData || connWeak);
+
+  if ((navigator.onLine !== false && !shouldPreferLocalCache) || !hasLocalCache) {
     revokeOldBlob(); // ✅ 直连路径：新源已确定，安全释放旧Blob
     doLoad(tr.url);
   } else {
     getCachedAudioUrl(tr.url).then(cachedUrl => {
-      if (callId !== _playCurrentId) {
+      if (!guardPlaybackSession(callId, () => {
+        revokeOldBlob(); // ✅ 新缓存源已确认，安全释放旧Blob
+        if (cachedUrl) dom.audio._cachedBlobUrl = cachedUrl;
+        doLoad(cachedUrl || tr.url);
+      })) {
         if (cachedUrl) URL.revokeObjectURL(cachedUrl);
         revokeOldBlob(); // ✅ 过期回调也释放
-        return;
       }
-      revokeOldBlob(); // ✅ 新缓存源已确认，安全释放旧Blob
-      if (cachedUrl) dom.audio._cachedBlobUrl = cachedUrl;
-      doLoad(cachedUrl || tr.url);
     }).catch(() => {
       revokeOldBlob(); // ✅ 缓存失败回退直连，也释放旧Blob
       doLoad(tr.url);
@@ -764,6 +819,10 @@ function playCurrent() {
 
 function updateUI(tr) {
   const dom = getDOM();
+  _lastUiSecond = -1;
+  _lastUiTotalSecond = -1;
+  _lastProgressRatio = -1;
+  _lastBufferRatio = -1;
   const title = tr.title || tr.fileName;
   dom.playerTrack.textContent = title;
   const epNum = state.epIdx >= 0 ? ` \u00B7 ${state.epIdx + 1}/${state.playlist.length}` : '';
@@ -914,6 +973,10 @@ export function isCurrentTrack(sid, idx) {
 // ✅ 优化：使用 requestAnimationFrame 节流 onTimeUpdate
 let updateRafId = null;
 let cachedDom = null;
+let _lastUiSecond = -1;
+let _lastUiTotalSecond = -1;
+let _lastProgressRatio = -1;
+let _lastBufferRatio = -1;
 
 export function onTimeUpdate() {
   if (_dragging) return; // Skip UI updates while user is dragging progress bar
@@ -961,19 +1024,37 @@ export function onTimeUpdate() {
     }
 
     const p = Math.min(100, (ct / dur) * 100);
+    const ratio = p / 100;
+    const curSecond = Math.floor(ct);
+    const totalSecond = Math.floor(dur);
 
-    // 批量更新DOM，减少重排/重绘
-    dom.miniProgressFill.style.transform = `scaleX(${p / 100})`;
-    dom.expProgressFill.style.transform = `scaleX(${p / 100})`;
-    dom.expProgressThumb.style.left = p + '%';
-    dom.expTimeCurr.textContent = fmt(ct);
-    dom.expTimeTotal.textContent = fmt(dur);
-    const offset = RING_CIRCUMFERENCE * (1 - ct / dur);
-    if (dom.centerRingFill) dom.centerRingFill.style.strokeDashoffset = offset;
+    // 仅在变化足够明显时更新样式，降低弱网下主线程压力
+    if (Math.abs(ratio - _lastProgressRatio) >= 0.004) {
+      dom.miniProgressFill.style.transform = `scaleX(${ratio})`;
+      dom.expProgressFill.style.transform = `scaleX(${ratio})`;
+      dom.expProgressThumb.style.left = p + '%';
+      const offset = RING_CIRCUMFERENCE * (1 - ratio);
+      if (dom.centerRingFill) dom.centerRingFill.style.strokeDashoffset = offset;
+      _lastProgressRatio = ratio;
+    }
+
+    if (curSecond !== _lastUiSecond) {
+      dom.expTimeCurr.textContent = fmt(ct);
+      _lastUiSecond = curSecond;
+    }
+
+    if (totalSecond !== _lastUiTotalSecond) {
+      dom.expTimeTotal.textContent = fmt(dur);
+      _lastUiTotalSecond = totalSecond;
+    }
 
     if (dom.audio.buffered.length > 0) {
       const bufEnd = dom.audio.buffered.end(dom.audio.buffered.length - 1);
-      dom.expBufferFill.style.transform = `scaleX(${Math.min(1, bufEnd / dur)})`;
+      const bufRatio = Math.min(1, bufEnd / dur);
+      if (Math.abs(bufRatio - _lastBufferRatio) >= 0.01) {
+        dom.expBufferFill.style.transform = `scaleX(${bufRatio})`;
+        _lastBufferRatio = bufRatio;
+      }
     }
 
 
@@ -1490,8 +1571,12 @@ export function renderPlaylistItems() {
     const isCurrent = realIdx === state.epIdx;
     // Show loading spinner on the current item while audio is being loaded
     const isLoading = isCurrent && isSwitching;
+    const isCached = isCachedSync(tr.url);
     const div = document.createElement('div');
-    div.className = 'pl-item' + (isCurrent ? ' current' : '') + (isLoading ? ' loading' : '');
+    div.className = 'pl-item'
+      + (isCurrent ? ' current' : '')
+      + (isLoading ? ' loading' : '')
+      + (isCached ? ' pl-item-cached' : '');
 
     // Build meta info (duration + progress)
     let metaHTML = '';
@@ -1514,22 +1599,6 @@ export function renderPlaylistItems() {
     frag.appendChild(div);
   });
   dom.plItems.appendChild(frag);
-
-  // Async: mark cached episodes with a small badge (non-blocking).
-  // Guard against stale callbacks if the list is re-rendered before the async check completes.
-  const renderGen = dom.plItems.dataset.renderGen = String(Date.now());
-  items.forEach((tr, displayIdx) => {
-    isAudioCached(tr.url).then(cached => {
-      if (!cached) return;
-      // Bail if the list was re-rendered since this check started
-      if (dom.plItems.dataset.renderGen !== renderGen) return;
-      const el = dom.plItems.children[displayIdx];
-      // Verify the element still corresponds to the expected track
-      if (el && el.querySelector('.pl-item-title')?.textContent === (tr.title || tr.fileName)) {
-        el.classList.add('pl-item-cached');
-      }
-    });
-  });
   // #1: Scroll current item into view after panel animation completes (340ms).
   // Use instant scroll (no behavior:'smooth') to avoid visible jump.
   const cur = dom.plItems.querySelector('.current');

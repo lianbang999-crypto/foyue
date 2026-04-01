@@ -32,56 +32,87 @@ export async function handleWenkuDocuments(db, seriesName) {
 }
 
 export async function handleWenkuDocument(db, id) {
-  const doc = await db.prepare('SELECT * FROM documents WHERE id = ?').bind(id).first();
-  if (!doc) return { document: null };
+  // 单次 CTE 查询：同时取当前文档、前一讲、后一讲和总集数
+  // 当 series_name 或 episode_num 为空时，nav CTE 不产生行，LEFT JOIN 给出 NULL，行为与原逻辑一致
+  const row = await db.prepare(`
+    WITH target AS (
+      SELECT * FROM documents WHERE id = ?
+    ),
+    nav AS (
+      SELECT
+        LAG(d.id)  OVER (ORDER BY d.episode_num) AS prev_id,
+        LEAD(d.id) OVER (ORDER BY d.episode_num) AS next_id,
+        COUNT(*)   OVER ()                        AS total_count,
+        d.id
+      FROM documents d, target t
+      WHERE d.series_name = t.series_name
+        AND t.series_name IS NOT NULL
+        AND t.episode_num IS NOT NULL
+        AND d.type = 'transcript'
+        AND d.content IS NOT NULL AND d.content != ''
+    )
+    SELECT t.*, n.prev_id, n.next_id, COALESCE(n.total_count, 0) AS total_count
+    FROM target t
+    LEFT JOIN nav n ON n.id = t.id
+  `).bind(id).first();
 
-  let prevId = null;
-  let nextId = null;
-  let totalEpisodes = 0;
+  if (!row) return { document: null };
 
-  if (doc.series_name && doc.episode_num) {
-    const prev = await db.prepare(
-      `SELECT id FROM documents
-       WHERE series_name = ? AND episode_num < ? AND type = 'transcript'
-         AND content IS NOT NULL AND content != ''
-       ORDER BY episode_num DESC LIMIT 1`
-    ).bind(doc.series_name, doc.episode_num).first();
-
-    const next = await db.prepare(
-      `SELECT id FROM documents
-       WHERE series_name = ? AND episode_num > ? AND type = 'transcript'
-         AND content IS NOT NULL AND content != ''
-       ORDER BY episode_num ASC LIMIT 1`
-    ).bind(doc.series_name, doc.episode_num).first();
-
-    const total = await db.prepare(
-      `SELECT COUNT(*) as count FROM documents
-       WHERE series_name = ? AND type = 'transcript'
-         AND content IS NOT NULL AND content != ''`
-    ).bind(doc.series_name).first();
-
-    prevId = prev?.id || null;
-    nextId = next?.id || null;
-    totalEpisodes = total?.count || 0;
-  }
-
-  return { document: doc, prevId, nextId, totalEpisodes };
+  const { prev_id, next_id, total_count, ...doc } = row;
+  return {
+    document: doc,
+    prevId: prev_id || null,
+    nextId: next_id || null,
+    totalEpisodes: total_count || 0,
+  };
 }
 
 export async function handleWenkuSearch(db, query) {
-  const pattern = `%${query}%`;
-  const result = await db.prepare(
-    `SELECT id, title, type, category, series_name, episode_num, format, read_count
-     FROM documents
-     WHERE type = 'transcript' AND content IS NOT NULL AND content != ''
-       AND (title LIKE ? OR content LIKE ? OR series_name LIKE ?)
-     ORDER BY read_count DESC LIMIT 30`
-  ).bind(pattern, pattern, pattern).all();
-  return { documents: result.results };
+  // 优先使用 FTS5 全文索引，若不可用则回退到 LIKE
+  try {
+    const result = await db.prepare(
+      `SELECT d.id, d.title, d.type, d.category, d.series_name, d.episode_num, d.format, d.read_count,
+              snippet(documents_fts, 1, '', '', '…', 30) AS snippet
+       FROM documents_fts
+       JOIN documents d ON d.rowid = documents_fts.rowid
+       WHERE documents_fts MATCH ?
+         AND d.type = 'transcript' AND d.content IS NOT NULL AND d.content != ''
+       ORDER BY rank LIMIT 30`
+    ).bind(query).all();
+    return { documents: result.results };
+  } catch {
+    // FTS5 不可用时回退 LIKE 搜索
+    const escaped = query.replace(/[%_]/g, '\\$&');
+    const pattern = `%${escaped}%`;
+    const result = await db.prepare(
+      `SELECT id, title, type, category, series_name, episode_num, format, read_count
+       FROM documents
+       WHERE type = 'transcript' AND content IS NOT NULL AND content != ''
+         AND (title LIKE ? OR content LIKE ? OR series_name LIKE ?)
+       ORDER BY read_count DESC LIMIT 30`
+    ).bind(pattern, pattern, pattern).all();
+    return { documents: result.results };
+  }
 }
 
-export async function handleWenkuReadCount(db, documentId) {
+const _readCountRecent = new Map();
+
+export async function handleWenkuReadCount(db, documentId, clientIp) {
   if (!documentId) return { error: 'Missing documentId' };
+
+  // 简易 IP 限流：同一 IP + 同一文档 60s 内只计一次
+  const key = `rc:${clientIp || 'unknown'}:${documentId}`;
+  const now = Date.now();
+  const lastSeenAt = _readCountRecent.get(key) || 0;
+  if (lastSeenAt && now - lastSeenAt < 60_000) return { success: true, throttled: true };
+  _readCountRecent.set(key, now);
+  // 清理过期条目（每 50 次写入清理一次）
+  if (_readCountRecent.size > 200) {
+    for (const [k, ts] of _readCountRecent) {
+      if (now - ts > 60_000) _readCountRecent.delete(k);
+    }
+  }
+
   await db.prepare(
     'UPDATE documents SET read_count = read_count + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
   ).bind(documentId).run();

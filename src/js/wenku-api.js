@@ -56,12 +56,16 @@ export async function getWenkuDocument(id) {
 }
 
 /** Search wenku documents */
-export async function searchWenku(q) {
+export async function searchWenku(q, signal) {
   try {
-    const r = await fetchWithTimeout(`${API_BASE}/search?q=${encodeURIComponent(q)}`, {}, 10000);
+    const opts = signal ? { signal } : {};
+    const r = await fetchWithTimeout(`${API_BASE}/search?q=${encodeURIComponent(q)}`, opts, 10000);
     if (!r.ok) return null;
     return await r.json();
-  } catch (e) { return null; }
+  } catch (e) {
+    if (e.name === 'AbortError') throw e; // 允许上层捕获取消事件
+    return null;
+  }
 }
 
 /** Record a read event */

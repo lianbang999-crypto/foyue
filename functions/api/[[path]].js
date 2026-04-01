@@ -322,8 +322,8 @@ export async function onRequest(context) {
 
     // GET /api/admin/test-embedding — 诊断 embedding 模型
     if (path === '/api/admin/test-embedding' && method === 'GET') {
-        const authErr = requireAdmin();
-        if (authErr) return authErr;
+      const authErr = requireAdmin();
+      if (authErr) return authErr;
       try {
         // mode=chunk: 从 D1 读文档并切块后测试
         const mode = url.searchParams.get('mode') || 'simple';
@@ -364,8 +364,8 @@ export async function onRequest(context) {
 
     // GET /api/admin/test-chat — 诊断 chat 模型
     if (path === '/api/admin/test-chat' && method === 'GET') {
-        const authErr = requireAdmin();
-        if (authErr) return authErr;
+      const authErr = requireAdmin();
+      if (authErr) return authErr;
       const testPrompt = url.searchParams.get('q') || '请用一句话解释什么是净土宗。';
       const model = url.searchParams.get('model') || AI_CONFIG.models.chat;
       try {
@@ -405,8 +405,8 @@ export async function onRequest(context) {
 
     // GET /api/admin/ai-stats — AI Gateway 调用统计
     if (path === '/api/admin/ai-stats' && method === 'GET') {
-        const authErr = requireAdmin();
-        if (authErr) return authErr;
+      const authErr = requireAdmin();
+      if (authErr) return authErr;
       const days = parseInt(url.searchParams.get('days') || '7', 10);
       try {
         const stats = await getAICallStats(env, { days: Math.min(days, 90) });
@@ -587,7 +587,8 @@ export async function onRequest(context) {
     // POST /api/wenku/read-count — 记录阅读
     if (path === '/api/wenku/read-count' && method === 'POST') {
       let body; try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, cors, 400); }
-      return json(await handleWenkuReadCount(db, body.documentId), cors, 200, 'no-store');
+      const clientIp = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || '';
+      return json(await handleWenkuReadCount(db, body.documentId, clientIp), cors, 200, 'no-store');
     }
 
     // POST /api/admin/wenku-sync — R2-to-D1 同步（需管理员权限）

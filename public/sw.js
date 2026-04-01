@@ -1,7 +1,7 @@
 /* Service Worker — 净土法音 Offline Cache */
 'use strict';
 
-const CACHE_VERSION = 'v9';
+const CACHE_VERSION = 'v10';
 const STATIC_CACHE = 'static-' + CACHE_VERSION;
 const DATA_CACHE = 'data-' + CACHE_VERSION;
 const AUDIO_CACHE = 'audio-v3';
@@ -9,6 +9,7 @@ const AUDIO_CACHE = 'audio-v3';
 /* App-shell files to pre-cache on install */
 const APP_SHELL = [
   '/',
+  '/wenku',
   '/nianfo',
   '/gongxiu',
   '/manifest.json',

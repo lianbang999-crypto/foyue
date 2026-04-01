@@ -40,8 +40,32 @@ export function createRequestCache({ ttlMs = 5 * 60 * 1000, maxEntries = Infinit
 }
 
 export function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+  const { signal: externalSignal, ...restOptions } = options;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...options, signal: controller.signal })
+  let didTimeout = false;
+  const timer = setTimeout(() => {
+    didTimeout = true;
+    controller.abort();
+  }, timeoutMs);
+
+  // 如果调用方传入了外部 signal，将其中止事件链接到内部 controller
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      clearTimeout(timer);
+      controller.abort(externalSignal.reason);
+    } else {
+      externalSignal.addEventListener('abort', () => controller.abort(externalSignal.reason), { once: true });
+    }
+  }
+
+  return fetch(url, { ...restOptions, signal: controller.signal })
+    .catch((error) => {
+      if (error?.name === 'AbortError' && didTimeout) {
+        const timeoutError = new Error(`Request timed out after ${timeoutMs}ms`);
+        timeoutError.name = 'TimeoutError';
+        throw timeoutError;
+      }
+      throw error;
+    })
     .finally(() => clearTimeout(timer));
 }

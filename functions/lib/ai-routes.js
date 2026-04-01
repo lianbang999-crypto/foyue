@@ -10,6 +10,7 @@ import {
   buildRAGMessages,
   generateSummary,
   checkRateLimit,
+  cleanupRateLimits,
   extractAIResponse,
   stripThinkTags,
   runAIWithLogging,
@@ -19,11 +20,11 @@ import {
   AI_NO_RESULT_ANSWER,
   AI_RESPONSE_DISCLAIMER,
   AI_TEMPORARY_UNAVAILABLE_ANSWER,
+  STOP_WORDS_RE,
   buildRecommendMessages,
   normalizeAiAnswerContract,
 } from './ai-prompts.js';
-
-const SEARCH_STOP_WORDS_RE = /什么|怎么|怎样|如何|为什么|哪些|哪个|可以|能够|应该|是不是|有没有|到底|究竟|请问|一下|的|了|吗|呢|吧|啊|在|是|有|和|与|或|也|都|就|把|被|对|又|要|让|给|从|用|以|而|但|却|不|很|最|更|还|这|那|它|你|我|他|她|们|个|着/g;
+import { getTodayBeijing } from './crypto-utils.js';
 
 function buildSourceList(matches, docs) {
   const seenDocIds = new Set();
@@ -72,9 +73,21 @@ async function keywordSearchDocs(env, query, { seriesId = null, limit = 10 } = {
   return results || [];
 }
 
+function mapKeywordDocsToSearchResults(docs) {
+  return (docs || []).map(doc => ({
+    doc_id: doc.id,
+    title: doc.title || '',
+    snippet: (doc.content || '').slice(0, 200).trim() + ((doc.content || '').length > 200 ? '...' : ''),
+    score: null,
+    series_name: doc.series_name || '',
+    category: doc.category || '',
+    audio_series_id: doc.audio_series_id || '',
+  }));
+}
+
 function extractSearchKeywords(question) {
   return String(question || '')
-    .replace(SEARCH_STOP_WORDS_RE, ' ')
+    .replace(STOP_WORDS_RE, ' ')
     .split(/[\s，。！？、；：,.!?()[\]【】《》“”"'‘’/\\|+-]+/)
     .map(item => item.trim())
     .filter(item => item.length >= 2)
@@ -125,6 +138,32 @@ function appendPseudoMatch(matches, doc, snippet, score = 0.58) {
       },
     },
   ];
+}
+
+function buildAiAnswerPayload(rawText, question, options = {}) {
+  const { sources = [], forceNoResult = false } = options;
+  const normalized = normalizeAiAnswerContract(rawText, question, { forceNoResult });
+  return {
+    answer: normalized.answer,
+    followUps: normalized.followUps,
+    sources,
+    disclaimer: AI_RESPONSE_DISCLAIMER,
+  };
+}
+
+function parseAskInput(body) {
+  const { question, series_id, episode_id, episode_num, history } = body || {};
+  const normalizedQuestion = typeof question === 'string' ? question.trim() : '';
+  if (!normalizedQuestion || normalizedQuestion.length > 500) {
+    return { error: '问题不能为空且不超过500字' };
+  }
+
+  return {
+    question: normalizedQuestion,
+    seriesId: series_id,
+    episodeNum: Number.parseInt(episode_num ?? episode_id, 10),
+    history: Array.isArray(history) ? history : [],
+  };
 }
 
 async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
@@ -226,62 +265,35 @@ export async function handleAiAsk(env, request, cors, ctx, json) {
     return json({ error: 'Invalid JSON' }, cors, 400);
   }
 
-  const { question, series_id, episode_id, episode_num, history } = body;
-  const episodeNum = Number.parseInt(episode_num ?? episode_id, 10);
+  const askInput = parseAskInput(body);
+  if (askInput.error) return json({ error: askInput.error }, cors, 400);
 
-  if (!question || typeof question !== 'string' || question.length > 500) {
-    return json({ error: '问题不能为空且不超过500字' }, cors, 400);
-  }
-
-  const { matches, docs } = await loadAiDocs(env, question, series_id, episodeNum, ctx);
+  const { matches, docs } = await loadAiDocs(env, askInput.question, askInput.seriesId, askInput.episodeNum, ctx);
 
   if (!docs.length) {
-    const normalized = normalizeAiAnswerContract(AI_NO_RESULT_ANSWER, question, { forceNoResult: true });
-    return json({
-      answer: normalized.answer,
-      followUps: normalized.followUps,
-      sources: [],
-      disclaimer: AI_RESPONSE_DISCLAIMER,
-    }, cors);
+    return json(buildAiAnswerPayload(AI_NO_RESULT_ANSWER, askInput.question, { forceNoResult: true }), cors);
   }
 
   let result;
   try {
-    result = await ragAnswer(env, question, docs, {
-      history: Array.isArray(history) ? history : [],
+    result = await ragAnswer(env, askInput.question, docs, {
+      history: askInput.history,
       vectorMatches: matches,
       ctx,
     });
   } catch (err) {
     console.error('RAG answer failed:', err.message);
-    const normalized = normalizeAiAnswerContract(AI_TEMPORARY_UNAVAILABLE_ANSWER, question);
-    return json({
-      answer: normalized.answer,
-      followUps: normalized.followUps,
-      sources: [],
-      disclaimer: AI_RESPONSE_DISCLAIMER,
-    }, cors, 503, 'no-store');
+    return json(buildAiAnswerPayload(AI_TEMPORARY_UNAVAILABLE_ANSWER, askInput.question), cors, 503, 'no-store');
   }
 
   const answer = result?.response?.trim();
   if (!answer) {
-    const normalized = normalizeAiAnswerContract(AI_EMPTY_ANSWER, question);
-    return json({
-      answer: normalized.answer,
-      followUps: normalized.followUps,
-      sources: [],
-      disclaimer: AI_RESPONSE_DISCLAIMER,
-    }, cors, 200, 'no-store');
+    return json(buildAiAnswerPayload(AI_EMPTY_ANSWER, askInput.question), cors, 200, 'no-store');
   }
 
-  const normalized = normalizeAiAnswerContract(answer, question);
-
-  return json({
-    answer: normalized.answer,
-    followUps: normalized.followUps,
+  return json(buildAiAnswerPayload(answer, askInput.question, {
     sources: buildSourceList(matches, docs),
-    disclaimer: AI_RESPONSE_DISCLAIMER,
-  }, cors, 200, 'no-store');
+  }), cors, 200, 'no-store');
 }
 
 export async function handleAiAskStream(env, request, cors, ctx, json) {
@@ -300,26 +312,17 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
     return json({ error: 'Invalid JSON' }, cors, 400);
   }
 
-  const { question, series_id, episode_id, episode_num, history } = body;
-  const episodeNum = Number.parseInt(episode_num ?? episode_id, 10);
-  if (!question || typeof question !== 'string' || question.length > 500) {
-    return json({ error: '问题不能为空且不超过500字' }, cors, 400);
-  }
+  const askInput = parseAskInput(body);
+  if (askInput.error) return json({ error: askInput.error }, cors, 400);
 
-  const { matches, docs } = await loadAiDocs(env, question, series_id, episodeNum, ctx);
+  const { matches, docs } = await loadAiDocs(env, askInput.question, askInput.seriesId, askInput.episodeNum, ctx);
   if (!docs.length) {
-    const normalized = normalizeAiAnswerContract(AI_NO_RESULT_ANSWER, question, { forceNoResult: true });
-    return json({
-      answer: normalized.answer,
-      followUps: normalized.followUps,
-      sources: [],
-      disclaimer: AI_RESPONSE_DISCLAIMER,
-    }, cors);
+    return json(buildAiAnswerPayload(AI_NO_RESULT_ANSWER, askInput.question, { forceNoResult: true }), cors);
   }
 
   const sources = buildSourceList(matches, docs);
-  const messages = buildRAGMessages(question, docs, {
-    history: Array.isArray(history) ? history : [],
+  const messages = buildRAGMessages(askInput.question, docs, {
+    history: askInput.history,
     vectorMatches: matches,
   });
 
@@ -345,12 +348,7 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
         ctx
       );
     } catch {
-      return json({
-        answer: normalizeAiAnswerContract(AI_TEMPORARY_UNAVAILABLE_ANSWER, question).answer,
-        followUps: normalizeAiAnswerContract(AI_TEMPORARY_UNAVAILABLE_ANSWER, question).followUps,
-        sources: [],
-        disclaimer: AI_RESPONSE_DISCLAIMER,
-      }, cors, 503, 'no-store');
+      return json(buildAiAnswerPayload(AI_TEMPORARY_UNAVAILABLE_ANSWER, askInput.question), cors, 503, 'no-store');
     }
   }
 
@@ -520,7 +518,7 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
         }
       }
 
-      const normalized = normalizeAiAnswerContract(rawAnswer, question, { forceNoResult: tokenCount === 0 });
+      const normalized = normalizeAiAnswerContract(rawAnswer, askInput.question, { forceNoResult: tokenCount === 0 });
       controller.enqueue(encoder.encode(
         `event: done\ndata: ${JSON.stringify({
           sources,
@@ -612,23 +610,15 @@ export async function handleAiSearch(env, request, query, cors, ctx, json) {
     return json({ error: '搜索词长度应为2-200个字符' }, cors, 400);
   }
 
-  if (!env?.AI?.run || !env?.VECTORIZE) {
-    const fallbackDocs = await keywordSearchDocs(env, query, { limit: 10 });
-    const results = fallbackDocs.map(doc => ({
-      doc_id: doc.id,
-      title: doc.title || '',
-      snippet: (doc.content || '').slice(0, 200).trim() + ((doc.content || '').length > 200 ? '...' : ''),
-      score: null,
-      series_name: doc.series_name || '',
-      category: doc.category || '',
-      audio_series_id: doc.audio_series_id || '',
-    }));
-    return json({ results, query, fallback: true }, cors);
-  }
-
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
   const limit = await checkRateLimit(env, ip, 'ai_search');
   if (!limit.allowed) return json({ error: limit.reason }, cors, 429);
+
+  if (!env?.AI?.run || !env?.VECTORIZE) {
+    const fallbackDocs = await keywordSearchDocs(env, query, { limit: 10 });
+    const results = mapKeywordDocsToSearchResults(fallbackDocs);
+    return json({ results, query, fallback: true }, cors);
+  }
 
   let matches = [];
   try {
@@ -639,15 +629,7 @@ export async function handleAiSearch(env, request, query, cors, ctx, json) {
 
   if (!matches.length) {
     const fallbackDocs = await keywordSearchDocs(env, query, { limit: 10 });
-    const results = fallbackDocs.map(doc => ({
-      doc_id: doc.id,
-      title: doc.title || '',
-      snippet: (doc.content || '').slice(0, 200).trim() + ((doc.content || '').length > 200 ? '...' : ''),
-      score: null,
-      series_name: doc.series_name || '',
-      category: doc.category || '',
-      audio_series_id: doc.audio_series_id || '',
-    }));
+    const results = mapKeywordDocsToSearchResults(fallbackDocs);
     return json({ results, query, fallback: true }, cors);
   }
 
@@ -804,9 +786,10 @@ async function generateRecommendIntros(env, episodes, contexts, ctx) {
 }
 
 export async function handleDailyRecommend(env, cors, ctx, json) {
+  const dateKey = getTodayBeijing();
   if (!env?.AI?.run) {
     return json({
-      date: new Date().toISOString().slice(0, 10),
+      date: dateKey,
       recommendations: null,
       error: 'ai_unavailable',
       fallback: true,
@@ -814,11 +797,10 @@ export async function handleDailyRecommend(env, cors, ctx, json) {
   }
 
   const db = env.DB;
-  const dateKey = new Date().toISOString().slice(0, 10);
   const startMs = Date.now();
 
   const cached = await db.prepare(
-    `SELECT recommendations, status FROM ai_daily_recommendations WHERE date_key = ?`
+    `SELECT recommendations, status, created_at FROM ai_daily_recommendations WHERE date_key = ?`
   ).bind(dateKey).first();
 
   if (cached && cached.status === 'ready') {
@@ -830,7 +812,15 @@ export async function handleDailyRecommend(env, cors, ctx, json) {
   }
 
   if (cached && cached.status === 'generating') {
-    return json({ date: dateKey, recommendations: null, generating: true }, cors, 200, 'no-store');
+    // 检查僵尸锁：超过 5 分钟视为失败，删除后允许重新生成
+    const createdAt = cached.created_at ? new Date(cached.created_at + 'Z').getTime() : 0;
+    if (Date.now() - createdAt < 300_000) {
+      return json({ date: dateKey, recommendations: null, generating: true }, cors, 200, 'no-store');
+    }
+    console.warn('[DailyRec] Stale generating lock detected, clearing for retry');
+    await db.prepare(
+      `DELETE FROM ai_daily_recommendations WHERE date_key = ? AND status = 'generating'`
+    ).bind(dateKey).run();
   }
 
   try {
@@ -861,6 +851,9 @@ export async function handleDailyRecommend(env, cors, ctx, json) {
        SET recommendations = ?, model = ?, generation_ms = ?, status = 'ready'
        WHERE date_key = ?`
     ).bind(JSON.stringify(recommendations), AI_CONFIG.models.chat, genMs, dateKey).run();
+
+    // 非阻塞清理过期限流记录
+    if (ctx?.waitUntil) ctx.waitUntil(cleanupRateLimits(env));
 
     return json({
       date: dateKey,
@@ -905,10 +898,13 @@ export async function handleVoiceToText(env, request, cors, json) {
   }
 
   try {
-    const result = await env.AI.run(
+    const result = await runAIWithLogging(
+      env,
       AI_CONFIG.models.whisper,
-      { audio: [...new Uint8Array(audioBuffer)] },
-      { gateway: GATEWAY_PROFILES.whisper }
+      { audio: new Uint8Array(audioBuffer) },
+      GATEWAY_PROFILES.whisper,
+      'voice_to_text',
+      null
     );
     const text = result?.text?.trim() || '';
     if (!text) return json({ error: '未识别到语音内容' }, cors);
@@ -953,24 +949,36 @@ export async function handlePersonalizedRecommend(env, request, url, cors, json)
 
   const recommendations = [];
   const seenSeries = new Set();
+  const candidateSids = [];
   for (const match of filtered) {
     const sid = match.metadata?.audio_series_id || match.metadata?.series_name;
     if (!sid || seenSeries.has(sid)) continue;
     seenSeries.add(sid);
-    const series = await env.DB.prepare(
-      'SELECT id, title, speaker, total_episodes, category_id FROM series WHERE id = ?'
-    ).bind(sid).first();
-    if (series) {
-      recommendations.push({
-        series_id: series.id,
-        series_title: series.title,
-        speaker: series.speaker,
-        category_id: series.category_id,
-        total_episodes: series.total_episodes,
-        relevance_score: Math.round(match.score * 100) / 100,
-      });
+    candidateSids.push({ sid, score: match.score });
+  }
+
+  if (candidateSids.length) {
+    const sids = candidateSids.map(c => c.sid);
+    const ph = sids.map(() => '?').join(',');
+    const { results: seriesList } = await env.DB.prepare(
+      `SELECT id, title, speaker, total_episodes, category_id FROM series WHERE id IN (${ph})`
+    ).bind(...sids).all();
+
+    const seriesMap = new Map((seriesList || []).map(s => [s.id, s]));
+    for (const { sid, score } of candidateSids) {
+      const series = seriesMap.get(sid);
+      if (series) {
+        recommendations.push({
+          series_id: series.id,
+          series_title: series.title,
+          speaker: series.speaker,
+          category_id: series.category_id,
+          total_episodes: series.total_episodes,
+          relevance_score: Math.round(score * 100) / 100,
+        });
+      }
+      if (recommendations.length >= 3) break;
     }
-    if (recommendations.length >= 3) break;
   }
 
   return json({ recommendations }, cors, 200, 'private, max-age=3600');

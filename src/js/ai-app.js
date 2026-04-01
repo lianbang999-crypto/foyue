@@ -1,7 +1,17 @@
 /* ===== 法音AI 独立页面入口 ===== */
 import '../css/ai-page.css';
 import { syncSystemTheme } from './theme.js';
-import { askQuestionStream } from './ai-client.js';
+import { askQuestionStream, voiceToText } from './ai-client.js';
+import { createAiConversationStore } from './ai-conversations.js';
+import {
+    buildWelcomeHTML,
+    escapeHtml,
+    extractFollowUps,
+    extractHighlightQuery,
+    formatAnswer,
+} from './ai-format.js';
+import { createAiPreviewController } from './ai-preview.js';
+import { createAiVoiceController } from './ai-voice.js';
 import { getWenkuDocument } from './wenku-api.js';
 
 const AI_CONTEXT_KEY = 'ai-latest-context';
@@ -19,49 +29,18 @@ const THEME_COLORS = {
     dark: '#1A1614',
 };
 
-/* --- 多对话管理 --- */
-function generateId() {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-}
-
-function loadConversations() {
-    try {
-        const raw = localStorage.getItem(LS_CONV_KEY);
-        if (raw) {
-            const arr = JSON.parse(raw);
-            if (Array.isArray(arr)) return arr.slice(0, MAX_CONVERSATIONS);
-        }
-    } catch { /* ignore */ }
-
-    // 迁移旧格式
-    try {
-        const old = localStorage.getItem(LS_KEY);
-        if (old) {
-            const msgs = JSON.parse(old);
-            if (Array.isArray(msgs) && msgs.length) {
-                const first = msgs.find(m => m.role === 'user');
-                const conv = {
-                    id: generateId(),
-                    title: first ? first.content.slice(0, 20) : '旧对话',
-                    messages: msgs.slice(-MAX_PERSIST),
-                    updatedAt: Date.now(),
-                };
-                localStorage.removeItem(LS_KEY);
-                return [conv];
-            }
-        }
-    } catch { /* ignore */ }
-
-    return [];
-}
+const conversationStore = createAiConversationStore({
+    storageKey: LS_CONV_KEY,
+    legacyKey: LS_KEY,
+    maxPersist: MAX_PERSIST,
+    maxConversations: MAX_CONVERSATIONS,
+});
 
 function saveConversations() {
-    try {
-        localStorage.setItem(LS_CONV_KEY, JSON.stringify(conversations.slice(0, MAX_CONVERSATIONS)));
-    } catch { /* quota exceeded */ }
+    conversationStore.saveConversations(conversations);
 }
 
-let conversations = loadConversations();
+let conversations = conversationStore.loadConversations();
 let activeConvId = conversations[0]?.id || null;
 
 function getActiveConv() {
@@ -70,7 +49,7 @@ function getActiveConv() {
 
 function ensureActiveConv() {
     if (!getActiveConv()) {
-        const conv = { id: generateId(), title: '', messages: [], updatedAt: Date.now() };
+        const conv = conversationStore.createConversation();
         conversations.unshift(conv);
         activeConvId = conv.id;
     }
@@ -81,6 +60,10 @@ function ensureActiveConv() {
 let isLoading = false;
 let _lastQuestion = '';
 let aiContext = loadAiContext();
+let _streamAbortController = null;
+let _inputAreaResizeObserver = null;
+let _layoutResizeCleanup = null;
+let _visualViewportCleanup = null;
 
 /* 兼容性：chatHistory 代理到当前对话 */
 function getChatHistory() {
@@ -93,7 +76,10 @@ const chatArea = document.getElementById('chatArea');
 const chatInput = document.getElementById('chatInput');
 const btnSend = document.getElementById('btnSend');
 const btnClear = document.getElementById('btnClear');
+const btnVoice = document.getElementById('btnVoice');
+const btnStop = document.getElementById('btnStop');
 const charCount = document.getElementById('charCount');
+const inputArea = document.querySelector('.ai-input-area');
 const previewDrawer = document.getElementById('previewDrawer');
 const previewBackdrop = document.getElementById('previewBackdrop');
 const previewTitle = document.getElementById('previewTitle');
@@ -102,23 +88,95 @@ const previewBody = document.getElementById('previewBody');
 const previewOpenBtn = document.getElementById('previewOpenBtn');
 const previewCloseBtn = document.getElementById('previewClose');
 
-const previewState = {
-    requestId: 0,
-    docId: '',
-    query: '',
-    title: '',
-    excerpt: [],
-    activeIndex: 0,
-    matchIndex: -1,
-    hasMatch: false,
-};
+const previewController = createAiPreviewController({
+    previewDrawer,
+    previewBackdrop,
+    previewTitle,
+    previewMeta,
+    previewBody,
+    previewOpenBtn,
+    inputArea,
+    getWenkuDocument,
+});
+
+const voiceController = createAiVoiceController({
+    button: btnVoice,
+    onToast: showAiToast,
+    onResult: (text) => {
+        chatInput.value = text;
+        autoResize();
+        updateCharCount();
+        btnSend.disabled = !chatInput.value.trim();
+        if (!isMobile()) chatInput.focus();
+    },
+    voiceToText,
+});
 
 function init() {
+    setupLayoutSync();
     renderWelcomeOrHistory();
     renderConvList();
     wireEvents();
     syncSystemTheme(THEME_COLORS);
     initOfflineDetection();
+}
+
+function setupLayoutSync() {
+    syncChatBottomOffset();
+    setupInputAreaResizeSync();
+    setupVisualViewportSync();
+}
+
+function syncChatBottomOffset() {
+    if (!chatArea) return;
+    const dockHeight = Math.max(0, Math.ceil(inputArea?.offsetHeight || 0));
+    chatArea.style.setProperty('--ai-chat-bottom-offset', `${dockHeight}px`);
+}
+
+function setupInputAreaResizeSync() {
+    if (!inputArea) return;
+
+    if (typeof ResizeObserver !== 'undefined') {
+        _inputAreaResizeObserver = new ResizeObserver(() => {
+            syncChatBottomOffset();
+        });
+        _inputAreaResizeObserver.observe(inputArea);
+        return;
+    }
+
+    const onResize = () => {
+        syncChatBottomOffset();
+    };
+    window.addEventListener('resize', onResize);
+    _layoutResizeCleanup = () => {
+        window.removeEventListener('resize', onResize);
+    };
+}
+
+function setupVisualViewportSync() {
+    if (!window.visualViewport || !isAndroid()) return;
+
+    const app = document.getElementById('ai-app');
+    if (!app) return;
+
+    const onViewportResize = () => {
+        const vv = window.visualViewport;
+        const offset = Math.max(0, window.innerHeight - vv.height);
+        app.style.height = `${vv.height}px`;
+        app.style.transform = `translateY(${vv.offsetTop}px)`;
+        syncChatBottomOffset();
+        if (offset > 50) scrollToBottom();
+    };
+
+    window.visualViewport.addEventListener('resize', onViewportResize);
+    window.visualViewport.addEventListener('scroll', onViewportResize);
+    _visualViewportCleanup = () => {
+        window.visualViewport.removeEventListener('resize', onViewportResize);
+        window.visualViewport.removeEventListener('scroll', onViewportResize);
+        app.style.height = '';
+        app.style.transform = '';
+    };
+    onViewportResize();
 }
 
 /* --- 事件绑定 --- */
@@ -167,9 +225,9 @@ function wireEvents() {
         }
     });
 
-    previewBackdrop?.addEventListener('click', closeWenkuPreview);
-    previewCloseBtn?.addEventListener('click', closeWenkuPreview);
-    previewBody?.addEventListener('click', handlePreviewBodyClick);
+    previewBackdrop?.addEventListener('click', previewController.closePreview);
+    previewCloseBtn?.addEventListener('click', previewController.closePreview);
+    previewBody?.addEventListener('click', previewController.handleBodyClick);
 
     // 推荐问题点击（事件委托）
     chatArea.addEventListener('click', (e) => {
@@ -191,7 +249,23 @@ function wireEvents() {
             const docId = tag.dataset.docId;
             const query = tag.dataset.query || _lastQuestion;
             if (docId) {
-                openWenkuPreview(docId, query, tag.textContent.trim());
+                previewController.openPreview(docId, query, tag.textContent.trim());
+            }
+            return;
+        }
+
+        const inlineSourceLink = e.target.closest('.ai-inline-source-link');
+        if (inlineSourceLink) {
+            e.preventDefault();
+            const docId = inlineSourceLink.dataset.docId;
+            const query = inlineSourceLink.dataset.query || _lastQuestion;
+            if (docId) {
+                previewController.openPreview(docId, query, inlineSourceLink.textContent.trim());
+                return;
+            }
+            const href = inlineSourceLink.getAttribute('href');
+            if (href) {
+                window.location.href = href;
             }
             return;
         }
@@ -230,24 +304,10 @@ function wireEvents() {
         }
     });
 
-    // Android 虚拟键盘适配：使用 visualViewport 动态调整
-    if (window.visualViewport) {
-        const app = document.getElementById('ai-app');
-        const onViewportResize = () => {
-            const vv = window.visualViewport;
-            const offset = window.innerHeight - vv.height;
-            app.style.height = vv.height + 'px';
-            app.style.transform = `translateY(${vv.offsetTop}px)`;
-            if (offset > 50) scrollToBottom(); // 键盘弹起时自动滚到底
-        };
-        window.visualViewport.addEventListener('resize', onViewportResize);
-        window.visualViewport.addEventListener('scroll', onViewportResize);
-    }
-
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             if (previewDrawer?.classList.contains('open')) {
-                closeWenkuPreview();
+                previewController.closePreview();
                 return;
             }
             if (convDrawer?.classList.contains('open')) {
@@ -255,6 +315,32 @@ function wireEvents() {
             }
         }
     });
+
+    // 粘贴长文本截断提示
+    chatInput.addEventListener('paste', () => {
+        requestAnimationFrame(() => {
+            if (chatInput.value.length >= MAX_INPUT_LEN) {
+                showAiToast(`内容已截断至 ${MAX_INPUT_LEN} 字`);
+            }
+            autoResize();
+            updateCharCount();
+            btnSend.disabled = !chatInput.value.trim();
+        });
+    });
+
+    // 语音输入
+    btnVoice?.addEventListener('click', voiceController.toggle);
+
+    // 停止生成
+    btnStop?.addEventListener('click', () => {
+        if (_streamAbortController) {
+            _streamAbortController.abort();
+            _streamAbortController = null;
+        }
+    });
+
+    // 桌面端自动聚焦（移动端不弹键盘）
+    if (!isMobile()) chatInput.focus();
 }
 
 /* --- 渲染欢迎页或历史记录 --- */
@@ -300,6 +386,26 @@ function attachSourcePreviewQuery(sources, question) {
     }));
 }
 
+function trimConversationMessages(conv) {
+    if (conv?.messages) {
+        conversationStore.trimMessages(conv.messages);
+    }
+}
+
+function setGeneratingUI(active) {
+    if (active) {
+        btnSend.disabled = true;
+        btnSend.classList.add('hidden');
+        btnVoice?.classList.add('hidden');
+        btnStop?.classList.remove('hidden');
+        return;
+    }
+    btnStop?.classList.add('hidden');
+    btnSend.classList.remove('hidden');
+    btnVoice?.classList.remove('hidden');
+    btnSend.disabled = !chatInput.value.trim();
+}
+
 /* --- 提交问题 --- */
 async function handleSubmit(options = {}) {
     const question = (options.question ?? chatInput.value).trim();
@@ -323,15 +429,18 @@ async function handleSubmit(options = {}) {
     chatInput.value = '';
     chatInput.style.height = '';
     updateCharCount();
-    btnSend.disabled = true;
+    setGeneratingUI(true);
     isLoading = true;
+
+    _streamAbortController = new AbortController();
 
     showTyping();
 
+    let msgContent = null;
+    let textEl = null;
+    let fullText = '';
+
     try {
-        let msgContent = null;
-        let textEl = null;
-        let fullText = '';
         const requestHistory = buildRequestHistory(conv.messages, question);
 
         const finalData = await askQuestionStream(
@@ -347,7 +456,8 @@ async function handleSubmit(options = {}) {
                 fullText += token;
                 textEl.textContent = fullText;
                 scrollToBottom();
-            }
+            },
+            { signal: _streamAbortController?.signal }
         );
 
         removeTyping();
@@ -418,7 +528,7 @@ async function handleSubmit(options = {}) {
         // 持久化
         const answer = answerText || '抱歉，AI 暂时无法生成回答。';
         conv.messages.push({ role: 'assistant', content: answer, sources: renderedSources, disclaimer: finalData.disclaimer });
-        if (conv.messages.length > MAX_PERSIST) conv.messages.splice(0, conv.messages.length - MAX_PERSIST);
+        trimConversationMessages(conv);
         if (parentMsg) parentMsg.dataset.messageIndex = String(conv.messages.length - 1);
         conv.updatedAt = Date.now();
         saveConversations();
@@ -426,11 +536,39 @@ async function handleSubmit(options = {}) {
 
     } catch (err) {
         removeTyping();
-        const emptyStream = chatArea.querySelector('.ai-message--bot:last-child .ai-streaming');
-        if (emptyStream && !emptyStream.textContent) emptyStream.closest('.ai-message').remove();
-        addErrorMessage(err.message || '请求失败，请稍后再试', question);
+        const isAborted = err?.name === 'AbortError' || err?.message === '请求已取消';
+        // 用户主动停止：保留已生成内容并格式化
+        if (isAborted && textEl && fullText.trim()) {
+            textEl.classList.remove('ai-streaming');
+            const { cleanText } = extractFollowUps(fullText);
+            const partialText = cleanText.trim();
+            textEl.innerHTML = formatAnswer(partialText);
+            const parentMsg = textEl.closest('.ai-message');
+            if (parentMsg) {
+                const actions = buildMsgActions();
+                const time = document.createElement('time');
+                time.className = 'ai-msg-time';
+                time.textContent = formatMsgTime(new Date()) + '（已停止）';
+                actions.prepend(time);
+                parentMsg.appendChild(actions);
+            }
+            conv.messages.push({ role: 'assistant', content: partialText });
+            trimConversationMessages(conv);
+            conv.updatedAt = Date.now();
+            saveConversations();
+            scrollToBottom();
+        } else {
+            const emptyStream = chatArea.querySelector('.ai-message--bot:last-child .ai-streaming');
+            if (emptyStream && !emptyStream.textContent) emptyStream.closest('.ai-message').remove();
+            if (!isAborted) {
+                addErrorMessage(err.message || '请求失败，请稍后再试', question);
+            }
+        }
     } finally {
         isLoading = false;
+        _streamAbortController = null;
+        setGeneratingUI(false);
+        if (!isMobile()) chatInput.focus();
     }
 }
 
@@ -541,7 +679,7 @@ function createStreamingMessage() {
 function showTyping() {
     const el = document.createElement('div');
     el.className = 'ai-message ai-message--bot ai-typing-msg';
-    el.innerHTML = '<div class="ai-typing"><span class="ai-typing-dot"></span><span>参悟中...</span></div>';
+    el.innerHTML = '<div class="ai-typing"><span class="ai-typing-dot"></span><span class="ai-typing-dot"></span><span class="ai-typing-dot"></span></div>';
     chatArea.appendChild(el);
     scrollToBottom();
 }
@@ -592,503 +730,11 @@ function buildRequestHistory(messages, question) {
     return history;
 }
 
-function buildWenkuUrl(docId, query) {
-    return `/wenku?doc=${encodeURIComponent(docId)}${query ? `&q=${encodeURIComponent(query)}` : ''}`;
-}
-
-async function openWenkuPreview(docId, query, fallbackTitle = '') {
-    if (!previewDrawer || !previewBody || !previewOpenBtn) {
-        window.location.href = buildWenkuUrl(docId, query);
-        return;
-    }
-
-    const requestId = Date.now();
-    previewState.requestId = requestId;
-    previewState.docId = docId;
-    previewState.query = query || '';
-    previewState.title = fallbackTitle || '';
-    previewState.excerpt = [];
-    previewState.activeIndex = 0;
-    previewState.matchIndex = -1;
-    previewState.hasMatch = false;
-
-    previewDrawer.classList.add('open');
-    previewBackdrop?.classList.add('open');
-    previewDrawer.setAttribute('aria-hidden', 'false');
-    previewTitle.textContent = fallbackTitle || '文库引用';
-    previewMeta.textContent = '正在提取原文片段…';
-    previewBody.innerHTML = buildPreviewSkeleton();
-    previewOpenBtn.href = buildWenkuUrl(docId, query);
-
-    try {
-        const data = await getWenkuDocument(docId);
-        if (previewState.requestId !== requestId) return;
-
-        const doc = data?.document;
-        if (!doc) throw new Error('文稿加载失败');
-
-        previewTitle.textContent = doc.title || fallbackTitle || '文库引用';
-        previewMeta.textContent = buildPreviewMeta(doc);
-        const previewData = buildPreviewData(doc, query);
-        previewState.title = doc.title || fallbackTitle || '文库引用';
-        previewState.excerpt = previewData.excerpt;
-        previewState.matchIndex = previewData.matchIndex;
-        previewState.hasMatch = previewData.hasMatch;
-        previewState.activeIndex = previewData.matchIndex >= 0 ? previewData.matchIndex : 0;
-        renderPreviewView();
-        previewBody.scrollTop = 0;
-        previewOpenBtn.href = buildWenkuUrl(docId, query);
-    } catch (_error) {
-        if (previewState.requestId !== requestId) return;
-        previewMeta.textContent = '暂时无法提取引用原文';
-        previewBody.innerHTML = `
-            <div class="ai-preview-state ai-preview-state--error">
-                <p>当前无法在 AI 页内加载这篇讲记的预览。</p>
-                <p>你仍可直接进入文库独立页阅读全文。</p>
-            </div>`;
-        previewOpenBtn.href = buildWenkuUrl(docId, query);
-    }
-}
-
-function closeWenkuPreview() {
-    previewDrawer?.classList.remove('open');
-    previewBackdrop?.classList.remove('open');
-    previewDrawer?.setAttribute('aria-hidden', 'true');
-}
-
-function handlePreviewBodyClick(e) {
-    const button = e.target.closest('[data-preview-action]');
-    if (!button) return;
-
-    const action = button.dataset.previewAction;
-    if (action === 'prev' && previewState.activeIndex > 0) {
-        previewState.activeIndex -= 1;
-        renderPreviewView();
-    } else if (action === 'next' && previewState.activeIndex < previewState.excerpt.length - 1) {
-        previewState.activeIndex += 1;
-        renderPreviewView();
-    } else if (action === 'focus' && previewState.matchIndex >= 0) {
-        previewState.activeIndex = previewState.matchIndex;
-        renderPreviewView();
-    }
-}
-
-function buildPreviewMeta(doc) {
-    const parts = [];
-    if (doc.series_name) parts.push(doc.series_name);
-    if (Number.isFinite(Number(doc.episode_num)) && Number(doc.episode_num) > 0) {
-        parts.push(`第 ${Number(doc.episode_num)} 讲`);
-    }
-    return parts.join(' · ') || '大安法师讲记';
-}
-
-function buildPreviewSkeleton() {
-    return `
-        <div class="ai-preview-skeleton">
-            <div class="ai-preview-skeleton-line"></div>
-            <div class="ai-preview-skeleton-line"></div>
-            <div class="ai-preview-skeleton-line ai-preview-skeleton-line--short"></div>
-            <div class="ai-preview-skeleton-block"></div>
-            <div class="ai-preview-skeleton-line"></div>
-            <div class="ai-preview-skeleton-line ai-preview-skeleton-line--mid"></div>
-        </div>`;
-}
-
-function buildPreviewData(doc, query) {
-    const paragraphs = splitPreviewParagraphs(doc.content || '');
-    const terms = getPreviewTerms(query);
-    const excerpt = pickPreviewExcerpt(paragraphs, terms);
-    const hasMatch = excerpt.some(item => item.isMatch);
-
-    return {
-        excerpt: excerpt.map(item => ({
-            ...item,
-            focusText: extractFocusSentence(item.text, terms),
-            terms,
-        })),
-        hasMatch,
-        matchIndex: excerpt.findIndex(item => item.isMatch),
-    };
-}
-
-function renderPreviewView() {
-    if (!previewBody) return;
-
-    const excerpt = previewState.excerpt || [];
-    const current = excerpt[previewState.activeIndex];
-
-    if (!current) {
-        previewBody.innerHTML = `
-            <div class="ai-preview-state">
-                <p>这篇讲记暂时没有可展示的段落预览。</p>
-            </div>`;
-        return;
-    }
-
-    const hasMatch = previewState.hasMatch;
-    const canPrev = previewState.activeIndex > 0;
-    const canNext = previewState.activeIndex < excerpt.length - 1;
-    const sectionLabel = current.isMatch
-        ? '当前片段'
-        : previewState.activeIndex < (previewState.matchIndex >= 0 ? previewState.matchIndex : 1)
-            ? '前文'
-            : '后文';
-
-    previewBody.innerHTML = `
-        <div class="ai-preview-summary">
-            <span class="ai-preview-badge">${hasMatch ? '相关原文' : '相关内容'}</span>
-            <p class="ai-preview-tip">${hasMatch ? '已为你找到相关原文。' : '先为你展示相关内容。'}</p>
-        </div>
-        <div class="ai-preview-quote-card">
-            <div class="ai-preview-quote-head">
-                <span class="ai-preview-quote-kicker">${sectionLabel}</span>
-                <span class="ai-preview-quote-index">${previewState.activeIndex + 1} / ${excerpt.length}</span>
-            </div>
-            ${current.focusText ? `<blockquote class="ai-preview-focusquote">${renderHighlightedParagraph(current.focusText, current.terms)}</blockquote>` : ''}
-            <div class="ai-preview-excerpt">
-                <p>${renderHighlightedParagraph(current.text, current.terms)}</p>
-            </div>
-        </div>
-        <div class="ai-preview-nav">
-            <button class="ai-preview-nav-btn" data-preview-action="prev" ${canPrev ? '' : 'disabled'}>上一段</button>
-            ${hasMatch ? `<button class="ai-preview-nav-btn ai-preview-nav-btn--accent" data-preview-action="focus" ${current.isMatch ? 'disabled' : ''}>回到相关片段</button>` : ''}
-            <button class="ai-preview-nav-btn" data-preview-action="next" ${canNext ? '' : 'disabled'}>下一段</button>
-        </div>`;
-
-    previewBody.scrollTop = 0;
-}
-
-function extractFocusSentence(text, terms) {
-    if (!text) return '';
-    if (!terms.length) return text.length > 66 ? text.slice(0, 66) + '…' : text;
-
-    const sentences = text.split(/(?<=[。！？!?])/).map(item => item.trim()).filter(Boolean);
-    const hit = sentences.find(sentence => terms.some(term => sentence.includes(term)));
-    if (hit) return hit;
-    return text.length > 66 ? text.slice(0, 66) + '…' : text;
-}
-
-function splitPreviewParagraphs(text) {
-    const blocks = String(text || '')
-        .replace(/\r\n/g, '\n')
-        .split(/\n\n+/)
-        .map(item => item.replace(/\s+/g, ' ').trim())
-        .filter(Boolean);
-
-    return blocks.flatMap(splitLongPreviewBlock);
-}
-
-function splitLongPreviewBlock(text) {
-    const maxPreviewChars = 360;
-    if (text.length <= maxPreviewChars) return [text];
-
-    const sentences = text
-        .split(/(?<=[。！？!?])/)
-        .map(item => item.trim())
-        .filter(Boolean);
-
-    if (sentences.length <= 1) {
-        return hardSplitPreviewBlock(text, maxPreviewChars);
-    }
-
-    const chunks = [];
-    let current = '';
-
-    for (const sentence of sentences) {
-        if (!current) {
-            current = sentence;
-            continue;
-        }
-
-        if ((current + sentence).length <= maxPreviewChars) {
-            current += sentence;
-            continue;
-        }
-
-        chunks.push(current);
-        current = sentence;
-    }
-
-    if (current) chunks.push(current);
-
-    return chunks.flatMap(chunk => chunk.length > maxPreviewChars ? hardSplitPreviewBlock(chunk, maxPreviewChars) : [chunk]);
-}
-
-function hardSplitPreviewBlock(text, maxChars) {
-    const chunks = [];
-    for (let start = 0; start < text.length; start += maxChars) {
-        chunks.push(text.slice(start, start + maxChars).trim());
-    }
-    return chunks.filter(Boolean);
-}
-
-function getPreviewTerms(query) {
-    const raw = String(query || '').trim();
-    if (!raw) return [];
-
-    const parts = raw
-        .split(/[\s，。！？、；：,.!?()[\]【】《》“”"'‘’/\\|+-]+/)
-        .map(item => item.trim())
-        .filter(item => item.length >= 2);
-
-    const merged = parts.length ? parts : [raw];
-    const unique = [];
-    for (const item of merged) {
-        if (item.length < 2) continue;
-        if (!unique.includes(item)) unique.push(item);
-        if (unique.length >= 6) break;
-    }
-    return unique;
-}
-
-function pickPreviewExcerpt(paragraphs, terms) {
-    if (!paragraphs.length) return [];
-
-    const matchIndex = paragraphs.findIndex(paragraph => {
-        if (!terms.length) return false;
-        return terms.some(term => paragraph.includes(term));
-    });
-
-    if (matchIndex >= 0) {
-        const start = Math.max(0, matchIndex - 1);
-        const end = Math.min(paragraphs.length, matchIndex + 2);
-        return paragraphs.slice(start, end).map((text, index) => ({
-            text,
-            isMatch: start + index === matchIndex,
-        }));
-    }
-
-    return paragraphs.slice(0, 3).map(text => ({ text, isMatch: false }));
-}
-
-function renderHighlightedParagraph(text, terms) {
-    if (!terms.length) return escapeHtml(text);
-
-    const regex = new RegExp(`(${terms.map(escapeRegExp).join('|')})`, 'g');
-    return text
-        .split(regex)
-        .map(segment => {
-            if (!segment) return '';
-            return terms.includes(segment)
-                ? `<mark>${escapeHtml(segment)}</mark>`
-                : escapeHtml(segment);
-        })
-        .join('');
-}
-
-function escapeRegExp(value) {
-    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-const STOP_WORDS_RE = /什么|怎么|怎样|如何|为什么|哪些|哪个|可以|能够|应该|是不是|有没有|到底|究竟|请问|的|了|吗|呢|吧|啊|在|是|有|和|与|或|也|都|就|把|被|对|又|要|让|给|从|用|以|而|但|却|不|很|最|更|还|这|那|它|你|我|他|她|们|个|着/g;
-
-function extractHighlightQuery(question) {
-    if (!question) return '';
-    STOP_WORDS_RE.lastIndex = 0;
-    const cleaned = question.replace(STOP_WORDS_RE, ' ').replace(/\s+/g, ' ').trim();
-    return cleaned || question;
-}
-
-/* --- 文本格式化（轻量 Markdown） --- */
-function formatAnswer(text) {
-    if (!text) return '';
-    const lines = text.split('\n');
-    let html = '';
-    let inQuote = false;
-    let inList = false;  // ul
-    let inOl = false;    // ol
-    let inCode = false;
-    let codeLang = '';
-
-    for (const raw of lines) {
-        const line = raw.trimEnd();
-        const trimmed = line.trim();
-
-        // 代码块 ```
-        if (trimmed.startsWith('```')) {
-            if (inCode) {
-                html += '</code></pre>';
-                inCode = false;
-                codeLang = '';
-            } else {
-                closeLists();
-                if (inQuote) { html += '</blockquote>'; inQuote = false; }
-                codeLang = trimmed.slice(3).trim();
-                html += `<pre class="ai-code-block"><code${codeLang ? ` class="lang-${escapeHtml(codeLang)}"` : ''}>`;
-                inCode = true;
-            }
-            continue;
-        }
-        if (inCode) {
-            html += escapeHtml(line) + '\n';
-            continue;
-        }
-
-        // 空行
-        if (!trimmed) {
-            closeLists();
-            if (inQuote) { html += '</blockquote>'; inQuote = false; }
-            continue;
-        }
-
-        // 标题 ## 
-        const headMatch = trimmed.match(/^(#{1,4})\s+(.+)/);
-        if (headMatch) {
-            closeLists();
-            if (inQuote) { html += '</blockquote>'; inQuote = false; }
-            const level = Math.min(headMatch[1].length + 2, 6); // ##→h4, ###→h5
-            html += `<h${level}>${inlineFormat(headMatch[2])}</h${level}>`;
-            continue;
-        }
-
-        // 无序列表 - / * / •
-        const ulMatch = trimmed.match(/^[-*•]\s+(.+)/);
-        if (ulMatch) {
-            if (inOl) { html += '</ol>'; inOl = false; }
-            if (!inList) { html += '<ul>'; inList = true; }
-            html += `<li>${inlineFormat(ulMatch[1])}</li>`;
-            continue;
-        }
-
-        // 有序列表 1. 
-        const olMatch = trimmed.match(/^\d+[.)]\s+(.+)/);
-        if (olMatch) {
-            if (inList) { html += '</ul>'; inList = false; }
-            if (!inOl) { html += '<ol>'; inOl = true; }
-            html += `<li>${inlineFormat(olMatch[1])}</li>`;
-            continue;
-        }
-
-        closeLists();
-
-        // 引用 > 或中文引号开头
-        const bqMatch = trimmed.match(/^>\s*(.*)/);
-        const isQuoteLine = bqMatch || /^[\u201C\u201D"\u300A""]/.test(trimmed);
-        const isSourceLine = /^[\u2014\u2500\-]{1,3}/.test(trimmed);
-
-        if (isQuoteLine) {
-            if (!inQuote) { html += '<blockquote>'; inQuote = true; }
-            html += `<p>${inlineFormat(bqMatch ? bqMatch[1] : trimmed)}</p>`;
-        } else if (isSourceLine && inQuote) {
-            html += `<cite>${escapeHtml(trimmed)}</cite></blockquote>`;
-            inQuote = false;
-        } else {
-            if (inQuote) { html += '</blockquote>'; inQuote = false; }
-            html += `<p>${inlineFormat(trimmed)}</p>`;
-        }
-    }
-
-    if (inCode) html += '</code></pre>';
-    closeLists();
-    if (inQuote) html += '</blockquote>';
-    return html;
-
-    function closeLists() {
-        if (inList) { html += '</ul>'; inList = false; }
-        if (inOl) { html += '</ol>'; inOl = false; }
-    }
-}
-
-/** 行内格式化：加粗、斜体、行内代码、链接 */
-function inlineFormat(text) {
-    let s = escapeHtml(text);
-    // 行内代码 `code`
-    s = s.replace(/`([^`]+)`/g, '<code class="ai-inline-code">$1</code>');
-    // 加粗 **text**
-    s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    // 斜体 *text*
-    s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    // 链接 [text](url)
-    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, href) => {
-        const safeHref = sanitizeMarkdownHref(decodeHtmlEntities(href));
-        if (!safeHref) return label;
-        return `<a href="${escapeHtml(safeHref)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
-    });
-    return s;
-}
-
-function extractFollowUps(text) {
-    const match = text.match(/\[FOLLOWUP\](.*?)\[\/FOLLOWUP\]/s);
-    if (!match) return { cleanText: text, followUps: [] };
-    const cleanText = text.replace(/\[FOLLOWUP\].*?\[\/FOLLOWUP\]/s, '').trim();
-    const followUps = match[1].split('|').map(q => q.trim()).filter(q => q.length > 0 && q.length < 100);
-    return { cleanText, followUps };
-}
-
-/* --- 欢迎页 HTML --- */
-function buildWelcomeHTML() {
-    return `
-    <div class="ai-welcome">
-      <svg class="ai-welcome-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 4c-1.5 2.5-2 5-2 7.5s.5 4 2 5c1.5-1 2-2.5 2-5s-.5-5-2-7.5z"/>
-        <path d="M7.5 8c-2 1-3.5 3.5-3.5 6.5 0 1 .4 2 1.5 2.5"/>
-        <path d="M16.5 8c2 1 3.5 3.5 3.5 6.5 0 1-.4 2-1.5 2.5"/>
-        <path d="M9.5 7.5c-1.5.5-2.5 2-3 4"/>
-        <path d="M14.5 7.5c1.5.5 2.5 2 3 4"/>
-        <line x1="12" y1="16.5" x2="12" y2="20"/>
-        <path d="M9.5 20c.7-.5 1.6-.5 2.5 0 .9-.5 1.8-.5 2.5 0"/>
-      </svg>
-      <h1>法音AI</h1>
-      <p>基于大安法师讲经内容，为您解答净土法门相关问题。回答引用法音文库原文出处。</p>
-    </div>
-    <div class="ai-suggestions">
-      <p class="ai-suggestions-label">试试这些问题</p>
-      <div class="ai-suggestions-grid">
-        <button class="ai-suggest-chip ai-suggest-card">什么是念佛法门</button>
-        <button class="ai-suggest-chip ai-suggest-card">如何往生净土</button>
-        <button class="ai-suggest-chip ai-suggest-card">信愿行是什么</button>
-        <button class="ai-suggest-chip ai-suggest-card">临终助念方法</button>
-      </div>
-    </div>`;
-}
-
-/* --- 工具函数 --- */
-function escapeHtml(str) {
-    if (!str) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-
-function decodeHtmlEntities(str) {
-    return String(str)
-        .replace(/&amp;/g, '&')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>');
-}
-
-function sanitizeMarkdownHref(href) {
-    const value = String(href || '').trim();
-    if (!value) return '';
-
-    if (value.startsWith('#') || value.startsWith('?') || value.startsWith('/')) {
-        return value;
-    }
-
-    if (value.startsWith('./') || value.startsWith('../')) {
-        return value;
-    }
-
-    try {
-        const parsed = new URL(value, window.location.origin);
-        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-            return parsed.href;
-        }
-    } catch {
-        return '';
-    }
-
-    return '';
-}
 
 function autoResize() {
     chatInput.style.height = 'auto';
     chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+    syncChatBottomOffset();
 }
 
 let _scrollRafPending = false;
@@ -1248,7 +894,7 @@ function closeConvDrawer() {
 })();
 
 function startNewConversation() {
-    const conv = { id: generateId(), title: '', messages: [], updatedAt: Date.now() };
+    const conv = conversationStore.createConversation();
     conversations.unshift(conv);
     activeConvId = conv.id;
     if (conversations.length > MAX_CONVERSATIONS) conversations.length = MAX_CONVERSATIONS;
@@ -1332,8 +978,32 @@ function showAiToast(msg) {
     el._timer = setTimeout(() => { el.style.opacity = '0'; }, 2000);
 }
 
+/* --- 移动端检测 --- */
+function isMobile() {
+    return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || ('ontouchstart' in window && window.innerWidth < 768);
+}
+
+function isAndroid() {
+    return /Android/i.test(navigator.userAgent);
+}
+
+function cleanupAiPage() {
+    if (_streamAbortController) {
+        _streamAbortController.abort();
+        _streamAbortController = null;
+    }
+    _inputAreaResizeObserver?.disconnect();
+    _inputAreaResizeObserver = null;
+    _layoutResizeCleanup?.();
+    _layoutResizeCleanup = null;
+    _visualViewportCleanup?.();
+    _visualViewportCleanup = null;
+    previewController.destroy();
+}
+
 /* --- 初始化 --- */
 init();
+window.addEventListener('pagehide', cleanupAiPage, { once: true });
 /* --- 离线检测 --- */
 function initOfflineDetection() {
     const updateOnlineStatus = () => {

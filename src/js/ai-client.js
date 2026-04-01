@@ -3,14 +3,40 @@
 const AI_BASE = '/api/ai';
 const AI_TIMEOUT = 60000; // #19: 60s — AI operations (RAG, summary) need more time
 
+function createAbortContext(timeoutMs, externalSignal) {
+  const controller = new AbortController();
+  let didTimeout = false;
+  const timer = setTimeout(() => {
+    didTimeout = true;
+    controller.abort();
+  }, timeoutMs);
+
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort();
+    else externalSignal.addEventListener('abort', () => controller.abort(), { once: true });
+  }
+
+  return {
+    controller,
+    didTimeout: () => didTimeout,
+    clear: () => clearTimeout(timer),
+  };
+}
+
+function rethrowAbortError(err, didTimeout, timeoutMessage) {
+  if (err.name !== 'AbortError') throw err;
+  const nextErr = new Error(didTimeout ? timeoutMessage : '请求已取消');
+  nextErr.name = didTimeout ? 'TimeoutError' : 'AbortError';
+  throw nextErr;
+}
+
 /**
  * 带超时和安全 JSON 解析的 fetch
  */
 async function aiFetch(url, options = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT);
+  const abortCtx = createAbortContext(AI_TIMEOUT);
   try {
-    const res = await fetch(url, { ...options, signal: controller.signal });
+    const res = await fetch(url, { ...options, signal: abortCtx.controller.signal });
     let data;
     try {
       data = await res.json();
@@ -20,10 +46,10 @@ async function aiFetch(url, options = {}) {
     if (!res.ok) throw new Error(data.error || `请求失败 (${res.status})`);
     return data;
   } catch (err) {
-    if (err.name === 'AbortError') throw new Error('请求超时，请稍后再试');
+    rethrowAbortError(err, abortCtx.didTimeout(), '请求超时，请稍后再试');
     throw err;
   } finally {
-    clearTimeout(timer);
+    abortCtx.clear();
   }
 }
 
@@ -45,16 +71,15 @@ export async function askQuestion(question, context = {}) {
  * @param {function} onToken - 回调，每收到一个 token 调用: onToken(tokenStr)
  * @returns {Promise<{ sources, disclaimer, answer, followUps }>} 流结束后返回最终数据
  */
-export async function askQuestionStream(question, context = {}, onToken) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT);
+export async function askQuestionStream(question, context = {}, onToken, options = {}) {
+  const abortCtx = createAbortContext(AI_TIMEOUT, options.signal);
 
   try {
     const res = await fetch(`${AI_BASE}/ask-stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ question, ...context }),
-      signal: controller.signal,
+      signal: abortCtx.controller.signal,
     });
 
     // Non-SSE response means an error or non-stream fallback
@@ -119,10 +144,10 @@ export async function askQuestionStream(question, context = {}, onToken) {
 
     return finalData;
   } catch (err) {
-    if (err.name === 'AbortError') throw new Error('请求超时，请稍后再试');
+    rethrowAbortError(err, abortCtx.didTimeout(), '请求超时，请稍后再试');
     throw err;
   } finally {
-    clearTimeout(timer);
+    abortCtx.clear();
   }
 }
 
@@ -172,24 +197,23 @@ export async function getDailyRecommendation() {
  * @returns {{ text: string }}
  */
 export async function voiceToText(audioBlob) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT);
+  const abortCtx = createAbortContext(AI_TIMEOUT);
   try {
     const res = await fetch(`${AI_BASE}/voice-to-text`, {
       method: 'POST',
       headers: { 'Content-Type': audioBlob.type || 'audio/webm' },
       body: audioBlob,
-      signal: controller.signal,
+      signal: abortCtx.controller.signal,
     });
     let data;
     try { data = await res.json(); } catch { throw new Error('语音识别失败'); }
     if (!res.ok) throw new Error(data.error || '语音识别失败');
     return data;
   } catch (err) {
-    if (err.name === 'AbortError') throw new Error('语音识别超时');
+    rethrowAbortError(err, abortCtx.didTimeout(), '语音识别超时');
     throw err;
   } finally {
-    clearTimeout(timer);
+    abortCtx.clear();
   }
 }
 
