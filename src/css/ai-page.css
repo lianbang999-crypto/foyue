@@ -1008,7 +1008,7 @@ body {
 /* --- 文库轻量预览抽屉 --- */
 .ai-preview-backdrop {
     position: fixed;
-    inset: 0 0 var(--ai-preview-dock-offset) 0;
+    inset: 0 0 var(--ai-preview-dock-offset, 0px) 0;
     z-index: 94;
     background: rgba(18, 14, 12, 0.38);
     opacity: 0;
@@ -1025,7 +1025,7 @@ body {
     position: fixed;
     left: 0;
     right: 0;
-    bottom: var(--ai-preview-dock-offset);
+    bottom: var(--ai-preview-dock-offset, 0px);
     z-index: 95;
     display: flex;
     flex-direction: column;
@@ -1033,7 +1033,7 @@ body {
     max-width: 720px;
     margin: 0 auto;
     min-height: 42vh;
-    max-height: min(720px, 72vh, calc(100dvh - var(--ai-preview-dock-offset) - 24px));
+    max-height: min(720px, 72vh, calc(100dvh - var(--ai-preview-dock-offset, 0px) - 24px));
     padding: 10px 16px 16px;
     padding-bottom: calc(16px + var(--ai-safe-bottom));
     background: color-mix(in srgb, var(--ai-bg) 94%, transparent 6%);

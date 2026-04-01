@@ -10,6 +10,7 @@ import { getPlayCount, appreciate } from './api.js';
 import { showToast, escapeHtml, showFloatText, fmtCount, fmtDuration } from './utils.js';
 import { getBatchCachedStatus } from './audio-cache.js';
 import { mountSummary } from './ai-summary.js';
+import { getRememberedState, initCollapsibleButton, mountListCollapsible } from './collapsible.js';
 import { probeDurations, getCachedDuration } from './duration-cache.js';
 import { isInAppBrowser } from './pwa.js';
 // import { mountTranscript } from './transcript.js';
@@ -187,6 +188,22 @@ function buildToggleMeta(visibleCount, totalCount, expanded, unit, noun = '') {
   return `当前先显示 ${visibleCount} / ${totalCount} ${suffix}`;
 }
 
+// 构建单个系列卡片 DOM 元素
+function buildSeriesCard(s, idx, tabId, unit, nowSid) {
+  const card = document.createElement('div');
+  const isPlaying = s.id === nowSid;
+  const staggerCls = idx < 6 ? ` stagger-${Math.min(idx + 1, 4)}` : '';
+  card.className = 'card' + (isPlaying ? ' now-playing' : '') + staggerCls;
+  const introHtml = s.intro ? `<div class="card-intro">${escapeHtml(s.intro)}</div>` : '';
+  const playTag = isPlaying ? `<span class="card-playing-tag">${t('now_playing')}</span>` : '';
+  const playCountText = s.playCount ? ` \u00B7 ${fmtCount(s.playCount)}${t('play_count_unit') || '\u6B21'}` : '';
+  card.innerHTML = `<div class="card-icon">${CATEGORY_ICONS[tabId] || CATEGORY_ICONS.tingjingtai}</div>
+      <div class="card-body"><div class="card-title">${escapeHtml(s.title)}${playTag}</div>${introHtml}<div class="card-meta">${escapeHtml(s.speaker || '')} \u00B7 ${s.totalEpisodes} ${unit}${playCountText}</div></div>
+      <span class="card-arrow"><svg viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg></span>`;
+  card.addEventListener('click', () => showEpisodes(s, tabId));
+  return card;
+}
+
 export function renderCategory(tabId) {
   beginContentRequest();
   const dom = getDOM();
@@ -201,7 +218,9 @@ export function renderCategory(tabId) {
   const unit = tabId === 'fohao' ? t('tracks') : t('episodes');
   const nowTrack = getCurrentTrack();
   const nowSid = nowTrack ? nowTrack.seriesId : null;
-  const expanded = categoryExpansionState.get(tabId) === true;
+  let expanded = categoryExpansionState.get(tabId) === true;
+  const _memCat = getRememberedState(`category:${tabId}`);
+  if (_memCat !== null) expanded = !!_memCat;
   const visibleCount = expanded
     ? cat.series.length
     : getCollapsedSeriesCount(cat.series, nowSid);
@@ -209,35 +228,34 @@ export function renderCategory(tabId) {
   list.classList.toggle('is-collapsed', !expanded && cat.series.length > visibleCount);
 
   visibleSeries.forEach((s, idx) => {
-    const card = document.createElement('div');
-    const isPlaying = s.id === nowSid;
-    const staggerCls = idx < 6 ? ` stagger-${Math.min(idx + 1, 4)}` : '';
-    card.className = 'card' + (isPlaying ? ' now-playing' : '') + staggerCls;
-    const introHtml = s.intro ? `<div class="card-intro">${escapeHtml(s.intro)}</div>` : '';
-    const playTag = isPlaying ? `<span class="card-playing-tag">${t('now_playing')}</span>` : '';
-    const playCountText = s.playCount ? ` \u00B7 ${fmtCount(s.playCount)}${t('play_count_unit') || '\u6B21'}` : '';
-    card.innerHTML = `<div class="card-icon">${CATEGORY_ICONS[tabId] || CATEGORY_ICONS.tingjingtai}</div>
-      <div class="card-body"><div class="card-title">${escapeHtml(s.title)}${playTag}</div>${introHtml}<div class="card-meta">${escapeHtml(s.speaker || '')} \u00B7 ${s.totalEpisodes} ${unit}${playCountText}</div></div>
-      <span class="card-arrow"><svg viewBox="0 0 24 24"><polyline points="9,6 15,12 9,18"/></svg></span>`;
-    card.addEventListener('click', () => showEpisodes(s, tabId));
-    list.appendChild(card);
+    list.appendChild(buildSeriesCard(s, idx, tabId, unit, nowSid));
   });
   wrap.appendChild(list);
 
   if (cat.series.length > CATEGORY_PREVIEW_COUNT) {
+    const extraSeries = cat.series.slice(visibleCount);
+
+    // 溢出容器：多余的系列卡片在此懒渲染，收起时 max-height:0
+    const overflow = document.createElement('div');
+    overflow.className = 'series-list-overflow';
+    wrap.appendChild(overflow);
+
     const toggleWrap = document.createElement('div');
     toggleWrap.className = 'series-list-toggle-wrap';
     const toggleMeta = document.createElement('div');
     toggleMeta.className = 'series-list-toggle-meta';
-    toggleMeta.textContent = buildToggleMeta(visibleCount, cat.series.length, expanded, '部', '专辑');
     const toggleBtn = document.createElement('button');
     toggleBtn.type = 'button';
     toggleBtn.className = 'series-list-toggle';
-    toggleBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-    toggleBtn.textContent = buildToggleLabel(visibleCount, cat.series.length, expanded, '专辑', '部');
-    toggleBtn.addEventListener('click', () => {
-      categoryExpansionState.set(tabId, !expanded);
-      renderCategory(tabId);
+
+    mountListCollapsible(list, overflow, toggleBtn, toggleMeta, {
+      initialExpanded: expanded,
+      rememberKey: `category:${tabId}`,
+      extraItems: extraSeries,
+      renderItem: (s, i) => buildSeriesCard(s, visibleCount + i, tabId, unit, nowSid),
+      labelFn: (exp) => buildToggleLabel(visibleCount, cat.series.length, exp, '专辑', '部'),
+      metaFn: (exp) => buildToggleMeta(visibleCount, cat.series.length, exp, '部', '专辑'),
+      onStateChange: (newExp) => { categoryExpansionState.set(tabId, newExp); },
     });
     toggleWrap.appendChild(toggleMeta);
     toggleWrap.appendChild(toggleBtn);
@@ -357,6 +375,10 @@ export async function showEpisodes(series, tabId) {
     playList(series.episodes, idx, series, resumeTime);
   });
 
+  // 溢出容器及折叠控制器引用（由下方 mountListCollapsible 赋值）
+  let epOverflow = null;
+  let episodeCollapsible = null;
+
   // 优化：只切换前一个和当前正在播放的两个元素的 class，而非遍历 151 个 ep-item
   let _prevHighlightIdx = -1;
   updateHighlight = () => {
@@ -372,11 +394,11 @@ export async function showEpisodes(series, tabId) {
       if (tr && tr.seriesId === series.id) newIdx = state.epIdx;
     }
     if (newIdx >= 0) {
-      let newEl = getEpisodeItem(ul, newIdx);
-      if (!newEl && series.episodes.length > EPISODE_PREVIEW_COUNT && episodeExpansionState.get(series.id) !== true) {
-        episodeExpansionState.set(series.id, true);
-        showEpisodes(series, tabId);
-        return;
+      let newEl = getEpisodeItem(ul, newIdx) || (epOverflow ? getEpisodeItem(epOverflow, newIdx) : null);
+      if (!newEl && episodeCollapsible && !episodeCollapsible.getState()) {
+        // 正在播放的集数被折叠隐藏：展开而非全量重渲染
+        episodeCollapsible.setState(true);
+        newEl = getEpisodeItem(ul, newIdx) || (epOverflow ? getEpisodeItem(epOverflow, newIdx) : null);
       }
       if (newEl) newEl.classList.add('playing');
     }
@@ -392,34 +414,67 @@ export async function showEpisodes(series, tabId) {
     const entry = findHistoryEntryForEpisode(hist, series, episodeIdx);
     if (entry) histMap.set(episodeIdx, entry);
   });
-  const episodesExpanded = episodeExpansionState.get(series.id) === true;
-  const visibleEpisodeCount = episodesExpanded
-    ? series.episodes.length
-    : getCollapsedEpisodeCount(series, hist);
-  ul.classList.toggle('is-collapsed', !episodesExpanded && series.episodes.length > visibleEpisodeCount);
-  if (series.episodes.length > EPISODE_PREVIEW_COUNT) {
+  let episodesExpanded = episodeExpansionState.get(series.id) === true;
+  const _memEp = getRememberedState(`episode:${series.id}`);
+  if (_memEp !== null) episodesExpanded = !!_memEp;
+  // 折叠时显示的集数（始终以此为基准渲染 ul；展开部分进入 overflow 容器）
+  const visibleEpisodeCount = getCollapsedEpisodeCount(series, hist);
+  const canCollapseEpisodes = series.episodes.length > EPISODE_PREVIEW_COUNT && series.episodes.length > visibleEpisodeCount;
+  ul.classList.toggle('is-collapsed', !episodesExpanded && canCollapseEpisodes);
+
+  if (canCollapseEpisodes) {
+    const extraEpisodes = series.episodes.slice(visibleEpisodeCount);
+
+    // 溢出容器：多余集数懒渲染于此，收起时保留 DOM 以便高亮查找
+    epOverflow = document.createElement('ul');
+    epOverflow.className = 'ep-list';
+    view.appendChild(epOverflow);
+
+    // 事件委托：overflow 容器内的集数点击处理
+    epOverflow.addEventListener('click', (e) => {
+      const li = e.target.closest('.ep-item');
+      if (!li) return;
+      const idx = parseInt(li.dataset.idx, 10);
+      if (isNaN(idx)) return;
+      if (isCurrentTrack(series.id, idx)) { togglePlay(); return; }
+      const hist = getHistory();
+      const entry = findHistoryEntryForEpisode(hist, series, idx);
+      const resumeTime = (entry && entry.time > 5 && (!entry.duration || entry.time < entry.duration - 5)) ? entry.time : 0;
+      playList(series.episodes, idx, series, resumeTime);
+    });
+
     const toggleWrap = document.createElement('div');
     toggleWrap.className = 'series-list-toggle-wrap';
     const toggleMeta = document.createElement('div');
     toggleMeta.className = 'series-list-toggle-meta';
-    toggleMeta.textContent = buildToggleMeta(visibleEpisodeCount, series.episodes.length, episodesExpanded, '集');
     const toggleBtn = document.createElement('button');
     toggleBtn.type = 'button';
     toggleBtn.className = 'series-list-toggle';
-    toggleBtn.setAttribute('aria-expanded', episodesExpanded ? 'true' : 'false');
-    toggleBtn.textContent = buildToggleLabel(visibleEpisodeCount, series.episodes.length, episodesExpanded, '章节', '集');
-    toggleBtn.addEventListener('click', () => {
-      episodeExpansionState.set(series.id, !episodesExpanded);
-      showEpisodes(series, tabId);
+
+    episodeCollapsible = mountListCollapsible(ul, epOverflow, toggleBtn, toggleMeta, {
+      initialExpanded: episodesExpanded,
+      rememberKey: `episode:${series.id}`,
+      extraItems: extraEpisodes,
+      renderItem: (ep, i) => {
+        const globalIdx = visibleEpisodeCount + i;
+        const li = buildEpisodeItem(series, ep, globalIdx, histMap);
+        if (ul._cachedEpisodeIdxs && ul._cachedEpisodeIdxs.has(globalIdx)) {
+          applyCachedStateToItem(li, ul._cachedEpisodeTooltip || '');
+        }
+        return li;
+      },
+      labelFn: (exp) => buildToggleLabel(visibleEpisodeCount, series.episodes.length, exp, '章节', '集'),
+      metaFn: (exp) => buildToggleMeta(visibleEpisodeCount, series.episodes.length, exp, '集'),
+      keepOverflowInDom: true,
+      onStateChange: (newExp) => { episodeExpansionState.set(series.id, newExp); },
     });
     toggleWrap.appendChild(toggleMeta);
     toggleWrap.appendChild(toggleBtn);
     view.appendChild(toggleWrap);
   }
-  // Use DocumentFragment for batch DOM insertion (avoids 196+ reflows)
-  const renderCompleted = episodesExpanded
-    ? renderEpisodeItems(ul, series, histMap, requestId)
-    : (renderEpisodeRange(ul, series, histMap, 0, visibleEpisodeCount), true);
+
+  // 始终只渲染前 visibleEpisodeCount 集到 ul；多余集数由 epOverflow 懒渲染
+  const renderCompleted = (renderEpisodeRange(ul, series, histMap, 0, visibleEpisodeCount), true);
   if (!renderCompleted || !isContentRequestCurrent(requestId) || !view.isConnected) return;
 
   if (tabId === 'tingjingtai') {
@@ -437,7 +492,7 @@ export async function showEpisodes(series, tabId) {
     const dur = dom.audio.duration;
     if (!dur || !isFinite(dur) || dur <= 0) return;
     const pct = Math.min(100, Math.round(dom.audio.currentTime / dur * 100));
-    const li = getEpisodeItem(ul, state.epIdx);
+    const li = getEpisodeItem(ul, state.epIdx) || (epOverflow ? getEpisodeItem(epOverflow, state.epIdx) : null);
     if (!li) return;
     let fillEl = li.querySelector('.ep-progress-fill');
     if (!fillEl) {
@@ -465,14 +520,15 @@ export async function showEpisodes(series, tabId) {
         cachedArr.forEach((cached, idx) => {
           if (!cached) return;
           ul._cachedEpisodeIdxs.add(idx);
-          const li = getEpisodeItem(ul, idx);
+          const li = getEpisodeItem(ul, idx) || (epOverflow ? getEpisodeItem(epOverflow, idx) : null);
           applyCachedStateToItem(li, tooltip);
         });
       });
     }
 
     cancelProbe = probeDurations(series.episodes, (idx, seconds) => {
-      const el = ul.querySelector(`.ep-duration[data-idx="${idx}"]`);
+      const el = (ul.querySelector(`.ep-duration[data-idx="${idx}"]`) ||
+        (epOverflow && epOverflow.querySelector(`.ep-duration[data-idx="${idx}"]`)));
       if (el) el.textContent = fmtDuration(seconds);
     });
   });
