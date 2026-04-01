@@ -6,6 +6,13 @@
   position: relative;
 }
 
+/* 溢出容器：用于专辑列表和集数列表的折叠展开动画 */
+.series-list-overflow {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .series-list.is-collapsed::after {
   content: '';
   position: absolute;
