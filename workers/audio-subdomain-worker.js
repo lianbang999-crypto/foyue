@@ -147,10 +147,22 @@ export default {
 
     const { bucket, candidateKeys } = bucketRequest;
 
+    // OPTIONS 预检请求（浏览器 fetch cors 模式会发送）
+    if (request.method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': 'https://foyue.org',
+          'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+          'Access-Control-Max-Age': '86400',
+        }
+      });
+    }
+
     if (!['GET', 'HEAD'].includes(request.method)) {
       return new Response('Method Not Allowed', {
         status: 405,
-        headers: { Allow: 'GET, HEAD' }
+        headers: { Allow: 'GET, HEAD, OPTIONS' }
       });
     }
 

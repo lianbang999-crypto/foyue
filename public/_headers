@@ -32,20 +32,7 @@
 
 # API responses are handled by the Worker (functions/api), not this file
 
-# Audio files optimization (if served from main domain)
-/*.mp3
-  Cache-Control: public, max-age=2592000, immutable
-  Accept-Ranges: bytes
-  Access-Control-Allow-Origin: *
-
-# R2 audio files (if using custom domain)
-/audio/*
-  Cache-Control: public, max-age=2592000, immutable
-  Accept-Ranges: bytes
-
-# Preconnect hints for faster audio loading
+# 音频子域名预连接提示（音频全部在 audio.foyue.org，主域名无音频文件）
+# 103 Early Hints: 让浏览器在收到 HTML 之前就预连接到音频服务器
 /*
-  Link: <https://audio.foyue.org>; rel=preconnect
-
-# ✅ 注意：audio.foyue.org 的缓存头需要在 R2 存储桶配置中设置
-# _headers 文件只对当前域名有效，子域名规则不生效
+  Link: <https://audio.foyue.org>; rel=preconnect, <https://audio.foyue.org>; rel=dns-prefetch

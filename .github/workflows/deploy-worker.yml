@@ -1,0 +1,23 @@
+name: Deploy Audio Worker
+
+# 当 main 分支的 workers/ 目录有变更时自动部署
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'workers/**'
+
+jobs:
+  deploy:
+    name: Deploy audio-subdomain-worker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy Worker to Cloudflare
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: workers
+          command: deploy
