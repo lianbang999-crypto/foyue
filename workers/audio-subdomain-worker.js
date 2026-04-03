@@ -14,8 +14,11 @@ const BUCKET_BINDING_BY_ID = {
 
 // P1修复：全量预热阈值提升至 50MB，覆盖更多法音文件
 const RANGE_CACHE_WARM_MAX_SIZE = 50 * 1024 * 1024;
+const SMALL_FILE_CACHE_WARM_MAX_SIZE = 20 * 1024 * 1024;
 // P1修复：首次 Range 触发全量预热的最大块扩大至 1MB（原 256KB）
 const RANGE_CACHE_WARM_MAX_CHUNK = 1 * 1024 * 1024;
+const WORKER_CACHE_HEADER = 'X-Audio-Worker-Cache';
+const WORKER_CACHE_DETAIL_HEADER = 'X-Audio-Worker-Cache-Detail';
 
 function buildBaseHeaders(object) {
   const headers = new Headers();
@@ -116,15 +119,39 @@ function normalizeRange(range, size) {
   return { start, end: size - 1 };
 }
 
+function createNormalizedUrl(requestUrl) {
+  const url = new URL(requestUrl);
+  url.search = '';
+  return url.toString();
+}
+
 function createCacheKey(request) {
-  return new Request(request.url, { method: 'GET' });
+  return new Request(createNormalizedUrl(request.url), { method: 'GET' });
+}
+
+function createRangeLookupRequest(request) {
+  const headers = new Headers();
+  const rangeHeader = request.headers.get('Range');
+  if (rangeHeader) headers.set('Range', rangeHeader);
+
+  const ifNoneMatch = request.headers.get('If-None-Match');
+  if (ifNoneMatch) headers.set('If-None-Match', ifNoneMatch);
+
+  const ifModifiedSince = request.headers.get('If-Modified-Since');
+  if (ifModifiedSince) headers.set('If-Modified-Since', ifModifiedSince);
+
+  return new Request(createNormalizedUrl(request.url), {
+    method: 'GET',
+    headers,
+  });
 }
 
 function shouldWarmFullObjectFromRange(range, size) {
   const normalizedRange = normalizeRange(range, size);
   if (!normalizedRange) return false;
+  if (size <= SMALL_FILE_CACHE_WARM_MAX_SIZE) return true;
   if (size > RANGE_CACHE_WARM_MAX_SIZE) return false;
-  if (normalizedRange.start !== 0) return false;
+  if (normalizedRange.start > RANGE_CACHE_WARM_MAX_CHUNK) return false;
   return normalizedRange.end - normalizedRange.start + 1 <= RANGE_CACHE_WARM_MAX_CHUNK;
 }
 
@@ -135,6 +162,21 @@ async function warmFullObjectCache(bucket, key, cache, cacheKey) {
   const headers = buildBaseHeaders(fullObject);
   headers.set('Content-Length', String(fullObject.size));
   await cache.put(cacheKey, new Response(fullObject.body, { headers }));
+}
+
+function withWorkerCacheStatus(response, status, detail) {
+  const headers = new Headers(response.headers);
+  headers.set(WORKER_CACHE_HEADER, status);
+  if (detail) headers.set(WORKER_CACHE_DETAIL_HEADER, detail);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+function logCacheFailure(action, error) {
+  console.warn(`[audio-cache] ${action} failed`, error);
 }
 
 export default {
@@ -168,6 +210,7 @@ export default {
 
     const cache = caches.default;
     const cacheKey = createCacheKey(request);
+    const rangeLookupRequest = request.headers.get('Range') ? createRangeLookupRequest(request) : null;
 
     if (request.method === 'HEAD') {
       // P2修复：优先从全量缓存中提取元数据，避免每次都回源 R2
@@ -175,6 +218,8 @@ export default {
       if (cachedFull) {
         const headers = new Headers();
         for (const [k, v] of cachedFull.headers) headers.set(k, v);
+        headers.set(WORKER_CACHE_HEADER, 'HIT');
+        headers.set(WORKER_CACHE_DETAIL_HEADER, 'head-from-full');
         return new Response(null, { status: 200, headers });
       }
 
@@ -185,6 +230,8 @@ export default {
 
       const headers = buildBaseHeaders(resolvedHead.object);
       headers.set('Content-Length', String(resolvedHead.object.size));
+      headers.set(WORKER_CACHE_HEADER, 'MISS');
+      headers.set(WORKER_CACHE_DETAIL_HEADER, 'head-from-r2');
       return new Response(null, { status: 200, headers });
     }
 
@@ -194,11 +241,11 @@ export default {
     if (!rangeHeader) {
       // 无 Range：直接查全量缓存
       const cachedFull = await cache.match(cacheKey);
-      if (cachedFull) return cachedFull;
+      if (cachedFull) return withWorkerCacheStatus(cachedFull, 'HIT', 'full');
     } else {
-      // P0修复：Range 请求先查精确匹配，再降级到全量缓存切片
-      const cachedRange = await cache.match(request);
-      if (cachedRange) return cachedRange;
+      // Cloudflare 会基于完整对象缓存自动处理 Range 响应。
+      const cachedRange = await cache.match(rangeLookupRequest);
+      if (cachedRange) return withWorkerCacheStatus(cachedRange, 'HIT', 'range-from-full');
 
       const cachedFull = await cache.match(cacheKey);
       if (cachedFull) {
@@ -215,7 +262,11 @@ export default {
               for (const [k, v] of cachedFull.headers) headers.set(k, v);
               headers.set('Content-Range', `bytes ${normalizedRange.start}-${normalizedRange.end}/${fullSize}`);
               headers.set('Content-Length', String(slice.byteLength));
-              return new Response(slice, { status: 206, headers });
+              return withWorkerCacheStatus(
+                new Response(slice, { status: 206, headers }),
+                'HIT',
+                'range-manual-slice'
+              );
             }
           }
         }
@@ -252,16 +303,23 @@ export default {
       headers.set('Content-Length', String(chunkSize));
 
       if (shouldWarmFullObjectFromRange(parsedRange, resolvedObject.object.size)) {
-        ctx.waitUntil(warmFullObjectCache(bucket, resolvedObject.key, cache, cacheKey).catch(() => { }));
+        ctx.waitUntil(
+          warmFullObjectCache(bucket, resolvedObject.key, cache, cacheKey)
+            .catch((error) => logCacheFailure('warm-full-object', error))
+        );
       }
 
       const rangeResponse = new Response(resolvedObject.object.body, {
         status: 206,
         headers
       });
-      // P1修复：将 Range 响应写入缓存，下次相同 Range 直接命中
-      ctx.waitUntil(cache.put(request, rangeResponse.clone()).catch(() => { }));
-      return rangeResponse;
+      return withWorkerCacheStatus(
+        rangeResponse,
+        'MISS',
+        shouldWarmFullObjectFromRange(parsedRange, resolvedObject.object.size)
+          ? 'range-r2-warm-scheduled'
+          : 'range-r2-pass-through'
+      );
     }
 
     const resolvedObject = await getObjectBody(bucket, candidateKeys);
@@ -272,7 +330,10 @@ export default {
     const headers = buildBaseHeaders(resolvedObject.object);
     headers.set('Content-Length', String(resolvedObject.object.size));
     const response = new Response(resolvedObject.object.body, { headers });
-    ctx.waitUntil(cache.put(cacheKey, response.clone()).catch(() => { }));
-    return response;
+    ctx.waitUntil(
+      cache.put(cacheKey, response.clone())
+        .catch((error) => logCacheFailure('store-full-object', error))
+    );
+    return withWorkerCacheStatus(response, 'MISS', 'full-r2-store-scheduled');
   }
 };
