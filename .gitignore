@@ -40,3 +40,4 @@ setup_cloudflare.sh
 # 仅忽略项目根目录的 scripts，保留技能内的 scripts
 /scripts/
 .gstack/
+stitch-mcp/
