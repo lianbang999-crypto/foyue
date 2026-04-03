@@ -12,8 +12,10 @@ const BUCKET_BINDING_BY_ID = {
   '09eef2d346704b409a5fbef97ce6464a': 'JINGDIANDUSONG',
 };
 
-const RANGE_CACHE_WARM_MAX_SIZE = 32 * 1024 * 1024;
-const RANGE_CACHE_WARM_MAX_CHUNK = 256 * 1024;
+// P1修复：全量预热阈值提升至 50MB，覆盖更多法音文件
+const RANGE_CACHE_WARM_MAX_SIZE = 50 * 1024 * 1024;
+// P1修复：首次 Range 触发全量预热的最大块扩大至 1MB（原 256KB）
+const RANGE_CACHE_WARM_MAX_CHUNK = 1 * 1024 * 1024;
 
 function buildBaseHeaders(object) {
   const headers = new Headers();
@@ -156,6 +158,14 @@ export default {
     const cacheKey = createCacheKey(request);
 
     if (request.method === 'HEAD') {
+      // P2修复：优先从全量缓存中提取元数据，避免每次都回源 R2
+      const cachedFull = await cache.match(cacheKey);
+      if (cachedFull) {
+        const headers = new Headers();
+        for (const [k, v] of cachedFull.headers) headers.set(k, v);
+        return new Response(null, { status: 200, headers });
+      }
+
       const resolvedHead = await getObjectHead(bucket, candidateKeys);
       if (!resolvedHead) {
         return new Response('Not Found', { status: 404 });
@@ -168,9 +178,36 @@ export default {
 
     // 正确处理Range请求，确保206响应和实际返回体一致
     const rangeHeader = request.headers.get('Range');
-    const cachedResponse = await cache.match(rangeHeader ? request : cacheKey);
-    if (cachedResponse) {
-      return cachedResponse;
+
+    if (!rangeHeader) {
+      // 无 Range：直接查全量缓存
+      const cachedFull = await cache.match(cacheKey);
+      if (cachedFull) return cachedFull;
+    } else {
+      // P0修复：Range 请求先查精确匹配，再降级到全量缓存切片
+      const cachedRange = await cache.match(request);
+      if (cachedRange) return cachedRange;
+
+      const cachedFull = await cache.match(cacheKey);
+      if (cachedFull) {
+        const fullSize = parseInt(cachedFull.headers.get('content-length') || '0', 10);
+        // 仅对合理大小的全量缓存执行内存切片（避免 OOM）
+        if (fullSize > 0 && fullSize <= RANGE_CACHE_WARM_MAX_SIZE) {
+          const parsedRange = parseRequestedRange(rangeHeader);
+          if (parsedRange) {
+            const normalizedRange = normalizeRange(parsedRange, fullSize);
+            if (normalizedRange) {
+              const buffer = await cachedFull.arrayBuffer();
+              const slice = buffer.slice(normalizedRange.start, normalizedRange.end + 1);
+              const headers = new Headers();
+              for (const [k, v] of cachedFull.headers) headers.set(k, v);
+              headers.set('Content-Range', `bytes ${normalizedRange.start}-${normalizedRange.end}/${fullSize}`);
+              headers.set('Content-Length', String(slice.byteLength));
+              return new Response(slice, { status: 206, headers });
+            }
+          }
+        }
+      }
     }
 
     if (rangeHeader) {
@@ -206,10 +243,13 @@ export default {
         ctx.waitUntil(warmFullObjectCache(bucket, resolvedObject.key, cache, cacheKey).catch(() => { }));
       }
 
-      return new Response(resolvedObject.object.body, {
+      const rangeResponse = new Response(resolvedObject.object.body, {
         status: 206,
         headers
       });
+      // P1修复：将 Range 响应写入缓存，下次相同 Range 直接命中
+      ctx.waitUntil(cache.put(request, rangeResponse.clone()).catch(() => { }));
+      return rangeResponse;
     }
 
     const resolvedObject = await getObjectBody(bucket, candidateKeys);
