@@ -24,7 +24,7 @@
   background: none;
   border: none;
   padding: 10px 16px 8px;
-  font-size: .84rem;
+  font-size: var(--fs-body);
   font-weight: 500;
   color: var(--text-muted);
   cursor: pointer;
@@ -57,7 +57,7 @@
 
 .playlist-count {
   font-family: var(--font-en);
-  font-size: .74rem;
+  font-size: var(--fs-caption);
   color: var(--text-muted)
 }
 
@@ -69,7 +69,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: .74rem;
+  font-size: var(--fs-caption);
   color: var(--text-muted);
   cursor: pointer;
   padding: 4px 0
@@ -118,7 +118,7 @@
 
 .pl-item-num {
   font-family: var(--font-en);
-  font-size: .74rem;
+  font-size: var(--fs-caption);
   color: var(--text-muted);
   width: 24px;
   text-align: center;
@@ -135,7 +135,7 @@
 }
 
 .pl-item-title {
-  font-size: .82rem;
+  font-size: var(--fs-body);
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -156,12 +156,12 @@
 
 .pl-item-duration {
   font-family: var(--font-en);
-  font-size: .7rem;
+  font-size: var(--fs-label);
   color: var(--text-muted)
 }
 
 .pl-item-progress {
-  font-size: .68rem;
+  font-size: var(--fs-label);
   color: var(--accent);
   font-weight: 500
 }
@@ -202,7 +202,7 @@
 
 /* History items in playlist */
 .pl-hist-sub {
-  font-size: .72rem;
+  font-size: var(--fs-caption);
   color: var(--text-muted);
   margin-top: 1px;
   overflow: hidden;
@@ -368,7 +368,7 @@ body.player-modal-open .content {
 
 .exp-label {
   font-family: var(--font-en);
-  font-size: .68rem;
+  font-size: var(--fs-label);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: .14em;
@@ -458,7 +458,7 @@ body.player-modal-open .content {
 }
 
 .exp-series-name {
-  font-size: 1.05rem;
+  font-size: var(--fs-xl);
   font-weight: 600;
   color: var(--text);
   margin-bottom: 6px;
@@ -468,7 +468,7 @@ body.player-modal-open .content {
 }
 
 .exp-series-speaker {
-  font-size: .78rem;
+  font-size: var(--fs-caption);
   color: var(--text-secondary);
   position: relative;
   letter-spacing: .03em
@@ -476,7 +476,7 @@ body.player-modal-open .content {
 
 .exp-series-ep-count {
   font-family: var(--font-en);
-  font-size: .72rem;
+  font-size: var(--fs-caption);
   color: var(--text-muted);
   margin-top: 8px;
   position: relative;
@@ -484,7 +484,7 @@ body.player-modal-open .content {
 }
 
 .exp-track-title {
-  font-size: .9rem;
+  font-size: var(--fs-body);
   font-weight: 500;
   color: var(--accent);
   margin-top: 14px;
@@ -589,7 +589,7 @@ body.player-modal-open .content {
   display: flex;
   justify-content: space-between;
   font-family: var(--font-en);
-  font-size: .72rem;
+  font-size: var(--fs-caption);
   color: var(--text-muted);
   margin-top: 4px;
   letter-spacing: .02em;
@@ -672,14 +672,14 @@ body.player-modal-open .content {
 /* === SPEED CONTROL === */
 .speed-btn {
   font-family: var(--font-en);
-  font-size: .74rem;
+  font-size: var(--fs-caption);
   font-weight: 600;
   min-width: 44px;
   letter-spacing: -.01em
 }
 
 .speed-btn .ctrl-label {
-  font-size: .7rem
+  font-size: var(--fs-label)
 }
 
 /* === BUFFERING === */
@@ -763,7 +763,7 @@ body.player-modal-open .content {
 
 .player-track.error::after {
   content: attr(data-error-msg);
-  font-size: .72rem;
+  font-size: var(--fs-caption);
   color: var(--accent);
   margin-left: 6px;
   animation: errorPulse 2s ease-in-out infinite
@@ -912,7 +912,7 @@ body.player-modal-open .content {
   bottom: 100%;
   transform: translateX(-50%);
   font-family: var(--font-zh);
-  font-size: .72rem;
+  font-size: var(--fs-caption);
   font-weight: 500;
   color: var(--accent);
   white-space: nowrap;

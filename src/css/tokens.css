@@ -34,6 +34,19 @@
   --font-zh: 'Noto Sans SC', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-en: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-serif: 'Noto Serif SC', 'STSong', 'SimSun', serif;
+  /* Typography scale */
+  --fs-label: .7rem;
+  /* 11.2px — tiny badges, bottom nav labels */
+  --fs-caption: .78rem;
+  /* 12.5px — meta text, captions, subtitles */
+  --fs-body: .9rem;
+  /* 14.4px — card titles, body content */
+  --fs-ui: .9375rem;
+  /* 15px   — buttons, inputs */
+  --fs-heading: 1rem;
+  /* 16px   — section headings */
+  --fs-xl: 1.0625rem;
+  /* 17px   — page titles, modals */
   /* Hero gradient for home page */
   --hero-gradient: linear-gradient(160deg, rgba(217, 119, 87, 0.06) 0%, rgba(217, 119, 87, 0.02) 50%, transparent 100%);
   --hero-radial: radial-gradient(ellipse at 25% 0%, rgba(217, 119, 87, 0.08) 0%, transparent 55%);

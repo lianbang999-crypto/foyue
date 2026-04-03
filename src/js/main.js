@@ -342,18 +342,18 @@ async function ensureSeriesDetail(seriesId, categoryId) {
     if (dom.header) dom.header.classList.toggle('scrolled', isScrolled);
   }, { passive: true });
 
-  // One-time setup: audio playback indicator in header
+  // One-time setup: EQ logo animation in header (replaces old audio indicator)
   const navAudioIndicator = document.getElementById('navAudioIndicator');
   if (navAudioIndicator) {
     const updateAudioIndicator = () => {
       if (dom.audio.src && !dom.audio.paused) {
-        navAudioIndicator.style.display = 'flex';
+        navAudioIndicator.classList.add('playing');
         navAudioIndicator.classList.remove('paused');
       } else if (dom.audio.src) {
-        navAudioIndicator.style.display = 'flex';
+        navAudioIndicator.classList.remove('playing');
         navAudioIndicator.classList.add('paused');
       } else {
-        navAudioIndicator.style.display = 'none';
+        navAudioIndicator.classList.remove('playing', 'paused');
       }
     };
     navAudioIndicator.addEventListener('click', () => {

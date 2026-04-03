@@ -41,7 +41,7 @@
 
 .loader-text {
     font-family: var(--font-en);
-    font-size: .78rem;
+    font-size: var(--fs-caption);
     color: var(--text-muted)
 }
 
@@ -50,7 +50,7 @@
     text-align: center;
     padding: 40px 20px;
     color: var(--text-secondary);
-    font-size: .88rem
+    font-size: var(--fs-body)
 }
 
 .error-msg button {
@@ -61,7 +61,7 @@
     border-radius: 20px;
     padding: 8px 20px;
     font-family: var(--font-zh);
-    font-size: .82rem;
+    font-size: var(--fs-body);
     cursor: pointer
 }
 
@@ -181,7 +181,7 @@
 
 .about-title {
     text-align: center;
-    font-size: 1.05rem;
+    font-size: var(--fs-xl);
     font-weight: 600;
     color: var(--text);
     margin-bottom: 4px
@@ -190,7 +190,7 @@
 .about-subtitle {
     text-align: center;
     font-family: var(--font-en);
-    font-size: .76rem;
+    font-size: var(--fs-caption);
     color: var(--text-muted);
     letter-spacing: .08em;
     margin-bottom: 20px
@@ -201,7 +201,7 @@
 }
 
 .about-section-title {
-    font-size: .78rem;
+    font-size: var(--fs-caption);
     font-weight: 600;
     color: var(--accent);
     margin-bottom: 6px;
@@ -219,7 +219,7 @@
 }
 
 .about-text {
-    font-size: .8rem;
+    font-size: var(--fs-caption);
     color: var(--text-secondary);
     line-height: 1.65
 }
@@ -235,7 +235,7 @@
 
 .about-footer {
     text-align: center;
-    font-size: .76rem;
+    font-size: var(--fs-caption);
     color: var(--text-muted);
     margin-top: 20px;
     padding-top: 16px;
@@ -339,25 +339,25 @@
     border-radius: 999px;
     background: color-mix(in srgb, var(--accent) 12%, #fff 88%);
     color: var(--accent);
-    font-size: .68rem;
+    font-size: var(--fs-label);
     font-weight: 700;
     letter-spacing: .08em;
     text-transform: uppercase
 }
 
 .install-meta-note {
-    font-size: .72rem;
+    font-size: var(--fs-caption);
     color: var(--text-muted)
 }
 
 .install-title {
-    font-size: .98rem;
+    font-size: var(--fs-ui);
     font-weight: 600;
     color: var(--text)
 }
 
 .install-desc {
-    font-size: .8rem;
+    font-size: var(--fs-caption);
     color: var(--text-secondary);
     margin-top: 4px;
     line-height: 1.55
@@ -380,7 +380,7 @@
     border: none;
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 74%, #fff 26%);
     color: var(--text-secondary);
-    font-size: .72rem
+    font-size: var(--fs-caption)
 }
 
 .install-guide-card {
@@ -393,7 +393,7 @@
 }
 
 .install-guide-label {
-    font-size: .72rem;
+    font-size: var(--fs-caption);
     font-weight: 700;
     letter-spacing: .08em;
     text-transform: uppercase;
@@ -402,7 +402,7 @@
 }
 
 .install-guide-steps {
-    font-size: .8rem;
+    font-size: var(--fs-caption);
     color: var(--text-secondary);
     line-height: 1.65
 }
@@ -427,7 +427,7 @@
     min-height: 40px;
     padding: 8px 16px;
     font-family: var(--font-zh);
-    font-size: .78rem;
+    font-size: var(--fs-caption);
     font-weight: 500;
     cursor: pointer;
     transition: all .2s
@@ -500,4 +500,259 @@
     .install-actions.install-actions-single .install-btn-dismiss {
         width: 100%
     }
+}
+/* ===== SEARCH OVERLAY ===== */
+.search-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: var(--bg);
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.search-overlay.show {
+  display: flex;
+  animation: fadeSlideDown .2s cubic-bezier(.22, 1, .36, 1);
+}
+
+@keyframes fadeSlideDown {
+  from { opacity: 0; transform: translateY(-8px) }
+  to   { opacity: 1; transform: translateY(0) }
+}
+
+.search-overlay-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-header);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  flex-shrink: 0;
+}
+
+.search-overlay-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.search-overlay-back:hover {
+  background: var(--bg-secondary);
+  color: var(--text);
+}
+
+.search-overlay-field {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-secondary);
+  border-radius: 10px;
+  padding: 0 12px;
+  height: 40px;
+  color: var(--text-muted);
+  border: 1.5px solid transparent;
+  transition: border-color .2s;
+}
+
+.search-overlay-field:focus-within {
+  border-color: var(--border-active);
+  background: var(--bg-card);
+}
+
+.search-overlay-field svg {
+  flex-shrink: 0;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.search-overlay-input {
+  flex: 1;
+  border: none;
+  background: none;
+  font-size: var(--fs-body);
+  color: var(--text);
+  outline: none;
+  font-family: var(--font-zh);
+  min-width: 0;
+}
+
+.search-overlay-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Tabs */
+.search-overlay-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 10px 16px 0;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.search-tab {
+  position: relative;
+  padding: 6px 16px 10px;
+  font-size: var(--fs-body);
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color .2s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.search-tab::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 12px;
+  right: 12px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transition: transform .2s cubic-bezier(.22, 1, .36, 1);
+}
+
+.search-tab.active {
+  color: var(--accent);
+}
+
+.search-tab.active::after {
+  transform: scaleX(1);
+}
+
+/* Results area */
+.search-overlay-results {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.search-overlay-results .ep-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.search-overlay-hint {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--text-muted);
+  font-size: var(--fs-body);
+  line-height: 1.7;
+}
+
+/* AI loading dot */
+.ai-loading-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: dotPulse .9s ease-in-out infinite;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+@keyframes dotPulse {
+  0%, 100% { opacity: .4; transform: scale(.8) }
+  50%       { opacity: 1;  transform: scale(1.2) }
+}
+
+/* Wenku results */
+.wenku-results {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.wenku-result-card {
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border);
+  transition: all .2s cubic-bezier(.22, 1, .36, 1);
+}
+
+.wenku-result-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-active);
+}
+
+.wenku-result-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.wenku-result-icon {
+  flex-shrink: 0;
+  color: var(--accent);
+  margin-top: 2px;
+}
+
+.wenku-result-title {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.wenku-result-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.wenku-result-series,
+.wenku-result-category {
+  font-size: var(--fs-caption);
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: var(--accent-glow);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.wenku-result-snippet {
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.wenku-result-action {
+  font-size: var(--fs-caption);
+  color: var(--accent);
+  font-weight: 500;
+  text-align: right;
 }

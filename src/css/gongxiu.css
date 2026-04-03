@@ -32,7 +32,7 @@
 .gx-fs-title {
     flex: 1;
     text-align: center;
-    font-size: .92rem;
+    font-size: var(--fs-body);
     font-weight: 600;
     color: var(--text);
     letter-spacing: .04em;
@@ -108,7 +108,7 @@
 }
 
 .gx-pool-lbl {
-    font-size: .7rem;
+    font-size: var(--fs-label);
     color: var(--text-muted);
     letter-spacing: .06em;
     text-transform: uppercase;
@@ -116,7 +116,7 @@
 }
 
 .gx-pool-participants {
-    font-size: .76rem;
+    font-size: var(--fs-caption);
     color: var(--text-secondary);
     margin-top: 12px;
     position: relative;
@@ -128,7 +128,7 @@
 }
 
 .gx-data-context {
-    font-size: .74rem;
+    font-size: var(--fs-caption);
     color: var(--text-secondary);
     line-height: 1.55;
     margin: -6px 0 20px;
@@ -141,7 +141,7 @@
 }
 
 .gx-submitted-merge {
-    font-size: .78rem;
+    font-size: var(--fs-caption);
     color: var(--text-secondary);
     text-align: center;
     margin-top: 12px;
@@ -154,7 +154,7 @@
 }
 
 .gx-submitted-name-hint {
-    font-size: .72rem;
+    font-size: var(--fs-caption);
     color: var(--text-muted);
     line-height: 1.5;
     margin-top: 10px;
@@ -207,7 +207,7 @@
     gap: 8px;
     padding: 24px 0;
     color: var(--text-muted);
-    font-size: .82rem;
+    font-size: var(--fs-body);
 }
 
 .gx-pool-spinner {
@@ -227,7 +227,7 @@
     text-align: center;
     padding: 20px;
     color: var(--text-muted);
-    font-size: .82rem;
+    font-size: var(--fs-body);
 }
 
 /* ── 回向文横幅 ─────────────────────────────────────── */
@@ -241,7 +241,7 @@
 }
 
 .gx-banner-text {
-    font-size: .9rem;
+    font-size: var(--fs-body);
     font-family: var(--font-serif);
     color: var(--text);
     line-height: 2;
@@ -249,7 +249,7 @@
 }
 
 .gx-banner-attr {
-    font-size: .74rem;
+    font-size: var(--fs-caption);
     color: var(--accent);
     margin-top: 8px;
     text-align: right;
@@ -263,7 +263,7 @@
 }
 
 .gx-section-title {
-    font-size: .76rem;
+    font-size: var(--fs-caption);
     font-weight: 600;
     color: var(--text-muted);
     letter-spacing: .08em;
@@ -302,14 +302,14 @@
 }
 
 .gx-submitted-text {
-    font-size: .86rem;
+    font-size: var(--fs-body);
     color: var(--text);
     line-height: 1.6;
     font-weight: 500;
 }
 
 .gx-submitted-text span {
-    font-size: .76rem;
+    font-size: var(--fs-caption);
     color: var(--text-secondary);
     font-weight: 400;
 }
@@ -322,7 +322,7 @@
 }
 
 .gx-submit-hint {
-    font-size: .84rem;
+    font-size: var(--fs-body);
     color: var(--text-secondary);
     padding: 10px 14px;
     background: var(--bg-card);
@@ -336,7 +336,7 @@
 }
 
 .gx-field-label {
-    font-size: .72rem;
+    font-size: var(--fs-caption);
     font-weight: 600;
     color: var(--text-muted);
     letter-spacing: .06em;
@@ -367,7 +367,7 @@
     padding: 9px 12px;
     border-radius: var(--radius-sm);
     cursor: pointer;
-    font-size: .84rem;
+    font-size: var(--fs-body);
     color: var(--text-secondary);
     transition: background .15s;
     border: 1px solid transparent;
@@ -420,7 +420,7 @@
     box-shadow: inset 0 0 0 1px var(--border), 0 2px 4px rgba(0, 0, 0, 0.01);
     background: var(--bg-card);
     border-radius: var(--radius);
-    font-size: .84rem;
+    font-size: var(--fs-body);
     color: var(--text);
     font-family: var(--font-zh);
     outline: none;
@@ -456,7 +456,7 @@
     border-radius: var(--radius-sm);
     background: var(--accent);
     color: var(--text-inverse);
-    font-size: .9rem;
+    font-size: var(--fs-body);
     font-weight: 600;
     font-family: var(--font-zh);
     cursor: pointer;
@@ -490,7 +490,7 @@
     border-radius: var(--radius-sm);
     background: var(--accent-glow);
     color: var(--accent);
-    font-size: .86rem;
+    font-size: var(--fs-body);
     font-weight: 500;
     font-family: var(--font-zh);
     cursor: pointer;
@@ -539,7 +539,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: .9rem;
+    font-size: var(--fs-body);
     font-weight: 600;
     color: var(--accent);
     flex-shrink: 0;
@@ -560,7 +560,7 @@
 }
 
 .gx-entry-name {
-    font-size: .82rem;
+    font-size: var(--fs-body);
     font-weight: 500;
     color: var(--text);
 }
@@ -576,13 +576,13 @@
 }
 
 .gx-entry-time {
-    font-size: .72rem;
+    font-size: var(--fs-caption);
     color: var(--text-muted);
     margin-left: auto;
 }
 
 .gx-entry-practice {
-    font-size: .82rem;
+    font-size: var(--fs-body);
     color: var(--text-secondary);
     margin-bottom: 3px;
 }
@@ -594,7 +594,7 @@
 }
 
 .gx-entry-vow {
-    font-size: .74rem;
+    font-size: var(--fs-caption);
     color: var(--text-muted);
     font-style: italic;
 }
@@ -603,7 +603,7 @@
     text-align: center;
     padding: 32px 20px;
     color: var(--text-muted);
-    font-size: .84rem;
+    font-size: var(--fs-body);
     line-height: 1.8;
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -612,7 +612,7 @@
 
 /* ── 法名提示 ───────────────────────────────────────── */
 .gx-field-hint {
-    font-size: .70rem;
+    font-size: var(--fs-label);
     color: var(--text-muted);
     margin-top: 5px;
     letter-spacing: .02em;
@@ -632,7 +632,7 @@
     border-radius: var(--radius-sm);
     background: var(--accent-glow);
     color: var(--accent);
-    font-size: .9rem;
+    font-size: var(--fs-body);
     font-weight: 500;
     font-family: var(--font-serif);
     cursor: pointer;
@@ -652,7 +652,7 @@
 
 .gx-huixiang-hint {
     text-align: center;
-    font-size: .72rem;
+    font-size: var(--fs-caption);
     color: var(--text-muted);
     letter-spacing: .03em;
     padding: 0 8px;
@@ -661,7 +661,7 @@
 /* ── 页脚 ──────────────────────────────────────────── */
 .gx-footer {
     text-align: center;
-    font-size: .8rem;
+    font-size: var(--fs-caption);
     color: var(--accent);
     letter-spacing: .16em;
     padding: 8px 0 4px;
@@ -720,7 +720,7 @@
 }
 
 .gx-hd-text {
-    font-size: 1.05rem;
+    font-size: var(--fs-xl);
     font-family: var(--font-serif);
     color: var(--text);
     line-height: 2.1;
@@ -728,7 +728,7 @@
 }
 
 .gx-hd-dedicate {
-    font-size: .84rem;
+    font-size: var(--fs-body);
     color: var(--accent);
     letter-spacing: .06em;
     font-family: var(--font-zh);
@@ -739,7 +739,7 @@
 }
 
 .gx-hd-namo {
-    font-size: 1rem;
+    font-size: var(--fs-heading);
     color: var(--accent);
     font-weight: 500;
     letter-spacing: .2em;
@@ -747,7 +747,7 @@
 }
 
 .gx-hd-hint {
-    font-size: .7rem;
+    font-size: var(--fs-label);
     color: var(--text-muted);
     letter-spacing: .04em;
 }
