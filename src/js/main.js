@@ -638,18 +638,6 @@ async function ensureSeriesDetail(seriesId, categoryId) {
 
   // Audio events
   dom.audio.addEventListener('timeupdate', onTimeUpdate);
-  // ✅ 修复Android：用playing事件代替play事件设置播放状态
-  // play()解析不保证音频实际输出，playing事件才是真正开始播放的信号
-  dom.audio.addEventListener('playing', () => {
-    if (!getIsSwitching()) setPlayState(true);
-    // Update AI chat context with current track info
-    const tr = getCurrentTrack();
-    if (tr) {
-      updateAiContext(tr.seriesId, tr.id || state.epIdx + 1);
-    }
-  });
-  // ✅ 修复iOS：恢复期间不改变播放状态，避免UI闪烁
-  dom.audio.addEventListener('pause', () => { if (!getIsSwitching() && !getIsRecovering()) { setPlayState(false); saveState(); } });
   dom.audio.addEventListener('ended', onEnded);
   dom.audio.addEventListener('error', onAudioError);
 
@@ -698,12 +686,16 @@ async function ensureSeriesDetail(seriesId, categoryId) {
   dom.audio.addEventListener('playing', () => {
     hideBufferingUI();
     setPlayState(true); // ✅ 确保playing事件始终同步播放状态
-    // Restart stall detection whenever playback resumes
     startStallWatch();
+    // 更新 AI 聊天上下文
+    const tr = getCurrentTrack();
+    if (tr) updateAiContext(tr.seriesId, tr.id || state.epIdx + 1);
   });
   dom.audio.addEventListener('pause', () => {
     clearStallWatch();
     if (!getIsSwitching()) hideBufferingUI();
+    // ✅ 修复iOS：恢复期间不改变播放状态，避免UI闪烁
+    if (!getIsSwitching() && !getIsRecovering()) { setPlayState(false); saveState(); }
   });
   dom.audio.addEventListener('loadeddata', settlePlaybackUI);
   dom.audio.addEventListener('canplay', settlePlaybackUI);

@@ -1538,7 +1538,7 @@
 }
 
 .counter-progress-bar-fill--done {
-    background: #4caf50;
+    background: var(--success);
 }
 
 .counter-streak {
@@ -3001,7 +3001,7 @@
 
 .chi-practice-check {
     display: inline;
-    color: #4caf50;
+    color: var(--success);
     font-weight: 600;
     margin-right: 2px;
 }
@@ -3022,7 +3022,7 @@
 }
 
 .chi-practice-bar-fill--done {
-    background: #4caf50;
+    background: var(--success);
 }
 
 /* 月分组 */

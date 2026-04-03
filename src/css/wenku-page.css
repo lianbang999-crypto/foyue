@@ -18,10 +18,10 @@
     --wk-text-secondary: #8B7E74;
     --wk-text-muted: #B5ACA3;
     --wk-border: #E5E0D8;
-    --wk-accent: #C4704F;
-    --wk-accent-light: rgba(196, 112, 79, 0.08);
-    --wk-highlight-fill: rgba(196, 112, 79, 0.14);
-    --wk-highlight-underline: rgba(196, 112, 79, 0.24);
+    --wk-accent: #D97757;
+    --wk-accent-light: rgba(217, 119, 87, 0.08);
+    --wk-highlight-fill: rgba(217, 119, 87, 0.14);
+    --wk-highlight-underline: rgba(217, 119, 87, 0.24);
     --wk-radius: 20px;
     --wk-radius-sm: 12px;
     --wk-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
@@ -45,10 +45,10 @@
         --wk-text-secondary: #A89E94;
         --wk-text-muted: #6E645A;
         --wk-border: #332E28;
-        --wk-accent: #D98B6C;
-        --wk-accent-light: rgba(217, 139, 108, 0.1);
-        --wk-highlight-fill: rgba(217, 139, 108, 0.18);
-        --wk-highlight-underline: rgba(217, 139, 108, 0.28);
+        --wk-accent: #E0876B;
+        --wk-accent-light: rgba(224, 135, 107, 0.1);
+        --wk-highlight-fill: rgba(224, 135, 107, 0.18);
+        --wk-highlight-underline: rgba(224, 135, 107, 0.28);
         --wk-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.15);
         --wk-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.2);
         --wk-shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.25);
@@ -116,20 +116,20 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 16px;
-    height: 44px;
+    padding: 0 12px;
+    height: 50px;
 }
 
 .wk-header-brand {
     display: flex;
     align-items: center;
     gap: 8px;
-    text-decoration: none;
     color: var(--wk-text);
     font-family: var(--wk-font-serif);
     font-size: 17px;
     font-weight: 600;
     letter-spacing: 0.02em;
+    flex-shrink: 0;
 }
 
 .wk-brand-icon {
@@ -165,6 +165,7 @@ body {
     appearance: none;
     background: none;
     border: none;
+    text-decoration: none;
     width: 44px;
     min-width: 44px;
     height: 44px;
@@ -176,8 +177,6 @@ body {
     color: var(--wk-text-muted);
     border-radius: 50%;
     transition: color 0.15s, background 0.15s;
-    margin-left: -8px;
-    margin-right: 4px;
     flex-shrink: 0;
 }
 
@@ -241,7 +240,7 @@ body {
 
 .wk-search-input:focus {
     border-color: var(--wk-accent);
-    box-shadow: 0 0 0 3px rgba(196, 112, 79, 0.08), var(--wk-shadow-sm);
+    box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.08), var(--wk-shadow-sm);
 }
 
 .wk-search-input::placeholder {
@@ -386,7 +385,7 @@ body {
 
 .wk-home-search-input:focus {
     border-color: var(--wk-accent);
-    box-shadow: 0 0 0 3px rgba(196, 112, 79, 0.08);
+    box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.08);
     background: var(--wk-bg-card);
 }
 

@@ -132,18 +132,18 @@
 
 .btn-danger {
   background-color: transparent;
-  color: #ea4335;
-  border: 1px solid rgba(234, 67, 53, 0.2);
+  color: var(--danger);
+  border: 1px solid var(--danger-dim);
 }
 
 @media (hover: hover) {
   .btn-danger:hover:not(:disabled) {
-    background-color: rgba(234, 67, 53, 0.05);
+    background-color: color-mix(in srgb, var(--danger) 5%, transparent 95%);
   }
 }
 
 .btn-danger:active:not(:disabled) {
-  background-color: rgba(234, 67, 53, 0.1);
+  background-color: color-mix(in srgb, var(--danger) 10%, transparent 90%);
 }
 
 /* --- ICON ONLY BUTTONS --- */
