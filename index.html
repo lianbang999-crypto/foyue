@@ -89,18 +89,16 @@
     <!-- HEADER - top bar -->
     <header class="header">
       <nav class="nav">
-        <div class="logo" aria-label="净土法音">
-          <img class="logo-icon" src="icons/nav-logo-new.png" alt="净土法音">
-          <span class="logo-title">净土法音</span>
-        </div>
-
-        <!-- 播放指示器 -->
-        <div class="nav-audio-indicator" id="navAudioIndicator" style="display:none">
-          <svg class="nav-audio-wave" viewBox="0 0 24 24" width="16" height="16">
-            <rect x="4" y="8" width="2" height="8" rx="1" class="wave-bar bar-1" />
-            <rect x="10" y="4" width="2" height="16" rx="1" class="wave-bar bar-2" />
-            <rect x="16" y="8" width="2" height="8" rx="1" class="wave-bar bar-3" />
+        <div class="logo" aria-label="净土法音" id="navAudioIndicator">
+          <!-- EQ 动画替代 Logo，播放时跳动，静止时为静态柱 -->
+          <svg class="logo-eq" viewBox="0 0 28 20" width="28" height="20" aria-hidden="true">
+            <rect class="eq-bar b1" x="0"  y="8"  width="3" height="12" rx="1.5"/>
+            <rect class="eq-bar b2" x="5"  y="4"  width="3" height="16" rx="1.5"/>
+            <rect class="eq-bar b3" x="10" y="2"  width="3" height="18" rx="1.5"/>
+            <rect class="eq-bar b4" x="15" y="4"  width="3" height="16" rx="1.5"/>
+            <rect class="eq-bar b5" x="20" y="8"  width="3" height="12" rx="1.5"/>
           </svg>
+          <span class="logo-title">净土法音</span>
         </div>
 
         <div class="nav-spacer"></div>
@@ -365,7 +363,7 @@
   <!-- ABOUT MODAL -->
   <div class="about-overlay" id="aboutOverlay">
     <div class="about-modal">
-      <button class="about-close" id="aboutClose"><svg width="16" height="16" viewBox="0 0 24 24">
+      <button class="about-close" id="aboutClose" aria-label="关闭"><svg width="16" height="16" viewBox="0 0 24 24">
           <line x1="18" y1="6" x2="6" y2="18" />
           <line x1="6" y1="6" x2="18" y2="18" />
         </svg></button>

@@ -33,14 +33,14 @@
 }
 
 .my-name {
-    font-size: 1rem;
+    font-size: var(--fs-heading);
     font-weight: 500;
     color: var(--text);
     margin-top: 10px
 }
 
 .my-subtitle {
-    font-size: .76rem;
+    font-size: var(--fs-caption);
     color: var(--text-secondary);
     margin-top: 2px
 }
@@ -50,7 +50,7 @@
 }
 
 .my-section-title {
-    font-size: .8rem;
+    font-size: var(--fs-caption);
     color: var(--text-secondary);
     letter-spacing: .06em;
     padding: 0 8px 10px;
@@ -115,12 +115,12 @@
 
 .my-item-label {
     flex: 1;
-    font-size: .86rem;
+    font-size: var(--fs-body);
     color: var(--text)
 }
 
 .my-item-value {
-    font-size: .78rem;
+    font-size: var(--fs-caption);
     color: var(--text-secondary)
 }
 
@@ -139,7 +139,7 @@
 
 .my-item-subtle .my-item-label {
     color: var(--text-secondary);
-    font-size: .8rem
+    font-size: var(--fs-caption)
 }
 
 .my-item-body {
@@ -153,14 +153,14 @@
 
 .my-item-desc {
     display: block;
-    font-size: .72rem;
+    font-size: var(--fs-caption);
     color: var(--text-muted);
     margin-top: 1px
 }
 
 .my-namo {
     text-align: center;
-    font-size: .82rem;
+    font-size: var(--fs-body);
     color: var(--accent);
     font-weight: 400;
     margin-top: 24px;
@@ -185,7 +185,7 @@
     appearance: none;
     background: none;
     border: none;
-    font-size: .72rem;
+    font-size: var(--fs-caption);
     color: var(--text-muted);
     cursor: pointer;
     padding: 2px 4px;
@@ -253,7 +253,7 @@
 
 .my-history-series,
 .my-history-when {
-    font-size: .72rem;
+    font-size: var(--fs-caption);
     color: var(--text-muted);
 }
 
@@ -270,7 +270,7 @@
 }
 
 .my-history-title {
-    font-size: .88rem;
+    font-size: var(--fs-body);
     color: var(--text);
     font-weight: 600;
     line-height: 1.45;
@@ -286,7 +286,7 @@
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
-    font-size: .76rem;
+    font-size: var(--fs-caption);
     color: var(--text-secondary);
     margin-top: 6px;
 }
@@ -318,7 +318,7 @@
 }
 
 .my-history-time {
-    font-size: .72rem;
+    font-size: var(--fs-caption);
     color: var(--text-muted);
     flex-shrink: 0;
     white-space: nowrap;
@@ -328,13 +328,13 @@
     text-align: center;
     padding: 20px 16px;
     color: var(--text-muted);
-    font-size: .8rem;
+    font-size: var(--fs-caption);
 }
 
 .my-history-more {
     text-align: center;
     padding: 12px 16px;
-    font-size: .78rem;
+    font-size: var(--fs-caption);
     color: var(--accent);
     cursor: pointer;
     background: var(--bg-card);
@@ -362,7 +362,7 @@
     border-radius: 999px;
     background: color-mix(in srgb, var(--accent-glow) 72%, #fff 28%);
     color: var(--accent);
-    font-size: .68rem;
+    font-size: var(--fs-label);
     font-weight: 700;
     letter-spacing: .06em;
     text-transform: uppercase;
@@ -401,19 +401,19 @@
 }
 
 .my-install-text-title {
-    font-size: .86rem;
+    font-size: var(--fs-body);
     font-weight: 500;
     color: var(--text)
 }
 
 .my-install-text-desc {
-    font-size: .76rem;
+    font-size: var(--fs-caption);
     color: var(--text-secondary);
     margin-top: 2px
 }
 
 .my-install-benefit {
-    font-size: .76rem;
+    font-size: var(--fs-caption);
     color: var(--text-muted);
     margin-bottom: 12px;
     line-height: 1.5;
@@ -423,7 +423,7 @@
 }
 
 .my-install-steps {
-    font-size: .78rem;
+    font-size: var(--fs-caption);
     color: var(--text-secondary);
     line-height: 1.6;
     margin-bottom: 12px
@@ -445,7 +445,7 @@
     border-radius: 8px;
     background: var(--accent);
     color: var(--text-inverse);
-    font-size: .84rem;
+    font-size: var(--fs-body);
     font-weight: 500;
     cursor: pointer;
     text-align: center;
@@ -482,7 +482,7 @@
 }
 
 .home-section-title {
-    font-size: .78rem;
+    font-size: var(--fs-caption);
     color: var(--text-secondary);
     letter-spacing: .03em;
     padding: 0 0 12px;
@@ -509,7 +509,7 @@
 }
 
 .home-section-more {
-    font-size: .74rem;
+    font-size: var(--fs-caption);
     color: var(--accent);
     cursor: pointer;
     white-space: nowrap;
@@ -562,7 +562,7 @@
 }
 
 .home-chant-count {
-    font-size: .72rem;
+    font-size: var(--fs-caption);
     color: var(--text-muted);
     font-weight: 400;
 }
@@ -654,7 +654,7 @@
 }
 
 .home-chant-name {
-    font-size: .76rem;
+    font-size: var(--fs-caption);
     color: var(--text);
     line-height: 1.3;
     font-weight: 400;
@@ -727,7 +727,7 @@
 }
 
 .home-continue-title {
-    font-size: .84rem;
+    font-size: var(--fs-body);
     color: var(--text);
     font-weight: 500;
     white-space: nowrap;
@@ -736,7 +736,7 @@
 }
 
 .home-continue-sub {
-    font-size: .74rem;
+    font-size: var(--fs-caption);
     color: var(--text-secondary);
     margin-top: 2px;
 }
@@ -853,7 +853,7 @@
 }
 
 .home-rec-title {
-    font-size: .84rem;
+    font-size: var(--fs-body);
     color: var(--text);
     font-weight: 500;
 }
@@ -885,7 +885,7 @@
 }
 
 .home-rec-ai-intro {
-    font-size: .74rem;
+    font-size: var(--fs-caption);
     color: var(--text-secondary);
     margin-top: 4px;
     line-height: 1.5;
@@ -967,7 +967,7 @@
 }
 
 .home-guide-title {
-    font-size: .84rem;
+    font-size: var(--fs-body);
     color: var(--text);
     font-weight: 500;
 }
@@ -1010,7 +1010,7 @@
 }
 
 .home-quote-callout .home-quote-text {
-    font-size: 1rem;
+    font-size: var(--fs-heading);
     line-height: 1.8;
     color: var(--text);
     font-weight: 400;
@@ -1020,7 +1020,7 @@
 }
 
 .home-quote-callout .home-quote-author {
-    font-size: .8rem;
+    font-size: var(--fs-caption);
     color: var(--text-muted);
     margin-top: 14px;
     text-align: right;
@@ -1101,7 +1101,7 @@
     background: transparent;
     padding: 8px 4px;
     font-family: var(--font-zh);
-    font-size: .78rem;
+    font-size: var(--fs-caption);
     font-weight: 500;
     color: var(--accent);
     letter-spacing: .06em;
@@ -1175,7 +1175,7 @@
 
 .counter-dimmer__hint {
     color: rgba(255, 255, 255, .25);
-    font-size: .82rem;
+    font-size: var(--fs-body);
     font-family: var(--font-zh);
     letter-spacing: .08em;
     transition: opacity 1s ease;
@@ -1185,14 +1185,14 @@
 .counter-header-title {
     flex: 1;
     text-align: center;
-    font-size: .92rem;
+    font-size: var(--fs-body);
     font-weight: 600;
     color: var(--text);
     letter-spacing: .03em;
 }
 
 .counter-header--minimal .counter-header-title {
-    font-size: .88rem;
+    font-size: var(--fs-body);
     font-weight: 600;
     letter-spacing: .12em;
     color: var(--text-secondary);
@@ -1332,7 +1332,7 @@
 }
 
 .counter-stat-lbl {
-    font-size: .68rem;
+    font-size: var(--fs-label);
     color: var(--text-muted);
     letter-spacing: .06em;
     text-transform: uppercase;
@@ -1443,7 +1443,7 @@
 /* 圣号：供奉展示，非交互 */
 .counter-practice-name {
     margin: 0;
-    font-size: 1.02rem;
+    font-size: var(--fs-heading);
     line-height: 1.65;
     color: var(--accent);
     letter-spacing: .18em;
@@ -1455,7 +1455,7 @@
 }
 
 .counter-hint {
-    font-size: .68rem;
+    font-size: var(--fs-label);
     color: var(--text-muted);
     letter-spacing: .14em;
     margin-top: 2px;
@@ -1509,7 +1509,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: .78rem;
+    font-size: var(--fs-caption);
     color: var(--text-secondary);
 }
 
@@ -1538,11 +1538,11 @@
 }
 
 .counter-progress-bar-fill--done {
-    background: #4caf50;
+    background: var(--success);
 }
 
 .counter-streak {
-    font-size: .72rem;
+    font-size: var(--fs-caption);
     color: var(--accent);
     text-align: center;
     letter-spacing: .04em;
@@ -1551,7 +1551,7 @@
 }
 
 .counter-per-loop {
-    font-size: .7rem;
+    font-size: var(--fs-label);
     color: var(--text-muted);
     text-align: right;
 }
@@ -1580,7 +1580,7 @@
             var(--accent) 100%);
     color: var(--text-inverse);
     font-family: var(--font-zh);
-    font-size: .9rem;
+    font-size: var(--fs-body);
     font-weight: 600;
     letter-spacing: .2em;
     cursor: pointer;
@@ -1620,7 +1620,7 @@
     background: var(--bg-card);
     border-radius: var(--radius-sm);
     cursor: pointer;
-    font-size: .7rem;
+    font-size: var(--fs-label);
     color: var(--text-secondary);
     font-family: var(--font-zh);
     transition: background .15s, border-color .15s;
@@ -1728,7 +1728,7 @@
 }
 
 .practice-item-name {
-    font-size: .88rem;
+    font-size: var(--fs-body);
     color: var(--text);
     font-family: var(--font-zh);
     overflow: hidden;
@@ -1797,7 +1797,7 @@
     border: 1px dashed var(--border-active);
     background: transparent;
     border-radius: var(--radius-sm);
-    font-size: .80rem;
+    font-size: var(--fs-caption);
     color: var(--accent);
     cursor: pointer;
     font-family: var(--font-zh);
@@ -1812,7 +1812,7 @@
 
 .practice-add-hint {
     text-align: center;
-    font-size: .74rem;
+    font-size: var(--fs-caption);
     color: var(--text-muted);
     padding: 6px 0;
 }
@@ -1828,7 +1828,7 @@
 }
 
 .hx-title {
-    font-size: .96rem;
+    font-size: var(--fs-ui);
     font-weight: 600;
     color: var(--text);
     letter-spacing: .06em;
@@ -1836,7 +1836,7 @@
 }
 
 .hx-stats {
-    font-size: .78rem;
+    font-size: var(--fs-caption);
     color: var(--text-secondary);
     margin-top: 5px;
 }
@@ -1856,7 +1856,7 @@
 }
 
 .hx-section-label {
-    font-size: .68rem;
+    font-size: var(--fs-label);
     font-weight: 600;
     color: var(--text-muted);
     letter-spacing: .10em;
@@ -1878,7 +1878,7 @@
 }
 
 .hx-huixiang-text {
-    font-size: .88rem;
+    font-size: var(--fs-body);
     font-family: var(--font-serif);
     color: var(--text);
     line-height: 1.95;
@@ -1886,7 +1886,7 @@
 }
 
 .hx-huixiang-attr {
-    font-size: .70rem;
+    font-size: var(--fs-label);
     color: var(--accent);
     text-align: right;
     margin-top: 8px;
@@ -1902,7 +1902,7 @@
 }
 
 .hx-another-hint {
-    font-size: .70rem;
+    font-size: var(--fs-label);
     color: var(--text-muted);
     margin-top: 2px;
 }
@@ -1913,7 +1913,7 @@
     border: 1px solid var(--border);
     background: var(--bg);
     border-radius: var(--radius-sm);
-    font-size: .84rem;
+    font-size: var(--fs-body);
     color: var(--text);
     font-family: var(--font-zh);
     outline: none;
@@ -1946,7 +1946,7 @@
 }
 
 .hx-gongxiu-text {
-    font-size: .84rem;
+    font-size: var(--fs-body);
     color: var(--text-secondary);
 }
 
@@ -1963,7 +1963,7 @@
     border-radius: var(--radius-sm);
     background: var(--accent);
     color: var(--text-inverse);
-    font-size: .9rem;
+    font-size: var(--fs-body);
     font-weight: 600;
     font-family: var(--font-serif);
     cursor: pointer;
@@ -2037,7 +2037,7 @@
 
 /* 回向文（主体，始终展示） */
 .hd-main-text {
-    font-size: 1.02rem;
+    font-size: var(--fs-heading);
     font-family: var(--font-serif);
     color: var(--text);
     line-height: 2.1;
@@ -2046,7 +2046,7 @@
 
 /* 个人回向（先于主回向文展示） */
 .hd-personal {
-    font-size: .88rem;
+    font-size: var(--fs-body);
     color: var(--text-secondary);
     letter-spacing: .04em;
     font-family: var(--font-zh);
@@ -2066,7 +2066,7 @@
     border-radius: 20px;
     padding: 8px 20px;
     font-family: var(--font-zh);
-    font-size: .80rem;
+    font-size: var(--fs-caption);
     color: var(--accent);
     cursor: pointer;
     transition: background .15s;
@@ -2078,7 +2078,7 @@
 }
 
 .hd-namo {
-    font-size: 1rem;
+    font-size: var(--fs-heading);
     color: var(--accent);
     font-weight: 500;
     letter-spacing: .22em;
@@ -2086,7 +2086,7 @@
 }
 
 .hd-hint {
-    font-size: .70rem;
+    font-size: var(--fs-label);
     color: var(--text-muted);
     letter-spacing: .04em;
 }
@@ -2095,7 +2095,7 @@
 .counter-namo {
     margin: 0;
     text-align: center;
-    font-size: .74rem;
+    font-size: var(--fs-caption);
     color: var(--text-muted);
     letter-spacing: .28em;
     font-family: var(--font-serif);
@@ -2147,7 +2147,7 @@
 }
 
 .counter-goal-panel-title {
-    font-size: .88rem;
+    font-size: var(--fs-body);
     font-weight: 600;
     color: var(--text);
     text-align: center;
@@ -2164,7 +2164,7 @@
     border: 1px solid var(--border);
     background: var(--bg);
     border-radius: var(--radius-sm);
-    font-size: .9rem;
+    font-size: var(--fs-body);
     font-weight: 500;
     color: var(--text);
     cursor: pointer;
@@ -2189,7 +2189,7 @@
     background: var(--bg-secondary);
     color: var(--text-secondary);
     font-family: var(--font-zh);
-    font-size: .84rem;
+    font-size: var(--fs-body);
     letter-spacing: .02em;
 }
 
@@ -2201,7 +2201,7 @@
 
 /* 分隔标签 */
 .counter-goal-section-label {
-    font-size: .70rem;
+    font-size: var(--fs-label);
     font-weight: 600;
     color: var(--text-muted);
     letter-spacing: .08em;
@@ -2215,7 +2215,7 @@
     border: none;
     background: var(--bg-secondary);
     border-radius: var(--radius-sm);
-    font-size: .86rem;
+    font-size: var(--fs-body);
     color: var(--text-secondary);
     cursor: pointer;
     font-family: var(--font-zh);
@@ -2238,7 +2238,7 @@
     border: 1px solid var(--border);
     background: var(--bg);
     border-radius: var(--radius-sm);
-    font-size: .9rem;
+    font-size: var(--fs-body);
     color: var(--text);
     font-family: var(--font-en);
     outline: none;
@@ -2281,7 +2281,7 @@
     border: 1px solid var(--accent-dim);
     background: var(--accent-glow);
     border-radius: var(--radius-sm);
-    font-size: .84rem;
+    font-size: var(--fs-body);
     color: var(--accent);
     cursor: pointer;
     font-family: var(--font-zh);
@@ -2334,7 +2334,7 @@
 }
 
 .counter-practice-panel-title {
-    font-size: .88rem;
+    font-size: var(--fs-body);
     font-weight: 600;
     color: var(--text);
     text-align: center;
@@ -2351,7 +2351,7 @@
     border: 1px solid var(--border);
     background: var(--bg);
     border-radius: var(--radius-sm);
-    font-size: .86rem;
+    font-size: var(--fs-body);
     font-weight: 500;
     color: var(--text);
     cursor: pointer;
@@ -2389,7 +2389,7 @@
     border: 1px solid var(--border);
     background: var(--bg);
     border-radius: var(--radius-sm);
-    font-size: .82rem;
+    font-size: var(--fs-body);
     font-weight: 500;
     color: var(--text-2);
     cursor: pointer;
@@ -2448,7 +2448,7 @@
 .ch-title {
     flex: 1;
     text-align: center;
-    font-size: .92rem;
+    font-size: var(--fs-body);
     font-weight: 600;
     color: var(--text);
     letter-spacing: .03em;
@@ -2490,7 +2490,7 @@
 }
 
 .ch-stat-lbl {
-    font-size: .66rem;
+    font-size: var(--fs-label);
     color: var(--text-muted);
     letter-spacing: .06em;
     text-transform: uppercase;
@@ -2516,7 +2516,7 @@
 }
 
 .ch-milestone-text {
-    font-size: .78rem;
+    font-size: var(--fs-caption);
     color: var(--text-secondary);
     line-height: 1.55;
 }
@@ -2549,7 +2549,7 @@
     border-radius: 20px;
     border: 1px solid var(--border);
     background: transparent;
-    font-size: .78rem;
+    font-size: var(--fs-caption);
     color: var(--text-secondary);
     cursor: pointer;
     transition: all .15s;
@@ -2569,7 +2569,7 @@
 }
 
 .ch-section-title {
-    font-size: .72rem;
+    font-size: var(--fs-caption);
     font-weight: 600;
     color: var(--text-muted);
     letter-spacing: .08em;
@@ -2723,13 +2723,13 @@
 }
 
 .ch-day-date {
-    font-size: .82rem;
+    font-size: var(--fs-body);
     color: var(--text-secondary);
     font-weight: 400;
 }
 
 .ch-day-sub {
-    font-size: .7rem;
+    font-size: var(--fs-label);
     color: var(--text-muted);
     margin-top: 2px;
     white-space: nowrap;
@@ -2738,7 +2738,7 @@
 }
 
 .ch-day-count {
-    font-size: .96rem;
+    font-size: var(--fs-ui);
     font-weight: 600;
     color: var(--text);
     font-family: var(--font-en);
@@ -2755,7 +2755,7 @@
     text-align: center;
     padding: 48px 20px;
     color: var(--text-muted);
-    font-size: .84rem;
+    font-size: var(--fs-body);
     line-height: 1.9;
 }
 
@@ -2809,7 +2809,7 @@
 }
 
 .csm-title {
-    font-size: .92rem;
+    font-size: var(--fs-body);
     font-weight: 600;
     color: var(--text);
     letter-spacing: .04em;
@@ -2835,7 +2835,7 @@
     align-items: center;
     gap: 8px;
     color: var(--text-muted);
-    font-size: .82rem;
+    font-size: var(--fs-body);
     padding: 32px;
 }
 
@@ -2854,7 +2854,7 @@
     text-align: center;
     padding: 24px;
     color: var(--text-muted);
-    font-size: .82rem;
+    font-size: var(--fs-body);
 }
 
 .csm-actions {
@@ -2872,7 +2872,7 @@
     gap: 8px;
     padding: 13px 16px;
     border-radius: var(--radius-sm);
-    font-size: .86rem;
+    font-size: var(--fs-body);
     font-weight: 500;
     font-family: var(--font-zh);
     cursor: pointer;
@@ -2935,7 +2935,7 @@
 }
 
 .chi-top-lbl {
-    font-size: .68rem;
+    font-size: var(--fs-label);
     color: var(--text-muted);
     letter-spacing: .06em;
     text-transform: uppercase;
@@ -2968,7 +2968,7 @@
 }
 
 .chi-practice-card-name {
-    font-size: .95rem;
+    font-size: var(--fs-ui);
     font-weight: 500;
     font-family: var(--font-serif);
     color: var(--accent);
@@ -2984,7 +2984,7 @@
     justify-content: space-between;
     gap: 12px;
     margin-bottom: 10px;
-    font-size: .78rem;
+    font-size: var(--fs-caption);
     color: var(--text-secondary);
 }
 
@@ -3001,7 +3001,7 @@
 
 .chi-practice-check {
     display: inline;
-    color: #4caf50;
+    color: var(--success);
     font-weight: 600;
     margin-right: 2px;
 }
@@ -3022,7 +3022,7 @@
 }
 
 .chi-practice-bar-fill--done {
-    background: #4caf50;
+    background: var(--success);
 }
 
 /* 月分组 */
@@ -3040,14 +3040,14 @@
 }
 
 .chi-month-lbl {
-    font-size: .78rem;
+    font-size: var(--fs-caption);
     font-weight: 600;
     color: var(--text-muted);
     letter-spacing: .06em;
 }
 
 .chi-month-total {
-    font-size: .76rem;
+    font-size: var(--fs-caption);
     color: var(--accent);
     font-family: var(--font-en);
     font-weight: 600;
@@ -3081,14 +3081,14 @@
 }
 
 .chi-date-main {
-    font-size: .82rem;
+    font-size: var(--fs-body);
     color: var(--text);
     font-weight: 400;
     font-family: var(--font-en);
 }
 
 .chi-date-sub {
-    font-size: .68rem;
+    font-size: var(--fs-label);
     color: var(--text-muted);
 }
 
@@ -3101,12 +3101,12 @@
 }
 
 .chi-breakdown {
-    font-size: .78rem;
+    font-size: var(--fs-caption);
     color: var(--text-secondary);
 }
 
 .chi-no-record {
-    font-size: .78rem;
+    font-size: var(--fs-caption);
     color: var(--text-muted);
 }
 
@@ -3118,7 +3118,7 @@
 }
 
 .chi-count {
-    font-size: .88rem;
+    font-size: var(--fs-body);
     font-weight: 600;
     color: var(--text);
     font-family: var(--font-en);
@@ -3159,14 +3159,14 @@
 }
 
 .chi-month-nav-lbl {
-    font-size: .92rem;
+    font-size: var(--fs-body);
     font-weight: 600;
     color: var(--text);
     letter-spacing: .04em;
 }
 
 .chi-month-nav-total {
-    font-size: .74rem;
+    font-size: var(--fs-caption);
     color: var(--accent);
     font-family: var(--font-en);
     font-weight: 600;
@@ -3213,7 +3213,7 @@
 
 .chi-cal-wday {
     text-align: center;
-    font-size: .70rem;
+    font-size: var(--fs-label);
     color: var(--text-muted);
     padding: 2px 0;
     font-weight: 500;
@@ -3283,7 +3283,7 @@
 }
 
 .chi-cal-day {
-    font-size: .80rem;
+    font-size: var(--fs-caption);
     font-weight: 500;
     color: var(--text);
     line-height: 1;
@@ -3323,7 +3323,7 @@
 }
 
 .chi-legend-lbl {
-    font-size: .68rem;
+    font-size: var(--fs-label);
     color: var(--text-muted);
     margin-right: 8px;
 }
@@ -3357,7 +3357,7 @@
 
 .chi-tools-heading {
     margin: 0 0 14px;
-    font-size: .68rem;
+    font-size: var(--fs-label);
     font-weight: 600;
     letter-spacing: .2em;
     text-transform: uppercase;
@@ -3384,7 +3384,7 @@
     background: var(--bg-card);
     color: var(--text);
     font-family: var(--font-zh);
-    font-size: .86rem;
+    font-size: var(--fs-body);
     text-align: left;
     cursor: pointer;
     transition: border-color .2s ease, background .2s ease, transform .15s ease;
@@ -3423,7 +3423,7 @@
 
 .chi-tool-meta--pill {
     flex-shrink: 0;
-    font-size: .68rem;
+    font-size: var(--fs-label);
     font-weight: 600;
     letter-spacing: .06em;
     padding: 5px 10px;
@@ -3449,7 +3449,7 @@
 }
 
 .bulu-date-name {
-    font-size: .92rem;
+    font-size: var(--fs-body);
     font-weight: 600;
     color: var(--accent);
     font-family: var(--font-serif);
@@ -3457,6 +3457,6 @@
 }
 
 .bulu-date-existing {
-    font-size: .74rem;
+    font-size: var(--fs-caption);
     color: var(--text-secondary);
 }

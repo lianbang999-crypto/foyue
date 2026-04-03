@@ -9,17 +9,6 @@ import { getHistory } from './history.js';
 import { get as storeGet } from './store.js';
 import { escapeHtml } from './utils.js';
 
-/* ===== HTML escaping — prevent XSS from API/LLM data ===== */
-function esc(s) {
-  if (!s) return '';
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 /* ===== Home Page DOM Cache ===== */
 // Keep the home page element alive across tab switches to avoid full re-renders.
 let _homePageEl = null;
@@ -259,9 +248,12 @@ function buildDynamicSectionHtml() {
         const s = c.series.find(x => x.id === st.seriesId);
         if (s) { cSeries = s; cCat = c; break; }
       }
-      if (cSeries) {
+      if (cSeries && cSeries.episodes?.length) {
         hasPlayHistory = true;
-        const cIdx = Number.isInteger(st.epIdx) ? st.epIdx : (st.idx || 0);
+        const cIdx = Math.min(
+          Number.isInteger(st.epIdx) ? st.epIdx : (st.idx || 0),
+          cSeries.episodes.length - 1
+        );
         const ep = cSeries.episodes[cIdx];
         const epTitle = ep ? (ep.title || ep.fileName) : '';
         const duration = ep?.duration || 0;

@@ -20,6 +20,10 @@
   --text-secondary: rgba(30, 30, 30, 0.6);
   --text-muted: rgba(30, 30, 30, 0.35);
   --text-inverse: #FFFFFF;
+  --danger: #ea4335;
+  --danger-dim: rgba(234, 67, 53, 0.15);
+  --success: #4caf50;
+  --success-dim: rgba(76, 175, 80, 0.15);
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
   --shadow-md: 0 8px 32px rgba(0, 0, 0, 0.06);
   --radius: 12px;
@@ -30,6 +34,19 @@
   --font-zh: 'Noto Sans SC', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-en: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-serif: 'Noto Serif SC', 'STSong', 'SimSun', serif;
+  /* Typography scale */
+  --fs-label: .7rem;
+  /* 11.2px — tiny badges, bottom nav labels */
+  --fs-caption: .78rem;
+  /* 12.5px — meta text, captions, subtitles */
+  --fs-body: .9rem;
+  /* 14.4px — card titles, body content */
+  --fs-ui: .9375rem;
+  /* 15px   — buttons, inputs */
+  --fs-heading: 1rem;
+  /* 16px   — section headings */
+  --fs-xl: 1.0625rem;
+  /* 17px   — page titles, modals */
   /* Hero gradient for home page */
   --hero-gradient: linear-gradient(160deg, rgba(217, 119, 87, 0.06) 0%, rgba(217, 119, 87, 0.02) 50%, transparent 100%);
   --hero-radial: radial-gradient(ellipse at 25% 0%, rgba(217, 119, 87, 0.08) 0%, transparent 55%);
@@ -56,6 +73,10 @@
   --text-secondary: rgba(232, 224, 213, 0.65);
   --text-muted: rgba(232, 224, 213, 0.4);
   --text-inverse: #1D1D1D;
+  --danger: #ef5350;
+  --danger-dim: rgba(239, 83, 80, 0.2);
+  --success: #66bb6a;
+  --success-dim: rgba(102, 187, 106, 0.2);
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 8px 32px rgba(0, 0, 0, 0.35);
   --hero-gradient: linear-gradient(160deg, rgba(224, 135, 107, 0.06) 0%, rgba(224, 135, 107, 0.02) 50%, transparent 100%);

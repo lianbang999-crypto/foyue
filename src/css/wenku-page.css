@@ -18,10 +18,10 @@
     --wk-text-secondary: #8B7E74;
     --wk-text-muted: #B5ACA3;
     --wk-border: #E5E0D8;
-    --wk-accent: #C4704F;
-    --wk-accent-light: rgba(196, 112, 79, 0.08);
-    --wk-highlight-fill: rgba(196, 112, 79, 0.14);
-    --wk-highlight-underline: rgba(196, 112, 79, 0.24);
+    --wk-accent: #D97757;
+    --wk-accent-light: rgba(217, 119, 87, 0.08);
+    --wk-highlight-fill: rgba(217, 119, 87, 0.14);
+    --wk-highlight-underline: rgba(217, 119, 87, 0.24);
     --wk-radius: 20px;
     --wk-radius-sm: 12px;
     --wk-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
@@ -45,10 +45,10 @@
         --wk-text-secondary: #A89E94;
         --wk-text-muted: #6E645A;
         --wk-border: #332E28;
-        --wk-accent: #D98B6C;
-        --wk-accent-light: rgba(217, 139, 108, 0.1);
-        --wk-highlight-fill: rgba(217, 139, 108, 0.18);
-        --wk-highlight-underline: rgba(217, 139, 108, 0.28);
+        --wk-accent: #E0876B;
+        --wk-accent-light: rgba(224, 135, 107, 0.1);
+        --wk-highlight-fill: rgba(224, 135, 107, 0.18);
+        --wk-highlight-underline: rgba(224, 135, 107, 0.28);
         --wk-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.15);
         --wk-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.2);
         --wk-shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.25);
@@ -116,20 +116,20 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 16px;
-    height: 44px;
+    padding: 0 12px;
+    height: 50px;
 }
 
 .wk-header-brand {
     display: flex;
     align-items: center;
     gap: 8px;
-    text-decoration: none;
     color: var(--wk-text);
     font-family: var(--wk-font-serif);
     font-size: 17px;
     font-weight: 600;
     letter-spacing: 0.02em;
+    flex-shrink: 0;
 }
 
 .wk-brand-icon {
@@ -147,7 +147,7 @@ body {
     align-items: center;
     padding: 6px 14px;
     border-radius: 20px;
-    font-size: 13px;
+    font-size: var(--fs-body);
     font-weight: 500;
     color: var(--wk-accent);
     text-decoration: none;
@@ -165,6 +165,7 @@ body {
     appearance: none;
     background: none;
     border: none;
+    text-decoration: none;
     width: 44px;
     min-width: 44px;
     height: 44px;
@@ -176,8 +177,6 @@ body {
     color: var(--wk-text-muted);
     border-radius: 50%;
     transition: color 0.15s, background 0.15s;
-    margin-left: -8px;
-    margin-right: 4px;
     flex-shrink: 0;
 }
 
@@ -230,7 +229,7 @@ body {
     border: 1px solid var(--wk-border);
     border-radius: var(--wk-radius);
     padding: 10px 14px;
-    font-size: .84rem;
+    font-size: var(--fs-body);
     background: color-mix(in srgb, var(--wk-bg-card) 92%, transparent 8%);
     color: var(--wk-text);
     font-family: var(--wk-font-zh);
@@ -241,7 +240,7 @@ body {
 
 .wk-search-input:focus {
     border-color: var(--wk-accent);
-    box-shadow: 0 0 0 3px rgba(196, 112, 79, 0.08), var(--wk-shadow-sm);
+    box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.08), var(--wk-shadow-sm);
 }
 
 .wk-search-input::placeholder {
@@ -260,7 +259,7 @@ body {
 
 /* 段落标题 */
 .wk-section-label {
-    font-size: .82rem;
+    font-size: var(--fs-body);
     color: var(--wk-text-secondary);
     letter-spacing: 0.06em;
     padding: 0 4px 12px;
@@ -325,7 +324,7 @@ body {
 }
 
 .wk-continue-title {
-    font-size: 14px;
+    font-size: var(--fs-body);
     font-weight: 500;
     white-space: nowrap;
     overflow: hidden;
@@ -377,7 +376,7 @@ body {
     border-radius: var(--wk-radius);
     background: color-mix(in srgb, var(--wk-bg-card) 92%, transparent 8%);
     color: var(--wk-text);
-    font-size: 14px;
+    font-size: var(--fs-body);
     font-family: var(--wk-font-zh);
     outline: none;
     transition: border-color 0.2s, box-shadow 0.2s;
@@ -386,7 +385,7 @@ body {
 
 .wk-home-search-input:focus {
     border-color: var(--wk-accent);
-    box-shadow: 0 0 0 3px rgba(196, 112, 79, 0.08);
+    box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.08);
     background: var(--wk-bg-card);
 }
 
@@ -418,7 +417,7 @@ body {
 }
 
 .wk-search-item-title {
-    font-size: 14px;
+    font-size: var(--fs-body);
     font-weight: 500;
     margin-bottom: 2px;
 }
@@ -550,7 +549,7 @@ body {
     line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    font-size: 14px;
+    font-size: var(--fs-body);
     line-height: 1.42;
 }
 
@@ -624,7 +623,7 @@ body {
 }
 
 .wk-series-name {
-    font-size: 14px;
+    font-size: var(--fs-body);
     font-weight: 500;
 }
 
@@ -730,13 +729,13 @@ body {
 
 .wk-book-sheet-meta {
     margin-top: 6px;
-    font-size: 13px;
+    font-size: var(--fs-body);
     color: var(--wk-text-secondary);
 }
 
 .wk-book-sheet-intro {
     margin-top: 16px;
-    font-size: 14px;
+    font-size: var(--fs-body);
     line-height: 1.85;
     color: var(--wk-text);
 }
@@ -828,7 +827,7 @@ body {
 
 .wk-series-header-intro {
     margin-top: 8px;
-    font-size: 13px;
+    font-size: var(--fs-body);
     line-height: 1.65;
     color: var(--wk-text-secondary);
 }
@@ -874,7 +873,7 @@ body {
 
 .wk-doc-num {
     width: 28px;
-    font-size: .78rem;
+    font-size: var(--fs-caption);
     color: var(--wk-text-muted);
     text-align: center;
     flex-shrink: 0;
@@ -901,7 +900,7 @@ body {
 }
 
 .wk-doc-title {
-    font-size: 14px;
+    font-size: var(--fs-body);
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -923,7 +922,7 @@ body {
 }
 
 .wk-doc-badge {
-    font-size: .68rem;
+    font-size: var(--fs-label);
     color: var(--wk-accent);
     background: var(--wk-accent-light);
     padding: 2px 6px;
@@ -944,7 +943,7 @@ body {
     text-align: center;
     padding: 40px 16px;
     color: var(--wk-text-muted);
-    font-size: .82rem;
+    font-size: var(--fs-body);
 }
 
 .wk-empty-illustration {
@@ -968,7 +967,7 @@ body {
 .wk-empty-copy {
     max-width: 280px;
     margin: 8px auto 0;
-    font-size: 13px;
+    font-size: var(--fs-body);
     line-height: 1.7;
     color: var(--wk-text-secondary);
 }
@@ -983,7 +982,7 @@ body {
     background: none;
     border-radius: 8px;
     padding: 8px 20px;
-    font-size: 13px;
+    font-size: var(--fs-body);
     color: var(--wk-text-secondary);
     cursor: pointer;
     margin-top: 12px;
@@ -1123,7 +1122,7 @@ body {
 }
 
 .wk-reader-topbar-title {
-    font-size: 13px;
+    font-size: var(--fs-body);
     font-weight: 500;
     opacity: 0.72;
     white-space: nowrap;
@@ -1163,7 +1162,7 @@ body {
 }
 
 .wk-reader-meta {
-    font-size: .76rem;
+    font-size: var(--fs-caption);
     opacity: 0.58;
     margin-bottom: 16px;
 }
@@ -1224,7 +1223,7 @@ body {
     left: 50%;
     transform: translateX(-50%);
     z-index: 1002;
-    font-size: .78rem;
+    font-size: var(--fs-caption);
     opacity: 0.55;
     padding: 4px 14px;
     border-radius: 12px;
@@ -1307,7 +1306,7 @@ body {
 }
 
 .wk-settings-title {
-    font-size: .78rem;
+    font-size: var(--fs-caption);
     opacity: 0.5;
     margin-bottom: 12px;
     font-weight: 500;
@@ -1328,13 +1327,13 @@ body {
 }
 
 .wk-fontsize-label {
-    font-size: 1.05rem;
+    font-size: var(--fs-xl);
     line-height: 1;
     opacity: 0.7;
 }
 
 .wk-fontsize-sm {
-    font-size: .82rem;
+    font-size: var(--fs-body);
 }
 
 .wk-fontsize-lg {
@@ -1367,7 +1366,7 @@ body {
     background: transparent;
     color: inherit;
     padding: 10px;
-    font-size: .85rem;
+    font-size: var(--fs-body);
     cursor: pointer;
     transition: all 0.2s;
     border-radius: 12px;
@@ -1415,7 +1414,7 @@ body {
     border-radius: 12px;
     border: none;
     box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.15);
-    font-size: .8rem;
+    font-size: var(--fs-caption);
     cursor: pointer;
     text-align: center;
     transition: all 0.2s cubic-bezier(.22, 1, .36, 1);
@@ -1488,13 +1487,13 @@ body {
 
 .wk-next-done-copy {
     max-width: 280px;
-    font-size: 13px;
+    font-size: var(--fs-body);
     line-height: 1.7;
     color: var(--wk-text-secondary);
 }
 
 .wk-next-card p {
-    font-size: 13px;
+    font-size: var(--fs-body);
     opacity: 0.45;
     margin-bottom: 12px;
     text-indent: 0;
@@ -1506,7 +1505,7 @@ body {
     background: var(--wk-accent-light);
     border-radius: 999px;
     padding: 10px 24px;
-    font-size: 14px;
+    font-size: var(--fs-body);
     color: var(--wk-accent);
     cursor: pointer;
     font-family: var(--wk-font-zh);
@@ -1572,7 +1571,7 @@ body {
     color: var(--wk-bg);
     padding: 8px 20px;
     border-radius: 20px;
-    font-size: 13px;
+    font-size: var(--fs-body);
     z-index: 999;
     opacity: 0;
     transition: opacity 0.3s;
@@ -1608,7 +1607,7 @@ body {
     }
 
     .wk-series-name {
-        font-size: 14px;
+        font-size: var(--fs-body);
     }
 }
 
