@@ -13,6 +13,7 @@ import {
   json,
   buildCategoriesCacheKey,
   buildCategoryCacheKey,
+  buildPathCacheKey,
   getEdgeCachedJson,
 } from '../lib/http-utils.js';
 import {
@@ -156,13 +157,41 @@ export async function onRequest(context) {
     // GET /api/series/:id
     const sm = path.match(/^\/api\/series\/([^/]+)$/);
     if (sm && method === 'GET') {
-      return json(await getSeriesDetail(db, sm[1]), cors);
+      const seriesId = sm[1];
+      return getEdgeCachedJson(
+        request,
+        buildPathCacheKey(url, {
+          pathname: `/api/series/${encodeURIComponent(seriesId)}`,
+          allowedSearchParams: ['v'],
+        }),
+        waitUntil,
+        async () => json(
+          await getSeriesDetail(db, seriesId),
+          cors,
+          200,
+          'public, max-age=300, s-maxage=1800, stale-while-revalidate=86400'
+        )
+      );
     }
 
     // GET /api/series/:id/episodes
     const em = path.match(/^\/api\/series\/([^/]+)\/episodes$/);
     if (em && method === 'GET') {
-      return json(await getEpisodes(db, em[1]), cors);
+      const seriesId = em[1];
+      return getEdgeCachedJson(
+        request,
+        buildPathCacheKey(url, {
+          pathname: `/api/series/${encodeURIComponent(seriesId)}/episodes`,
+          allowedSearchParams: ['v'],
+        }),
+        waitUntil,
+        async () => json(
+          await getEpisodes(db, seriesId),
+          cors,
+          200,
+          'public, max-age=300, s-maxage=1800, stale-while-revalidate=86400'
+        )
+      );
     }
 
     // POST /api/play-count
@@ -253,7 +282,15 @@ export async function onRequest(context) {
 
     // GET /api/ai/daily-recommend — AI 每日推荐
     if (path === '/api/ai/daily-recommend' && method === 'GET') {
-      return await handleDailyRecommend(env, cors, context, json);
+      return getEdgeCachedJson(
+        request,
+        buildPathCacheKey(url, {
+          pathname: '/api/ai/daily-recommend',
+          extraSearchParams: { day: getTodayBeijing() },
+        }),
+        waitUntil,
+        async () => handleDailyRecommend(env, cors, context, json)
+      );
     }
 
     // POST /api/ai/voice-to-text — Whisper 语音识别
@@ -276,7 +313,15 @@ export async function onRequest(context) {
 
     // GET /api/messages — 获取留言列表
     if (path === '/api/messages' && method === 'GET') {
-      return await handleGetMessages(db, url, cors);
+      return getEdgeCachedJson(
+        request,
+        buildPathCacheKey(url, {
+          pathname: '/api/messages',
+          allowedSearchParams: ['page', 'limit'],
+        }),
+        waitUntil,
+        async () => handleGetMessages(db, url, cors)
+      );
     }
 
     // POST /api/messages — 发布留言
@@ -288,7 +333,16 @@ export async function onRequest(context) {
 
     // GET /api/gongxiu — 获取今日共修统计 + 最新条目
     if (path === '/api/gongxiu' && method === 'GET') {
-      return await handleGetGongxiu(db, url, cors);
+      return getEdgeCachedJson(
+        request,
+        buildPathCacheKey(url, {
+          pathname: '/api/gongxiu',
+          allowedSearchParams: ['limit'],
+          extraSearchParams: { day: getTodayBeijing() },
+        }),
+        waitUntil,
+        async () => handleGetGongxiu(db, url, cors)
+      );
     }
 
     // POST /api/gongxiu — 提交共修回向记录

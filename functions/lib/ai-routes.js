@@ -808,7 +808,7 @@ export async function handleDailyRecommend(env, cors, ctx, json) {
       date: dateKey,
       recommendations: JSON.parse(cached.recommendations),
       cached: true,
-    }, cors, 200, 'public, max-age=300');
+    }, cors, 200, 'public, max-age=300, s-maxage=1800, stale-while-revalidate=86400');
   }
 
   if (cached && cached.status === 'generating') {
@@ -860,7 +860,7 @@ export async function handleDailyRecommend(env, cors, ctx, json) {
       recommendations,
       cached: false,
       generation_ms: genMs,
-    }, cors, 200, 'public, max-age=300');
+    }, cors, 200, 'public, max-age=300, s-maxage=1800, stale-while-revalidate=86400');
   } catch (err) {
     console.error('[DailyRec] Generation failed:', err);
     await db.prepare(

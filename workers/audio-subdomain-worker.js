@@ -27,6 +27,7 @@ function buildBaseHeaders(object) {
   headers.set('Cache-Control', 'public, max-age=2592000, immutable');
   headers.set('Accept-Ranges', 'bytes');
   headers.set('Access-Control-Allow-Origin', 'https://foyue.org');
+  headers.set('Access-Control-Expose-Headers', 'Accept-Ranges, Content-Length, Content-Range, ETag, Age, CF-Cache-Status, X-Audio-Worker-Cache, X-Audio-Worker-Cache-Detail');
   headers.set('Timing-Allow-Origin', 'https://foyue.org');
   headers.set('X-Content-Type-Options', 'nosniff');
   return headers;

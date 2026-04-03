@@ -27,22 +27,60 @@ export function buildCategoryCacheKey(url, { categoryId }) {
   return new Request(cacheUrl.toString(), { method: 'GET' });
 }
 
+export function buildPathCacheKey(url, { pathname, allowedSearchParams = [], extraSearchParams = {} } = {}) {
+  const cacheUrl = new URL(url.toString());
+  if (pathname) cacheUrl.pathname = pathname;
+
+  const preservedEntries = [];
+  for (const key of allowedSearchParams) {
+    const value = cacheUrl.searchParams.get(key);
+    if (value !== null && value !== '') preservedEntries.push([key, value]);
+  }
+
+  cacheUrl.search = '';
+
+  for (const [key, value] of preservedEntries) {
+    cacheUrl.searchParams.set(key, value);
+  }
+
+  for (const [key, value] of Object.entries(extraSearchParams)) {
+    if (value === undefined || value === null || value === '') continue;
+    cacheUrl.searchParams.set(key, String(value));
+  }
+
+  return new Request(cacheUrl.toString(), { method: 'GET' });
+}
+
+function isCacheableResponse(response) {
+  if (!response.ok) return false;
+  const cacheControl = (response.headers.get('Cache-Control') || '').toLowerCase();
+  return !/(^|,|\s)(no-store|private|no-cache)(,|\s|$)/.test(cacheControl);
+}
+
 export async function getEdgeCachedJson(request, cacheKey, waitUntil, buildResponse) {
   const url = new URL(request.url);
   const forceRefresh = url.searchParams.has('refresh') || url.searchParams.has('ts');
   const cache = caches.default;
+  void waitUntil;
   if (!forceRefresh) {
     const cached = await cache.match(cacheKey);
     if (cached) return withEdgeCacheHeader(cached, 'HIT');
   }
 
   const response = await buildResponse(request);
-  if (response.ok) {
-    const cacheWrite = cache.put(cacheKey, response.clone());
-    if (typeof waitUntil === 'function') waitUntil(cacheWrite);
-    else await cacheWrite;
+  if (isCacheableResponse(response)) {
+    try {
+      await cache.put(cacheKey, response.clone());
+    } catch {
+      // Ignore cache write failures and continue serving the fresh response.
+    }
   }
-  return withEdgeCacheHeader(response, forceRefresh ? 'REFRESH' : 'MISS');
+  return withEdgeCacheHeader(
+    response,
+    !isCacheableResponse(response)
+      ? 'BYPASS'
+      : (forceRefresh ? 'REFRESH' : 'MISS')
+  );
 }
 
 export function withEdgeCacheHeader(response, status) {
