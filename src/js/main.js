@@ -388,9 +388,12 @@ async function ensureSeriesDetail(seriesId, categoryId) {
   });
 
   // AI Chat button (header pill) → 跳转独立 AI 页面
-  document.getElementById('btnAiChat').addEventListener('click', () => {
+  document.getElementById('btnAiChat').addEventListener('click', (e) => {
     haptic();
-    window.location.href = '/ai';
+    const btn = e.currentTarget;
+    btn.classList.add('tapped');
+    // 给动画 350ms 时间播放后再跳转
+    setTimeout(() => { window.location.href = '/ai'; }, 180);
   });
 
   // Search button (header icon)

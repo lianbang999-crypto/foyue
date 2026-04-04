@@ -32,10 +32,41 @@ export function setTheme(t) {
 }
 
 /**
- * 子页面用：跟随系统深色/浅色偏好（不读 localStorage）
+ * 子页面用：优先跟随用户保存的主题，缺省时再回退到系统深浅色偏好。
  * @param {{ light?: string, dark?: string }} [themeColors] meta theme-color 映射
  */
 export function syncSystemTheme(themeColors) {
+  const saved = localStorage.getItem('pl-theme');
+  if (saved === 'light' || saved === 'dark') {
+    document.documentElement.setAttribute('data-theme', saved);
+    if (themeColors) {
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', themeColors[saved] || '');
+    }
+    return;
+  }
+
+  if (saved === 'ink' || saved === 'terracotta') {
+    const t = saved === 'ink' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', t);
+    if (themeColors) {
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', themeColors[t] || '');
+    }
+    return;
+  }
+
+  const oldColor = localStorage.getItem('pl-color');
+  if (oldColor === 'terracotta' || oldColor === 'ink') {
+    const t = oldColor === 'ink' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', t);
+    if (themeColors) {
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', themeColors[t] || '');
+    }
+    return;
+  }
+
   const applyTheme = (isDark) => {
     const t = isDark ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme', t);

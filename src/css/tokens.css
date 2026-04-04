@@ -39,18 +39,22 @@
   --font-en: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-serif: 'Noto Serif SC', 'STSong', 'SimSun', serif;
   /* Typography scale */
-  --fs-label: .7rem;
-  /* 11.2px — tiny badges, bottom nav labels */
-  --fs-caption: .78rem;
-  /* 12.5px — meta text, captions, subtitles */
-  --fs-body: .9rem;
-  /* 14.4px — card titles, body content */
-  --fs-ui: .9375rem;
-  /* 15px   — buttons, inputs */
-  --fs-heading: 1rem;
-  /* 16px   — section headings */
-  --fs-xl: 1.0625rem;
-  /* 17px   — page titles, modals */
+  --fs-label: .6875rem;
+  /* 11px  — 角标、导航标签 */
+  --fs-caption: .75rem;
+  /* 12px  — 时间戳、辅助文字 */
+  --fs-small: .8125rem;
+  /* 13px  — 小号次要文本 */
+  --fs-body: .9375rem;
+  /* 15px  — 正文、卡片标题 */
+  --fs-ui: 1rem;
+  /* 16px  — 按钮、输入框 */
+  --fs-heading: 1.0625rem;
+  /* 17px  — 章节/区块标题 */
+  --fs-xl: 1.25rem;
+  /* 20px  — 页面标题 */
+  --fs-2xl: 1.5rem;
+  /* 24px  — 英雄/展示文字 */
   /* Hero gradient for home page */
   --hero-gradient: linear-gradient(160deg, rgba(217, 119, 87, 0.06) 0%, rgba(217, 119, 87, 0.02) 50%, transparent 100%);
   --hero-radial: radial-gradient(ellipse at 25% 0%, rgba(217, 119, 87, 0.08) 0%, transparent 55%);
@@ -65,14 +69,14 @@
   --bg-player: rgba(24, 21, 19, 0.85);
   --bg-expanded: linear-gradient(170deg, #181513 0%, #231E1A 100%);
   --border: rgba(255, 255, 255, 0.06);
-  --border-active: rgba(217, 119, 87, 0.35);
-  --accent: #E0876B;
-  --accent-dim: rgba(224, 135, 107, 0.2);
-  --accent-glow: rgba(224, 135, 107, 0.1);
-  --accent-shadow: rgba(224, 135, 107, 0.3);
-  --accent-gradient-top: rgba(224, 135, 107, 0.08);
-  --accent-gradient-bottom: rgba(224, 135, 107, 0.03);
-  --body-gradient: rgba(224, 135, 107, 0.02);
+  --border-active: rgba(215, 177, 90, 0.35);
+  --accent: #D7B15A;
+  --accent-dim: rgba(215, 177, 90, 0.2);
+  --accent-glow: rgba(215, 177, 90, 0.1);
+  --accent-shadow: rgba(215, 177, 90, 0.3);
+  --accent-gradient-top: rgba(215, 177, 90, 0.08);
+  --accent-gradient-bottom: rgba(215, 177, 90, 0.03);
+  --body-gradient: rgba(215, 177, 90, 0.02);
   --text: #ECE4DB;
   --text-secondary: rgba(236, 228, 219, 0.65);
   --text-muted: rgba(236, 228, 219, 0.4);
@@ -83,6 +87,6 @@
   --success-dim: rgba(102, 187, 106, 0.2);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
-  --hero-gradient: linear-gradient(160deg, rgba(224, 135, 107, 0.06) 0%, rgba(224, 135, 107, 0.02) 50%, transparent 100%);
-  --hero-radial: radial-gradient(ellipse at 25% 0%, rgba(224, 135, 107, 0.08) 0%, transparent 55%);
+  --hero-gradient: linear-gradient(160deg, rgba(215, 177, 90, 0.06) 0%, rgba(215, 177, 90, 0.02) 50%, transparent 100%);
+  --hero-radial: radial-gradient(ellipse at 25% 0%, rgba(215, 177, 90, 0.08) 0%, transparent 55%);
 }

@@ -3,6 +3,10 @@
 const AI_BASE = '/api/ai';
 const AI_TIMEOUT = 60000; // #19: 60s — AI operations (RAG, summary) need more time
 
+function isLocalStaticDev() {
+  return (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && window.location.port === '8080';
+}
+
 function createAbortContext(timeoutMs, externalSignal) {
   const controller = new AbortController();
   let didTimeout = false;
@@ -160,6 +164,15 @@ export async function askQuestionStream(question, context = {}, onToken, options
  */
 export async function getEpisodeSummary(documentId) {
   return aiFetch(`${AI_BASE}/summary/${encodeURIComponent(documentId)}`);
+}
+
+/**
+ * 获取文库系列摘要
+ */
+export async function getSeriesSummary(seriesName) {
+  if (isLocalStaticDev()) return null;
+  const summaryKey = `wenku-series:${seriesName}`;
+  return aiFetch(`${AI_BASE}/summary/${encodeURIComponent(summaryKey)}`);
 }
 
 /**

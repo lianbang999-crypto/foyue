@@ -80,15 +80,15 @@
 }
 
 .logo.playing .b1 {
-  animation: eqB1 1.6s 0.00s ease-in-out infinite;
+  animation: eqB1 2.0s 0.00s ease-in-out infinite;
 }
 
 .logo.playing .b2 {
-  animation: eqB2 1.3s 0.10s ease-in-out infinite;
+  animation: eqB2 1.7s 0.10s ease-in-out infinite;
 }
 
 .logo.playing .b3 {
-  animation: eqB3 1.5s 0.20s ease-in-out infinite;
+  animation: eqB3 1.9s 0.20s ease-in-out infinite;
 }
 
 /* 关键帧：柔和频率，避免闪烁 */
@@ -435,8 +435,22 @@
   opacity: 0.7
 }
 
-.ai-pill-btn:active {
-  transform: scale(0.96)
+.ai-pill-btn:active,
+.ai-pill-btn.tapped {
+  color: var(--accent);
+  background: var(--accent-dim);
+  transform: scale(0.93);
+  opacity: 1
+}
+
+@keyframes aiBtnTap {
+  0%   { transform: scale(0.93); background: var(--accent-dim); color: var(--accent); }
+  60%  { transform: scale(1.04); background: var(--accent-dim); color: var(--accent); }
+  100% { transform: scale(1.00); background: transparent;        color: var(--text-secondary); }
+}
+
+.ai-pill-btn.tapped {
+  animation: aiBtnTap 0.35s cubic-bezier(.22,1,.36,1) forwards;
 }
 
 .ai-pill-icon {

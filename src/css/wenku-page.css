@@ -35,43 +35,40 @@
     --wk-safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-@media (prefers-color-scheme: dark) {
-    :root {
-        --wk-bg: #1A1614;
-        --wk-bg-card: #242019;
-        --wk-bg-hover: #2C251F;
-        --wk-bg-header: rgba(26, 22, 20, 0.88);
-        --wk-text: #E8E4DE;
-        --wk-text-secondary: #A89E94;
-        --wk-text-muted: #6E645A;
-        --wk-border: #332E28;
-        --wk-accent: #E0876B;
-        --wk-accent-light: rgba(224, 135, 107, 0.1);
-        --wk-highlight-fill: rgba(224, 135, 107, 0.18);
-        --wk-highlight-underline: rgba(224, 135, 107, 0.28);
-        --wk-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
-        --wk-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.14);
-        --wk-shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.18);
-    }
+:root[data-theme="dark"] {
+    --wk-bg: #1A1614;
+    --wk-bg-card: #242019;
+    --wk-bg-hover: #2C251F;
+    --wk-bg-header: rgba(26, 22, 20, 0.88);
+    --wk-text: #E8E4DE;
+    --wk-text-secondary: #A89E94;
+    --wk-text-muted: #6E645A;
+    --wk-border: #332E28;
+    --wk-accent: #D7B15A;
+    --wk-accent-light: rgba(215, 177, 90, 0.1);
+    --wk-highlight-fill: rgba(215, 177, 90, 0.18);
+    --wk-highlight-underline: rgba(215, 177, 90, 0.28);
+    --wk-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
+    --wk-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.14);
+    --wk-shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.18);
+}
 
-    /* 暗色模式下系列色调整 */
-    .wk-series-card {
-        border-left-color: color-mix(in srgb, var(--series-color, var(--wk-accent)) 70%, white 30%);
-    }
+:root[data-theme="dark"] .wk-series-card {
+    border-left-color: color-mix(in srgb, var(--series-color, var(--wk-accent)) 70%, white 30%);
+}
 
-    .wk-series-card::before {
-        background: color-mix(in srgb, var(--series-color, var(--wk-accent)) 30%, transparent 70%);
-    }
+:root[data-theme="dark"] .wk-series-card::before {
+    background: color-mix(in srgb, var(--series-color, var(--wk-accent)) 30%, transparent 70%);
+}
 
-    .wk-series-progress-fill,
-    .wk-series-header-progress-fill,
-    .wk-doc-progress-fill {
-        filter: brightness(1.25);
-    }
+:root[data-theme="dark"] .wk-series-progress-fill,
+:root[data-theme="dark"] .wk-series-header-progress-fill,
+:root[data-theme="dark"] .wk-doc-progress-fill {
+    filter: brightness(1.25);
+}
 
-    .wk-book-sheet-mark {
-        filter: brightness(1.2);
-    }
+:root[data-theme="dark"] .wk-book-sheet-mark {
+    filter: brightness(1.2);
 }
 
 html {
@@ -392,7 +389,7 @@ body {
 
 .wk-home-search-input:focus {
     border-color: var(--wk-accent);
-    box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.08);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--wk-accent) 14%, transparent);
     background: var(--wk-bg-card);
 }
 
@@ -737,18 +734,41 @@ body {
 
 .wk-book-sheet-intro {
     margin-top: 16px;
+    display: grid;
+    gap: 8px;
+}
+
+.wk-book-sheet-intro-kicker {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--wk-text-muted);
+    text-transform: uppercase;
+}
+
+.wk-book-sheet-intro-lead {
+    margin: 0;
     font-size: var(--fs-body);
-    line-height: 1.85;
+    line-height: 1.8;
     color: var(--wk-text);
+}
+
+.wk-book-sheet-intro-tail {
+    margin: 0;
+    padding-left: 12px;
+    border-left: 2px solid color-mix(in srgb, var(--series-color) 34%, transparent);
+    font-size: 13px;
+    line-height: 1.65;
+    color: var(--wk-text-secondary);
 }
 
 .wk-book-sheet-primary {
     width: 100%;
     margin-top: 18px;
     appearance: none;
-    border: 1px solid var(--series-color);
+    border: 1px solid var(--wk-accent);
     background: transparent;
-    color: var(--series-color);
+    color: var(--wk-accent);
     border-radius: 10px;
     min-height: 48px;
     padding: 10px 16px;
@@ -1333,6 +1353,7 @@ body {
     visibility: hidden;
     pointer-events: none;
 }
+
 
 /* 阅读模式下的顶栏/底栏/设置面板按模式适配颜色 */
 .wk-reader[data-mode="dark"] .wk-reader-topbar,

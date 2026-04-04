@@ -1,7 +1,8 @@
 /* ===== 法音文库 独立页面入口 ===== */
 import '../css/wenku-page.css';
 import { getWenkuSeries, getWenkuDocuments, getWenkuDocument, searchWenku, recordWenkuRead } from './wenku-api.js';
-import { syncSystemTheme } from './theme.js';
+import { getSeriesSummary } from './ai-client.js';
+import { initTheme } from './theme.js';
 
 /* --- 常量 --- */
 const BM_KEY = 'wenku-bookmarks';
@@ -18,6 +19,12 @@ const THEME_COLORS = {
     light: '#F7F5F0',
     dark: '#1A1614',
 };
+
+function syncWenkuThemeColor() {
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', THEME_COLORS[theme] || THEME_COLORS.light);
+}
 
 /* --- DOM 引用 --- */
 const wkContent = document.getElementById('wkContent');
@@ -45,7 +52,8 @@ function isActiveViewRequest(requestId, view) {
 init();
 
 function init() {
-    syncSystemTheme(THEME_COLORS);
+    initTheme();
+    syncWenkuThemeColor();
     wireContentClicks();
     const params = new URLSearchParams(location.search);
     const docId = params.get('doc');
@@ -203,48 +211,136 @@ function normalizeIntroText(text) {
         .trim();
 }
 
-function inferSeriesTone(seriesName, total) {
-    if (total === 1) return 'single';
-    if (/(女士书|和尚书|书$|函遍复|复.*书)/.test(seriesName)) return 'letter';
-    if (/(经|论|章|文|要解|述义|悬谈|注)/.test(seriesName)) return 'scripture';
-    return 'general';
-}
-
-function buildFallbackIntro(seriesName, total) {
-    const tone = inferSeriesTone(seriesName, total);
-    if (tone === 'single') {
-        return '这是一篇篇幅较短的讲记，适合安静地一气读完，先把整篇意思读顺，再回头细看关键处。';
-    }
-    if (tone === 'letter') {
-        return `这部讲记围绕“${seriesName}”展开，文字更接近书信式开示，适合顺着语气慢慢读，不必急着跳到后面找结论。`;
-    }
-    if (tone === 'scripture') {
-        return `这部讲记围绕“${seriesName}”展开，适合按讲次顺着读下去，先把主线听明白，再回到细处慢慢体会。`;
-    }
-    return `这部讲记围绕“${seriesName}”展开，适合从前往后慢慢阅读，先把整体脉络建立起来，再按目录回看重点。`;
-}
-
 function buildReadingHint(total, resumeState) {
     if (resumeState.mode === 'continue') {
         return total === 1
-            ? '你上次已经读到中途，这次直接接着读完会最顺。'
-            : '你之前已经读到一半，这次可以直接回到上次的位置；如果想重新理一遍脉络，也可以先从目录里换到别的讲次。';
+            ? '你上次已经读到中途，这次接着读最顺。'
+            : '你之前已经读到一半，这次可以直接回到上次的位置；如果想重新理一遍，也可以先从目录换到别的讲次。';
     }
     if (resumeState.mode === 'restart') {
         return total === 1
-            ? '这一篇你之前已经读过，如果想再看一遍，直接重新开始就可以。'
-            : '这本书你之前已经读过，若想重新进入，直接从第 1 讲开始会更自然；如果只是回看，也可以先从目录挑到想重读的那一讲。';
+            ? '这一篇你之前已经读过，想再看一遍就直接重新开始。'
+            : '这本书你之前已经读过，若想重新进入，直接从第 1 讲开始会更自然。';
     }
     return total === 1
-        ? '第一次打开时，直接进入正文就可以；如果想先有个把握，也可以先看一眼下面的目录。'
-        : '如果这是第一次打开，建议先看一下目录，再从第 1 讲进入正文，后面读到哪里都可以随时回来切换。';
+        ? '第一次打开时，直接进入正文就可以；想先有把握，也可以先看一眼目录。'
+        : '如果这是第一次打开，建议先看一下目录，再从第 1 讲进入正文。';
 }
 
-function buildSeriesIntroText(seriesName, documents, intro, resumeState) {
+function buildSeriesIntroState(summary, total, resumeState, options = {}) {
+    const { loading = false, error = false } = options;
+    if (loading) {
+        return {
+            kicker: 'AI导读 · 基于正文提炼',
+            lead: '正在从正文提炼导读…',
+            tail: '请稍候，AI 会结合书名、目录与正文生成简介。',
+        };
+    }
+    if (error) {
+        return {
+            kicker: 'AI导读 · 基于正文提炼',
+            lead: 'AI 导读暂时不可用。',
+            tail: '你可以先从目录开始阅读。',
+        };
+    }
+
+    const lead = normalizeIntroText(summary) || 'AI 导读暂时还没生成，先看目录也可以。';
+    return {
+        kicker: 'AI导读 · 基于正文提炼',
+        lead,
+        tail: buildReadingHint(total, resumeState),
+    };
+}
+
+function countKeywordMatches(text, keyword) {
+    const source = String(text || '');
+    if (!source || !keyword) return 0;
+    return source.split(keyword).length - 1;
+}
+
+function pickSeriesKeywords(seriesName, documents, docDetails) {
+    const keywords = [
+        '三报', '因果', '业力', '报应', '现报', '生报', '后报', '善恶', '轮回', '念佛',
+        '净土', '往生', '极乐世界', '菩提心', '戒律', '六道', '三世', '阿弥陀佛', '信愿行', '修行',
+    ];
+    const scored = keywords.map((keyword) => {
+        let score = 0;
+        for (const doc of docDetails) {
+            score += countKeywordMatches(doc.title || '', keyword) * 2;
+            score += countKeywordMatches(doc.content || '', keyword);
+        }
+        score += countKeywordMatches(seriesName, keyword) * 3;
+        return { keyword, score };
+    });
+
+    const selected = scored
+        .filter(item => item.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 4)
+        .map(item => item.keyword);
+
+    if (!selected.length) {
+        return documents.slice(0, 3).map(doc => doc.title).filter(Boolean).slice(0, 3);
+    }
+
+    return selected;
+}
+
+function buildLocalSeriesIntroState(seriesName, documents, docDetails, resumeState) {
     const total = documents.length;
-    const lead = normalizeIntroText(intro) || buildFallbackIntro(seriesName, total);
-    const tail = buildReadingHint(total, resumeState);
-    return `${lead.replace(/[。！？；\s]*$/, '。')}${tail}`;
+    const keywords = pickSeriesKeywords(seriesName, documents, docDetails);
+    const leadSource = docDetails.find(doc => String(doc.content || '').trim()) || documents[0] || null;
+    const leadTitle = leadSource?.title ? `从“${leadSource.title}”切入，` : '';
+    const keywordText = keywords.length > 0 ? keywords.map(word => `“${word}”`).join('、') : '书中的主线内容';
+
+    return {
+        kicker: '内容导读 · 基于正文提炼',
+        lead: `${leadTitle}这本书前几讲主要围绕${keywordText}展开，先交代缘起，再逐步进入正文。`,
+        tail: buildReadingHint(total, resumeState),
+    };
+}
+
+async function loadSeriesIntro(body, sheet, seriesName, documents, resumeState, token) {
+    const introLeadEl = body.querySelector('[data-role="book-sheet-intro-lead"]');
+    const introTailEl = body.querySelector('[data-role="book-sheet-intro-tail"]');
+    const introKickerEl = body.querySelector('[data-role="book-sheet-intro-kicker"]');
+    if (!introLeadEl || !introTailEl) return;
+
+    try {
+        const data = await getSeriesSummary(seriesName);
+        if (!sheet.classList.contains('open') || sheet.dataset.seriesSummaryToken !== token) return;
+        if (!data?.summary) throw new Error('summary unavailable');
+        const introState = buildSeriesIntroState(data?.summary, documents.length, resumeState);
+        if (introKickerEl) introKickerEl.textContent = introState.kicker;
+        introLeadEl.textContent = introState.lead;
+        introTailEl.textContent = introState.tail;
+    } catch {
+        const docDetails = await Promise.all(
+            documents.slice(0, 3).map(async (doc) => {
+                try {
+                    const detail = await getWenkuDocument(doc.id);
+                    const fullDoc = detail?.document || detail;
+                    return fullDoc ? { title: fullDoc.title || doc.title || '', content: fullDoc.content || '' } : null;
+                } catch {
+                    return null;
+                }
+            })
+        );
+        if (!sheet.classList.contains('open') || sheet.dataset.seriesSummaryToken !== token) return;
+        const usableDetails = docDetails.filter(Boolean);
+        if (usableDetails.length > 0) {
+            const introState = buildLocalSeriesIntroState(seriesName, documents, usableDetails, resumeState);
+            if (introKickerEl) introKickerEl.textContent = introState.kicker;
+            introLeadEl.textContent = introState.lead;
+            introTailEl.textContent = introState.tail;
+            return;
+        }
+
+        const introState = buildSeriesIntroState('', documents.length, resumeState, { error: true });
+        if (introKickerEl) introKickerEl.textContent = introState.kicker;
+        introLeadEl.textContent = introState.lead;
+        introTailEl.textContent = introState.tail;
+    }
 }
 
 function ensureBookSheet() {
@@ -309,6 +405,7 @@ function ensureBookSheet() {
 function closeBookSheet() {
     if (!_bookSheetEl) return;
     _bookSheetEl.classList.remove('open');
+    delete _bookSheetEl.dataset.seriesSummaryToken;
     document.body.classList.remove('wk-book-sheet-open');
 }
 
@@ -316,6 +413,8 @@ async function openBookSheet(seriesName) {
     const sheet = ensureBookSheet();
     const body = sheet.querySelector('.wk-book-sheet-body');
     const color = getSeriesColor(seriesName);
+    const summaryToken = `${seriesName}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+    sheet.dataset.seriesSummaryToken = summaryToken;
 
     body.innerHTML = `
             <div class="wk-book-sheet-loading">
@@ -323,7 +422,7 @@ async function openBookSheet(seriesName) {
                     <div class="wk-series-header-avatar" style="background:${color}">${esc(seriesName.charAt(0))}</div>
                     <div class="wk-series-header-info">
                         <div class="wk-series-header-name">${esc(seriesName)}</div>
-                        <div class="wk-series-header-stats">正在整理这本书的目录…</div>
+                        <div class="wk-series-header-stats">正在提炼这本书的内容导读…</div>
                     </div>
                 </div>
             </div>`;
@@ -347,25 +446,13 @@ async function openBookSheet(seriesName) {
         const bookmark = bookmarks[doc.id];
         return bookmark && hasStartedReading(bookmark.percent);
     }).length;
-    const firstDocument = documents[0] || null;
-    const intro = pickIntro(
-        data?.seriesIntro,
-        data?.series_intro,
-        data?.intro,
-        data?.description,
-        data?.desc,
-        firstDocument?.seriesIntro,
-        firstDocument?.series_intro,
-        firstDocument?.seriesDescription,
-        firstDocument?.series_description,
-    );
-    const introText = buildSeriesIntroText(seriesName, documents, intro, resumeState);
     const ctaText = resumeState.mode === 'continue' ? '继续阅读' : resumeState.mode === 'restart' ? '重新开始' : '开始阅读';
     const ctaMeta = resumeState.mode === 'continue'
         ? `上次读到 ${getDisplayPercent(resumeBookmark?.percent || 0)}%`
         : resumeState.mode === 'restart'
             ? `已读过这本书，从第 1 讲重新开始`
             : `从第 1 讲开始，共 ${documents.length} 讲`;
+    const introState = buildSeriesIntroState('', documents.length, resumeState, { loading: true });
 
     let html = `
             <div class="wk-book-sheet-head">
@@ -377,7 +464,11 @@ async function openBookSheet(seriesName) {
                 <div class="wk-book-sheet-mark">${esc(seriesName.charAt(0))}</div>
                 <div class="wk-book-sheet-title">${esc(seriesName)}</div>
                 <div class="wk-book-sheet-meta">共 ${documents.length} 讲${readCount > 0 ? ` · 已读 ${readCount}/${documents.length}` : ''}</div>
-                <p class="wk-book-sheet-intro">${esc(introText)}</p>
+                <div class="wk-book-sheet-intro">
+                    <div class="wk-book-sheet-intro-kicker" data-role="book-sheet-intro-kicker">${esc(introState.kicker)}</div>
+                    <p class="wk-book-sheet-intro-lead" data-role="book-sheet-intro-lead">${esc(introState.lead)}</p>
+                    <p class="wk-book-sheet-intro-tail" data-role="book-sheet-intro-tail">${esc(introState.tail)}</p>
+                </div>
                 <button class="wk-book-sheet-primary" type="button" data-action="book-sheet-read" data-doc="${esc(resumeDocId)}">
                     <span>${ctaText}</span>
                     <span class="wk-book-sheet-primary-meta">${esc(ctaMeta)}</span>
@@ -407,6 +498,7 @@ async function openBookSheet(seriesName) {
 
     html += '</div>';
     body.innerHTML = html;
+    void loadSeriesIntro(body, sheet, seriesName, documents, resumeState, summaryToken);
 
     // 自动滚动到当前阅读位置
     if (resumeDocId) {

@@ -47,6 +47,38 @@ function buildSourceList(matches, docs) {
   return sources;
 }
 
+function normalizeSummaryKey(documentId) {
+  try {
+    return decodeURIComponent(String(documentId || '').trim());
+  } catch {
+    return String(documentId || '').trim();
+  }
+}
+
+function buildSeriesSummaryContent(seriesName, documents) {
+  const outline = documents
+    .slice(0, 12)
+    .map((doc, index) => `${index + 1}. ${doc.title || `第${doc.episode_num || index + 1}讲`}`)
+    .join(' / ');
+
+  const parts = [];
+  if (seriesName) parts.push(`书名：${seriesName}`);
+  if (outline) parts.push(`目录概览：${outline}`);
+
+  let totalLength = parts.join('\n\n').length;
+  for (const [index, doc] of documents.slice(0, 8).entries()) {
+    const content = String(doc.content || '').replace(/\s+/g, ' ').trim();
+    if (!content) continue;
+    const chapterNum = doc.episode_num || index + 1;
+    const block = `【第${chapterNum}讲 ${doc.title || ''}】\n${content.slice(0, 700)}`;
+    if (totalLength + block.length > 5600) break;
+    parts.push(block);
+    totalLength += block.length + 2;
+  }
+
+  return parts.join('\n\n');
+}
+
 async function keywordSearchDocs(env, query, { seriesId = null, limit = 10 } = {}) {
   const keyword = String(query || '').trim().slice(0, 20);
   if (!keyword) return [];
@@ -561,9 +593,11 @@ export async function handleAiSummary(env, documentId, request, cors, ctx, json)
   const limit = await checkRateLimit(env, ip, 'ai_summary');
   if (!limit.allowed) return json({ error: limit.reason }, cors, 429);
 
+  const summaryKey = normalizeSummaryKey(documentId);
+
   const cached = await env.DB.prepare(
     'SELECT summary FROM ai_summaries WHERE document_id = ?'
-  ).bind(documentId).first();
+  ).bind(summaryKey).first();
 
   if (cached) {
     return json({
@@ -573,23 +607,48 @@ export async function handleAiSummary(env, documentId, request, cors, ctx, json)
     }, cors);
   }
 
-  let doc = await env.DB.prepare('SELECT id, title, content FROM documents WHERE id = ?').bind(documentId).first();
-  if (!doc || !doc.content) {
+  let doc = null;
+  if (summaryKey.startsWith('wenku-series:')) {
+    const seriesName = summaryKey.slice('wenku-series:'.length).trim();
+    if (!seriesName) {
+      return json({ error: '未找到该系列或系列名无效' }, cors, 400);
+    }
+
     const seriesDocs = await env.DB.prepare(
-      `SELECT id, title, content, series_name FROM documents
-       WHERE audio_series_id = ? AND content IS NOT NULL
-       ORDER BY audio_episode_num ASC LIMIT 10`
-    ).bind(documentId).all();
+      `SELECT id, title, content, series_name, episode_num
+       FROM documents
+       WHERE series_name = ? AND content IS NOT NULL AND content != ''
+       ORDER BY episode_num ASC, id ASC LIMIT 12`
+    ).bind(seriesName).all();
 
     if (seriesDocs.results?.length > 0) {
-      const combinedTitle = seriesDocs.results[0].series_name || documentId;
-      const combinedContent = seriesDocs.results
-        .map(item => `【${item.title}】\n${(item.content || '').slice(0, 2000)}`)
-        .join('\n\n');
-      doc = { id: documentId, title: combinedTitle, content: combinedContent };
-    } else {
-      return json({ error: '未找到该文档或文档无文本内容' }, cors, 404);
+      doc = {
+        id: summaryKey,
+        title: `${seriesName}（文库导读）`,
+        content: buildSeriesSummaryContent(seriesName, seriesDocs.results),
+      };
     }
+  } else {
+    doc = await env.DB.prepare('SELECT id, title, content FROM documents WHERE id = ?').bind(summaryKey).first();
+    if (!doc || !doc.content) {
+      const seriesDocs = await env.DB.prepare(
+        `SELECT id, title, content, series_name FROM documents
+         WHERE audio_series_id = ? AND content IS NOT NULL
+         ORDER BY audio_episode_num ASC LIMIT 10`
+      ).bind(summaryKey).all();
+
+      if (seriesDocs.results?.length > 0) {
+        const combinedTitle = seriesDocs.results[0].series_name || summaryKey;
+        const combinedContent = seriesDocs.results
+          .map(item => `【${item.title}】\n${(item.content || '').slice(0, 2000)}`)
+          .join('\n\n');
+        doc = { id: summaryKey, title: combinedTitle, content: combinedContent };
+      }
+    }
+  }
+
+  if (!doc || !doc.content) {
+    return json({ error: '未找到该文档或文档无文本内容' }, cors, 404);
   }
 
   let summary;
@@ -607,7 +666,7 @@ export async function handleAiSummary(env, documentId, request, cors, ctx, json)
   await env.DB.prepare(
     `INSERT OR REPLACE INTO ai_summaries (document_id, summary, model)
      VALUES (?, ?, ?)`
-  ).bind(documentId, summary, AI_CONFIG.models.chat).run();
+  ).bind(summaryKey, summary, AI_CONFIG.models.chat).run();
 
   return json({
     summary,

@@ -70,11 +70,16 @@ export async function searchWenku(q, signal) {
 
 /** Record a read event */
 export async function recordWenkuRead(documentId) {
+  const hostname = window.location.hostname;
+  if (hostname === 'localhost' || hostname === '127.0.0.1') return;
+
   try {
-    await fetchWithTimeout(`${API_BASE}/read-count`, {
+    const resp = await fetchWithTimeout(`${API_BASE}/read-count`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ documentId }),
     }, 10000);
+
+    if (resp && resp.status === 404) return;
   } catch (e) { /* silent */ }
 }
