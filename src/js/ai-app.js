@@ -846,8 +846,13 @@ convListEl?.addEventListener('click', (e) => {
 });
 
 function toggleConvDrawer() {
+    const opening = !convDrawer?.classList.contains('open');
     convDrawer?.classList.toggle('open');
     convBackdrop?.classList.toggle('open');
+    if (opening) {
+        // 打开时收起键盘，防止 iPhone 上键盘与底部抽屉重叠
+        chatInput?.blur();
+    }
 }
 
 function closeConvDrawer() {
