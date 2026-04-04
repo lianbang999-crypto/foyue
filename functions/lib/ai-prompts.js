@@ -29,7 +29,7 @@ export function buildRagSystemPrompt(context) {
 
 要求：
 - 开篇即正文，约250-350字，涵盖修行要点，不做套话
-- 引用资料中的具体法义加以阐发；每处引用，可在括号内附上 Markdown 链接，格式：[《讲题》](/wenku?doc=xxx)，链接见各资料块标题行
+- 引用资料中的具体法义加以阐发，充实核心要点与修行指引
 - 末行生成3个延伸问题：[FOLLOWUP]问题一|问题二|问题三[/FOLLOWUP]
 
 资料：

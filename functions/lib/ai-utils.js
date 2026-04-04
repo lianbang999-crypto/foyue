@@ -428,9 +428,7 @@ export function buildRAGMessages(question, contextDocs, options = {}) {
         const key = `${docId}:${m.metadata?.chunk_index}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        // 标题行附带文库链接，供模型生成内联引用
-        const header = docId ? `[《${title}》](/wenku?doc=${docId})` : `《${title}》`;
-        context += `${header}\n${chunkText}\n\n`;
+        context += `【${title}】\n${chunkText}\n\n`;
       }
     }
   }
@@ -438,9 +436,7 @@ export function buildRAGMessages(question, contextDocs, options = {}) {
     const perDocLimit = Math.floor(maxContextLength / Math.max(contextDocs.length, 1));
     for (const doc of contextDocs) {
       const snippet = doc.content ? doc.content.slice(0, perDocLimit) : '';
-      // 同样附带文库链接
-      const header = doc.id ? `[《${doc.title}》](/wenku?doc=${doc.id})` : `《${doc.title}》`;
-      context += `${header}\n${snippet}\n\n`;
+      context += `【${doc.title}】\n${snippet}\n\n`;
     }
   }
 
