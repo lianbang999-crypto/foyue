@@ -73,6 +73,68 @@ import { monitor } from './monitor.js';
 const IN_APP_BROWSER = isInAppBrowser();
 const APP_BOOT_TS = performance.now();
 const STANDALONE_LAUNCH_LOADER_MIN_MS = 900;
+let homeBootstrapPromise = null;
+
+function getBootLoaderMarkup(message = '正在整理今日法音...') {
+  return `<div class="loader-brand">
+      <picture>
+        <source srcset="/icons/loading-logo.webp" type="image/webp"><img class="loader-logo" src="/icons/loading-logo.png" alt="净土法音">
+      </picture>
+      <div class="loader-copy">
+        <div class="loader-kicker">净土法音</div>
+        <div class="loader-text">${message}</div>
+      </div>
+    </div>
+    <div class="loader-home-skeleton" aria-hidden="true">
+      <div class="loader-home-hero loader-block"></div>
+      <div class="loader-home-pills">
+        <span class="loader-pill loader-block"></span>
+        <span class="loader-pill loader-block"></span>
+        <span class="loader-pill loader-block"></span>
+      </div>
+      <div class="loader-home-list">
+        <div class="loader-home-card">
+          <div class="loader-home-icon loader-block"></div>
+          <div class="loader-home-lines">
+            <span class="loader-line loader-block loader-line-lg"></span>
+            <span class="loader-line loader-block"></span>
+            <span class="loader-line loader-block loader-line-sm"></span>
+          </div>
+        </div>
+        <div class="loader-home-card">
+          <div class="loader-home-icon loader-block"></div>
+          <div class="loader-home-lines">
+            <span class="loader-line loader-block loader-line-lg"></span>
+            <span class="loader-line loader-block"></span>
+            <span class="loader-line loader-block loader-line-sm"></span>
+          </div>
+        </div>
+        <div class="loader-home-card">
+          <div class="loader-home-icon loader-block"></div>
+          <div class="loader-home-lines">
+            <span class="loader-line loader-block loader-line-lg"></span>
+            <span class="loader-line loader-block"></span>
+            <span class="loader-line loader-block loader-line-sm"></span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function warmHomeBootstrapData() {
+  if (!homeBootstrapPromise) {
+    homeBootstrapPromise = fetchCategoriesData({ home: true }).catch(() => null);
+  }
+  return homeBootstrapPromise;
+}
+
+async function consumeHomeBootstrapData() {
+  if (!homeBootstrapPromise) return fetchCategoriesData({ home: true });
+  const pending = homeBootstrapPromise;
+  homeBootstrapPromise = null;
+  const data = await pending;
+  return data || fetchCategoriesData({ home: true });
+}
 
 function isStandaloneLaunchMode() {
   return window.matchMedia('(display-mode: standalone)').matches || !!navigator.standalone;
@@ -315,6 +377,8 @@ async function ensureSeriesDetail(seriesId, categoryId) {
   const dom = initDOM();
 
   state.isFirstVisit = !storeGet('player')?.seriesId;
+
+  if (!needsImmediateFullData()) warmHomeBootstrapData();
 
   // About modal
   const aboutOverlay = document.getElementById('aboutOverlay');
@@ -925,7 +989,7 @@ async function loadData() {
     }
 
     if (shouldBootstrapHome) {
-      const homeData = await fetchCategoriesData({ home: true });
+      const homeData = await consumeHomeBootstrapData();
       applyLoadedData(homeData);
       saveCachedHomeData(homeData);
       renderHomePage();
@@ -981,7 +1045,9 @@ async function loadData() {
     dom.loader.innerHTML = `<div class="error-msg">${t('loading_fail')}<br><button id="retryLoadBtn">${t('retry')}</button></div>`;
     document.getElementById('retryLoadBtn').addEventListener('click', () => {
       loadAttempts = 0;
-      dom.loader.innerHTML = '<picture><source srcset="/icons/loading-logo.webp" type="image/webp"><img src="/icons/loading-logo.png" style="width:120px;height:auto;opacity:.4;animation:breathe 2.5s ease-in-out infinite" alt=""></picture><div class="loader-text">Loading...</div>';
+      dom.loader.className = 'loader loader-home';
+      dom.loader.innerHTML = getBootLoaderMarkup();
+      if (!needsImmediateFullData()) warmHomeBootstrapData();
       loadData();
     });
   }

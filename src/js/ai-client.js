@@ -103,6 +103,8 @@ export async function askQuestionStream(question, context = {}, onToken, options
     let buffer = '';
     let finalData = { sources: [], disclaimer: '', answer: '', followUps: [] };
 
+    // eventType 必须在 while 外声明，避免跨 chunk 时状态丢失
+    let eventType = '';
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -112,7 +114,6 @@ export async function askQuestionStream(question, context = {}, onToken, options
       const lines = buffer.split('\n');
       buffer = lines.pop() || ''; // Keep incomplete line in buffer
 
-      let eventType = '';
       for (const line of lines) {
         if (line.startsWith('event: ')) {
           eventType = line.slice(7).trim();
@@ -124,6 +125,9 @@ export async function askQuestionStream(question, context = {}, onToken, options
               finalData = parsed;
             } else if (eventType === 'error') {
               throw new Error(parsed.error || 'Stream error');
+            } else if (parsed.answer !== undefined && parsed.sources !== undefined) {
+              // 兜底：即使 eventType 丢失，也能识别 done 事件结构
+              finalData = parsed;
             } else {
               // Default: token event
               if (parsed.token && onToken) onToken(parsed.token);

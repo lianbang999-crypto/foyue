@@ -1453,6 +1453,15 @@ export function onVisibilityResume() {
 
   if (dom.audio.paused) return;
 
+  // iOS 特有：回到前台时主动调 play() 刷新音频路由。
+  // 当 iOS 音频会话被其他 App（来电/Siri/微信语音等）短暂抢占后，
+  // WebKit 不会触发 pause 事件，audio.paused 依然为 false，
+  // 但实际音频输出已被 iOS 静默（进度条走但没声音）。
+  // 对正常播放的音频调 play() 无副作用；对路由失效的音频会强制重连音频会话。
+  if (isAppleMobile() && !_userPaused) {
+    dom.audio.play().catch(() => { });
+  }
+
   // Check if buffer is running low
   const ct = dom.audio.currentTime;
   const buffered = dom.audio.buffered;

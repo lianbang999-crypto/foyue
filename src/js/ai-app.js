@@ -1,7 +1,7 @@
 /* ===== 法音AI 独立页面入口 ===== */
 import '../css/ai-page.css';
 import { syncSystemTheme } from './theme.js';
-import { askQuestionStream, voiceToText } from './ai-client.js';
+import { askQuestion, askQuestionStream, voiceToText } from './ai-client.js';
 import { createAiConversationStore } from './ai-conversations.js';
 import {
     buildWelcomeHTML,
@@ -477,7 +477,8 @@ async function handleSubmit(options = {}) {
         // 完成：格式化 HTML
         textEl.classList.remove('ai-streaming');
         const { cleanText, followUps } = extractFollowUps(fullText);
-        const answerText = String(finalData.answer || cleanText || '').trim();
+        const answerText = String(finalData.answer || cleanText || '').trim()
+            || '抱歉，AI 暂时无法生成回答。';
         const finalFollowUps = Array.isArray(finalData.followUps) && finalData.followUps.length
             ? finalData.followUps
             : followUps;
@@ -563,12 +564,20 @@ async function handleSubmit(options = {}) {
             trimConversationMessages(conv);
             conv.updatedAt = Date.now();
             saveConversations();
+            renderConvList();
             scrollToBottom();
         } else {
             const emptyStream = chatArea.querySelector('.ai-message--bot:last-child .ai-streaming');
             if (emptyStream && !emptyStream.textContent) emptyStream.closest('.ai-message').remove();
             if (!isAborted) {
-                addErrorMessage(err.message || '请求失败，请稍后再试', question);
+                const fallbackSucceeded = await recoverWithNonStreamAnswer({
+                    question,
+                    conv,
+                    streamMessageEl: textEl?.closest('.ai-message') || null,
+                });
+                if (!fallbackSucceeded) {
+                    addErrorMessage(err.message || '请求失败，请稍后再试', question);
+                }
             }
         }
     } finally {
@@ -576,6 +585,35 @@ async function handleSubmit(options = {}) {
         _streamAbortController = null;
         setGeneratingUI(false);
         if (!isMobile()) chatInput.focus();
+    }
+}
+
+async function recoverWithNonStreamAnswer({ question, conv, streamMessageEl }) {
+    try {
+        const requestHistory = buildRequestHistory(conv.messages, question);
+        const fallbackData = await askQuestion(question, buildAskContext(requestHistory));
+
+        streamMessageEl?.remove();
+
+        const answerText = String(fallbackData?.answer || '').trim() || '抱歉，AI 暂时无法生成回答。';
+        const renderedSources = attachSourcePreviewQuery(fallbackData?.sources || [], question);
+        const messageIndex = conv.messages.length;
+        addMessage('bot', answerText, renderedSources, fallbackData?.disclaimer, false, messageIndex, extractHighlightQuery(question));
+
+        conv.messages.push({
+            role: 'assistant',
+            content: answerText,
+            sources: renderedSources,
+            disclaimer: fallbackData?.disclaimer,
+        });
+        trimConversationMessages(conv);
+        conv.updatedAt = Date.now();
+        saveConversations();
+        renderConvList();
+        showAiToast('网络波动，已自动切换稳态回复');
+        return true;
+    } catch {
+        return false;
     }
 }
 

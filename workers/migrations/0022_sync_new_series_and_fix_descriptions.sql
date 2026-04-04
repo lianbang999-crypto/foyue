@@ -11,7 +11,7 @@
 UPDATE episodes SET title = '请开示“诚”与“敬”的重要性', file_name = '请开示“诚”与“敬”的重要性.mp3', url = 'https://audio.foyue.org/772643034503463d9b954f0eea5ce80b/%E5%87%80%E5%9C%9F%E7%99%BE%E9%97%AE/%E8%AF%B7%E5%BC%80%E7%A4%BA%E2%80%9C%E8%AF%9A%E2%80%9D%E4%B8%8E%E2%80%9C%E6%95%AC%E2%80%9D%E7%9A%84%E9%87%8D%E8%A6%81%E6%80%A7.mp3' WHERE series_id = 'jingtu-baiwen' AND episode_num = 118;
 
 UPDATE series SET intro = '收录《佛说阿弥陀经（念诵）》《大势至菩萨念佛圆通章》《心经》等净土常用经典读诵音频。' WHERE id = 'jingdian-dusong';
-UPDATE series SET intro = '收录《佛说阿弥陀经（念诵）》《大势至菩萨念佛圆通章》《心经》三部经典，便于在有声书入口连续收听。' WHERE id = 'jingdiandusong-zhuanji';
+UPDATE series SET intro = '收录《佛说阿弥陀经（念诵）》《大势至菩萨念佛圆通章》《心经》等净土常用经典读诵音频。' WHERE id = 'jingdiandusong-zhuanji';
 UPDATE series SET total_episodes = 48, intro = '《万善先资》有声书，辑录劝善、戒杀、放生、惜福等因果公案，启发行者修善培福、回向净土。' WHERE id = 'wanshan-xianzi';
 
 INSERT OR IGNORE INTO series (id, category_id, title, title_en, speaker, speaker_en, bucket, folder, total_episodes, intro, sort_order) VALUES ('xifang-fayuanwen', 'tingjingtai', '西方发愿文', 'Westward Aspiration Prayer', '大安法师', 'Master Da''an', 'daanfashi', '西方发愿文', 4, '大安法师讲解《西方发愿文》，围绕发愿回向与求生净土的要义作四讲开示。', 19);

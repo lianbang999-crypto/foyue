@@ -18,9 +18,10 @@
   position: sticky;
   top: 0;
   z-index: 100;
+  padding-top: env(safe-area-inset-top, 0px);
   background: var(--bg-header);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(1.2);
+  -webkit-backdrop-filter: blur(24px) saturate(1.2);
   border-bottom: 1px solid var(--border);
   transition: background .35s
 }
@@ -28,9 +29,10 @@
 .nav {
   display: flex;
   align-items: center;
-  padding: 0 14px;
-  height: 56px;
-  gap: 0
+  padding: 0 12px;
+  height: 50px;
+  gap: 0;
+  position: relative
 }
 
 .logo {
@@ -54,43 +56,86 @@
   transition: fill .3s
 }
 
-/* 静止状态：柱高压缩为底部小条 */
+/* 静止状态：柱体安静但可辨识 */
 .logo:not(.playing):not(.paused) .eq-bar {
-  transform: scaleY(0.25);
-  opacity: 0.45
+  transform: scaleY(0.45);
+  opacity: 0.5;
+  animation: none
 }
 
-/* 暂停状态：半高静止，轻微提示 */
+/* 暂停状态：半高静止，accent 提示 */
 .logo.paused .eq-bar {
   fill: var(--accent);
-  transform: scaleY(0.45);
-  opacity: 0.55
+  transform: scaleY(0.55);
+  opacity: 0.65;
+  animation: none
 }
 
-/* 播放状态：accent 色，各柱独立动画形成有机感 */
+/* 播放状态：accent 色，各柱独立动画 */
 .logo.playing .eq-bar {
   fill: var(--accent);
 }
 
-.logo.playing .b1 { animation: eqB1 1.10s 0.00s ease-in-out infinite; }
-.logo.playing .b2 { animation: eqB2 0.80s 0.06s ease-in-out infinite; }
-.logo.playing .b3 { animation: eqB3 0.90s 0.18s ease-in-out infinite; }
-.logo.playing .b4 { animation: eqB4 0.75s 0.04s ease-in-out infinite; }
-.logo.playing .b5 { animation: eqB5 1.00s 0.28s ease-in-out infinite; }
+.logo.playing .b1 {
+  animation: eqB1 1.6s 0.00s ease-in-out infinite;
+}
 
-/* 各柱独立关键帧：不同峰值高度 + b3 中间两段弹动 */
-@keyframes eqB1 { 0%,100%{ transform:scaleY(.25) } 50%{ transform:scaleY(.80) } }
-@keyframes eqB2 { 0%,100%{ transform:scaleY(.30) } 50%{ transform:scaleY(1.00) } }
-@keyframes eqB3 { 0%,100%{ transform:scaleY(.20) } 40%{ transform:scaleY(1.00) } 70%{ transform:scaleY(.55) } }
-@keyframes eqB4 { 0%,100%{ transform:scaleY(.35) } 50%{ transform:scaleY(.90) } }
-@keyframes eqB5 { 0%,100%{ transform:scaleY(.28) } 50%{ transform:scaleY(.72) } }
+.logo.playing .b2 {
+  animation: eqB2 1.3s 0.10s ease-in-out infinite;
+}
+
+.logo.playing .b3 {
+  animation: eqB3 1.5s 0.20s ease-in-out infinite;
+}
+
+/* 关键帧：柔和频率，避免闪烁 */
+@keyframes eqB1 {
+
+  0%,
+  100% {
+    transform: scaleY(.35)
+  }
+
+  50% {
+    transform: scaleY(.85)
+  }
+}
+
+@keyframes eqB2 {
+
+  0%,
+  100% {
+    transform: scaleY(.40)
+  }
+
+  50% {
+    transform: scaleY(1.00)
+  }
+}
+
+@keyframes eqB3 {
+
+  0%,
+  100% {
+    transform: scaleY(.35)
+  }
+
+  45% {
+    transform: scaleY(.90)
+  }
+}
 
 .logo-title {
-  font-size: var(--fs-body);
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 17px;
   font-weight: 600;
   color: var(--text);
   white-space: nowrap;
-  letter-spacing: .06em
+  letter-spacing: 0.02em;
+  font-family: var(--font-serif);
+  pointer-events: none
 }
 
 .nav-spacer {

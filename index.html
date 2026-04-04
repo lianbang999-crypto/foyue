@@ -33,6 +33,7 @@
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.loli.net">
   <link rel="preconnect" href="https://gstatic.loli.net" crossorigin>
+  <link rel="preload" href="/api/categories?home=1&amp;v=3" as="fetch" crossorigin="anonymous">
   <script>
     (function () {
       ['preconnect', 'dns-prefetch'].forEach(function (rel) {
@@ -91,12 +92,10 @@
       <nav class="nav">
         <div class="logo" aria-label="净土法音" id="navAudioIndicator">
           <!-- EQ 动画替代 Logo，播放时跳动，静止时为静态柱 -->
-          <svg class="logo-eq" viewBox="0 0 28 20" width="28" height="20" aria-hidden="true">
-            <rect class="eq-bar b1" x="0" y="8" width="3" height="12" rx="1.5" />
-            <rect class="eq-bar b2" x="5" y="4" width="3" height="16" rx="1.5" />
-            <rect class="eq-bar b3" x="10" y="2" width="3" height="18" rx="1.5" />
-            <rect class="eq-bar b4" x="15" y="4" width="3" height="16" rx="1.5" />
-            <rect class="eq-bar b5" x="20" y="8" width="3" height="12" rx="1.5" />
+          <svg class="logo-eq" viewBox="0 0 18 20" width="18" height="20" aria-hidden="true">
+            <rect class="eq-bar b1" x="0" y="6" width="3.5" height="14" rx="1.75" />
+            <rect class="eq-bar b2" x="7" y="2" width="3.5" height="18" rx="1.75" />
+            <rect class="eq-bar b3" x="14" y="6" width="3.5" height="14" rx="1.75" />
           </svg>
           <span class="logo-title">净土法音</span>
         </div>
@@ -168,14 +167,51 @@
 
     <!-- CONTENT -->
     <main class="content" id="contentArea">
-      <!-- ✅ Optimized loader with inline SVG to avoid image request during initial load -->
-      <div class="loader" id="loader" role="status" aria-live="polite">
-        <picture>
-          <source srcset="/icons/loading-logo.webp" type="image/webp"><img class="loader-logo"
-            src="/icons/loading-logo.png" alt="净土法音"
-            style="width:120px;height:auto;opacity:.8;animation:breathe 2.5s ease-in-out infinite">
-        </picture>
-        <div class="loader-text">Loading...</div>
+      <div class="loader loader-home" id="loader" role="status" aria-live="polite">
+        <div class="loader-brand">
+          <picture>
+            <source srcset="/icons/loading-logo.webp" type="image/webp"><img class="loader-logo"
+              src="/icons/loading-logo.png" alt="净土法音">
+          </picture>
+          <div class="loader-copy">
+            <div class="loader-kicker">净土法音</div>
+            <div class="loader-text">正在整理今日法音...</div>
+          </div>
+        </div>
+        <div class="loader-home-skeleton" aria-hidden="true">
+          <div class="loader-home-hero loader-block"></div>
+          <div class="loader-home-pills">
+            <span class="loader-pill loader-block"></span>
+            <span class="loader-pill loader-block"></span>
+            <span class="loader-pill loader-block"></span>
+          </div>
+          <div class="loader-home-list">
+            <div class="loader-home-card">
+              <div class="loader-home-icon loader-block"></div>
+              <div class="loader-home-lines">
+                <span class="loader-line loader-block loader-line-lg"></span>
+                <span class="loader-line loader-block"></span>
+                <span class="loader-line loader-block loader-line-sm"></span>
+              </div>
+            </div>
+            <div class="loader-home-card">
+              <div class="loader-home-icon loader-block"></div>
+              <div class="loader-home-lines">
+                <span class="loader-line loader-block loader-line-lg"></span>
+                <span class="loader-line loader-block"></span>
+                <span class="loader-line loader-block loader-line-sm"></span>
+              </div>
+            </div>
+            <div class="loader-home-card">
+              <div class="loader-home-icon loader-block"></div>
+              <div class="loader-home-lines">
+                <span class="loader-line loader-block loader-line-lg"></span>
+                <span class="loader-line loader-block"></span>
+                <span class="loader-line loader-block loader-line-sm"></span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </main>
 
