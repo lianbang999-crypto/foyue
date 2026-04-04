@@ -276,6 +276,7 @@
     line-height: 1.45;
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
@@ -882,6 +883,7 @@
     line-height: 1.5;
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
@@ -977,7 +979,7 @@
     border-radius: 0;
     padding: 20px 24px;
     position: relative;
-    margin-bottom: 12px;
+    margin-bottom: 32px;
     text-align: left;
     cursor: pointer;
     transition: opacity .15s ease-out;
@@ -2226,6 +2228,7 @@
     outline: none;
     transition: border-color .15s;
     -moz-appearance: textfield;
+    appearance: textfield;
 }
 
 .counter-goal-custom-input::-webkit-inner-spin-button,
