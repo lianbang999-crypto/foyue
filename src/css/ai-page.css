@@ -640,7 +640,7 @@ body {
     appearance: none;
     border: none;
     background: transparent;
-    font-size: 15px;
+    font-size: 16px;
     line-height: 1.5;
     color: var(--ai-text);
     resize: none;
@@ -744,8 +744,8 @@ body {
     height: 44px;
     border: none;
     border-radius: 50%;
-    background: var(--ai-bg-user);
-    color: var(--ai-text-inverse);
+    background: var(--ai-accent);
+    color: #fff;
     display: flex;
     align-items: center;
     justify-content: center;
