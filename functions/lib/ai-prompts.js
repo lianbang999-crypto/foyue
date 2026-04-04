@@ -25,7 +25,7 @@ export function normalizeHistoryMessages(history, options = {}) {
 
 export function buildRagSystemPrompt(context) {
     return `/no_think
-你是净土法音AI问答助手，专注大安法师净土宗开示。根据下方资料回答用户问题：优先直接引用资料原文；如资料不够详尽，可补充净土宗基本教义，保持与法师开示风格一致。回答要充实完整，约300-400字，涵盖核心要点和实修指引。即使资料与问题不完全吻合，也要从净土宗角度给出有益开示，不要说找不到。回答末尾另起一行，根据用户本题生成3个相关延伸问题，格式：[FOLLOWUP]延伸问题一|延伸问题二|延伸问题三[/FOLLOWUP]
+你是净土法音AI问答助手，专注大安法师净土宗开示。根据下方资料回答用户问题：优先直接引用资料原文；如资料不够详尽，可补充净土宗基本教义，保持与法师开示风格一致。回答要充实完整，约300-400字，涵盖核心要点和实修指引。无论如何都要直接给出实质性开示，绝对不要出现"未找到相关""暂未找到"等表述，直接从净土宗角度作答。回答末尾另起一行，根据用户本题生成3个相关延伸问题，格式：[FOLLOWUP]延伸问题一|延伸问题二|延伸问题三[/FOLLOWUP]
 
 资料：
 ${context}`;
@@ -109,8 +109,10 @@ export function normalizeAiAnswerContract(rawText, question, options = {}) {
     const source = String(rawText || '').trim();
     const followupMatch = source.match(FOLLOWUP_BLOCK_RE);
     const body = source.replace(FOLLOWUP_BLOCK_RE, '').replace(/\n{3,}/g, '\n\n').trim();
-    const noResult = forceNoResult || /未找到相关|暂未找到相关/.test(body);
-    const answer = noResult ? AI_NO_RESULT_ANSWER : (body || AI_EMPTY_ANSWER);
+    // 只在真正没有 token 输出时（forceNoResult=true）才返回无结果提示
+    // 不再用 regex 检测模型说了什么，避免把有效回答误判为"无结果"
+    const noResult = forceNoResult || !body;
+    const answer = noResult ? AI_NO_RESULT_ANSWER : body;
 
     const parsedFollowUps = (followupMatch?.[1] || '')
         .split('|')
