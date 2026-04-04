@@ -2,7 +2,7 @@
 /* Reuses design tokens from tokens.css */
 
 /* --- Layout --- */
-.adm-layout{display:flex;min-height:100vh}
+.adm-layout{display:flex;min-height:100vh;overflow-x:hidden}
 .adm-sidebar{width:220px;background:var(--bg-secondary);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;bottom:0;z-index:10}
 .adm-sidebar-logo{display:flex;align-items:center;gap:8px;padding:18px 16px 12px;font-size: var(--fs-body);font-weight:500;color:var(--text);font-family:var(--font-zh)}
 .adm-sidebar-footer{margin-top:auto;padding:12px 16px;border-top:1px solid var(--border)}
@@ -122,7 +122,8 @@
   .adm-sidebar{width:56px}
   .adm-nav-label,.adm-sidebar-logo span,.adm-sidebar-footer{display:none}
   .adm-nav-item{justify-content:center;padding:10px}
-  .adm-content{margin-left:56px;padding:16px}
+  /* 侧边栏 fixed 脱离文档流，必须显式限制内容宽度避免右侧溢出 */
+  .adm-content{margin-left:56px;padding:16px;width:calc(100vw - 56px);max-width:calc(100vw - 56px);box-sizing:border-box}
   .adm-metrics{grid-template-columns:repeat(2,1fr)}
   .adm-row{flex-direction:column}
   .adm-form-row{grid-template-columns:1fr}
