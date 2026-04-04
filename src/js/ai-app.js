@@ -1,7 +1,7 @@
 /* ===== 法音AI 独立页面入口 ===== */
 import '../css/ai-page.css';
 import { syncSystemTheme } from './theme.js';
-import { askQuestion, askQuestionStream, voiceToText } from './ai-client.js';
+import { askQuestion, askQuestionStream } from './ai-client.js';
 import { createAiConversationStore } from './ai-conversations.js';
 import {
     buildWelcomeHTML,
@@ -11,7 +11,6 @@ import {
     formatAnswer,
 } from './ai-format.js';
 import { createAiPreviewController } from './ai-preview.js';
-import { createAiVoiceController } from './ai-voice.js';
 import { getWenkuDocument } from './wenku-api.js';
 
 const AI_CONTEXT_KEY = 'ai-latest-context';
@@ -76,7 +75,6 @@ const chatArea = document.getElementById('chatArea');
 const chatInput = document.getElementById('chatInput');
 const btnSend = document.getElementById('btnSend');
 const btnClear = document.getElementById('btnClear');
-const btnVoice = document.getElementById('btnVoice');
 const btnStop = document.getElementById('btnStop');
 const charCount = document.getElementById('charCount');
 const inputArea = document.querySelector('.ai-input-area');
@@ -97,19 +95,6 @@ const previewController = createAiPreviewController({
     previewOpenBtn,
     inputArea,
     getWenkuDocument,
-});
-
-const voiceController = createAiVoiceController({
-    button: btnVoice,
-    onToast: showAiToast,
-    onResult: (text) => {
-        chatInput.value = text;
-        autoResize();
-        updateCharCount();
-        btnSend.disabled = !chatInput.value.trim();
-        if (!isMobile()) chatInput.focus();
-    },
-    voiceToText,
 });
 
 function init() {
@@ -218,20 +203,6 @@ function wireEvents() {
         renderConvList();
     });
 
-    // 分享
-    document.getElementById('btnShare')?.addEventListener('click', () => {
-        const title = '法音AI · 净土智慧问答';
-        const url = location.href;
-        if (navigator.share) {
-            navigator.share({ title, url }).catch(err => {
-                if (err.name === 'AbortError') return;
-                _aiCopy(title + '\n' + url, '链接已复制');
-            });
-        } else {
-            _aiCopy(title + '\n' + url, '链接已复制');
-        }
-    });
-
     previewBackdrop?.addEventListener('click', previewController.closePreview);
     previewCloseBtn?.addEventListener('click', previewController.closePreview);
     previewBody?.addEventListener('click', previewController.handleBodyClick);
@@ -335,9 +306,6 @@ function wireEvents() {
         });
     });
 
-    // 语音输入
-    btnVoice?.addEventListener('click', voiceController.toggle);
-
     // 停止生成
     btnStop?.addEventListener('click', () => {
         if (_streamAbortController) {
@@ -403,13 +371,11 @@ function setGeneratingUI(active) {
     if (active) {
         btnSend.disabled = true;
         btnSend.classList.add('hidden');
-        btnVoice?.classList.add('hidden');
         btnStop?.classList.remove('hidden');
         return;
     }
     btnStop?.classList.add('hidden');
     btnSend.classList.remove('hidden');
-    btnVoice?.classList.remove('hidden');
     btnSend.disabled = !chatInput.value.trim();
 }
 
@@ -804,25 +770,25 @@ function buildMsgActions() {
     bar.className = 'ai-msg-actions';
     bar.innerHTML = `
       <button class="ai-action-btn" data-action="copy" aria-label="复制" title="复制">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
           <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
         </svg>
       </button>
       <button class="ai-action-btn" data-action="regen" aria-label="重新生成" title="重新生成">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="23 4 23 10 17 10"/>
           <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
         </svg>
       </button>
       <button class="ai-action-btn" data-action="good" aria-label="有帮助" title="有帮助">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/>
           <path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/>
         </svg>
       </button>
       <button class="ai-action-btn" data-action="bad" aria-label="不准确" title="不准确">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M10 15V19a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3H10z"/>
           <path d="M17 2h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17"/>
         </svg>
@@ -904,33 +870,28 @@ function closeConvDrawer() {
     if (convDrawer) convDrawer.style.transform = '';
 }
 
-// 抽屉滑动关闭手势
+// 底部弹窗下拉关闭手势
 (function initDrawerSwipe() {
     if (!convDrawer) return;
-    let startX = 0, startY = 0, tracking = false;
+    let startY = 0, tracking = false;
     convDrawer.addEventListener('touchstart', (e) => {
         if (!convDrawer.classList.contains('open')) return;
-        const t = e.touches[0];
-        startX = t.clientX;
-        startY = t.clientY;
+        startY = e.touches[0].clientY;
         tracking = true;
         convDrawer.style.transition = 'none';
     }, { passive: true });
     convDrawer.addEventListener('touchmove', (e) => {
         if (!tracking) return;
-        const dx = e.touches[0].clientX - startX;
         const dy = e.touches[0].clientY - startY;
-        // 只处理水平向左滑
-        if (Math.abs(dy) > Math.abs(dx)) { tracking = false; return; }
-        if (dx > 0) { convDrawer.style.transform = ''; return; }
-        convDrawer.style.transform = `translateX(${dx}px)`;
+        if (dy < 0) { convDrawer.style.transform = ''; return; }
+        convDrawer.style.transform = `translateY(${dy}px)`;
     }, { passive: true });
     convDrawer.addEventListener('touchend', (e) => {
         if (!tracking) { convDrawer.style.transition = ''; return; }
         tracking = false;
         convDrawer.style.transition = '';
-        const dx = (e.changedTouches[0]?.clientX || startX) - startX;
-        if (dx < -60) {
+        const dy = (e.changedTouches[0]?.clientY || startY) - startY;
+        if (dy > 80) {
             closeConvDrawer();
         } else {
             convDrawer.style.transform = '';
@@ -971,7 +932,7 @@ function renderConvList() {
             <span class="ai-conv-title">${title}</span>
             <span class="ai-conv-meta">${count}条</span>
             <button class="ai-conv-del" data-conv-id="${c.id}" aria-label="删除对话" title="删除">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
         </li>`;
     }).join('');

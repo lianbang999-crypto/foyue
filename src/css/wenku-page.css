@@ -1156,17 +1156,20 @@ body {
 
 .wk-reader-title {
     font-family: var(--wk-font-serif);
-    font-size: 1.28rem;
+    font-size: 1.4rem;
     font-weight: 600;
     color: inherit;
-    margin-bottom: 6px;
-    line-height: 1.5;
+    margin-bottom: 8px;
+    line-height: 1.45;
+    letter-spacing: 0.02em;
 }
 
 .wk-reader-meta {
     font-size: var(--fs-caption);
     opacity: 0.58;
-    margin-bottom: 16px;
+    margin-bottom: 0;
+    padding-bottom: 20px;
+    border-bottom: 1px solid color-mix(in srgb, currentColor 6%, transparent);
 }
 
 .wk-reader-contributor {
@@ -1194,9 +1197,17 @@ body {
     font-family: var(--wk-font-kai);
 }
 
+.wk-reader-body {
+    margin-top: 24px;
+}
+
 .wk-reader-body p {
-    margin: 0 0 .8em;
+    margin: 0 0 1.1em;
     text-indent: 2em;
+}
+
+.wk-reader-body p:first-child {
+    text-indent: 0;
 }
 
 .wk-reader-body p:last-child {
@@ -1206,7 +1217,6 @@ body {
 /* ====== 翻页模式 ====== */
 .wk-reader-scroll.wk-paged {
     overflow: hidden;
-    columns: 1;
     column-gap: 0;
     column-fill: auto;
     height: 100%;

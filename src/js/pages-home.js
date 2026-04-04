@@ -280,7 +280,7 @@ function buildDynamicSectionHtml() {
   if (!hasPlayHistory) {
     html += `<div class="home-section home-section-tight">
       <div class="home-guide-card" id="homeGuide">
-        <div class="home-guide-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg></div>
+        <div class="home-guide-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg></div>
         <div class="home-guide-body">
           <div class="home-guide-title">${t('home_guide_title')}</div>
           <div class="home-guide-sub">${t('home_guide_desc')}</div>
@@ -506,7 +506,7 @@ export function renderHomePage() {
       </div>
       <div class="home-chanting-wrap">
         <div class="home-chanting-scroll">${chantCards}</div>
-        <div class="home-chanting-arrow"><svg viewBox="0 0 24 24" width="16" height="16"><polyline points="9,6 15,12 9,18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="home-chanting-arrow"><svg viewBox="0 0 24 24" width="16" height="16"><polyline points="9,6 15,12 9,18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       </div>
     </div>
 

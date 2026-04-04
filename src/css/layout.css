@@ -20,22 +20,25 @@
   z-index: 100;
   padding-top: env(safe-area-inset-top, 0px);
   background: var(--bg-header);
-  backdrop-filter: blur(24px) saturate(1.2);
-  -webkit-backdrop-filter: blur(24px) saturate(1.2);
-  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid transparent;
   transition: background .35s
 }
 
 .nav {
   display: flex;
   align-items: center;
-  padding: 0 12px;
+  padding: 0 16px;
   height: 50px;
   gap: 0;
   position: relative
 }
 
 .logo {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -126,14 +129,11 @@
 }
 
 .logo-title {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
   font-size: 17px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text);
   white-space: nowrap;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
   font-family: var(--font-serif);
   pointer-events: none
 }
@@ -191,7 +191,7 @@
   height: 22px;
   stroke: currentColor;
   fill: none;
-  stroke-width: 1.6;
+  stroke-width: 1.5;
   stroke-linecap: round;
   stroke-linejoin: round;
   transition: transform .2s cubic-bezier(.34, 1.56, .64, 1)
@@ -405,7 +405,7 @@
   height: 17px;
   stroke: currentColor;
   fill: none;
-  stroke-width: 1.8;
+  stroke-width: 1.5;
   stroke-linecap: round;
   stroke-linejoin: round
 }
@@ -418,13 +418,13 @@
   align-items: center;
   gap: 4px;
   background: none;
-  color: var(--accent);
+  color: var(--text-secondary);
   border: none;
   border-radius: 8px;
   padding: 6px 10px;
   font-family: var(--font-en);
   font-size: var(--fs-body);
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: .03em;
   cursor: pointer;
   transition: opacity .15s;
@@ -482,28 +482,16 @@
   }
 }
 
-@media(min-width:500px) {
-  .series-list {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px
-  }
-}
-
 @media(min-width:768px) {
-  .series-list {
-    grid-template-columns: 1fr 1fr 1fr
-  }
-
   .content {
-    max-width: 900px;
+    max-width: 720px;
     margin: 0 auto;
     padding-left: 24px;
     padding-right: 24px
   }
 
   .nav {
-    max-width: 900px;
+    max-width: 720px;
     margin-left: auto;
     margin-right: auto
   }

@@ -308,14 +308,14 @@ function buildCounterHTML(data, session) {
       </div>
       <div class="counter-header-slot counter-header-slot--center">
         <button type="button" class="counter-tool-icon${isMuyuEnabled() ? ' counter-tool-icon--active' : ''}" id="counterMuyuToggle" aria-label="木鱼音效" title="木鱼音效">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 3C7 3 3 7.5 3 12c0 3 1.5 5.5 4 7h10c2.5-1.5 4-4 4-7 0-4.5-4-9-9-9z"/>
             <line x1="12" y1="19" x2="12" y2="22"/>
             <circle cx="12" cy="12" r="2.5"/>
           </svg>
         </button>
         <button type="button" class="counter-tool-icon${isDimmerEnabled() ? ' counter-tool-icon--active' : ''}" id="counterDimmerToggle" aria-label="熄灯模式" title="熄灯模式">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
           </svg>
         </button>
@@ -757,7 +757,7 @@ function showHuixiangSheet(parentView, data, _session) {
       </div>
 
       <button class="hx-confirm-btn" id="hxConfirm">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
         ${t('counter_huixiang_confirm')}
       </button>
       <button class="counter-goal-cancel" id="hxCancel">${t('counter_huixiang_skip')}</button>
@@ -885,7 +885,7 @@ function showGoalPicker(parentView, data, onDone) {
 function _buildPracticeItemHTML(name, isActive, isPreset) {
   const delBtn = isPreset ? '' :
     `<button class="practice-item-del" data-name="${escapeHtml(name)}" aria-label="删除">
-       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
      </button>`;
   return `
     <div class="practice-item${isActive ? ' practice-item--active' : ''}" data-name="${escapeHtml(name)}">
@@ -1109,7 +1109,7 @@ function buildCalendarGrid(data, year, month) {
   }).join('');
 }
 
-const CHI_CHEVRON = '<svg class="chi-tool-chevron" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>';
+const CHI_CHEVRON = '<svg class="chi-tool-chevron" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>';
 
 /** 构建完整历史面板 HTML（日历视图） */
 function buildHistoryHTML(data, year, month) {
@@ -1143,11 +1143,11 @@ function buildHistoryHTML(data, year, month) {
   return `
     <div class="ch-header">
       <button class="btn-icon" id="chBack" aria-label="返回">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,18 9,12 15,6"/></svg>
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,18 9,12 15,6"/></svg>
       </button>
       <span class="ch-title">${t('counter_records')}</span>
       <button class="btn-icon" id="chBuluBtn" title="补录" aria-label="补录过去的念佛声数">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="9"/>
           <line x1="12" y1="8" x2="12" y2="16"/>
           <line x1="8" y1="12" x2="16" y2="12"/>
@@ -1193,14 +1193,14 @@ function buildHistoryHTML(data, year, month) {
       <!-- 月导航 -->
       <div class="chi-month-nav">
         <button class="chi-nav-btn" id="chPrevMonth" aria-label="上月">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15,18 9,12 15,6"/></svg>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="15,18 9,12 15,6"/></svg>
         </button>
         <div class="chi-month-info">
           <span class="chi-month-nav-lbl" id="chiMonthLabel">${monthLabel}</span>
           ${monthTotal > 0 ? `<span class="chi-month-nav-total" id="chiMonthTotal">${formatCount(monthTotal)} 声</span>` : `<span class="chi-month-nav-total" id="chiMonthTotal"></span>`}
         </div>
         <button class="chi-nav-btn${canGoNext ? '' : ' chi-nav-btn--disabled'}" id="chNextMonth" aria-label="下月" ${canGoNext ? '' : 'disabled'}>
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9,18 15,12 9,6"/></svg>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="9,18 15,12 9,6"/></svg>
         </button>
       </div>
 

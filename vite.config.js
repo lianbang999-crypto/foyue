@@ -24,7 +24,6 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           // 独立页入口尽量保持自包含，避免再拆出旧实现相关 chunk
-          if (id.includes('/wenku-app.js') || id.includes('/wenku-page.css')) return undefined;
           if (id.includes('/ai-app.js') || id.includes('/ai-page.css')) return undefined;
 
           // 公共模块
@@ -33,8 +32,8 @@ export default defineConfig({
           if (id.includes('/player.js') || id.includes('/history.js') || id.includes('/api.js') || id.includes('/audio-cache.js') || id.includes('/audio-url.js')) return 'player';
           // 页面
           if (id.includes('/pages-home.js') || id.includes('/pages-category.js') || id.includes('/history-view.js') || id.includes('/counter.js') || id.includes('/gongxiu.js') || id.includes('/gongxiu-panel.js')) return 'pages';
-          // 文库共享客户端
-          if (id.includes('/wenku-api.js')) return 'wenku';
+          // 文库 API 客户端（AI 预览抽屉依赖）
+          if (id.includes('/wenku-api.js')) return 'ai-doc';
         }
       }
     },

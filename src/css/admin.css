@@ -20,7 +20,7 @@
 .adm-nav-item:hover{background:var(--bg-card-hover);color:var(--text)}
 .adm-nav-item.active{background:var(--accent-glow);color:var(--accent);font-weight:500}
 .adm-nav-icon{width:18px;height:18px;display:flex;align-items:center;justify-content:center}
-.adm-nav-icon svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.adm-nav-icon svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
 
 /* --- Page Header & Utilities --- */
 .adm-page-title{font-size:1.1rem;font-weight:600;color:var(--text);margin:0 0 20px}

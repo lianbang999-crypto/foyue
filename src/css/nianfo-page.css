@@ -15,6 +15,8 @@
     flex-direction: column;
     background: var(--bg);
     overflow: hidden;
+    max-width: 720px;
+    margin: 0 auto;
 }
 
 /* 独立页面下计数器直接全屏展示，无需覆盖层动画 */

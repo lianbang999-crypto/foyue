@@ -279,7 +279,7 @@
     height: 16px;
     stroke: currentColor;
     fill: none;
-    stroke-width: 2;
+    stroke-width: 1.5;
     stroke-linecap: round
 }
 
@@ -330,7 +330,7 @@
     height: 14px;
     stroke: currentColor;
     fill: none;
-    stroke-width: 2
+    stroke-width: 1.5
 }
 
 .about-text {
@@ -426,7 +426,7 @@
     height: 22px;
     stroke: var(--accent);
     fill: none;
-    stroke-width: 1.8
+    stroke-width: 1.5
 }
 
 .install-text {
@@ -701,7 +701,7 @@
     flex-shrink: 0;
     stroke: currentColor;
     fill: none;
-    stroke-width: 2;
+    stroke-width: 1.5;
     stroke-linecap: round;
 }
 

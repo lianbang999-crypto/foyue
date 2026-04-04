@@ -1,4 +1,4 @@
-/* SVG icon constants — Lucide style: 24×24, stroke-width 1.75, round caps/joins */
+/* SVG icon constants — Lucide style: 24×24, stroke-width 1.5, round caps/joins */
 
 export const SVG = {
   play: '<svg viewBox="0 0 24 24"><polygon points="6,4 20,12 6,20" fill="currentColor" stroke="none"/></svg>',

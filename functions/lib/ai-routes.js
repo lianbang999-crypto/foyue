@@ -40,7 +40,7 @@ function buildSourceList(matches, docs) {
       score: Math.round(match.score * 100) / 100,
       category: doc?.category || match.metadata.category || '',
       series_name: doc?.series_name || match.metadata.series_name || '',
-      snippet: (match.metadata?.text || '').replace(/\s+/g, '').slice(0, 120),
+      snippet: (match.metadata?.text || '').replace(/\s+/g, '').slice(0, 180),
     });
     if (sources.length >= 3) break;
   }

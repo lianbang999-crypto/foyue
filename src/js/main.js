@@ -321,7 +321,7 @@ const categoryLoaders = new Map();
 const seriesLoaders = new Map();
 
 async function ensureCategoryData(categoryId) {
-  if (!categoryId || categoryId === 'home' || categoryId === 'mypage' || categoryId === 'wenku') return null;
+  if (!categoryId || categoryId === 'home' || categoryId === 'mypage') return null;
   if (state.isDataFull) return state.data?.categories?.find(cat => cat.id === categoryId) || null;
 
   const existing = state.data?.categories?.find(cat => cat.id === categoryId);
@@ -900,8 +900,8 @@ function needsImmediateFullData() {
     location.hash ||
     params.get('series') ||
     params.get('doc') ||
-    params.get('wenku') ||
-    (tab && !['home', 'ai', 'mypage', 'wenku'].includes(tab))
+    params.get('doc') ||
+    (tab && !['home', 'ai', 'mypage'].includes(tab))
   );
 }
 
@@ -959,7 +959,6 @@ async function loadData() {
       }
       // ✅ 修复：缓存模式下也处理深链接
       handleSeriesDeepLink();
-      handleWenkuDeepLink();
       handleTabDeepLink();
       // Refresh in background (non-blocking)
       fetchFreshData();
@@ -979,7 +978,6 @@ async function loadData() {
         restoreState();
         if (state.isFirstVisit && state.epIdx < 0) playDefaultTrack();
       }
-      handleWenkuDeepLink();
       handleTabDeepLink();
       checkAiDeepLink();
       await hideBootLoader(dom);
@@ -999,7 +997,6 @@ async function loadData() {
       } else if (state.isFirstVisit && state.epIdx < 0) {
         playDefaultTrack();
       }
-      handleWenkuDeepLink();
       handleTabDeepLink();
       checkAiDeepLink();
       await hideBootLoader(dom);
@@ -1022,10 +1019,8 @@ async function loadData() {
       // Default play on first visit
       if (state.isFirstVisit && state.epIdx < 0) playDefaultTrack();
     }
-    // Handle ?series= deep link from wenku
+    // Handle ?series= deep link
     handleSeriesDeepLink();
-    // Handle ?wenku= and ?doc= deep links
-    handleWenkuDeepLink();
     // Handle ?tab= deep links (including PWA shortcuts)
     handleTabDeepLink();
     // Handle ?tab=ai deep link
@@ -1198,27 +1193,9 @@ function handleSeriesDeepLink() {
   }
 }
 
-function handleWenkuDeepLink() {
-  const params = new URLSearchParams(window.location.search);
-  const docId = params.get('doc');
-  const wenkuSeries = params.get('wenku');
-  const tab = params.get('tab');
-  if (!docId && !wenkuSeries && tab !== 'wenku') return;
-
-  // 重定向到独立文库页面
-  if (docId) {
-    const q = params.get('q');
-    window.location.href = `/wenku?doc=${encodeURIComponent(docId)}${q ? '&q=' + encodeURIComponent(q) : ''}`;
-  } else if (wenkuSeries) {
-    window.location.href = `/wenku?series=${encodeURIComponent(wenkuSeries)}`;
-  } else if (tab === 'wenku') {
-    window.location.href = '/wenku';
-  }
-}
-
 /* ===== TAB DEEP LINK — from PWA shortcuts or external links ===== */
 // Handles ?tab=home, ?tab=tingjingtai, ?tab=youshengshu, ?tab=mypage
-// ?tab=ai / ?tab=wenku 都重定向到独立页处理
+// ?tab=ai 重定向到独立页处理
 function handleTabDeepLink() {
   const params = new URLSearchParams(window.location.search);
   const tab = params.get('tab');

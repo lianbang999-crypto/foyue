@@ -925,6 +925,10 @@ async function openReader(docId, highlightQuery, skipPush) {
 function initPagedMode(scroll, docId, highlightQuery) {
     scroll.classList.add('wk-paged');
 
+    // 动态设置 column-width 为容器可见宽度，让内容自动水平分列
+    const colW = scroll.clientWidth;
+    if (colW > 0) scroll.style.columnWidth = colW + 'px';
+
     const pagerInfo = document.getElementById('pagerInfo');
     const pagerText = document.getElementById('pagerText');
     if (pagerInfo) pagerInfo.style.display = 'flex';
@@ -991,6 +995,8 @@ function recalcPages() {
     const s = _pager.scroll;
     const colWidth = s.clientWidth;
     if (colWidth <= 0) return;
+    // 更新 column-width 以匹配当前容器宽度（应对 resize / 旋转）
+    s.style.columnWidth = colWidth + 'px';
     _pager.total = Math.max(1, Math.ceil(s.scrollWidth / colWidth));
     if (_pager.page >= _pager.total) _pager.page = _pager.total - 1;
 }
@@ -1094,7 +1100,11 @@ function wirePagerGestures(scroll) {
 }
 
 function cleanupPager() {
-    if (_pager?.scroll?._cleanupPager) _pager.scroll._cleanupPager();
+    if (_pager?.scroll) {
+        if (_pager.scroll._cleanupPager) _pager.scroll._cleanupPager();
+        _pager.scroll.style.columnWidth = '';
+        _pager.scroll.style.transform = '';
+    }
     _pager = null;
     const pagerInfo = document.getElementById('pagerInfo');
     if (pagerInfo) pagerInfo.style.display = 'none';
@@ -1267,13 +1277,17 @@ function textToHtml(text) {
         .replace(/^ +| +$/gm, '')        // trim each line
         .replace(/\n{3,}/g, '\n\n');     // collapse 3+ newlines → 2
 
+    // 移除文末残留的孤立数字（页码/脚注标记）
+    cleaned = cleaned.replace(/\n\d{1,3}\s*$/, '');
+
     // Extract contributor from first/last lines
     const contributor = extractContributor(cleaned);
 
+    // 按单个换行分段（源文本多数以 \n 分段，少数用 \n\n）
     const html = cleaned
-        .split(/\n\n+/)
+        .split(/\n/)
         .filter(p => p.trim())
-        .map(p => `<p>${esc(p.trim()).replace(/\n/g, '<br>')}</p>`)
+        .map(p => `<p>${esc(p.trim())}</p>`)
         .join('');
 
     return { html, contributor };

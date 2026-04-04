@@ -9,7 +9,7 @@ export function showGongxiuSubview() {
   panel.innerHTML = `
     <div class="gx-fs-header">
       <button class="btn-icon" id="gxFsBack" aria-label="返回">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,18 9,12 15,6"/></svg>
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,18 9,12 15,6"/></svg>
       </button>
       <span class="gx-fs-title">${t('my_gongxiu')}</span>
       <div style="width:44px;flex-shrink:0"></div>

@@ -1,14 +1,16 @@
 /* === TOKENS === */
 :root {
-  --bg: #F9F8F6;
-  --bg-secondary: #F3F1ED;
-  --bg-card: #FFFFFF;
-  --bg-card-hover: #F3F1ED;
-  --bg-header: rgba(249, 248, 246, 0.75);
-  --bg-player: rgba(249, 248, 246, 0.85);
-  --bg-expanded: linear-gradient(170deg, #F9F8F6 0%, #EFECE5 100%);
-  --border: rgba(0, 0, 0, 0.04);
+  /* 背景 — 温润纸感，非冷白科技面板 */
+  --bg: #F7F3EC;
+  --bg-secondary: #EEE7DD;
+  --bg-card: #FFFCF7;
+  --bg-card-hover: #EEE7DD;
+  --bg-header: rgba(247, 243, 236, 0.75);
+  --bg-player: rgba(247, 243, 236, 0.85);
+  --bg-expanded: linear-gradient(170deg, #F7F3EC 0%, #EDE8DF 100%);
+  --border: rgba(42, 36, 31, 0.06);
   --border-active: rgba(217, 119, 87, 0.25);
+  /* 强调色 — 朱砂赤陶，≈ Claude 品牌橙 rgb(215,119,87) */
   --accent: #D97757;
   --accent-dim: rgba(217, 119, 87, 0.15);
   --accent-glow: rgba(217, 119, 87, 0.08);
@@ -16,18 +18,20 @@
   --accent-gradient-top: rgba(217, 119, 87, 0.08);
   --accent-gradient-bottom: rgba(217, 119, 87, 0.03);
   --body-gradient: rgba(217, 119, 87, 0.02);
-  --text: #1E1E1E;
-  --text-secondary: rgba(30, 30, 30, 0.6);
-  --text-muted: rgba(30, 30, 30, 0.35);
+  /* 文字 — 墨褐色系 */
+  --text: #2A241F;
+  --text-secondary: rgba(42, 36, 31, 0.6);
+  --text-muted: rgba(42, 36, 31, 0.35);
   --text-inverse: #FFFFFF;
   --danger: #ea4335;
   --danger-dim: rgba(234, 67, 53, 0.15);
   --success: #4caf50;
   --success-dim: rgba(76, 175, 80, 0.15);
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 8px 32px rgba(0, 0, 0, 0.06);
-  --radius: 12px;
-  --radius-sm: 8px;
+  /* 阴影 — 暖灰调，极轻 */
+  --shadow-sm: 0 1px 3px rgba(42, 36, 31, 0.04);
+  --shadow-md: 0 4px 16px rgba(42, 36, 31, 0.06);
+  --radius: 16px;
+  --radius-sm: 10px;
   --radius-lg: 20px;
   --player-h: 72px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -53,13 +57,13 @@
 }
 
 [data-theme="dark"] {
-  --bg: #1D1D1D;
-  --bg-secondary: #252525;
-  --bg-card: rgba(255, 255, 255, 0.04);
-  --bg-card-hover: rgba(255, 255, 255, 0.08);
-  --bg-header: rgba(29, 29, 29, 0.75);
-  --bg-player: rgba(29, 29, 29, 0.85);
-  --bg-expanded: linear-gradient(170deg, #1D1D1D 0%, #252525 100%);
+  --bg: #181513;
+  --bg-secondary: #1F1B17;
+  --bg-card: #231E1A;
+  --bg-card-hover: #2C2621;
+  --bg-header: rgba(24, 21, 19, 0.75);
+  --bg-player: rgba(24, 21, 19, 0.85);
+  --bg-expanded: linear-gradient(170deg, #181513 0%, #231E1A 100%);
   --border: rgba(255, 255, 255, 0.06);
   --border-active: rgba(217, 119, 87, 0.35);
   --accent: #E0876B;
@@ -69,16 +73,16 @@
   --accent-gradient-top: rgba(224, 135, 107, 0.08);
   --accent-gradient-bottom: rgba(224, 135, 107, 0.03);
   --body-gradient: rgba(224, 135, 107, 0.02);
-  --text: #E8E0D5;
-  --text-secondary: rgba(232, 224, 213, 0.65);
-  --text-muted: rgba(232, 224, 213, 0.4);
-  --text-inverse: #1D1D1D;
+  --text: #ECE4DB;
+  --text-secondary: rgba(236, 228, 219, 0.65);
+  --text-muted: rgba(236, 228, 219, 0.4);
+  --text-inverse: #181513;
   --danger: #ef5350;
   --danger-dim: rgba(239, 83, 80, 0.2);
   --success: #66bb6a;
   --success-dim: rgba(102, 187, 106, 0.2);
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 8px 32px rgba(0, 0, 0, 0.35);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
   --hero-gradient: linear-gradient(160deg, rgba(224, 135, 107, 0.06) 0%, rgba(224, 135, 107, 0.02) 50%, transparent 100%);
   --hero-radial: radial-gradient(ellipse at 25% 0%, rgba(224, 135, 107, 0.08) 0%, transparent 55%);
 }

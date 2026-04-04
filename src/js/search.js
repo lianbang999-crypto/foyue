@@ -162,7 +162,7 @@ export function openSearchOverlay() {
   overlay.innerHTML = `
     <div class="search-overlay-header">
       <button class="search-overlay-back" id="searchOverlayBack" aria-label="\u8FD4\u56DE">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
       </button>
       <div class="search-overlay-field">
         <svg viewBox="0 0 24 24" width="15" height="15"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
