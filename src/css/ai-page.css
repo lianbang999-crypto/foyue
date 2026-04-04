@@ -805,8 +805,10 @@ body {
     border-top: 1px solid var(--ai-border);
     border-top-left-radius: 20px;
     border-top-right-radius: 20px;
-    transform: translateY(100%);
-    transition: transform 0.35s cubic-bezier(.22, 1, .36, 1);
+    /* 多推 60px 确保阴影（shadow 向上扩散约 48px）和圆角均不漏出 */
+    transform: translateY(calc(100% + 60px));
+    visibility: hidden;
+    transition: transform 0.35s cubic-bezier(.22, 1, .36, 1), visibility 0.35s;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -815,6 +817,7 @@ body {
 
 .ai-conv-drawer.open {
     transform: translateY(0);
+    visibility: visible;
 }
 
 /* 底部弹窗拖拽把手 */
