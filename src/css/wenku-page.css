@@ -1076,7 +1076,6 @@ body {
 }
 
 .wk-reader[data-mode="eink"] .wk-reader-body {
-    font-family: var(--wk-font-serif);
     line-height: 2.0;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
@@ -1091,7 +1090,7 @@ body {
     padding: 0 8px;
     padding-top: var(--wk-safe-top);
     gap: 4px;
-    background: color-mix(in srgb, currentColor 0%, var(--wk-bg-header) 100%);
+    background: var(--wk-bg-header);
     backdrop-filter: blur(20px) saturate(1.15);
     -webkit-backdrop-filter: blur(20px) saturate(1.15);
     transition: transform 0.25s ease, opacity 0.25s ease;
@@ -1173,7 +1172,7 @@ body {
     opacity: 0.58;
     margin-bottom: 0;
     padding-bottom: 20px;
-    border-bottom: 1px solid color-mix(in srgb, currentColor 6%, transparent);
+    border-bottom: 1px solid var(--wk-border);
 }
 
 .wk-reader-contributor {
@@ -1190,15 +1189,15 @@ body {
 }
 
 .wk-reader-body[data-font="serif"] {
-    font-family: var(--wk-font-serif);
+    font-family: var(--wk-font-serif) !important;
 }
 
 .wk-reader-body[data-font="sans"] {
-    font-family: var(--wk-font-zh);
+    font-family: var(--wk-font-zh) !important;
 }
 
 .wk-reader-body[data-font="kai"] {
-    font-family: var(--wk-font-kai);
+    font-family: var(--wk-font-kai) !important;
 }
 
 .wk-reader-body {
@@ -1253,10 +1252,10 @@ body {
     display: flex;
     align-items: center;
     gap: 12px;
-    background: color-mix(in srgb, currentColor 0%, var(--wk-bg-header) 100%);
+    background: var(--wk-bg-header);
     backdrop-filter: blur(20px) saturate(1.15);
     -webkit-backdrop-filter: blur(20px) saturate(1.15);
-    border-top: 1px solid color-mix(in srgb, currentColor 4%, transparent);
+    border-top: 1px solid var(--wk-border);
     transition: transform 0.25s ease, opacity 0.25s ease;
 }
 
@@ -1323,7 +1322,7 @@ body {
     z-index: 28;
     padding: 24px 20px;
     padding-bottom: calc(24px + var(--wk-safe-bottom));
-    background: color-mix(in srgb, var(--wk-bg-card) 92%, transparent 8%);
+    background: var(--wk-bg-card);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border-top: 1px solid var(--wk-border);
@@ -1333,6 +1332,42 @@ body {
     transition: transform .3s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .3s;
     visibility: hidden;
     pointer-events: none;
+}
+
+/* 阅读模式下的顶栏/底栏/设置面板按模式适配颜色 */
+.wk-reader[data-mode="dark"] .wk-reader-topbar,
+.wk-reader[data-mode="dark"] .wk-reader-bottombar {
+    background: rgba(26, 22, 20, 0.90);
+    border-color: #332E28;
+}
+
+.wk-reader[data-mode="dark"] .wk-reader-settings {
+    background: #242019;
+    border-color: #332E28;
+    color: #E8E4DE;
+}
+
+.wk-reader[data-mode="sepia"] .wk-reader-topbar,
+.wk-reader[data-mode="sepia"] .wk-reader-bottombar {
+    background: rgba(234, 222, 207, 0.92);
+    border-color: #D4C5B5;
+}
+
+.wk-reader[data-mode="sepia"] .wk-reader-settings {
+    background: #EBE0D3;
+    border-color: #D4C5B5;
+    color: #3E3028;
+}
+
+.wk-reader[data-mode="eink"] .wk-reader-topbar,
+.wk-reader[data-mode="eink"] .wk-reader-bottombar {
+    background: rgba(240, 238, 233, 0.92);
+    border-color: #D0CDC8;
+}
+
+.wk-reader[data-mode="eink"] .wk-reader-settings {
+    background: #F0EDE8;
+    border-color: #D0CDC8;
 }
 
 .wk-reader-settings-backdrop {
