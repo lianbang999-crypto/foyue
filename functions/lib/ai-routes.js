@@ -224,7 +224,6 @@ async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
 
   if (!docs.length) {
     try {
-      const keywords = question.replace(/[？?！!，。、]/g, ' ').trim().slice(0, 50);
       let fallbackQuery;
       if (seriesId) {
         fallbackQuery = env.DB.prepare(
@@ -233,11 +232,23 @@ async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
            ORDER BY audio_episode_num ASC LIMIT 5`
         ).bind(seriesId);
       } else {
-        fallbackQuery = env.DB.prepare(
-          `SELECT id, title, content, category, series_name FROM documents
-           WHERE content IS NOT NULL AND (title LIKE ? OR content LIKE ?)
-           LIMIT 5`
-        ).bind(`%${keywords.slice(0, 20)}%`, `%${keywords.slice(0, 20)}%`);
+        // 用分词关键词做多条件 OR 搜索，比整句 LIKE 命中率更高
+        const kws = extractSearchKeywords(question).filter(k => k.length >= 2).slice(0, 3);
+        if (kws.length > 0) {
+          const conditions = kws.map(() => '(title LIKE ? OR content LIKE ?)').join(' OR ');
+          const params = kws.flatMap(k => [`%${k}%`, `%${k}%`]);
+          fallbackQuery = env.DB.prepare(
+            `SELECT id, title, content, category, series_name FROM documents
+             WHERE content IS NOT NULL AND (${conditions})
+             LIMIT 5`
+          ).bind(...params);
+        } else {
+          // 无有效关键词：取近期文档兜底，让 LLM 从通用佛学知识作答
+          fallbackQuery = env.DB.prepare(
+            `SELECT id, title, content, category, series_name FROM documents
+             WHERE content IS NOT NULL ORDER BY id DESC LIMIT 5`
+          );
+        }
       }
       const fallback = await fallbackQuery.all();
       if (fallback.results?.length > 0) docs = fallback.results;

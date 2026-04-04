@@ -14,8 +14,7 @@ export function buildWelcomeHTML() {
         <button class="ai-suggest-chip ai-suggest-card">专称念佛和兼修哪个更殊胜<span class="ai-chip-arrow">›</span></button>
         <button class="ai-suggest-chip ai-suggest-card">什么是念佛功夫成片<span class="ai-chip-arrow">›</span></button>
       </div>
-    </div>
-    <p class="ai-welcome-disclaimer">AI 回答仅供参考，请以法师原始开示为准</p>`;
+    </div>`;
 }
 
 export function escapeHtml(str) {

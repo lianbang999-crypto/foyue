@@ -1532,12 +1532,22 @@ body {
 .ai-input-meta {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
-    padding: 0 4px;
+    justify-content: center;
+    padding: 2px 4px 0;
+    position: relative;
 }
 
 .ai-input-meta .ai-disclaimer-footer {
     margin: 0;
+    font-size: 11px;
+    color: var(--ai-text-muted);
+    opacity: 0.7;
+    text-align: center;
+}
+
+.ai-input-meta .ai-char-count {
+    position: absolute;
+    right: 4px;
 }
 
 .ai-char-count {

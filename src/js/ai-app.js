@@ -460,14 +460,6 @@ async function handleSubmit(options = {}) {
             msgContent.appendChild(srcDiv);
         }
 
-        // 免责声明
-        if (finalData.disclaimer) {
-            const disc = document.createElement('p');
-            disc.className = 'ai-disclaimer';
-            disc.textContent = finalData.disclaimer;
-            msgContent.appendChild(disc);
-        }
-
         // 追问建议
         if (finalFollowUps.length > 0) {
             const wrap = document.createElement('div');
@@ -607,12 +599,6 @@ function addMessage(role, content, sources, disclaimer, silent, messageIndex, so
             srcDiv.className = 'ai-sources';
             srcDiv.innerHTML = sources.map(s => renderSourceTag(s, sourceQuery)).join(' ');
             contentEl.appendChild(srcDiv);
-        }
-        if (disclaimer) {
-            const disc = document.createElement('p');
-            disc.className = 'ai-disclaimer';
-            disc.textContent = disclaimer;
-            contentEl.appendChild(disc);
         }
     }
 

@@ -27,7 +27,7 @@ export const AI_CONFIG = {
   },
   vectorize: {
     topK: 5,
-    scoreThreshold: 0.35,
+    scoreThreshold: 0.28,
   },
   chunking: {
     maxChunkSize: 800,

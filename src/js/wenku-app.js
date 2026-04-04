@@ -9,7 +9,6 @@ const BM_MAX = 100;
 const BOOKMARK_DONE_THRESHOLD = 99.5;
 const SCROLL_KEY = 'wenku-reader-scroll';
 const SETTINGS_KEY = 'wenku-reader-settings';
-const SETTINGS_VERSION = 2;
 const RECENT_MAX = 5;
 const SERIES_COLORS = [
     '#C4704F', '#A8674D', '#8A6B55', '#A17A5C', '#7D675A',
@@ -25,12 +24,12 @@ const wkContent = document.getElementById('wkContent');
 const wkReader = document.getElementById('wkReader');
 
 /* --- 路由状态 --- */
-let currentView = 'home'; // 'home' | 'series' | 'reader'
+let currentView = 'home'; // 'home' | 'reader'
 let activeViewRequestId = 0;
 let _readerState = null;
-let _pager = null; // paged mode state
 let _readerScrollHandler = null;
 let _bookSheetEl = null;
+let _bottombarDragging = false;
 
 function beginViewRequest(view) {
     currentView = view;
@@ -48,7 +47,6 @@ init();
 function init() {
     syncSystemTheme(THEME_COLORS);
     wireContentClicks();
-    wireHomeShare();
     const params = new URLSearchParams(location.search);
     const docId = params.get('doc');
     const series = params.get('series');
@@ -444,28 +442,17 @@ function loadSettings() {
     try {
         const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY));
         if (!raw || typeof raw !== 'object') return defaultSettings();
-        const settings = {
-            version: Number.isFinite(raw.version) ? raw.version : 0,
+        return {
             mode: ['light', 'sepia', 'dark', 'eink'].includes(raw.mode) ? raw.mode : defaultSettings().mode,
             fontSize: Number.isFinite(raw.fontSize) ? raw.fontSize : 17,
             fontFamily: ['sans', 'serif', 'kai'].includes(raw.fontFamily) ? raw.fontFamily : 'sans',
-            readMode: ['paged', 'scroll'].includes(raw.readMode) ? raw.readMode : 'scroll',
         };
-
-        // 旧版本默认是翻页模式，长文首开会先做分页布局，体感更慢。
-        if (settings.version < SETTINGS_VERSION) {
-            settings.version = SETTINGS_VERSION;
-            settings.readMode = 'scroll';
-            persistSettings(settings);
-        }
-
-        return settings;
     } catch { return defaultSettings(); }
 }
 
 function defaultSettings() {
     const dark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
-    return { version: SETTINGS_VERSION, mode: dark ? 'dark' : 'light', fontSize: 17, fontFamily: 'sans', readMode: 'scroll' };
+    return { mode: dark ? 'dark' : 'light', fontSize: 17, fontFamily: 'sans' };
 }
 
 function persistSettings(s) {
@@ -479,7 +466,6 @@ async function renderHome(skipPush) {
     const requestId = beginViewRequest('home');
     if (!skipPush) history.pushState({}, '', '/wenku');
     closeBookSheet();
-    resetHeader();
     wkContent.innerHTML = skeleton(4);
 
     let data;
@@ -623,103 +609,6 @@ async function doHomeSearch(query, container) {
     container.innerHTML = html;
 }
 
-/* ================================================================
-   系列详情
-   ================================================================ */
-async function renderSeries(seriesName, skipPush) {
-    const requestId = beginViewRequest('series');
-    if (!skipPush) history.pushState({ series: seriesName }, '', `/wenku?series=${encodeURIComponent(seriesName)}`);
-
-    // 更新顶栏
-    updateHeader(seriesName, () => history.back());
-
-    wkContent.innerHTML = skeleton(3);
-
-    let data;
-    try { data = await getWenkuDocuments(seriesName); } catch { data = null; }
-
-    if (!isActiveViewRequest(requestId, 'series')) return;
-
-    if (!data?.documents?.length) {
-        wkContent.innerHTML = emptyState(data === null, () => renderSeries(seriesName));
-        return;
-    }
-
-    const bookmarks = getBookmarks();
-    const total = data.documents.length;
-    const readDocs = data.documents.filter(d => hasStartedReading(bookmarks[d.id]?.percent)).length;
-    const color = getSeriesColor(seriesName);
-    const overallProgress = readDocs > 0 ? Math.round((readDocs / total) * 100) : 0;
-    const firstDocument = data.documents.find(Boolean) || null;
-    const seriesIntro = pickIntro(
-        data.seriesIntro,
-        data.series_intro,
-        data.intro,
-        data.description,
-        data.desc,
-        firstDocument?.seriesIntro,
-        firstDocument?.series_intro,
-        firstDocument?.seriesDescription,
-        firstDocument?.series_description,
-    );
-
-    // 系列头部信息
-    let html = `
-      <div class="wk-series-header">
-        <div class="wk-series-header-avatar" style="background:${color}">${esc(seriesName.charAt(0))}</div>
-        <div class="wk-series-header-info">
-          <div class="wk-series-header-name">${esc(seriesName)}</div>
-          <div class="wk-series-header-stats">共 ${total} 讲${readDocs > 0 ? ` · 已读 ${readDocs}/${total}` : ''}</div>
-                    ${seriesIntro ? `<div class="wk-series-header-intro">${esc(seriesIntro)}</div>` : ''}
-          ${overallProgress > 0 ? `<div class="wk-series-header-progress"><div class="wk-series-header-progress-fill" style="width:${overallProgress}%;background:${color}"></div></div>` : ''}
-        </div>
-      </div>`;
-
-    // 文章列表
-    html += '<div class="wk-doc-list">';
-    data.documents.forEach((doc, idx) => {
-        const bm = bookmarks[doc.id];
-        const pct = bm ? getDisplayPercent(bm.percent) : 0;
-        const statusClass = hasCompletedReading(pct) ? 'wk-doc-done' : pct > 0 ? 'wk-doc-reading' : '';
-        html += `
-      <div class="wk-doc-item ${statusClass}" data-action="read" data-doc="${esc(doc.id)}">
-                <div class="wk-doc-num-circle" style="${hasCompletedReading(pct) ? 'background:' + color + ';color:#fff' : ''}">${idx + 1}</div>
-        <div class="wk-doc-info">
-          <div class="wk-doc-title">${esc(doc.title)}</div>
-                    ${pct > 0 && !hasCompletedReading(pct) ? `<div class="wk-doc-progress"><div class="wk-doc-progress-fill" style="width:${pct}%;background:${color}"></div></div>` : ''}
-        </div>
-                ${pct > 0 ? `<span class="wk-doc-badge">${hasCompletedReading(pct) ? '已读' : pct + '%'}</span>` : ''}
-      </div>`;
-    });
-    html += '</div>';
-
-    wkContent.innerHTML = html;
-}
-
-/* 更新顶栏为带返回按钮的样式 */
-function updateHeader(title, backFn) {
-    const inner = document.querySelector('.wk-header-inner');
-    if (!inner) return;
-    // 保存原始内容
-    if (!inner._original) inner._original = inner.innerHTML;
-    inner.innerHTML = `
-    <button class="wk-header-back" id="wkBack">
-      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,18 9,12 15,6"/></svg>
-    </button>
-    <span class="wk-header-title">${esc(title)}</span>
-    <a href="/ai" class="wk-header-link">AI 问答</a>`;
-    inner.querySelector('#wkBack').addEventListener('click', backFn);
-}
-
-function resetHeader() {
-    const inner = document.querySelector('.wk-header-inner');
-    if (inner?._original) {
-        inner.innerHTML = inner._original;
-        inner._original = null;
-        wireHomeShare();
-    }
-}
-
 /* 内容区域点击事件委托 */
 function wireContentClicks() {
     if (wkContent.dataset.bound === 'true') return;
@@ -727,21 +616,11 @@ function wireContentClicks() {
     wkContent.addEventListener('click', handleContentClick);
 }
 
-function wireHomeShare() {
-    const btn = document.getElementById('wkShareBtn');
-    if (!btn || btn.dataset.bound === 'true') return;
-    btn.dataset.bound = 'true';
-    btn.addEventListener('click', () => {
-        shareUrl('法音文库 · 净土讲记文稿', location.href);
-    });
-}
-
 function handleContentClick(e) {
     const el = e.target.closest('[data-action]');
     if (!el) return;
     const action = el.dataset.action;
-    if (action === 'series') renderSeries(el.dataset.series);
-    else if (action === 'book') openBookSheet(el.dataset.series);
+    if (action === 'book') openBookSheet(el.dataset.series);
     else if (action === 'read') openReader(el.dataset.doc, el.dataset.query);
 }
 
@@ -750,13 +629,8 @@ function handleContentClick(e) {
     ================================================================ */
 
 function getCurrentReaderProgress() {
-    if (_pager && _pager.total > 1) {
-        return (_pager.page / (_pager.total - 1)) * 100;
-    }
-
     const scroll = wkReader.querySelector('#readerScroll');
     if (!scroll) return 0;
-
     const sh = scroll.scrollHeight - scroll.clientHeight;
     return sh > 0 ? Math.min(100, (scroll.scrollTop / sh) * 100) : 0;
 }
@@ -771,7 +645,6 @@ function snapshotReaderProgress() {
 async function openReader(docId, highlightQuery, skipPush) {
     const wasReaderOpen = wkReader.style.display !== 'none' && !!_readerState;
     snapshotReaderProgress();
-    cleanupPager();
 
     const requestId = beginViewRequest('reader');
     if (!skipPush) {
@@ -782,11 +655,9 @@ async function openReader(docId, highlightQuery, skipPush) {
     }
 
     const settings = loadSettings();
-    if (!settings.readMode) settings.readMode = 'paged';
 
     wkReader.style.display = 'flex';
     wkReader.setAttribute('data-mode', settings.mode);
-    wkReader.setAttribute('data-read-mode', settings.readMode);
     document.body.style.overflow = 'hidden';
 
     wkReader.innerHTML = `
@@ -810,16 +681,15 @@ async function openReader(docId, highlightQuery, skipPush) {
     <div class="wk-reader-scroll" id="readerScroll">
             <div class="wk-empty wk-empty--reader" style="padding-top:30vh">${buildEmptyStateMarkup('正在加载讲记…', '稍候片刻，法义原文即将展开。')}</div>
     </div>
-    <div class="wk-pager-info" id="pagerInfo" style="display:none">
-      <span id="pagerText">1 / 1</span>
+    <div class="wk-reader-bottombar" id="readerBottombar">
+        <span class="wk-reader-bottombar-pct" id="bottombarPct">0%</span>
+        <input class="wk-reader-bottombar-slider" id="bottombarSlider" type="range" min="0" max="100" step="1" value="0">
+        <button class="wk-reader-bottombar-btn" id="bottombarSettingsBtn" aria-label="设置">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2m-9-11h2m18 0h2m-4.22-5.78 1.42-1.42M4.22 19.78l1.42-1.42M19.78 19.78l-1.42-1.42M4.22 4.22l1.42 1.42"/></svg>
+        </button>
     </div>
     <div class="wk-reader-settings" id="readerSettings">
             <div class="wk-reader-settings-handle"></div>
-      <div class="wk-settings-title">阅读模式</div>
-      <div class="wk-readmode-row">
-        <button class="wk-font-btn ${settings.readMode === 'paged' ? 'active' : ''}" data-readmode="paged">翻页</button>
-        <button class="wk-font-btn ${settings.readMode === 'scroll' ? 'active' : ''}" data-readmode="scroll">滚动</button>
-      </div>
       <div class="wk-settings-title">字号</div>
       <div class="wk-fontsize-row">
         <span class="wk-fontsize-label wk-fontsize-sm">A</span>
@@ -862,7 +732,7 @@ async function openReader(docId, highlightQuery, skipPush) {
 
     // Render content
     const scroll = wkReader.querySelector('#readerScroll');
-    const { html: bodyHtml, contributor } = textToHtml(doc.content || '');
+    const { html: bodyHtml, contributor } = textToHtml(doc.content || '', doc.title);
     let nextHtml = '';
     if (data.nextId) {
         nextHtml = `<div class="wk-next-card"><p>第 ${doc.episode_num || '?'}/${data.totalEpisodes || '?'} 讲</p><button class="wk-next-btn" data-next="${esc(data.nextId)}">下一讲</button></div>`;
@@ -894,228 +764,107 @@ async function openReader(docId, highlightQuery, skipPush) {
     // Highlight search
     if (highlightQuery) highlightText(highlightQuery);
 
-    // Initialize paged mode or scroll mode
-    if (settings.readMode === 'paged') {
-        initPagedMode(scroll, docId, highlightQuery);
-    } else {
-        // Restore scroll
-        if (!highlightQuery) {
-            const pct = getScrollProgress(docId);
-            if (pct > 0) {
-                requestAnimationFrame(() => {
-                    const sh = scroll.scrollHeight - scroll.clientHeight;
-                    if (sh > 0) scroll.scrollTo(0, (pct / 100) * sh);
-                });
-            }
+    // 恢复滚动位置
+    if (!highlightQuery) {
+        const pct = getScrollProgress(docId);
+        if (pct > 0) {
+            requestAnimationFrame(() => {
+                const sh = scroll.scrollHeight - scroll.clientHeight;
+                if (sh > 0) scroll.scrollTo(0, (pct / 100) * sh);
+            });
         }
-        wireReaderScroll(scroll, docId);
     }
+    wireReaderScroll(scroll, docId);
 
     // Wire events
     wireReaderClose();
     wireReaderCatalog(doc.series_name || '');
     wireReaderSettings(settings);
     wireReaderNext(scroll);
+    wireBottombar();
+    wireScrollCenterTap(scroll);
 
     // Preload next
     if (data.nextId) getWenkuDocument(data.nextId);
 }
 
-/* --- 翻页阅读模式 --- */
-function initPagedMode(scroll, docId, highlightQuery) {
-    scroll.classList.add('wk-paged');
-
-    // 动态设置 column-width 为容器可见宽度，让内容自动水平分列
-    const colW = scroll.clientWidth;
-    if (colW > 0) scroll.style.columnWidth = colW + 'px';
-
-    const pagerInfo = document.getElementById('pagerInfo');
-    const pagerText = document.getElementById('pagerText');
-    if (pagerInfo) pagerInfo.style.display = 'flex';
-
-    _pager = { page: 0, total: 1, scroll };
-
-    // 等待布局稳定（双帧确保CSS已渲染）
-    const doInitRecalc = () => {
-        if (!_pager) return;
-        recalcPages();
-        if (!highlightQuery) {
-            const pct = getScrollProgress(docId);
-            if (pct > 0 && _pager.total > 1) {
-                _pager.page = Math.min(Math.round((pct / 100) * (_pager.total - 1)), _pager.total - 1);
-                applyPageTransform();
-            }
-        }
-        updatePagerDisplay();
-        updateProgressBar();
-    };
-    requestAnimationFrame(() => requestAnimationFrame(doInitRecalc));
-    // 字体加载完成后重算（中文网络字体可能晚于双帧到达）
-    document.fonts.ready.then(() => { if (_pager) { recalcPages(); updatePagerDisplay(); updateProgressBar(); } });
-
-    // Touch/click navigation
-    wirePagerGestures(scroll);
-
-    // Keyboard navigation
-    const onKey = (e) => {
-        if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); pageNext(); }
-        else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); pagePrev(); }
-    };
-    document.addEventListener('keydown', onKey);
-
-    // 设备旋转/窗口大小变化时重新分页
-    let resizeTimer = null;
-    const onResize = () => {
-        clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(() => {
-            if (!_pager) return;
-            // 记住当前阅读进度比例
-            const pctBefore = _pager.total > 1 ? _pager.page / (_pager.total - 1) : 0;
-            recalcPages();
-            // 恢复到同等进度位置
-            if (_pager.total > 1) {
-                _pager.page = Math.min(Math.round(pctBefore * (_pager.total - 1)), _pager.total - 1);
-            }
-            applyPageTransform();
-            updatePagerDisplay();
-            updateProgressBar();
-        }, 200);
-    };
-    window.addEventListener('resize', onResize);
-
-    scroll._cleanupPager = () => {
-        document.removeEventListener('keydown', onKey);
-        window.removeEventListener('resize', onResize);
-        clearTimeout(resizeTimer);
-    };
-}
-
-function recalcPages() {
-    if (!_pager) return;
-    const s = _pager.scroll;
-    const colWidth = s.clientWidth;
-    if (colWidth <= 0) return;
-    // 更新 column-width 以匹配当前容器宽度（应对 resize / 旋转）
-    s.style.columnWidth = colWidth + 'px';
-    _pager.total = Math.max(1, Math.ceil(s.scrollWidth / colWidth));
-    if (_pager.page >= _pager.total) _pager.page = _pager.total - 1;
-}
-
-function applyPageTransform() {
-    if (!_pager) return;
-    const colWidth = _pager.scroll.clientWidth;
-    _pager.scroll.style.transform = `translateX(-${_pager.page * colWidth}px)`;
-}
-
-function pageNext() {
-    if (!_pager || _pager.page >= _pager.total - 1) return;
-    _pager.page++;
-    applyPageTransform();
-    updatePagerDisplay();
-    updateProgressBar();
-}
-
-function pagePrev() {
-    if (!_pager || _pager.page <= 0) return;
-    _pager.page--;
-    applyPageTransform();
-    updatePagerDisplay();
-    updateProgressBar();
-}
-
-function updatePagerDisplay() {
-    const el = document.getElementById('pagerText');
-    if (el && _pager) el.textContent = `${_pager.page + 1} / ${_pager.total}`;
-}
-
-function updateProgressBar() {
-    const bar = document.getElementById('readerProgress');
-    if (bar && _pager) {
-        const pct = _pager.total > 1 ? (_pager.page / (_pager.total - 1)) * 100 : 0;
-        bar.style.width = pct + '%';
-        updateReaderTopMeta(pct, `${_pager.page + 1} / ${_pager.total} 页`);
-    }
-}
-
-function updateReaderTopMeta(pct = 0, suffix = '') {
+function updateReaderTopMeta(pct = 0) {
     const el = document.getElementById('readerTopMeta');
     if (!el) return;
     const value = Number.isFinite(pct) ? Math.round(pct) : 0;
-    el.textContent = suffix ? `已读 ${value}% · ${suffix}` : `已读 ${value}%`;
+    el.textContent = `已读 ${value}%`;
 }
 
-function wirePagerGestures(scroll) {
-    let startX = 0, startY = 0, startTime = 0, tracking = false;
+/* 工具栏显隐 */
+function toggleReaderBars() {
+    wkReader.classList.toggle('bars-hidden');
+}
 
-    scroll.addEventListener('touchstart', (e) => {
-        // Don't interfere with settings panel or buttons
-        if (e.target.closest('.wk-reader-settings') || e.target.closest('.wk-next-btn')) return;
-        startX = e.touches[0].clientX;
-        startY = e.touches[0].clientY;
-        startTime = Date.now();
-        tracking = true;
-    }, { passive: true });
+/* 底部栏进度同步 */
+function updateBottombar(pct) {
+    if (_bottombarDragging) return;
+    const slider = document.getElementById('bottombarSlider');
+    const pctEl = document.getElementById('bottombarPct');
+    if (slider) slider.value = Math.round(pct);
+    if (pctEl) pctEl.textContent = Math.round(pct) + '%';
+}
 
-    scroll.addEventListener('touchend', (e) => {
-        if (!tracking) return;
-        tracking = false;
-        const endX = e.changedTouches[0].clientX;
-        const endY = e.changedTouches[0].clientY;
-        const dx = endX - startX;
-        const dy = endY - startY;
-        const dt = Date.now() - startTime;
-
-        // Swipe detection: horizontal > vertical, minimum distance, max time
-        if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5 && dt < 500) {
-            if (dx < 0) pageNext();
-            else pagePrev();
-            return;
-        }
-
-        // Tap detection: minimal movement, short press
-        if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && dt < 300) {
-            // Don't handle taps on interactive elements
-            if (e.target.closest('button, a, .wk-next-btn')) return;
-            const w = scroll.clientWidth;
-            const rect = scroll.getBoundingClientRect();
-            const tapX = endX - rect.left;
-            // Center 1/3 = toggle topbar visibility (reserved for future)
-            // Left 1/3 = prev, Right 1/3 = next
-            if (tapX < w * 0.33) pagePrev();
-            else if (tapX > w * 0.67) pageNext();
-            // Center tap: could toggle toolbar visibility in future
-        }
-    }, { passive: true });
-
-    // Click fallback for desktop
+/* 滚动模式中央点击切换工具栏 */
+function wireScrollCenterTap(scroll) {
     scroll.addEventListener('click', (e) => {
-        if (e.target.closest('button, a, .wk-next-btn, .wk-reader-settings')) return;
-        if (!_pager || wkReader.getAttribute('data-read-mode') !== 'paged') return;
+        if (e.target.closest('button, a, .wk-next-btn, .wk-reader-settings, .wk-reader-bottombar')) return;
+        if (window.getSelection()?.toString()) return;
         const w = scroll.clientWidth;
         const rect = scroll.getBoundingClientRect();
-        const clickX = e.clientX - rect.left;
-        if (clickX < w * 0.33) pagePrev();
-        else if (clickX > w * 0.67) pageNext();
+        const tapX = e.clientX - rect.left;
+        // 中间 50% 区域切换工具栏
+        if (tapX > w * 0.25 && tapX < w * 0.75) {
+            toggleReaderBars();
+        }
     });
 }
 
-function cleanupPager() {
-    if (_pager?.scroll) {
-        if (_pager.scroll._cleanupPager) _pager.scroll._cleanupPager();
-        _pager.scroll.style.columnWidth = '';
-        _pager.scroll.style.transform = '';
+/* 底部工具栏事件绑定 */
+function wireBottombar() {
+    const slider = document.getElementById('bottombarSlider');
+    const settingsBtn = document.getElementById('bottombarSettingsBtn');
+
+    if (slider) {
+        slider.addEventListener('input', () => {
+            _bottombarDragging = true;
+            const pct = parseInt(slider.value, 10);
+            const pctEl = document.getElementById('bottombarPct');
+            if (pctEl) pctEl.textContent = pct + '%';
+
+            // 滚动到对应位置
+            const scroll = wkReader.querySelector('#readerScroll');
+            if (scroll) {
+                const sh = scroll.scrollHeight - scroll.clientHeight;
+                if (sh > 0) scroll.scrollTo({ top: (pct / 100) * sh });
+            }
+        });
+        slider.addEventListener('change', () => {
+            _bottombarDragging = false;
+        });
     }
-    _pager = null;
-    const pagerInfo = document.getElementById('pagerInfo');
-    if (pagerInfo) pagerInfo.style.display = 'none';
+
+    if (settingsBtn) {
+        settingsBtn.addEventListener('click', () => {
+            const panel = wkReader.querySelector('#readerSettings');
+            const backdrop = wkReader.querySelector('#readerSettingsBackdrop');
+            if (panel) {
+                panel.classList.add('open');
+                backdrop?.classList.add('open');
+            }
+        });
+    }
 }
 
 function closeReader() {
     snapshotReaderProgress();
-    cleanupPager();
     cleanupReaderScroll();
     wkReader.style.display = 'none';
-    wkReader.removeAttribute('data-read-mode');
+    wkReader.classList.remove('bars-hidden');
     wkReader.innerHTML = '';
     document.body.style.overflow = '';
     _readerState = null;
@@ -1147,6 +896,7 @@ function wireReaderScroll(scroll, docId) {
             const bar = wkReader.querySelector('#readerProgress');
             if (bar) bar.style.width = pct + '%';
             updateReaderTopMeta(pct);
+            updateBottombar(pct);
             ticking = false;
         });
     };
@@ -1178,21 +928,6 @@ function wireReaderSettings(settings) {
         backdrop.classList.remove('open');
     });
 
-    // Read mode toggle
-    panel.querySelectorAll('[data-readmode]').forEach(b => {
-        b.addEventListener('click', () => {
-            const newMode = b.dataset.readmode;
-            if (newMode === settings.readMode) return;
-            settings.readMode = newMode;
-            panel.querySelectorAll('[data-readmode]').forEach(bb => bb.classList.toggle('active', bb.dataset.readmode === newMode));
-            persistSettings(settings);
-            panel.classList.remove('open');
-            backdrop?.classList.remove('open');
-            // Re-open with new mode
-            if (_readerState) openReader(_readerState.docId, _readerState.query, true);
-        });
-    });
-
     // Font size slider
     const slider = panel.querySelector('#readerFontSlider');
     if (slider) {
@@ -1201,10 +936,6 @@ function wireReaderSettings(settings) {
             const body = wkReader.querySelector('#readerBody');
             if (body) body.style.fontSize = settings.fontSize + 'px';
             persistSettings(settings);
-            // Recalc pages in paged mode
-            if (_pager) {
-                requestAnimationFrame(() => requestAnimationFrame(() => { recalcPages(); updatePagerDisplay(); updateProgressBar(); applyPageTransform(); }));
-            }
         });
     }
 
@@ -1216,10 +947,6 @@ function wireReaderSettings(settings) {
             if (body) body.setAttribute('data-font', settings.fontFamily);
             panel.querySelectorAll('[data-font]').forEach(bb => bb.classList.toggle('active', bb.dataset.font === settings.fontFamily));
             persistSettings(settings);
-            // Recalc pages in paged mode
-            if (_pager) {
-                requestAnimationFrame(() => requestAnimationFrame(() => { recalcPages(); updatePagerDisplay(); updateProgressBar(); applyPageTransform(); }));
-            }
         });
     });
 
@@ -1244,12 +971,6 @@ function wireReaderNext(scroll) {
         if (btn) {
             const nextId = btn.dataset.next;
             if (nextId) openReader(nextId);
-            const seriesName = btn.dataset.completeSeries;
-            if (seriesName) {
-                closeReader();
-                renderSeries(seriesName, true);
-                history.replaceState({ series: seriesName }, '', `/wenku?series=${encodeURIComponent(seriesName)}`);
-            }
             const openBook = btn.dataset.openBook;
             if (openBook) openBookSheet(openBook);
         }
@@ -1266,7 +987,7 @@ function esc(s) {
     return d.innerHTML;
 }
 
-function textToHtml(text) {
+function textToHtml(text, title) {
     if (!text) return { html: '<p></p>', contributor: '' };
     // Clean up messy formatting from source files
     let cleaned = text
@@ -1280,6 +1001,20 @@ function textToHtml(text) {
     // 移除文末残留的孤立数字（页码/脚注标记）
     cleaned = cleaned.replace(/\n\d{1,3}\s*$/, '');
 
+    // 移除与标题重复的首行（content 首行常常是标题的另一种格式）
+    if (title) {
+        const firstNewline = cleaned.indexOf('\n');
+        if (firstNewline > 0) {
+            const firstLine = cleaned.slice(0, firstNewline).trim();
+            // 去掉书名号和标点后比较核心内容
+            const norm = s => s.replace(/[《》〈〉【】\[\]「」『』\s第讲·\-—]/g, '').replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/[一二三四五六七八九十百千万零壹贰叁肆伍陆柒捌玖拾]/g, '');
+            const normTitle = s => s.replace(/[《》〈〉【】\[\]「」『』\s第讲·\-—]/g, '').replace(/\d+/g, '');
+            if (normTitle(firstLine) === normTitle(title)) {
+                cleaned = cleaned.slice(firstNewline + 1);
+            }
+        }
+    }
+
     // Extract contributor from first/last lines
     const contributor = extractContributor(cleaned);
 
@@ -1287,7 +1022,14 @@ function textToHtml(text) {
     const html = cleaned
         .split(/\n/)
         .filter(p => p.trim())
-        .map(p => `<p>${esc(p.trim())}</p>`)
+        .map(p => {
+            const t = p.trim();
+            // 佛号结语居中展示
+            if (/^南无.{1,10}佛[！!。]?$/.test(t)) {
+                return `<p class="wk-closing-namo">${esc(t)}</p>`;
+            }
+            return `<p>${esc(t)}</p>`;
+        })
         .join('');
 
     return { html, contributor };
@@ -1379,50 +1121,6 @@ function buildEmptyStateMarkup(title, description) {
         </div>
         <p class="wk-empty-title">${title}</p>
         <p class="wk-empty-copy">${description}</p>`;
-}
-
-/* --- 分享 --- */
-function shareUrl(title, url) {
-    if (navigator.share) {
-        navigator.share({ title, url }).catch(err => {
-            if (err.name === 'AbortError') return;
-            copyToClipboard(title + '\n' + url);
-        });
-        return;
-    }
-    copyToClipboard(title + '\n' + url);
-}
-
-function copyToClipboard(text) {
-    if (navigator.clipboard?.writeText) {
-        navigator.clipboard.writeText(text)
-            .then(() => showWkToast('链接已复制'))
-            .catch(() => fallbackCopyToClipboard(text));
-        return;
-    }
-    fallbackCopyToClipboard(text);
-}
-
-function fallbackCopyToClipboard(text) {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.setAttribute('readonly', 'readonly');
-    ta.style.position = 'fixed';
-    ta.style.left = '-9999px';
-    ta.style.top = '-9999px';
-    document.body.appendChild(ta);
-    ta.select();
-    ta.setSelectionRange(0, ta.value.length);
-
-    let copied = false;
-    try {
-        copied = document.execCommand('copy');
-    } catch {
-        copied = false;
-    }
-
-    document.body.removeChild(ta);
-    showWkToast(copied ? '链接已复制' : '复制失败，请手动复制');
 }
 
 function showWkToast(msg) {

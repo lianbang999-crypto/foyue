@@ -22,15 +22,15 @@
     --wk-accent-light: rgba(217, 119, 87, 0.08);
     --wk-highlight-fill: rgba(217, 119, 87, 0.14);
     --wk-highlight-underline: rgba(217, 119, 87, 0.24);
-    --wk-radius: 20px;
-    --wk-radius-sm: 12px;
+    --wk-radius: 12px;
+    --wk-radius-sm: 8px;
     --wk-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     --wk-font-zh: 'Noto Sans SC', 'PingFang SC', var(--wk-font);
     --wk-font-serif: 'Noto Serif SC', 'Songti SC', 'STSong', serif;
     --wk-font-kai: 'Kaiti', 'KaiTi', 'STKaiti', serif;
-    --wk-shadow-sm: 0 1px 3px rgba(44, 37, 32, 0.04);
-    --wk-shadow-md: 0 4px 16px rgba(44, 37, 32, 0.06);
-    --wk-shadow-lg: 0 8px 32px rgba(44, 37, 32, 0.08);
+    --wk-shadow-sm: 0 1px 2px rgba(44, 37, 32, 0.03);
+    --wk-shadow-md: 0 2px 8px rgba(44, 37, 32, 0.04);
+    --wk-shadow-lg: 0 4px 16px rgba(44, 37, 32, 0.05);
     --wk-safe-top: env(safe-area-inset-top, 0px);
     --wk-safe-bottom: env(safe-area-inset-bottom, 0px);
 }
@@ -49,14 +49,14 @@
         --wk-accent-light: rgba(224, 135, 107, 0.1);
         --wk-highlight-fill: rgba(224, 135, 107, 0.18);
         --wk-highlight-underline: rgba(224, 135, 107, 0.28);
-        --wk-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.15);
-        --wk-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.2);
-        --wk-shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.25);
+        --wk-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
+        --wk-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.14);
+        --wk-shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.18);
     }
 
-    /* 暗色模式下系列色提亮以保持对比度 */
-    .wk-series-avatar {
-        background: linear-gradient(180deg, color-mix(in srgb, var(--series-color, var(--wk-accent)) 70%, white 30%) 0%, color-mix(in srgb, var(--series-color, var(--wk-accent)) 85%, white 15%) 100%);
+    /* 暗色模式下系列色调整 */
+    .wk-series-card {
+        border-left-color: color-mix(in srgb, var(--series-color, var(--wk-accent)) 70%, white 30%);
     }
 
     .wk-series-card::before {
@@ -148,7 +148,7 @@ body {
     display: inline-flex;
     align-items: center;
     padding: 6px 14px;
-    border-radius: 20px;
+    border-radius: 12px;
     font-size: var(--fs-body);
     font-weight: 500;
     color: var(--wk-accent);
@@ -188,8 +188,10 @@ body {
 }
 
 .wk-header-title {
-    font-size: 15px;
+    font-family: var(--wk-font-serif);
+    font-size: 16px;
     font-weight: 600;
+    letter-spacing: 0.04em;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -232,17 +234,15 @@ body {
     border-radius: var(--wk-radius);
     padding: 10px 14px;
     font-size: var(--fs-body);
-    background: color-mix(in srgb, var(--wk-bg-card) 92%, transparent 8%);
+    background: var(--wk-bg-card);
     color: var(--wk-text);
     font-family: var(--wk-font-zh);
     outline: none;
-    box-shadow: var(--wk-shadow-sm);
-    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    transition: border-color 0.15s;
 }
 
 .wk-search-input:focus {
     border-color: var(--wk-accent);
-    box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.08), var(--wk-shadow-sm);
 }
 
 .wk-search-input::placeholder {
@@ -261,11 +261,12 @@ body {
 
 /* 段落标题 */
 .wk-section-label {
-    font-size: var(--fs-body);
-    color: var(--wk-text-secondary);
-    letter-spacing: 0.06em;
+    font-size: 12px;
+    color: var(--wk-text-muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
     padding: 0 4px 12px;
-    font-weight: 600;
+    font-weight: 500;
 }
 
 /* --- 继续阅读卡片 --- */
@@ -276,7 +277,8 @@ body {
     padding: 14px 16px;
     background: var(--wk-bg-card);
     border: 1px solid var(--wk-border);
-    border-radius: var(--wk-radius);
+    border-left: 3px solid var(--wk-accent);
+    border-radius: 4px var(--wk-radius) var(--wk-radius) 4px;
     cursor: pointer;
     margin-bottom: 24px;
     transition: background 0.15s;
@@ -294,20 +296,22 @@ body {
     flex-shrink: 0;
     margin-left: 8px;
     font-family: var(--wk-font-serif);
-    font-size: 20px;
+    font-size: 18px;
     line-height: 1;
-    color: color-mix(in srgb, var(--wk-accent) 58%, var(--wk-text) 42%);
+    color: var(--wk-text-muted);
+    font-variant-numeric: tabular-nums;
 }
 
 .wk-continue-icon {
     flex-shrink: 0;
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     color: var(--wk-accent);
+    opacity: 0.7;
 }
 
 .wk-continue-icon svg {
@@ -326,6 +330,7 @@ body {
 }
 
 .wk-continue-title {
+    font-family: var(--wk-font-serif);
     font-size: var(--fs-body);
     font-weight: 500;
     white-space: nowrap;
@@ -403,10 +408,10 @@ body {
 .wk-search-item {
     padding: 14px 16px;
     border: 1px solid var(--wk-border);
-    border-radius: 16px;
+    border-radius: 12px;
     background: var(--wk-bg-card);
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background 0.15s;
     margin-bottom: 10px;
 }
 
@@ -455,16 +460,17 @@ body {
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
-    height: 176px;
-    padding: 15px 14px 13px 18px;
+    height: 156px;
+    padding: 16px 14px 13px 16px;
     background: var(--wk-bg-card);
     border: 1px solid var(--wk-border);
-    border-radius: 18px;
+    border-left: 3px solid var(--series-color, var(--wk-accent));
+    border-radius: 4px 14px 14px 4px;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background 0.15s ease;
     /* 入场动画 */
     opacity: 0;
-    animation: wk-card-enter 0.4s ease both;
+    animation: wk-card-enter 0.28s ease both;
 }
 
 /* 系列卡片 staggered 入场延迟 */
@@ -473,46 +479,46 @@ body {
 }
 
 .wk-series-card:nth-child(2) {
-    animation-delay: 40ms;
+    animation-delay: 30ms;
 }
 
 .wk-series-card:nth-child(3) {
-    animation-delay: 80ms;
+    animation-delay: 60ms;
 }
 
 .wk-series-card:nth-child(4) {
-    animation-delay: 120ms;
+    animation-delay: 90ms;
 }
 
 .wk-series-card:nth-child(5) {
-    animation-delay: 160ms;
+    animation-delay: 120ms;
 }
 
 .wk-series-card:nth-child(6) {
-    animation-delay: 200ms;
+    animation-delay: 150ms;
 }
 
 .wk-series-card:nth-child(7) {
-    animation-delay: 240ms;
+    animation-delay: 180ms;
 }
 
 .wk-series-card:nth-child(8) {
-    animation-delay: 280ms;
+    animation-delay: 210ms;
 }
 
 .wk-series-card:nth-child(n+9) {
-    animation-delay: 320ms;
+    animation-delay: 240ms;
 }
 
 @keyframes wk-card-enter {
     from {
         opacity: 0;
-        transform: translateY(12px) scale(0.97);
+        transform: translateY(6px);
     }
 
     to {
         opacity: 1;
-        transform: translateY(0) scale(1);
+        transform: translateY(0);
     }
 }
 
@@ -523,19 +529,7 @@ body {
 }
 
 .wk-series-avatar {
-    width: 40px;
-    height: 40px;
-    border-radius: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-    font-weight: 600;
-    color: #fff;
-    margin-bottom: 10px;
-    flex-shrink: 0;
-    background: linear-gradient(180deg, color-mix(in srgb, var(--series-color, var(--wk-accent)) 84%, white 16%) 0%, var(--series-color, var(--wk-accent)) 100%);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    display: none;
 }
 
 .wk-series-card-body {
@@ -551,13 +545,18 @@ body {
     line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    font-size: var(--fs-body);
-    line-height: 1.42;
+    font-family: var(--wk-font-serif);
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 1.55;
+    letter-spacing: 0.01em;
 }
 
 .wk-series-meta {
     margin-top: auto;
-    padding-top: 8px;
+    padding-top: 6px;
+    font-size: 12px;
+    color: var(--wk-text-muted);
 }
 
 .wk-series-progress {
@@ -702,24 +701,25 @@ body {
 
 .wk-book-sheet-cover {
     padding: 22px 18px 18px;
-    border-radius: 28px;
+    border-radius: 12px;
     background: var(--wk-bg-card);
     border: 1px solid var(--wk-border);
+    border-left: 4px solid var(--series-color, var(--wk-accent));
 }
 
 .wk-book-sheet-mark {
-    width: 52px;
-    height: 52px;
-    border-radius: 16px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     background: var(--series-color);
     color: #fff;
     font-family: var(--wk-font-serif);
-    font-size: 24px;
+    font-size: 16px;
     font-weight: 600;
-    margin-bottom: 14px;
+    margin-bottom: 12px;
 }
 
 .wk-book-sheet-title {
@@ -746,12 +746,12 @@ body {
     width: 100%;
     margin-top: 18px;
     appearance: none;
-    border: none;
-    background: var(--series-color);
-    color: #fff;
-    border-radius: 18px;
-    min-height: 52px;
-    padding: 12px 16px;
+    border: 1px solid var(--series-color);
+    background: transparent;
+    color: var(--series-color);
+    border-radius: 10px;
+    min-height: 48px;
+    padding: 10px 16px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -766,15 +766,15 @@ body {
 .wk-book-sheet-primary-meta {
     font-size: 12px;
     font-weight: 500;
-    color: rgba(255, 255, 255, 0.82);
+    opacity: 0.65;
 }
 
 .wk-book-sheet-section {
     margin: 20px 4px 10px;
     font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    color: var(--wk-text-secondary);
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    color: var(--wk-text-muted);
 }
 
 .wk-book-sheet-list {
@@ -793,19 +793,20 @@ body {
     padding: 16px;
     background: var(--wk-bg-card);
     border: 1px solid var(--wk-border);
-    border-radius: var(--wk-radius);
+    border-left: 3px solid var(--series-color, var(--wk-accent));
+    border-radius: 4px var(--wk-radius) var(--wk-radius) 4px;
     margin-bottom: 16px;
     box-shadow: none;
 }
 
 .wk-series-header-avatar {
-    width: 48px;
-    height: 48px;
-    border-radius: var(--wk-radius-sm);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 22px;
+    font-size: 15px;
     font-weight: 600;
     color: #fff;
     flex-shrink: 0;
@@ -817,7 +818,8 @@ body {
 }
 
 .wk-series-header-name {
-    font-size: 16px;
+    font-family: var(--wk-font-serif);
+    font-size: 17px;
     font-weight: 600;
     margin-bottom: 2px;
 }
@@ -866,7 +868,7 @@ body {
     padding: 14px 16px;
     background: var(--wk-bg-card);
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background 0.15s;
 }
 
 .wk-doc-item:hover {
@@ -893,7 +895,7 @@ body {
     color: var(--wk-text-muted);
     background: var(--wk-bg-hover);
     flex-shrink: 0;
-    transition: background 0.2s, color 0.2s;
+    transition: background 0.15s, color 0.15s;
 }
 
 .wk-doc-info {
@@ -902,6 +904,7 @@ body {
 }
 
 .wk-doc-title {
+    font-family: var(--wk-font-serif);
     font-size: var(--fs-body);
     min-width: 0;
     overflow: hidden;
@@ -928,7 +931,7 @@ body {
     color: var(--wk-accent);
     background: var(--wk-accent-light);
     padding: 2px 6px;
-    border-radius: 10px;
+    border-radius: 6px;
     flex-shrink: 0;
 }
 
@@ -1091,6 +1094,7 @@ body {
     background: color-mix(in srgb, currentColor 0%, var(--wk-bg-header) 100%);
     backdrop-filter: blur(20px) saturate(1.15);
     -webkit-backdrop-filter: blur(20px) saturate(1.15);
+    transition: transform 0.25s ease, opacity 0.25s ease;
 }
 
 .wk-reader-topbar-center {
@@ -1214,51 +1218,15 @@ body {
     margin-bottom: 0;
 }
 
-/* ====== 翻页模式 ====== */
-.wk-reader-scroll.wk-paged {
-    overflow: hidden;
-    column-gap: 0;
-    column-fill: auto;
-    height: 100%;
-    max-width: none;
-    padding: 60px 24px 60px;
-    box-sizing: border-box;
-    transition: transform .28s cubic-bezier(.4, 0, .2, 1);
-    will-change: transform;
-}
-
-/* 翻页模式下页码显示 */
-.wk-pager-info {
-    display: none;
-    position: fixed;
-    bottom: 12px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 1002;
-    font-size: var(--fs-caption);
-    opacity: 0.55;
-    padding: 4px 14px;
-    border-radius: 12px;
-    pointer-events: none;
-    color: inherit;
-    transition: opacity .2s;
-}
-
-/* 翻页模式隐藏下一讲卡片（它在最后一页显示太抢眼，保留但改小） */
-.wk-paged .wk-next-card {
-    break-before: column;
-    padding-top: 30vh;
-}
-
-/* 阅读模式切换按钮行 */
-.wk-readmode-row {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 10px;
-}
-
-.wk-readmode-row .wk-font-btn {
-    flex: 1;
+/* 佛号结语 — 居中、无缩进、上方留白 */
+.wk-reader-body .wk-closing-namo {
+    text-indent: 0;
+    text-align: center;
+    margin-top: 1.8em;
+    margin-bottom: 0;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    opacity: 0.82;
 }
 
 /* 阅读进度条 */
@@ -1269,8 +1237,81 @@ body {
     height: 3px;
     background: var(--wk-accent);
     z-index: 101;
-    transition: width 0.1s;
+    transition: width 0.1s, opacity 0.25s ease;
     width: 0;
+}
+
+/* 阅读器底部工具栏 */
+.wk-reader-bottombar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 26;
+    padding: 10px 16px;
+    padding-bottom: calc(10px + var(--wk-safe-bottom));
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: color-mix(in srgb, currentColor 0%, var(--wk-bg-header) 100%);
+    backdrop-filter: blur(20px) saturate(1.15);
+    -webkit-backdrop-filter: blur(20px) saturate(1.15);
+    border-top: 1px solid color-mix(in srgb, currentColor 4%, transparent);
+    transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+.wk-reader-bottombar-pct {
+    font-size: 12px;
+    min-width: 32px;
+    text-align: right;
+    opacity: 0.55;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+}
+
+.wk-reader-bottombar-slider {
+    flex: 1;
+    height: 24px;
+    accent-color: var(--wk-accent);
+    background: transparent;
+}
+
+.wk-reader-bottombar-btn {
+    appearance: none;
+    background: none;
+    border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: inherit;
+    opacity: 0.55;
+    transition: opacity 0.15s;
+    flex-shrink: 0;
+}
+
+.wk-reader-bottombar-btn:hover {
+    opacity: 1;
+}
+
+/* 工具栏隐藏状态 */
+.wk-reader.bars-hidden .wk-reader-topbar {
+    transform: translateY(-100%);
+    opacity: 0;
+    pointer-events: none;
+}
+
+.wk-reader.bars-hidden .wk-reader-bottombar {
+    transform: translateY(100%);
+    opacity: 0;
+    pointer-events: none;
+}
+
+.wk-reader.bars-hidden .wk-reader-progress {
+    opacity: 0;
 }
 
 /* 阅读器设置面板 */
@@ -1286,7 +1327,7 @@ body {
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border-top: 1px solid var(--wk-border);
-    border-radius: 20px 20px 0 0;
+    border-radius: 14px 14px 0 0;
     box-shadow: none;
     transform: translateY(100%);
     transition: transform .3s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .3s;
@@ -1380,8 +1421,8 @@ body {
     padding: 10px;
     font-size: var(--fs-body);
     cursor: pointer;
-    transition: all 0.2s;
-    border-radius: 12px;
+    transition: all 0.15s;
+    border-radius: 8px;
 }
 
 .wk-font-btn.active {
@@ -1423,13 +1464,13 @@ body {
 .wk-mode-dot {
     flex: 1;
     padding: 12px 8px;
-    border-radius: 12px;
+    border-radius: 8px;
     border: none;
     box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.15);
     font-size: var(--fs-caption);
     cursor: pointer;
     text-align: center;
-    transition: all 0.2s cubic-bezier(.22, 1, .36, 1);
+    transition: all 0.15s;
     appearance: none;
 }
 
@@ -1437,7 +1478,6 @@ body {
     box-shadow: inset 0 0 0 1.5px var(--wk-accent);
     color: var(--wk-accent);
     font-weight: 500;
-    transform: translateY(-2px);
 }
 
 .wk-mode-dot[data-mode="light"] {
@@ -1582,7 +1622,7 @@ body {
     background: var(--wk-text);
     color: var(--wk-bg);
     padding: 8px 20px;
-    border-radius: 20px;
+    border-radius: 10px;
     font-size: var(--fs-body);
     z-index: 999;
     opacity: 0;
