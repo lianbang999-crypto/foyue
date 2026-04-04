@@ -1147,8 +1147,24 @@ function extractContributor(text) {
 function highlightText(query) {
     const body = wkReader.querySelector('#readerBody');
     if (!body || !query) return;
-    const words = query.split(/\s+/).filter(w => w.length >= 2);
+
+    // 从 sessionStorage 读取 AI 页传来的 snippet（用于精确定位）
+    let snippet = '';
+    try {
+        snippet = sessionStorage.getItem('wenku-ai-snippet') || '';
+        sessionStorage.removeItem('wenku-ai-snippet');
+    } catch { /* 忽略 */ }
+
+    // 策略1：用 snippet 精确定位并高亮
+    if (snippet && snippet.length >= 10) {
+        const snippetHit = highlightSnippet(body, snippet);
+        if (snippetHit) return; // 成功定位，不需要关键词高亮
+    }
+
+    // 策略2：提取中文关键词（2-4字词组）
+    const words = extractHighlightKeywords(query);
     if (!words.length) return;
+
     const pattern = new RegExp(`(${words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
     const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
     const nodes = [];
@@ -1175,6 +1191,75 @@ function highlightText(query) {
     if (firstHit) {
         requestAnimationFrame(() => firstHit.scrollIntoView({ block: 'center', behavior: 'smooth' }));
     }
+}
+
+// 用 snippet 子串在 DOM 中精确定位并高亮
+function highlightSnippet(body, snippet) {
+    // 取 snippet 中间一段（避免首尾截断问题）作为定位锚点
+    const clean = snippet.replace(/\s+/g, '');
+    const anchorLen = Math.min(30, clean.length);
+    const anchorStart = Math.floor((clean.length - anchorLen) / 2);
+    const anchor = clean.slice(anchorStart, anchorStart + anchorLen);
+    if (anchor.length < 6) return false;
+
+    // 遍历文本节点拼接全文，找到锚点位置
+    const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+    const textNodes = [];
+    let fullText = '';
+    while (walker.nextNode()) {
+        textNodes.push({ node: walker.currentNode, start: fullText.length });
+        fullText += walker.currentNode.textContent;
+    }
+
+    const fullClean = fullText.replace(/\s+/g, '');
+    const anchorIdx = fullClean.indexOf(anchor);
+    if (anchorIdx < 0) return false;
+
+    // 找到锚点所在的 DOM 段落元素
+    // 将 cleanIndex 映射回原始 fullText 的位置
+    let cleanCount = 0;
+    let originalIdx = 0;
+    for (let i = 0; i < fullText.length; i++) {
+        if (!/\s/.test(fullText[i])) {
+            if (cleanCount === anchorIdx) { originalIdx = i; break; }
+            cleanCount++;
+        }
+    }
+
+    // 找到包含该位置的文本节点
+    let targetNode = null;
+    for (const { node, start } of textNodes) {
+        if (start + node.textContent.length > originalIdx) {
+            targetNode = node;
+            break;
+        }
+    }
+
+    if (!targetNode) return false;
+
+    // 找到最近的段落级元素并高亮整段
+    const paragraph = targetNode.parentElement?.closest('p, blockquote, li, h1, h2, h3, h4, h5, h6, div.paragraph');
+    const target = paragraph || targetNode.parentElement;
+    if (!target) return false;
+
+    target.classList.add('wk-highlight-block');
+    requestAnimationFrame(() => target.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+    return true;
+}
+
+// 从中文查询中提取关键词（比按空格拆分更适合中文）
+function extractHighlightKeywords(query) {
+    if (!query) return [];
+    // 先按空格拆分
+    let words = query.split(/\s+/).filter(w => w.length >= 2);
+    if (words.length > 1) return words;
+    // 中文无空格：去掉常见虚词，提取 2-4 字词组
+    const cleaned = query
+        .replace(/[，。！？、：；""''「」（）\s]/g, ' ')
+        .replace(/\b(的|了|在|是|有|和|与|或|不|也|都|就|而|及|把|被|让|给|对|从|到|为|以|又|却|很|更|最|这|那|什么|怎么|如何|哪个|怎样|为什么|请问)\b/g, ' ')
+        .trim();
+    words = cleaned.split(/\s+/).filter(w => w.length >= 2);
+    return words;
 }
 
 function skeleton(n) {

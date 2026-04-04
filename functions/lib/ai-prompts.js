@@ -25,14 +25,26 @@ export function normalizeHistoryMessages(history, options = {}) {
 
 export function buildRagSystemPrompt(context) {
     return `/no_think
-你是净土法音AI答疑助手，根据以下大安法师开示资料直接为用户作答。
+你是净土法音AI答疑助手。你的职责是从下方资料中找到与用户问题最相关的原文段落，直接呈现给用户。
 
-要求：
-- 开篇即正文，约250-350字，涵盖修行要点，不做套话
-- 引用资料中的具体法义加以阐发，充实核心要点与修行指引
-- 末行生成3个延伸问题：[FOLLOWUP]问题一|问题二|问题三[/FOLLOWUP]
+核心原则：引用原文就是最好的回答。用户看到法师的原话，就是最大的利益。
 
-资料：
+做法：
+1. 从资料中选出 2-3 段与问题最相关的原文
+2. 用 > 完整引用每段原文（不要改写、不要截断、不要拼接不同段落）
+3. 每段引用后标注出处
+4. 引用之间可以用一句话简短过渡
+
+禁止：
+- 不要用自己的话解释或复述原文
+- 不要加入"我认为""可以理解为""总之""综上"等主观表述
+- 不要编造资料中没有的内容
+- 如果资料中没有相关内容，直接说明
+
+引用格式：
+> "直接复制资料中的原文段落"
+——资料N，出处名称
+
 ${context}`;
 }
 
@@ -104,36 +116,72 @@ export function buildFallbackFollowUps(question, options = {}) {
 
     const topic = deriveQuestionTopic(question);
     return [
-        topic ? `这和“${topic}”的关系是什么` : '这段开示的重点是什么',
-        '能结合原文再展开一点吗',
+        topic ? `${topic}在修行中怎么落实` : '这段开示的重点是什么',
+        '能引用更多相关原文吗',
     ];
 }
 
+// 从检索到的文档标题生成知识库相关的推荐问题
+export function buildSourceFollowUps(docs = [], currentQuestion = '') {
+    const followUps = [];
+    const seen = new Set();
+    const currentClean = currentQuestion.replace(/[？?。，！\s]/g, '').slice(0, 20);
+
+    for (const doc of docs) {
+        if (followUps.length >= 3) break;
+        const title = (doc.title || '').trim();
+        if (!title || title.length < 3) continue;
+        // 跳过和当前问题太相似的
+        const titleClean = title.replace(/[（）()第一二三四五六七八九十讲\s]/g, '');
+        if (seen.has(titleClean) || currentClean.includes(titleClean.slice(0, 6))) continue;
+        seen.add(titleClean);
+
+        // 用文档标题生成自然的问题
+        const series = doc.series_name || '';
+        const q = series && !title.includes(series)
+            ? `${series}中关于「${title}」讲了什么`
+            : `「${title}」的核心内容是什么`;
+        followUps.push(q);
+    }
+
+    if (!followUps.length) {
+        return buildFallbackFollowUps(currentQuestion);
+    }
+    return followUps;
+}
+
 export function normalizeAiAnswerContract(rawText, question, options = {}) {
-    const { forceNoResult = false } = options;
+    const { forceNoResult = false, docs = [] } = options;
     const source = String(rawText || '').trim();
+    // 仍然清理模型可能残留的 FOLLOWUP 标签
     const followupMatch = source.match(FOLLOWUP_BLOCK_RE);
     const body = source.replace(FOLLOWUP_BLOCK_RE, '').replace(/\n{3,}/g, '\n\n').trim();
-    // 只在真正没有 token 输出时（forceNoResult=true）才返回无结果提示
-    // 不再用 regex 检测模型说了什么，避免把有效回答误判为"无结果"
     const noResult = forceNoResult || !body;
     const answer = noResult ? AI_NO_RESULT_ANSWER : body;
 
-    const parsedFollowUps = (followupMatch?.[1] || '')
-        .split('|')
-        .map(item => item.trim())
-        .filter(item => item && item.length < 100);
-
-    const uniqueFollowUps = [];
-    for (const item of parsedFollowUps) {
-        if (FOLLOWUP_PLACEHOLDER_RE.test(item)) continue; // 跳过占位符
-        if (!uniqueFollowUps.includes(item)) uniqueFollowUps.push(item);
-        if (uniqueFollowUps.length >= 3) break;
+    // 优先使用知识库文档标题生成推荐问题
+    let followUps = [];
+    if (docs.length > 0) {
+        followUps = buildSourceFollowUps(docs, question);
     }
 
-    const followUps = uniqueFollowUps.length >= 1
-        ? uniqueFollowUps
-        : buildFallbackFollowUps(question, { noResult });
+    // 兜底：解析模型生成的（如果有）
+    if (followUps.length === 0 && followupMatch) {
+        const parsedFollowUps = (followupMatch?.[1] || '')
+            .split('|')
+            .map(item => item.trim())
+            .filter(item => item && item.length < 100);
+        for (const item of parsedFollowUps) {
+            if (FOLLOWUP_PLACEHOLDER_RE.test(item)) continue;
+            if (!followUps.includes(item)) followUps.push(item);
+            if (followUps.length >= 3) break;
+        }
+    }
+
+    // 最终兜底
+    if (followUps.length === 0) {
+        followUps = buildFallbackFollowUps(question, { noResult });
+    }
 
     return {
         answer,

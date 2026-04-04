@@ -142,22 +142,34 @@ function setupInputAreaResizeSync() {
 }
 
 function setupVisualViewportSync() {
-    // 所有平台均同步真实可见高度，修复 iOS Safari 100vh > 可视区域导致输入框消失的问题
+    // iOS Safari 键盘弹出修复：用 CSS 变量驱动底部偏移，而非直接修改 height
     if (!window.visualViewport) return;
 
     const app = document.getElementById('ai-app');
     if (!app) return;
 
+    let _vvRafPending = false;
+
     const onViewportResize = () => {
-        const vv = window.visualViewport;
-        const offset = Math.max(0, window.innerHeight - vv.height);
-        app.style.height = `${vv.height}px`;
-        // Android 需要额外的 translateY 抵消软键盘顶推；iOS 不需要
-        if (isAndroid()) {
-            app.style.transform = `translateY(${vv.offsetTop}px)`;
-        }
-        syncChatBottomOffset();
-        if (offset > 50) scrollToBottom();
+        if (_vvRafPending) return;
+        _vvRafPending = true;
+        requestAnimationFrame(() => {
+            _vvRafPending = false;
+            const vv = window.visualViewport;
+            const keyboardHeight = Math.max(0, window.innerHeight - vv.height);
+            // 用 CSS 变量传递键盘高度，避免直接 set height 导致布局抖动
+            app.style.setProperty('--ai-kb-offset', `${keyboardHeight}px`);
+            app.style.height = `${vv.height}px`;
+            // Android 需要额外的 translateY 抵消软键盘顶推；iOS 不需要
+            if (isAndroid()) {
+                app.style.transform = `translateY(${vv.offsetTop}px)`;
+            }
+            syncChatBottomOffset();
+            // 键盘完全展开后才滚动（防止中途抖动）
+            if (keyboardHeight > 50) {
+                setTimeout(() => scrollToBottom(), 80);
+            }
+        });
     };
 
     window.visualViewport.addEventListener('resize', onViewportResize);
@@ -167,6 +179,7 @@ function setupVisualViewportSync() {
         window.visualViewport.removeEventListener('scroll', onViewportResize);
         app.style.height = '';
         app.style.transform = '';
+        app.style.removeProperty('--ai-kb-offset');
     };
     onViewportResize(); // 立即同步，修复首屏渲染时 iOS 地址栏遮挡问题
 }
@@ -220,14 +233,17 @@ function wireEvents() {
             return;
         }
 
-        // 来源标签 → 跳转文库
-        const tag = e.target.closest('.ai-source-tag');
+        // 来源标签/卡片 → 打开预览
+        const tag = e.target.closest('.ai-source-tag, .ai-source-card');
         if (tag) {
             e.preventDefault();
             const docId = tag.dataset.docId;
             const query = tag.dataset.query || _lastQuestion;
+            const snippet = tag.dataset.snippet || '';
             if (docId) {
-                previewController.openPreview(docId, query, tag.textContent.trim());
+                const titleEl = tag.querySelector('.ai-source-card-title');
+                const title = titleEl ? titleEl.textContent.trim() : tag.textContent.trim();
+                previewController.openPreview(docId, query, title, snippet);
             }
             return;
         }
@@ -686,13 +702,22 @@ function removeTyping() {
     if (el) el.remove();
 }
 
-/* --- 来源标签渲染 --- */
+/* --- 来源引用卡片渲染 --- */
 function renderSourceTag(s, fallbackQuery = '') {
     const title = escapeHtml(s.title);
+    const snippet = escapeHtml(s.snippet || '');
     if (s.doc_id) {
-        const rawQuery = String(s.preview_query || s.snippet || fallbackQuery || extractHighlightQuery(_lastQuestion) || '').trim();
+        const rawQuery = String(s.preview_query || fallbackQuery || extractHighlightQuery(_lastQuestion) || '').trim();
         const queryAttr = rawQuery ? ` data-query="${escapeHtml(rawQuery)}"` : '';
-        return `<button class="ai-source-tag" data-doc-id="${escapeHtml(s.doc_id)}"${queryAttr}>${title}</button>`;
+        const snippetAttr = s.snippet ? ` data-snippet="${snippet}"` : '';
+        // 有摘要时显示引用卡片，否则显示简洁标签
+        if (snippet) {
+            return `<button class="ai-source-card" data-doc-id="${escapeHtml(s.doc_id)}"${queryAttr}${snippetAttr}>
+                <span class="ai-source-card-title">${title}</span>
+                <span class="ai-source-card-snippet">${snippet}</span>
+            </button>`;
+        }
+        return `<button class="ai-source-tag" data-doc-id="${escapeHtml(s.doc_id)}"${queryAttr}${snippetAttr}>${title}</button>`;
     }
     return `<span class="ai-source-tag">${title}</span>`;
 }
@@ -801,10 +826,32 @@ const convBackdrop = document.getElementById('convBackdrop');
 const convListEl = document.getElementById('convList');
 const convSearchInput = document.getElementById('convSearchInput');
 
-document.getElementById('btnConvList')?.addEventListener('click', toggleConvDrawer);
+/* 桌面/移动端自适应 */
+function isDesktop() {
+    return window.innerWidth >= 768;
+}
+
+function openSidebar() {
+    convDrawer?.classList.add('open');
+}
+
+function closeSidebar() {
+    convDrawer?.classList.remove('open');
+    if (convDrawer) convDrawer.style.transform = '';
+}
+
+/* 同一个按钮：桌面端切换左侧边栏，移动端切换底部弹窗 */
+document.getElementById('btnConvList')?.addEventListener('click', () => {
+    if (isDesktop()) {
+        const isOpen = convDrawer?.classList.contains('open');
+        isOpen ? closeSidebar() : openSidebar();
+    } else {
+        toggleConvDrawer();
+    }
+});
 document.getElementById('btnNewConv')?.addEventListener('click', () => {
     startNewConversation();
-    closeConvDrawer();
+    if (isDesktop()) closeSidebar(); else closeConvDrawer();
 });
 
 convSearchInput?.addEventListener('input', () => renderConvList());
@@ -840,12 +887,14 @@ convListEl?.addEventListener('click', (e) => {
             renderWelcomeOrHistory();
             renderConvList();
         }
-        closeConvDrawer();
+        // 桌面端保持边栏开启，移动端关闭弹窗
+        if (!isDesktop()) closeConvDrawer();
         chatInput.focus();
     }
 });
 
 function toggleConvDrawer() {
+    // 移动端底部弹窗模式
     const opening = !convDrawer?.classList.contains('open');
     convDrawer?.classList.toggle('open');
     convBackdrop?.classList.toggle('open');
@@ -856,17 +905,22 @@ function toggleConvDrawer() {
 }
 
 function closeConvDrawer() {
+    if (isDesktop()) {
+        closeSidebar();
+        return;
+    }
     convDrawer?.classList.remove('open');
     convBackdrop?.classList.remove('open');
     if (convDrawer) convDrawer.style.transform = '';
 }
 
-// 底部弹窗下拉关闭手势
+// 底部弹窗下拉关闭手势（仅移动端）
 (function initDrawerSwipe() {
     if (!convDrawer) return;
     let startY = 0, tracking = false;
     convDrawer.addEventListener('touchstart', (e) => {
         if (!convDrawer.classList.contains('open')) return;
+        if (isDesktop()) return; // 桌面端边栏不需要下拉手势
         startY = e.touches[0].clientY;
         tracking = true;
         convDrawer.style.transition = 'none';

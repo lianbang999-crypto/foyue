@@ -26,7 +26,7 @@ import {
 } from './ai-prompts.js';
 import { getTodayBeijing } from './crypto-utils.js';
 
-function buildSourceList(matches, docs) {
+function buildSourceList(matches, docs, keywords = []) {
   const seenDocIds = new Set();
   const sources = [];
   for (const match of matches) {
@@ -34,13 +34,18 @@ function buildSourceList(matches, docs) {
     if (!docId || seenDocIds.has(docId)) continue;
     seenDocIds.add(docId);
     const doc = docs.find(item => item.id === docId);
+    // 优先使用关键词定位的摘要，回退到 chunk 前 300 字
+    const chunkText = (match.metadata?.text || '').replace(/\s+/g, ' ').trim();
+    const snippet = keywords.length > 0
+      ? buildKeywordSnippet(chunkText, keywords) || chunkText.slice(0, 300)
+      : chunkText.slice(0, 300);
     sources.push({
       title: match.metadata.title || '',
       doc_id: docId,
       score: Math.round(match.score * 100) / 100,
       category: doc?.category || match.metadata.category || '',
       series_name: doc?.series_name || match.metadata.series_name || '',
-      snippet: (match.metadata?.text || '').replace(/\s+/g, '').slice(0, 180),
+      snippet,
     });
     if (sources.length >= 3) break;
   }
@@ -136,13 +141,33 @@ function buildKeywordSnippet(content, keywords) {
     return Math.min(best, index);
   }, -1);
 
-  if (hitIndex === -1) return text.slice(0, 220);
+  if (hitIndex === -1) return text.slice(0, 300);
 
-  const start = Math.max(0, hitIndex - 90);
-  const end = Math.min(text.length, hitIndex + 130);
+  // 扩大窗口，保留更完整的段落
+  let start = Math.max(0, hitIndex - 120);
+  let end = Math.min(text.length, hitIndex + 200);
+
+  // 向前找句子边界（句号、问号、感叹号之后）
+  if (start > 0) {
+    const sentStart = text.lastIndexOf('。', start);
+    const sentStart2 = text.lastIndexOf('？', start);
+    const sentStart3 = text.lastIndexOf('！', start);
+    const boundary = Math.max(sentStart, sentStart2, sentStart3);
+    if (boundary > start - 60) start = boundary + 1;
+  }
+
+  // 向后找句子边界
+  if (end < text.length) {
+    const sentEnd = text.indexOf('。', end);
+    const sentEnd2 = text.indexOf('？', end);
+    const sentEnd3 = text.indexOf('！', end);
+    const candidates = [sentEnd, sentEnd2, sentEnd3].filter(i => i !== -1 && i < end + 60);
+    if (candidates.length) end = Math.min(...candidates) + 1;
+  }
+
   const prefix = start > 0 ? '…' : '';
   const suffix = end < text.length ? '…' : '';
-  return prefix + text.slice(start, end) + suffix;
+  return prefix + text.slice(start, end).trim() + suffix;
 }
 
 function mergeDocs(primaryDocs, extraDocs) {
@@ -173,8 +198,8 @@ function appendPseudoMatch(matches, doc, snippet, score = 0.58) {
 }
 
 function buildAiAnswerPayload(rawText, question, options = {}) {
-  const { sources = [], forceNoResult = false } = options;
-  const normalized = normalizeAiAnswerContract(rawText, question, { forceNoResult });
+  const { sources = [], forceNoResult = false, docs = [] } = options;
+  const normalized = normalizeAiAnswerContract(rawText, question, { forceNoResult, docs });
   return {
     answer: normalized.answer,
     followUps: normalized.followUps,
@@ -210,6 +235,10 @@ async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
       filter: Object.keys(filter).length > 0 ? filter : undefined,
       ctx,
     });
+    // 系列内语义搜索无结果时，退避到全局搜索
+    if (!matches.length && Object.keys(filter).length > 0) {
+      matches = await semanticSearch(env, question, { topK: 6, ctx });
+    }
   } catch (err) {
     console.warn('Vectorize search failed, falling back to D1:', err.message);
   }
@@ -232,6 +261,10 @@ async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
   let keywordDocs = [];
   try {
     keywordDocs = await keywordSearchDocs(env, question, { seriesId, limit: seriesId ? 8 : 5 });
+    // 系列内关键词搜索无结果时，退避到全局搜索
+    if (!keywordDocs.length && seriesId) {
+      keywordDocs = await keywordSearchDocs(env, question, { seriesId: null, limit: 5 });
+    }
   } catch (err) {
     console.warn('Keyword search supplement failed:', err.message);
   }
@@ -256,34 +289,39 @@ async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
 
   if (!docs.length) {
     try {
-      let fallbackQuery;
+      // 第一轮退避：如果有 seriesId，先在该系列内搜索
       if (seriesId) {
-        fallbackQuery = env.DB.prepare(
+        const seriesFallback = await env.DB.prepare(
           `SELECT id, title, content, category, series_name FROM documents
            WHERE audio_series_id = ? AND content IS NOT NULL
            ORDER BY audio_episode_num ASC LIMIT 5`
-        ).bind(seriesId);
-      } else {
-        // 用分词关键词做多条件 OR 搜索，比整句 LIKE 命中率更高
+        ).bind(seriesId).all();
+        if (seriesFallback.results?.length > 0) docs = seriesFallback.results;
+      }
+
+      // 第二轮退避：系列内无结果（或无 seriesId），用关键词做全局搜索
+      if (!docs.length) {
         const kws = extractSearchKeywords(question).filter(k => k.length >= 2).slice(0, 3);
         if (kws.length > 0) {
           const conditions = kws.map(() => '(title LIKE ? OR content LIKE ?)').join(' OR ');
           const params = kws.flatMap(k => [`%${k}%`, `%${k}%`]);
-          fallbackQuery = env.DB.prepare(
+          const kwFallback = await env.DB.prepare(
             `SELECT id, title, content, category, series_name FROM documents
              WHERE content IS NOT NULL AND (${conditions})
              LIMIT 5`
-          ).bind(...params);
-        } else {
-          // 无有效关键词：取近期文档兜底，让 LLM 从通用佛学知识作答
-          fallbackQuery = env.DB.prepare(
-            `SELECT id, title, content, category, series_name FROM documents
-             WHERE content IS NOT NULL ORDER BY id DESC LIMIT 5`
-          );
+          ).bind(...params).all();
+          if (kwFallback.results?.length > 0) docs = kwFallback.results;
         }
       }
-      const fallback = await fallbackQuery.all();
-      if (fallback.results?.length > 0) docs = fallback.results;
+
+      // 第三轮退避：关键词也无结果，取近期文档兜底
+      if (!docs.length) {
+        const recentFallback = await env.DB.prepare(
+          `SELECT id, title, content, category, series_name FROM documents
+           WHERE content IS NOT NULL ORDER BY id DESC LIMIT 5`
+        ).all();
+        if (recentFallback.results?.length > 0) docs = recentFallback.results;
+      }
     } catch (err) {
       console.warn('D1 fallback search failed:', err.message);
     }
@@ -334,8 +372,10 @@ export async function handleAiAsk(env, request, cors, ctx, json) {
     return json(buildAiAnswerPayload(AI_EMPTY_ANSWER, askInput.question), cors, 200, 'no-store');
   }
 
+  const keywords = extractSearchKeywords(askInput.question);
   return json(buildAiAnswerPayload(answer, askInput.question, {
-    sources: buildSourceList(matches, docs),
+    sources: buildSourceList(matches, docs, keywords),
+    docs,
   }), cors, 200, 'no-store');
 }
 
@@ -363,7 +403,8 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
     return json(buildAiAnswerPayload(AI_NO_RESULT_ANSWER, askInput.question, { forceNoResult: true }), cors);
   }
 
-  const sources = buildSourceList(matches, docs);
+  const keywords = extractSearchKeywords(askInput.question);
+  const sources = buildSourceList(matches, docs, keywords);
   const messages = buildRAGMessages(askInput.question, docs, {
     history: askInput.history,
     vectorMatches: matches,
@@ -561,7 +602,7 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
         }
       }
 
-      const normalized = normalizeAiAnswerContract(rawAnswer, askInput.question, { forceNoResult: tokenCount === 0 });
+      const normalized = normalizeAiAnswerContract(rawAnswer, askInput.question, { forceNoResult: tokenCount === 0, docs });
       controller.enqueue(encoder.encode(
         `event: done\ndata: ${JSON.stringify({
           sources,

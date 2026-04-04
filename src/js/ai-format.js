@@ -1,18 +1,77 @@
 const STOP_WORDS_RE = /什么|怎么|怎样|如何|为什么|哪些|哪个|可以|能够|应该|是不是|有没有|到底|究竟|请问|的|了|吗|呢|吧|啊|在|是|有|和|与|或|也|都|就|把|被|对|又|要|让|给|从|用|以|而|但|却|不|很|最|更|还|这|那|它|你|我|他|她|们|个|着/g;
 
+// 净土百问风格的推荐提问库
+const QUESTION_POOL = [
+    '念佛时妄念很多怎么办',
+    '有罪业的人还能往生净土吗',
+    '临终助念需要做哪些准备',
+    '什么是信愿行三资粮',
+    '平时工作忙该怎么念佛',
+    '为什么说净土法门是末法最契机的法门',
+    '念佛号是大声好还是默念好',
+    '什么是带业往生',
+    '如何理解阿弥陀佛四十八大愿',
+    '散心念佛有没有功德',
+    '往生品位高低取决于什么',
+    '如何发起真实的出离心',
+    '亲人不信佛我该怎么做',
+    '梦中念佛是不是好现象',
+    '念佛和诵经如何分配时间',
+    '什么是一心不乱',
+    '在家居士如何修行净土法门',
+    '如何克服念佛中的昏沉',
+    '净土法门和禅宗有什么区别',
+    '回向是什么意思，怎么回向',
+    '业障深重的人怎么忏悔',
+    '佛说的极乐世界到底是什么样的',
+    '念佛要念多少才够',
+    '什么叫至诚心、深心、回向发愿心',
+    '念佛之外还需要做其他功课吗',
+    '如何理解「是心作佛，是心是佛」',
+    '家人生病时怎么帮他念佛',
+    '打佛七有什么特别的意义',
+    '普通人临终时会经历什么',
+    '如何坚持每天念佛不退转',
+];
+
+function getGreeting() {
+    const h = new Date().getHours();
+    if (h < 6) return '夜深了，还在用功呢';
+    if (h < 9) return '早安，新的一天';
+    if (h < 12) return '上午好';
+    if (h < 14) return '午安';
+    if (h < 18) return '下午好';
+    if (h < 21) return '晚上好';
+    return '夜深了，早点休息';
+}
+
+// 随机取 n 个不重复的问题
+function pickRandomQuestions(n = 4) {
+    const pool = [...QUESTION_POOL];
+    const result = [];
+    for (let i = 0; i < n && pool.length > 0; i++) {
+        const idx = Math.floor(Math.random() * pool.length);
+        result.push(pool.splice(idx, 1)[0]);
+    }
+    return result;
+}
+
 export function buildWelcomeHTML() {
+    const greeting = getGreeting();
+    const questions = pickRandomQuestions(4);
+    const chips = questions.map(q =>
+        `<button class="ai-suggest-chip ai-suggest-card">${q}<span class="ai-chip-arrow">›</span></button>`
+    ).join('\n        ');
+
     return `
     <div class="ai-welcome">
-      <h1>法音AI</h1>
-      <p>以大安法师开示为根，引经据典为您解答净土疑问</p>
+      <h1>${greeting}</h1>
+      <p>有什么想聊的，尽管问</p>
     </div>
     <div class="ai-suggestions">
-      <p class="ai-suggestions-label">可以这样问</p>
+      <p class="ai-suggestions-label">试试这些问题</p>
       <div class="ai-suggestions-list">
-        <button class="ai-suggest-chip ai-suggest-card">有罪业的人还能往生净土吗<span class="ai-chip-arrow">›</span></button>
-        <button class="ai-suggest-chip ai-suggest-card">临终助念需要做哪些准备<span class="ai-chip-arrow">›</span></button>
-        <button class="ai-suggest-chip ai-suggest-card">专称念佛和兼修哪个更殊胜<span class="ai-chip-arrow">›</span></button>
-        <button class="ai-suggest-chip ai-suggest-card">什么是念佛功夫成片<span class="ai-chip-arrow">›</span></button>
+        ${chips}
       </div>
     </div>`;
 }

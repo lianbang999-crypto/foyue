@@ -417,6 +417,7 @@ export function buildRAGMessages(question, contextDocs, options = {}) {
   const { maxContextLength = 10000, history = [], vectorMatches = [] } = options;
 
   let context = '';
+  let refIndex = 1;
   if (vectorMatches.length > 0) {
     const seen = new Set();
     for (const m of vectorMatches) {
@@ -424,11 +425,13 @@ export function buildRAGMessages(question, contextDocs, options = {}) {
       const chunkText = m.metadata?.text || '';
       const doc = contextDocs.find(d => d.id === docId);
       const title = doc?.title || m.metadata?.title || '未知';
-      if (chunkText && context.length + chunkText.length < maxContextLength) {
+      if (chunkText && context.length + chunkText.length + 60 < maxContextLength) {
         const key = `${docId}:${m.metadata?.chunk_index}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        context += `【${title}】\n${chunkText}\n\n`;
+        // 编号标记，让模型清楚每段是可以直接引用的原文
+        context += `【资料${refIndex}】出处：${title}\n${chunkText}\n\n`;
+        refIndex++;
       }
     }
   }
@@ -436,7 +439,8 @@ export function buildRAGMessages(question, contextDocs, options = {}) {
     const perDocLimit = Math.floor(maxContextLength / Math.max(contextDocs.length, 1));
     for (const doc of contextDocs) {
       const snippet = doc.content ? doc.content.slice(0, perDocLimit) : '';
-      context += `【${doc.title}】\n${snippet}\n\n`;
+      context += `【资料${refIndex}】出处：${doc.title}\n${snippet}\n\n`;
+      refIndex++;
     }
   }
 
