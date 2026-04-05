@@ -8,6 +8,7 @@ import {
   expandContextFromDocs,
   ragAnswer,
   buildRAGMessages,
+  buildRAGContext,
   generateSummary,
   checkRateLimit,
   cleanupRateLimits,
@@ -18,6 +19,7 @@ import {
 } from './ai-utils.js';
 import {
   AI_EMPTY_ANSWER,
+  AI_INVALID_CITATION_ANSWER,
   AI_NO_RESULT_ANSWER,
   AI_RESPONSE_DISCLAIMER,
   AI_TEMPORARY_UNAVAILABLE_ANSWER,
@@ -51,6 +53,109 @@ function buildSourceList(matches, docs, keywords = []) {
     if (sources.length >= 3) break;
   }
   return sources;
+}
+
+function normalizeSourceText(text) {
+  return String(text || '').replace(/\s+/g, ' ').trim();
+}
+
+function extractAnswerReferenceIndexes(answer, references = []) {
+  const available = new Set((references || []).map(reference => Number(reference.refIndex)).filter(Number.isInteger));
+  const usedIndexes = [];
+  const usedIndexSet = new Set();
+  const refMatches = String(answer || '').match(/资料\s*(\d+)/g) || [];
+
+  for (const token of refMatches) {
+    const refIndex = Number.parseInt(token.replace(/[^\d]/g, ''), 10);
+    if (!Number.isInteger(refIndex) || usedIndexSet.has(refIndex) || !available.has(refIndex)) continue;
+    usedIndexSet.add(refIndex);
+    usedIndexes.push(refIndex);
+  }
+
+  return usedIndexes;
+}
+
+function extractQuotedSegments(answer) {
+  const segments = [];
+  const blockMatches = String(answer || '').match(/^>\s*(.+)$/gm) || [];
+  for (const line of blockMatches) {
+    const value = normalizeSourceText(line.replace(/^>\s*/, ''));
+    if (value.length >= 10) segments.push(value);
+  }
+
+  const quoteRe = /[“"]([^”"]{10,200})[”"]/g;
+  let match;
+  while ((match = quoteRe.exec(String(answer || ''))) !== null) {
+    const value = normalizeSourceText(match[1]);
+    if (value.length >= 10) segments.push(value);
+  }
+
+  return [...new Set(segments)];
+}
+
+function buildBoundSourceList(answer, references, keywords = [], fallbackMatches = [], docs = []) {
+  const text = String(answer || '');
+  const usedIndexes = extractAnswerReferenceIndexes(text, references);
+  const usedIndexSet = new Set(usedIndexes);
+  const matchedQuoteByRef = new Map();
+
+  const quotedSegments = extractQuotedSegments(text);
+  for (const segment of quotedSegments) {
+    const matched = references.find(reference => {
+      if (!usedIndexSet.has(reference.refIndex)) return false;
+      const refText = normalizeSourceText(reference.text);
+      return refText && (refText.includes(segment) || segment.includes(refText.slice(0, Math.min(refText.length, 48))));
+    });
+    if (!matched || matchedQuoteByRef.has(matched.refIndex)) continue;
+    matchedQuoteByRef.set(matched.refIndex, segment);
+  }
+
+  if (!usedIndexes.length) {
+    return [];
+  }
+
+  return usedIndexes
+    .map(refIndex => references.find(reference => reference.refIndex === refIndex))
+    .filter(Boolean)
+    .slice(0, 3)
+    .map(reference => ({
+      title: reference.title || '',
+      doc_id: reference.doc_id,
+      score: reference.score,
+      category: reference.category || '',
+      series_name: reference.series_name || '',
+      snippet: matchedQuoteByRef.get(reference.refIndex)
+        || (keywords.length > 0
+          ? buildKeywordSnippet(reference.text, keywords) || reference.text.slice(0, 300)
+          : reference.text.slice(0, 300)),
+      ref_index: reference.refIndex,
+    }));
+}
+
+function buildVerifiedAiAnswerPayload(rawText, question, options = {}) {
+  const { references = [], keywords = [], docs = [], forceNoResult = false } = options;
+  const normalized = normalizeAiAnswerContract(rawText, question, { forceNoResult, docs });
+  if (normalized.noResult) {
+    return {
+      answer: normalized.answer,
+      followUps: normalized.followUps,
+      sources: [],
+      disclaimer: AI_RESPONSE_DISCLAIMER,
+    };
+  }
+
+  const sources = buildBoundSourceList(normalized.answer, references, keywords, [], docs);
+  const hasValidCitations = extractAnswerReferenceIndexes(normalized.answer, references).length > 0 && sources.length > 0;
+  if (!hasValidCitations) {
+    return buildAiAnswerPayload(AI_INVALID_CITATION_ANSWER, question, { sources: [], docs });
+  }
+
+  return {
+    answer: normalized.answer,
+    followUps: normalized.followUps,
+    sources,
+    disclaimer: AI_RESPONSE_DISCLAIMER,
+  };
 }
 
 function normalizeSummaryKey(documentId) {
@@ -314,15 +419,6 @@ async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
           if (kwFallback.results?.length > 0) docs = kwFallback.results;
         }
       }
-
-      // 第三轮退避：关键词也无结果，取近期文档兜底
-      if (!docs.length) {
-        const recentFallback = await env.DB.prepare(
-          `SELECT id, title, content, category, series_name FROM documents
-           WHERE content IS NOT NULL ORDER BY id DESC LIMIT 5`
-        ).all();
-        if (recentFallback.results?.length > 0) docs = recentFallback.results;
-      }
     } catch (err) {
       console.warn('D1 fallback search failed:', err.message);
     }
@@ -356,6 +452,8 @@ export async function handleAiAsk(env, request, cors, ctx, json) {
     return json(buildAiAnswerPayload(AI_NO_RESULT_ANSWER, askInput.question, { forceNoResult: true }), cors);
   }
 
+  const { references } = buildRAGContext(docs, { vectorMatches: matches });
+
   let result;
   try {
     result = await ragAnswer(env, askInput.question, docs, {
@@ -374,8 +472,9 @@ export async function handleAiAsk(env, request, cors, ctx, json) {
   }
 
   const keywords = extractSearchKeywords(askInput.question);
-  return json(buildAiAnswerPayload(answer, askInput.question, {
-    sources: buildSourceList(matches, docs, keywords),
+  return json(buildVerifiedAiAnswerPayload(answer, askInput.question, {
+    references,
+    keywords,
     docs,
   }), cors, 200, 'no-store');
 }
@@ -405,7 +504,7 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
   }
 
   const keywords = extractSearchKeywords(askInput.question);
-  const sources = buildSourceList(matches, docs, keywords);
+  const { references } = buildRAGContext(docs, { vectorMatches: matches });
   const chatModel = resolveAIModel(env, 'chat');
   const fallbackChatModel = resolveAIModel(env, 'chatFallback');
   const messages = buildRAGMessages(askInput.question, docs, {
@@ -606,12 +705,18 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
       }
 
       const normalized = normalizeAiAnswerContract(rawAnswer, askInput.question, { forceNoResult: tokenCount === 0, docs });
+      const finalPayload = buildVerifiedAiAnswerPayload(normalized.answer, askInput.question, {
+        references,
+        keywords,
+        docs,
+        forceNoResult: tokenCount === 0,
+      });
       controller.enqueue(encoder.encode(
         `event: done\ndata: ${JSON.stringify({
-          sources,
+          sources: finalPayload.sources,
           disclaimer,
-          answer: normalized.answer,
-          followUps: normalized.followUps,
+          answer: finalPayload.answer,
+          followUps: finalPayload.followUps,
         })}\n\n`
       ));
       controller.close();

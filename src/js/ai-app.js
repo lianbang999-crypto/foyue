@@ -142,7 +142,7 @@ function setupInputAreaResizeSync() {
 }
 
 function setupVisualViewportSync() {
-    // iOS Safari 键盘弹出修复：用 CSS 变量驱动底部偏移，而非直接修改 height
+    // iOS 上直接改容器高度容易触发页面被顶到顶部；这里只在 Android 上跟随 viewport 改高度。
     if (!window.visualViewport) return;
 
     const app = document.getElementById('ai-app');
@@ -156,18 +156,22 @@ function setupVisualViewportSync() {
         requestAnimationFrame(() => {
             _vvRafPending = false;
             const vv = window.visualViewport;
-            const keyboardHeight = Math.max(0, window.innerHeight - vv.height);
-            // 用 CSS 变量传递键盘高度，避免直接 set height 导致布局抖动
-            app.style.setProperty('--ai-kb-offset', `${keyboardHeight}px`);
-            app.style.height = `${vv.height}px`;
-            // Android 需要额外的 translateY 抵消软键盘顶推；iOS 不需要
+            const keyboardHeight = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+
             if (isAndroid()) {
+                app.style.setProperty('--ai-app-height', `${Math.round(vv.height)}px`);
                 app.style.transform = `translateY(${vv.offsetTop}px)`;
+            } else {
+                app.style.removeProperty('--ai-app-height');
+                app.style.transform = '';
             }
+
             syncChatBottomOffset();
-            // 键盘完全展开后才滚动（防止中途抖动）
-            if (keyboardHeight > 50) {
-                setTimeout(() => scrollToBottom(), 80);
+
+            if (document.activeElement === chatInput && keyboardHeight > 40) {
+                setTimeout(() => {
+                    scrollToBottom();
+                }, isAndroid() ? 80 : 140);
             }
         });
     };
@@ -177,9 +181,8 @@ function setupVisualViewportSync() {
     _visualViewportCleanup = () => {
         window.visualViewport.removeEventListener('resize', onViewportResize);
         window.visualViewport.removeEventListener('scroll', onViewportResize);
-        app.style.height = '';
+        app.style.removeProperty('--ai-app-height');
         app.style.transform = '';
-        app.style.removeProperty('--ai-kb-offset');
     };
     onViewportResize(); // 立即同步，修复首屏渲染时 iOS 地址栏遮挡问题
 }
@@ -191,6 +194,15 @@ function wireEvents() {
         autoResize();
         updateCharCount();
         btnSend.disabled = !chatInput.value.trim();
+    });
+
+    chatInput.addEventListener('focus', () => {
+        if (!isMobile()) return;
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                scrollToBottom();
+            }, 120);
+        });
     });
 
     // Enter 发送，Shift+Enter 换行
@@ -224,9 +236,9 @@ function wireEvents() {
     chatArea.addEventListener('click', (e) => {
         const chip = e.target.closest('.ai-suggest-chip');
         if (chip) {
-            // 卡片模式取最后一个 span 文本，否则取全文本
-            const spans = chip.querySelectorAll('span');
-            const text = spans.length > 1 ? spans[spans.length - 1].textContent.trim() : chip.textContent.trim();
+            const text = chip.dataset.question
+                || chip.querySelector('.ai-suggest-text')?.textContent.trim()
+                || chip.textContent.trim();
             chatInput.value = text;
             btnSend.disabled = false;
             handleSubmit();
@@ -470,6 +482,11 @@ async function handleSubmit(options = {}) {
 
         // 来源标签
         if (renderedSources.length) {
+            const sourceHeading = document.createElement('div');
+            sourceHeading.className = 'ai-source-heading';
+            sourceHeading.textContent = '出处 · 打开文库原文';
+            msgContent.appendChild(sourceHeading);
+
             const srcDiv = document.createElement('div');
             srcDiv.className = 'ai-sources';
             srcDiv.innerHTML = renderedSources.map(s => renderSourceTag(s)).join(' ');
@@ -611,6 +628,11 @@ function addMessage(role, content, sources, disclaimer, silent, messageIndex, so
     } else {
         contentEl.innerHTML = formatAnswer(content);
         if (sources?.length) {
+            const sourceHeading = document.createElement('div');
+            sourceHeading.className = 'ai-source-heading';
+            sourceHeading.textContent = '出处 · 打开文库原文';
+            contentEl.appendChild(sourceHeading);
+
             const srcDiv = document.createElement('div');
             srcDiv.className = 'ai-sources';
             srcDiv.innerHTML = sources.map(s => renderSourceTag(s, sourceQuery)).join(' ');
@@ -715,11 +737,15 @@ function renderSourceTag(s, fallbackQuery = '') {
             return `<button class="ai-source-card" data-doc-id="${escapeHtml(s.doc_id)}"${queryAttr}${snippetAttr}>
                 <span class="ai-source-card-title">${title}</span>
                 <span class="ai-source-card-snippet">${snippet}</span>
+                <span class="ai-source-card-meta">
+                    <span class="ai-source-card-action">查看文库原文</span>
+                    <span class="ai-source-card-arrow" aria-hidden="true">›</span>
+                </span>
             </button>`;
         }
-        return `<button class="ai-source-tag" data-doc-id="${escapeHtml(s.doc_id)}"${queryAttr}${snippetAttr}>${title}</button>`;
+        return `<button class="ai-source-tag" data-doc-id="${escapeHtml(s.doc_id)}"${queryAttr}${snippetAttr}>出处 · ${title}</button>`;
     }
-    return `<span class="ai-source-tag">${title}</span>`;
+    return `<span class="ai-source-tag">出处 · ${title}</span>`;
 }
 
 function loadAiContext() {
@@ -889,7 +915,7 @@ convListEl?.addEventListener('click', (e) => {
         }
         // 桌面端保持边栏开启，移动端关闭弹窗
         if (!isDesktop()) closeConvDrawer();
-        chatInput.focus();
+        if (!isMobile()) chatInput.focus();
     }
 });
 
@@ -952,7 +978,7 @@ function startNewConversation() {
     saveConversations();
     renderWelcomeOrHistory();
     renderConvList();
-    chatInput.focus();
+    if (!isMobile()) chatInput.focus();
 }
 
 function renderConvList() {

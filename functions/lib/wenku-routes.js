@@ -20,15 +20,28 @@ export async function handleWenkuSeries(db) {
 }
 
 export async function handleWenkuDocuments(db, seriesName) {
-  const result = await db.prepare(
-    `SELECT id, title, type, category, series_name, episode_num, format,
-            file_size, audio_series_id, read_count
-     FROM documents
-     WHERE series_name = ? AND type = 'transcript'
-       AND content IS NOT NULL AND content != ''
-     ORDER BY episode_num`
-  ).bind(seriesName).all();
-  return { documents: result.results };
+  try {
+    const result = await db.prepare(
+      `SELECT d.id, d.title, d.type, d.category, d.series_name, d.episode_num, d.format,
+              d.file_size, d.audio_series_id, d.read_count, s.summary
+       FROM documents d
+       LEFT JOIN ai_summaries s ON s.document_id = d.id
+       WHERE d.series_name = ? AND d.type = 'transcript'
+         AND d.content IS NOT NULL AND d.content != ''
+       ORDER BY d.episode_num`
+    ).bind(seriesName).all();
+    return { documents: result.results };
+  } catch {
+    const result = await db.prepare(
+      `SELECT id, title, type, category, series_name, episode_num, format,
+              file_size, audio_series_id, read_count
+       FROM documents
+       WHERE series_name = ? AND type = 'transcript'
+         AND content IS NOT NULL AND content != ''
+       ORDER BY episode_num`
+    ).bind(seriesName).all();
+    return { documents: result.results };
+  }
 }
 
 export async function handleWenkuDocument(db, id) {

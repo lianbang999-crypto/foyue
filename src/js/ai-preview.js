@@ -1,7 +1,9 @@
 import { renderHighlightedParagraph } from './ai-format.js';
 
+const AI_RETURN_KEY = 'ai-return-context';
+
 function buildWenkuUrl(docId, query) {
-    return `/wenku?doc=${encodeURIComponent(docId)}${query ? `&q=${encodeURIComponent(query)}` : ''}`;
+    return `/wenku?doc=${encodeURIComponent(docId)}${query ? `&q=${encodeURIComponent(query)}` : ''}&from=ai`;
 }
 
 function persistAiSnippet(snippet) {
@@ -9,6 +11,17 @@ function persistAiSnippet(snippet) {
         const value = String(snippet || '').trim();
         if (value) sessionStorage.setItem('wenku-ai-snippet', value);
         else sessionStorage.removeItem('wenku-ai-snippet');
+    } catch { /* 忽略 sessionStorage 失败 */ }
+}
+
+function persistAiReturnContext(docId, query) {
+    try {
+        sessionStorage.setItem(AI_RETURN_KEY, JSON.stringify({
+            href: '/ai',
+            docId: String(docId || '').trim(),
+            query: String(query || '').trim(),
+            ts: Date.now(),
+        }));
     } catch { /* 忽略 sessionStorage 失败 */ }
 }
 
@@ -116,6 +129,46 @@ function getPreviewTerms(query) {
     return unique;
 }
 
+function normalizePreviewText(text) {
+    return String(text || '').replace(/\s+/g, ' ').trim();
+}
+
+function buildSnippetNeedle(snippet) {
+    const normalized = normalizePreviewText(snippet);
+    if (!normalized) return '';
+    if (normalized.length <= 24) return normalized;
+
+    const sentences = normalized
+        .split(/(?<=[。！？!?])/)
+        .map(item => item.trim())
+        .filter(item => item.length >= 12);
+
+    if (sentences.length) {
+        sentences.sort((a, b) => b.length - a.length);
+        return sentences[0].slice(0, 48);
+    }
+
+    return normalized.slice(0, 48);
+}
+
+function pickPreviewExcerptBySnippet(paragraphs, sourceSnippet) {
+    const needle = buildSnippetNeedle(sourceSnippet);
+    if (!needle) return null;
+
+    const matchIndex = paragraphs.findIndex(paragraph => normalizePreviewText(paragraph).includes(needle));
+    if (matchIndex === -1) return null;
+
+    const start = Math.max(0, matchIndex - 1);
+    const end = Math.min(paragraphs.length, matchIndex + 2);
+    return {
+        excerpt: paragraphs.slice(start, end).map((text, index) => ({
+            text,
+            isMatch: start + index === matchIndex,
+        })),
+        matchIndex: matchIndex - start,
+    };
+}
+
 function pickPreviewExcerpt(paragraphs, terms) {
     if (!paragraphs.length) return [];
 
@@ -136,11 +189,13 @@ function pickPreviewExcerpt(paragraphs, terms) {
     return paragraphs.slice(0, 3).map(text => ({ text, isMatch: false }));
 }
 
-function buildPreviewData(doc, query) {
+function buildPreviewData(doc, query, sourceSnippet = '') {
     const paragraphs = splitPreviewParagraphs(doc.content || '');
     const terms = getPreviewTerms(query);
-    const excerpt = pickPreviewExcerpt(paragraphs, terms);
+    const snippetMatch = pickPreviewExcerptBySnippet(paragraphs, sourceSnippet);
+    const excerpt = snippetMatch?.excerpt || pickPreviewExcerpt(paragraphs, terms);
     const hasMatch = excerpt.some(item => item.isMatch);
+    const matchIndex = snippetMatch?.matchIndex ?? excerpt.findIndex(item => item.isMatch);
 
     return {
         excerpt: excerpt.map(item => ({
@@ -149,7 +204,7 @@ function buildPreviewData(doc, query) {
             terms,
         })),
         hasMatch,
-        matchIndex: excerpt.findIndex(item => item.isMatch),
+        matchIndex,
     };
 }
 
@@ -264,11 +319,13 @@ export function createAiPreviewController(options) {
 
     previewOpenBtn?.addEventListener('click', () => {
         persistAiSnippet(getActiveSnippet());
+        persistAiReturnContext(previewState.docId, previewState.query);
     });
 
     async function openPreview(docId, query, fallbackTitle = '', sourceSnippet = '') {
         if (!previewDrawer || !previewBody || !previewOpenBtn) {
             persistAiSnippet(sourceSnippet);
+            persistAiReturnContext(docId, query);
             window.location.href = buildWenkuUrl(docId, query);
             return;
         }
@@ -303,7 +360,7 @@ export function createAiPreviewController(options) {
 
             previewTitle.textContent = doc.title || fallbackTitle || '文库引用';
             previewMeta.textContent = buildPreviewMeta(doc);
-            const previewData = buildPreviewData(doc, query);
+            const previewData = buildPreviewData(doc, query, sourceSnippet);
             previewState.title = doc.title || fallbackTitle || '文库引用';
             previewState.excerpt = previewData.excerpt;
             previewState.matchIndex = previewData.matchIndex;

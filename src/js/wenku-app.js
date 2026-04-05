@@ -1,7 +1,7 @@
 /* ===== 法音文库 独立页面入口 ===== */
 import '../css/wenku-page.css';
 import { getWenkuSeries, getWenkuDocuments, getWenkuDocument, searchWenku, recordWenkuRead } from './wenku-api.js';
-import { getSeriesSummary } from './ai-client.js';
+import { getEpisodeSummary } from './ai-client.js';
 import { initTheme } from './theme.js';
 
 /* --- 常量 --- */
@@ -11,6 +11,8 @@ const BOOKMARK_DONE_THRESHOLD = 99.5;
 const SCROLL_KEY = 'wenku-reader-scroll';
 const SETTINGS_KEY = 'wenku-reader-settings';
 const RECENT_MAX = 5;
+const AI_RETURN_KEY = 'ai-return-context';
+const WENKU_AI_ORIGIN_KEY = 'wenku-origin-ai';
 const SERIES_COLORS = [
     '#C4704F', '#A8674D', '#8A6B55', '#A17A5C', '#7D675A',
     '#B77C61', '#8F715F', '#C78B74', '#9A7B67', '#AE6E57',
@@ -29,6 +31,7 @@ function syncWenkuThemeColor() {
 /* --- DOM 引用 --- */
 const wkContent = document.getElementById('wkContent');
 const wkReader = document.getElementById('wkReader');
+const wkHeaderActions = document.querySelector('.wk-header-actions');
 
 /* --- 路由状态 --- */
 let currentView = 'home'; // 'home' | 'reader'
@@ -56,6 +59,8 @@ function init() {
     syncWenkuThemeColor();
     wireContentClicks();
     const params = new URLSearchParams(location.search);
+    syncAiOriginState(params);
+    renderHeaderActions();
     const docId = params.get('doc');
     const series = params.get('series');
     const query = params.get('q');
@@ -75,6 +80,8 @@ function init() {
 
 
 function onPopState(e) {
+    syncAiOriginState(new URLSearchParams(location.search));
+    renderHeaderActions();
     const s = e.state;
     if (!s?.doc && wkReader.style.display !== 'none') {
         closeReader();
@@ -87,6 +94,67 @@ function onPopState(e) {
     } else {
         renderHome(true);
     }
+}
+
+function getAiReturnContext() {
+    try {
+        return JSON.parse(sessionStorage.getItem(AI_RETURN_KEY) || 'null');
+    } catch {
+        return null;
+    }
+}
+
+function hasAiOrigin(params = new URLSearchParams(location.search)) {
+    try {
+        return params.get('from') === 'ai' || sessionStorage.getItem(WENKU_AI_ORIGIN_KEY) === 'ai';
+    } catch {
+        return params.get('from') === 'ai';
+    }
+}
+
+function syncAiOriginState(params = new URLSearchParams(location.search)) {
+    const fromAi = params.get('from') === 'ai';
+    try {
+        if (fromAi) {
+            sessionStorage.setItem(WENKU_AI_ORIGIN_KEY, 'ai');
+            return true;
+        }
+        if (!getAiReturnContext()) {
+            sessionStorage.removeItem(WENKU_AI_ORIGIN_KEY);
+        }
+        return sessionStorage.getItem(WENKU_AI_ORIGIN_KEY) === 'ai';
+    } catch {
+        return fromAi;
+    }
+}
+
+function clearAiReturnState() {
+    try {
+        sessionStorage.removeItem(WENKU_AI_ORIGIN_KEY);
+        sessionStorage.removeItem(AI_RETURN_KEY);
+    } catch { /* 忽略 */ }
+}
+
+function getAiReturnHref() {
+    const context = getAiReturnContext();
+    return typeof context?.href === 'string' && context.href ? context.href : '/ai';
+}
+
+function handleAiReturnClick(event) {
+    event.preventDefault();
+    const href = event.currentTarget.getAttribute('href') || getAiReturnHref();
+    clearAiReturnState();
+    window.location.href = href;
+}
+
+function renderHeaderActions() {
+    if (!wkHeaderActions) return;
+    if (!hasAiOrigin()) {
+        wkHeaderActions.innerHTML = '';
+        return;
+    }
+    wkHeaderActions.innerHTML = `<a href="${esc(getAiReturnHref())}" class="wk-header-link wk-header-link--ai" id="wkReturnAiLink">返回AI</a>`;
+    wkHeaderActions.querySelector('#wkReturnAiLink')?.addEventListener('click', handleAiReturnClick);
 }
 
 /* ================================================================
@@ -169,13 +237,6 @@ function getSeriesLatestTs(seriesName) {
     return latest;
 }
 
-function pickIntro(...values) {
-    for (const value of values) {
-        if (typeof value === 'string' && value.trim()) return value.trim();
-    }
-    return '';
-}
-
 function getSeriesResumeState(seriesName, documents) {
     const bookmarks = getBookmarks();
     const inProgress = [];
@@ -211,6 +272,116 @@ function normalizeIntroText(text) {
         .trim();
 }
 
+function truncateSummary(text, maxLength = 88) {
+    const normalized = normalizeIntroText(text);
+    if (!normalized) return '';
+    if (normalized.length <= maxLength) return normalized;
+    return `${normalized.slice(0, maxLength).trim()}…`;
+}
+
+function getBookSummaryPreviewDocs(documents, resumeState) {
+    const picks = [];
+    const seen = new Set();
+    const pushDoc = (doc) => {
+        if (!doc?.id || seen.has(doc.id)) return;
+        seen.add(doc.id);
+        picks.push(doc);
+    };
+
+    const resumeIndex = documents.findIndex(doc => doc.id === resumeState.docId);
+    if (resumeIndex >= 0) {
+        pushDoc(documents[Math.max(0, resumeIndex - 1)]);
+        pushDoc(documents[resumeIndex]);
+        pushDoc(documents[Math.min(documents.length - 1, resumeIndex + 1)]);
+    }
+
+    documents.slice(0, 3).forEach(pushDoc);
+    return picks.slice(0, 3);
+}
+
+function getBookSummaryHydrationDocs(documents, resumeState) {
+    const previewDocs = getBookSummaryPreviewDocs(documents, resumeState);
+    const seen = new Set(previewDocs.map(doc => doc.id));
+    const picks = [...previewDocs];
+    for (const doc of documents.slice(0, 6)) {
+        if (seen.has(doc.id)) continue;
+        seen.add(doc.id);
+        picks.push(doc);
+    }
+    return picks.slice(0, 6);
+}
+
+function buildBookIntroState(documents, resumeState) {
+    const total = documents.length;
+    const lead = resumeState.mode === 'continue'
+        ? '先看你当前这讲和前后讲次的摘要，再决定是继续往下读，还是回头补看。'
+        : resumeState.mode === 'restart'
+            ? '这本书你已经读过，先扫一眼各讲摘要，再决定是否从头重读。'
+            : '先看每讲摘要，再决定从哪一讲进入，会比直接点进正文更不容易迷路。';
+
+    return {
+        kicker: '本书摘要 · 按讲查看',
+        lead,
+        tail: buildReadingHint(total, resumeState),
+    };
+}
+
+function renderBookSummaryCards(documents, resumeDocId) {
+    if (!documents.length) return '';
+    return documents.map((doc) => {
+        const summary = truncateSummary(doc.summary, 92);
+        const pending = !summary;
+        return `
+            <button class="wk-book-summary-card" type="button" data-action="book-sheet-read" data-doc="${esc(doc.id)}">
+                <div class="wk-book-summary-card-kicker">第 ${doc.episode_num || '?'} 讲${doc.id === resumeDocId ? ' · 当前阅读' : ''}</div>
+                <div class="wk-book-summary-card-title">${esc(doc.title || `第${doc.episode_num || '?'}讲`)}</div>
+                <p class="wk-book-summary-card-copy ${pending ? 'is-pending' : ''}" data-summary-doc="${esc(doc.id)}" data-summary-mode="card">${esc(summary || '正在整理本讲摘要…')}</p>
+            </button>`;
+    }).join('');
+}
+
+function renderDocSummary(doc, shouldHydrate) {
+    const summary = truncateSummary(doc.summary, 68);
+    if (!summary && !shouldHydrate) return '';
+    return `<div class="wk-doc-summary ${summary ? '' : 'is-pending'}" data-summary-doc="${esc(doc.id)}" data-summary-mode="list">${esc(summary || '正在整理本讲摘要…')}</div>`;
+}
+
+function updateSummaryNodes(scope, docId, summary) {
+    scope.querySelectorAll(`[data-summary-doc="${CSS.escape(docId)}"]`).forEach((node) => {
+        const text = truncateSummary(summary, node.dataset.summaryMode === 'card' ? 92 : 68);
+        node.textContent = text || '本讲摘要暂未生成，可先打开正文阅读。';
+        node.classList.toggle('is-pending', !text);
+    });
+}
+
+async function hydrateBookSheetSummaries(body, sheet, documents, resumeState, token) {
+    const targets = getBookSummaryHydrationDocs(documents, resumeState);
+    const missing = targets.filter(doc => !normalizeIntroText(doc.summary));
+
+    for (const doc of documents) {
+        if (normalizeIntroText(doc.summary)) updateSummaryNodes(body, doc.id, doc.summary);
+    }
+
+    if (!missing.length) return;
+
+    const resolved = await Promise.all(missing.map(async (doc) => {
+        try {
+            const data = await getEpisodeSummary(doc.id);
+            return { id: doc.id, summary: normalizeIntroText(data?.summary || '') };
+        } catch {
+            return { id: doc.id, summary: '' };
+        }
+    }));
+
+    if (!sheet.classList.contains('open') || sheet.dataset.seriesSummaryToken !== token) return;
+
+    for (const item of resolved) {
+        const doc = documents.find(entry => entry.id === item.id);
+        if (doc) doc.summary = item.summary;
+        updateSummaryNodes(body, item.id, item.summary);
+    }
+}
+
 function buildReadingHint(total, resumeState) {
     if (resumeState.mode === 'continue') {
         return total === 1
@@ -221,122 +392,6 @@ function buildReadingHint(total, resumeState) {
         return total === 1
             ? '这一篇你之前已经读过，想再看一遍就直接重新开始。'
             : '这本书你之前已经读过，若想重新进入，直接从第 1 讲开始会更自然。';
-    }
-    return total === 1
-        ? '第一次打开时，直接进入正文就可以；想先有把握，也可以先看一眼目录。'
-        : '如果这是第一次打开，建议先看一下目录，再从第 1 讲进入正文。';
-}
-
-function buildSeriesIntroState(summary, total, resumeState, options = {}) {
-    const { loading = false, error = false } = options;
-    if (loading) {
-        return {
-            kicker: 'AI导读 · 基于正文提炼',
-            lead: '正在从正文提炼导读…',
-            tail: '请稍候，AI 会结合书名、目录与正文生成简介。',
-        };
-    }
-    if (error) {
-        return {
-            kicker: 'AI导读 · 基于正文提炼',
-            lead: 'AI 导读暂时不可用。',
-            tail: '你可以先从目录开始阅读。',
-        };
-    }
-
-    const lead = normalizeIntroText(summary) || 'AI 导读暂时还没生成，先看目录也可以。';
-    return {
-        kicker: 'AI导读 · 基于正文提炼',
-        lead,
-        tail: buildReadingHint(total, resumeState),
-    };
-}
-
-function countKeywordMatches(text, keyword) {
-    const source = String(text || '');
-    if (!source || !keyword) return 0;
-    return source.split(keyword).length - 1;
-}
-
-function pickSeriesKeywords(seriesName, documents, docDetails) {
-    const keywords = [
-        '三报', '因果', '业力', '报应', '现报', '生报', '后报', '善恶', '轮回', '念佛',
-        '净土', '往生', '极乐世界', '菩提心', '戒律', '六道', '三世', '阿弥陀佛', '信愿行', '修行',
-    ];
-    const scored = keywords.map((keyword) => {
-        let score = 0;
-        for (const doc of docDetails) {
-            score += countKeywordMatches(doc.title || '', keyword) * 2;
-            score += countKeywordMatches(doc.content || '', keyword);
-        }
-        score += countKeywordMatches(seriesName, keyword) * 3;
-        return { keyword, score };
-    });
-
-    const selected = scored
-        .filter(item => item.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 4)
-        .map(item => item.keyword);
-
-    if (!selected.length) {
-        return documents.slice(0, 3).map(doc => doc.title).filter(Boolean).slice(0, 3);
-    }
-
-    return selected;
-}
-
-function buildLocalSeriesIntroState(seriesName, documents, docDetails, resumeState) {
-    const total = documents.length;
-    const keywords = pickSeriesKeywords(seriesName, documents, docDetails);
-    const leadSource = docDetails.find(doc => String(doc.content || '').trim()) || documents[0] || null;
-    const leadTitle = leadSource?.title ? `从“${leadSource.title}”切入，` : '';
-    const keywordText = keywords.length > 0 ? keywords.map(word => `“${word}”`).join('、') : '书中的主线内容';
-
-    return {
-        kicker: '内容导读 · 基于正文提炼',
-        lead: `${leadTitle}这本书前几讲主要围绕${keywordText}展开，先交代缘起，再逐步进入正文。`,
-        tail: buildReadingHint(total, resumeState),
-    };
-}
-
-async function loadSeriesIntro(body, sheet, seriesName, documents, resumeState, token) {
-    const introLeadEl = body.querySelector('[data-role="book-sheet-intro-lead"]');
-    const introTailEl = body.querySelector('[data-role="book-sheet-intro-tail"]');
-    const introKickerEl = body.querySelector('[data-role="book-sheet-intro-kicker"]');
-    if (!introLeadEl || !introTailEl) return;
-
-    try {
-        const data = await getSeriesSummary(seriesName);
-        if (!sheet.classList.contains('open') || sheet.dataset.seriesSummaryToken !== token) return;
-        if (!data?.summary) throw new Error('summary unavailable');
-        const introState = buildSeriesIntroState(data?.summary, documents.length, resumeState);
-        if (introKickerEl) introKickerEl.textContent = introState.kicker;
-        introLeadEl.textContent = introState.lead;
-        introTailEl.textContent = introState.tail;
-    } catch {
-        const docDetails = await Promise.all(
-            documents.slice(0, 3).map(async (doc) => {
-                try {
-                    const detail = await getWenkuDocument(doc.id);
-                    const fullDoc = detail?.document || detail;
-                    return fullDoc ? { title: fullDoc.title || doc.title || '', content: fullDoc.content || '' } : null;
-                } catch {
-                    return null;
-                }
-            })
-        );
-        if (!sheet.classList.contains('open') || sheet.dataset.seriesSummaryToken !== token) return;
-        const usableDetails = docDetails.filter(Boolean);
-        if (usableDetails.length > 0) {
-            const introState = buildLocalSeriesIntroState(seriesName, documents, usableDetails, resumeState);
-            if (introKickerEl) introKickerEl.textContent = introState.kicker;
-            introLeadEl.textContent = introState.lead;
-            introTailEl.textContent = introState.tail;
-            return;
-        }
-
-        const introState = buildSeriesIntroState('', documents.length, resumeState, { error: true });
         if (introKickerEl) introKickerEl.textContent = introState.kicker;
         introLeadEl.textContent = introState.lead;
         introTailEl.textContent = introState.tail;
@@ -422,7 +477,7 @@ async function openBookSheet(seriesName) {
                     <div class="wk-series-header-avatar" style="background:${color}">${esc(seriesName.charAt(0))}</div>
                     <div class="wk-series-header-info">
                         <div class="wk-series-header-name">${esc(seriesName)}</div>
-                        <div class="wk-series-header-stats">正在提炼这本书的内容导读…</div>
+                        <div class="wk-series-header-stats">正在整理这本书的摘要与目录…</div>
                     </div>
                 </div>
             </div>`;
@@ -452,7 +507,9 @@ async function openBookSheet(seriesName) {
         : resumeState.mode === 'restart'
             ? `已读过这本书，从第 1 讲重新开始`
             : `从第 1 讲开始，共 ${documents.length} 讲`;
-    const introState = buildSeriesIntroState('', documents.length, resumeState, { loading: true });
+    const introState = buildBookIntroState(documents, resumeState);
+    const summaryPreviewDocs = getBookSummaryPreviewDocs(documents, resumeState);
+    const hydrationDocs = new Set(getBookSummaryHydrationDocs(documents, resumeState).map(doc => doc.id));
 
     let html = `
             <div class="wk-book-sheet-head">
@@ -474,6 +531,10 @@ async function openBookSheet(seriesName) {
                     <span class="wk-book-sheet-primary-meta">${esc(ctaMeta)}</span>
                 </button>
             </div>
+            <div class="wk-book-sheet-section">先看这几讲</div>
+            <div class="wk-book-summary-grid">
+                ${renderBookSummaryCards(summaryPreviewDocs, resumeDocId)}
+            </div>
             <div class="wk-book-sheet-section">本书目录</div>
             <div class="wk-doc-list wk-book-sheet-list">`;
 
@@ -487,18 +548,19 @@ async function openBookSheet(seriesName) {
         else if (hasCompletedReading(pct)) badge = '<span class="wk-doc-badge">已读</span>';
         else if (pct > 0) badge = `<span class="wk-doc-badge">${pct}%</span>`;
         html += `
-                    <div class="wk-doc-item ${hasCompletedReading(pct) ? 'wk-doc-done' : pct > 0 ? 'wk-doc-reading' : ''}" data-action="book-sheet-read" data-doc="${esc(doc.id)}">
+                    <button class="wk-doc-item ${hasCompletedReading(pct) ? 'wk-doc-done' : pct > 0 ? 'wk-doc-reading' : ''}" type="button" data-action="book-sheet-read" data-doc="${esc(doc.id)}" aria-label="打开第 ${idx + 1} 讲 ${esc(doc.title)}">
                         <div class="wk-doc-num-circle" style="${doc.id === resumeDocId ? `background:${color};color:#fff` : ''}">${idx + 1}</div>
                         <div class="wk-doc-info">
                             <div class="wk-doc-title">${esc(doc.title)}</div>
+                            ${renderDocSummary(doc, hydrationDocs.has(doc.id))}
                         </div>
                         ${badge}
-                    </div>`;
+                    </button>`;
     });
 
     html += '</div>';
     body.innerHTML = html;
-    void loadSeriesIntro(body, sheet, seriesName, documents, resumeState, summaryToken);
+    void hydrateBookSheetSummaries(body, sheet, documents, resumeState, summaryToken);
 
     // 自动滚动到当前阅读位置
     if (resumeDocId) {
@@ -572,9 +634,28 @@ async function renderHome(skipPush) {
 
     let html = '';
     const recents = getRecentBookmarks(3);
+        const sorted = [...data.series].sort((a, b) => {
+                const tsA = getSeriesLatestTs(a.series_name);
+                const tsB = getSeriesLatestTs(b.series_name);
+                if (tsA && !tsB) return -1;
+                if (!tsA && tsB) return 1;
+                return (tsB || 0) - (tsA || 0);
+        });
+        const starterSeries = sorted
+                .filter(item => getSeriesReadCount(item.series_name) === 0)
+                .sort((a, b) => a.count - b.count)
+                .slice(0, 3);
 
-    // 搜索框
     html += `
+            <section class="wk-home-hero">
+                <p class="wk-home-hero-kicker">法音文库</p>
+                <h1 class="wk-home-hero-title">先搜问题，再读原文</h1>
+                <p class="wk-home-hero-copy">可以直接搜你关心的问题，也可以先打开一本到目录，先看每讲摘要，再进入正文。</p>
+                <div class="wk-home-hero-actions">
+                    <button class="wk-home-hero-btn" data-action="focus-search">搜索问题</button>
+                    <button class="wk-home-hero-btn wk-home-hero-btn--ghost" data-action="jump-series">浏览讲记</button>
+                </div>
+            </section>
       <div class="wk-home-search">
         <svg class="wk-home-search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input class="wk-home-search-input" id="wkHomeSearch" type="search" placeholder="搜索讲记内容..." enterkeyhint="search" autocomplete="off">
@@ -600,16 +681,20 @@ async function renderHome(skipPush) {
         });
     }
 
-    // 按最近阅读排序
-    const sorted = [...data.series].sort((a, b) => {
-        const tsA = getSeriesLatestTs(a.series_name);
-        const tsB = getSeriesLatestTs(b.series_name);
-        if (tsA && !tsB) return -1;
-        if (!tsA && tsB) return 1;
-        return (tsB || 0) - (tsA || 0);
-    });
+    if (starterSeries.length > 0) {
+        html += `<div class="wk-section-label">适合先读</div><div class="wk-starter-grid">`;
+        starterSeries.forEach((series) => {
+            html += `
+                <button class="wk-starter-card" type="button" data-action="book" data-series="${esc(series.series_name)}">
+                    <span class="wk-starter-kicker">讲次较少，适合先熟悉文库</span>
+                    <span class="wk-starter-title">${esc(series.series_name)}</span>
+                    <span class="wk-starter-meta">${series.count} 讲 · 先看摘要再决定从哪一讲开始</span>
+                </button>`;
+        });
+        html += '</div>';
+    }
 
-    html += `<div class="wk-section-label">大安法师讲记 · ${data.series.length} 部</div>`;
+    html += `<div class="wk-section-label" id="wkSeriesSection">大安法师讲记 · ${data.series.length} 部</div>`;
     html += '<div class="wk-series-grid">';
     sorted.forEach(s => {
         const readCount = getSeriesReadCount(s.series_name);
@@ -692,11 +777,12 @@ async function doHomeSearch(query, container) {
     results.forEach(r => {
         const snippet = (r.snippet || '').slice(0, 80);
         html += `
-      <div class="wk-search-item" data-action="read" data-doc="${esc(r.id)}" data-query="${esc(query)}">
+            <button class="wk-search-item" type="button" data-action="read" data-doc="${esc(r.id)}" data-query="${esc(query)}" aria-label="打开 ${esc(r.title)} 正文">
         <div class="wk-search-item-title">${esc(r.title)}</div>
-        <div class="wk-search-item-series">${esc(r.series_name || '')}</div>
+                <div class="wk-search-item-series">${esc(r.series_name || '')}${r.episode_num ? ` · 第 ${esc(r.episode_num)} 讲` : ''}</div>
         ${snippet ? `<div class="wk-search-item-snippet">${esc(snippet)}</div>` : ''}
-      </div>`;
+                <div class="wk-search-item-action">打开正文</div>
+            </button>`;
     });
     container.innerHTML = html;
 }
@@ -714,6 +800,8 @@ function handleContentClick(e) {
     const action = el.dataset.action;
     if (action === 'book') openBookSheet(el.dataset.series);
     else if (action === 'read') openReader(el.dataset.doc, el.dataset.query);
+    else if (action === 'focus-search') document.getElementById('wkHomeSearch')?.focus();
+    else if (action === 'jump-series') document.getElementById('wkSeriesSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 /* ================================================================
@@ -734,14 +822,62 @@ function snapshotReaderProgress() {
     saveBookmark(_readerState.docId, pct, _readerState.title, _readerState.series);
 }
 
+function getReaderOriginType(fromAi, highlightQuery) {
+    if (fromAi) return 'ai';
+    if (highlightQuery) return 'search';
+    return 'catalog';
+}
+
+function getReaderOriginLabel(originType) {
+    if (originType === 'ai') return '来自 AI';
+    if (originType === 'search') return '来自搜索';
+    return '来自目录';
+}
+
+function getReaderCloseLabel(originType) {
+    if (originType === 'search') return '返回搜索结果';
+    return '返回目录';
+}
+
+function updateReaderLocation() {
+    const el = document.getElementById('readerLocation');
+    if (!el || !_readerState) return;
+
+    const parts = [];
+    if (_readerState.episodeNum) {
+        const total = _readerState.totalEpisodes || '?';
+        parts.push(`第 ${_readerState.episodeNum}/${total} 讲`);
+        if (_readerState.totalEpisodes) {
+            const progress = Math.max(1, Math.round((_readerState.episodeNum / _readerState.totalEpisodes) * 100));
+            parts.push(`全书进度 ${progress}%`);
+        }
+    }
+    parts.push(getReaderOriginLabel(_readerState.originType));
+    el.textContent = parts.join(' · ');
+}
+
+async function restoreSearchContext(query) {
+    history.replaceState({ q: query }, '', `/wenku?q=${encodeURIComponent(query)}`);
+    await renderHome(true);
+    renderHeaderActions();
+
+    const input = document.getElementById('wkHomeSearch');
+    const results = document.getElementById('wkSearchResults');
+    if (input) input.value = query;
+    if (results) await doHomeSearch(query, results);
+}
+
 async function openReader(docId, highlightQuery, skipPush) {
     const wasReaderOpen = wkReader.style.display !== 'none' && !!_readerState;
+    const fromAi = hasAiOrigin();
+    const originType = getReaderOriginType(fromAi, highlightQuery);
+    const closeLabel = getReaderCloseLabel(originType);
     snapshotReaderProgress();
 
     const requestId = beginViewRequest('reader');
     if (!skipPush) {
-        const readerUrl = `/wenku?doc=${encodeURIComponent(docId)}${highlightQuery ? '&q=' + encodeURIComponent(highlightQuery) : ''}`;
-        const readerState = { doc: docId, q: highlightQuery };
+        const readerUrl = `/wenku?doc=${encodeURIComponent(docId)}${highlightQuery ? '&q=' + encodeURIComponent(highlightQuery) : ''}${fromAi ? '&from=ai' : ''}`;
+        const readerState = { doc: docId, q: highlightQuery, fromAi };
         if (wasReaderOpen) history.replaceState(readerState, '', readerUrl);
         else history.pushState(readerState, '', readerUrl);
     }
@@ -756,31 +892,30 @@ async function openReader(docId, highlightQuery, skipPush) {
     <div class="wk-reader-progress" id="readerProgress"></div>
         <div class="wk-reader-settings-backdrop" id="readerSettingsBackdrop"></div>
     <div class="wk-reader-topbar">
-      <button class="wk-reader-btn" id="readerClose">
+            <button class="wk-reader-btn" id="readerClose" aria-label="${esc(closeLabel)}" title="${esc(closeLabel)}">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,18 9,12 15,6"/></svg>
       </button>
-            <button class="wk-reader-btn" id="readerCatalogBtn" aria-label="打开目录">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h12"></path><path d="M8 12h12"></path><path d="M8 18h12"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>
-            </button>
             <div class="wk-reader-topbar-center">
                 <span class="wk-reader-topbar-title" id="readerTopTitle"></span>
-                <span class="wk-reader-topbar-meta" id="readerTopMeta">已读 0%</span>
             </div>
-      <button class="wk-reader-btn" id="readerSettingsBtn">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2m-9-11h2m18 0h2m-4.22-5.78 1.42-1.42M4.22 19.78l1.42-1.42M19.78 19.78l-1.42-1.42M4.22 4.22l1.42 1.42"/></svg>
-      </button>
+        ${fromAi ? `<a class="wk-reader-return" id="readerReturnAi" href="${esc(getAiReturnHref())}">回到 AI</a>` : ''}
     </div>
     <div class="wk-reader-scroll" id="readerScroll">
             <div class="wk-empty wk-empty--reader" style="padding-top:30vh">${buildEmptyStateMarkup('正在加载讲记…', '稍候片刻，法义原文即将展开。')}</div>
     </div>
     <div class="wk-reader-bottombar" id="readerBottombar">
-        <span class="wk-reader-bottombar-pct" id="bottombarPct">0%</span>
-        <input class="wk-reader-bottombar-slider" id="bottombarSlider" type="range" min="0" max="100" step="1" value="0">
-        <button class="wk-reader-bottombar-btn" id="bottombarSettingsBtn" aria-label="设置">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2m-9-11h2m18 0h2m-4.22-5.78 1.42-1.42M4.22 19.78l1.42-1.42M19.78 19.78l-1.42-1.42M4.22 4.22l1.42 1.42"/></svg>
-        </button>
+        <div class="wk-reader-bottombar-context">
+            <span class="wk-reader-location" id="readerLocation">当前位置</span>
+        </div>
+        <div class="wk-reader-bottombar-controls">
+            <span class="wk-reader-bottombar-pct" id="bottombarPct">0%</span>
+            <input class="wk-reader-bottombar-slider" id="bottombarSlider" type="range" min="0" max="100" step="1" value="0" aria-label="阅读进度">
+            <button class="wk-reader-bottombar-btn" id="bottombarSettingsBtn" aria-label="打开阅读设置" aria-controls="readerSettings" aria-expanded="false">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2m-9-11h2m18 0h2m-4.22-5.78 1.42-1.42M4.22 19.78l1.42-1.42M19.78 19.78l-1.42-1.42M4.22 4.22l1.42 1.42"/></svg>
+            </button>
+        </div>
     </div>
-    <div class="wk-reader-settings" id="readerSettings">
+    <div class="wk-reader-settings" id="readerSettings" role="dialog" aria-modal="true" aria-label="阅读设置">
             <div class="wk-reader-settings-handle"></div>
       <div class="wk-settings-title">字号</div>
       <div class="wk-fontsize-row">
@@ -825,10 +960,14 @@ async function openReader(docId, highlightQuery, skipPush) {
     // Render content
     const scroll = wkReader.querySelector('#readerScroll');
     const { html: bodyHtml, contributor } = textToHtml(doc.content || '', doc.title);
+    const chapterNavHtml = `
+        <div class="wk-reader-chapter-nav">
+            ${data.prevId ? `<button class="wk-chapter-nav-btn wk-chapter-nav-btn--ghost" data-prev="${esc(data.prevId)}">上一讲</button>` : '<span class="wk-chapter-nav-spacer"></span>'}
+            <div class="wk-reader-chapter-meta">${doc.episode_num ? `第 ${esc(doc.episode_num)} 讲` : '当前讲'}</div>
+            ${data.nextId ? `<button class="wk-chapter-nav-btn" data-next="${esc(data.nextId)}">下一讲</button>` : '<span class="wk-chapter-nav-spacer"></span>'}
+        </div>`;
     let nextHtml = '';
-    if (data.nextId) {
-        nextHtml = `<div class="wk-next-card"><p>第 ${doc.episode_num || '?'}/${data.totalEpisodes || '?'} 讲</p><button class="wk-next-btn" data-next="${esc(data.nextId)}">下一讲</button></div>`;
-    } else {
+    if (!data.nextId) {
         nextHtml = `
         <div class="wk-next-card wk-next-card--done">
             <div class="wk-next-done-icon" aria-hidden="true">
@@ -843,15 +982,26 @@ async function openReader(docId, highlightQuery, skipPush) {
     const contributorHtml = contributor ? `<span class="wk-reader-contributor">整理：${esc(contributor)}</span>` : '';
     scroll.innerHTML = `
     <div class="wk-reader-title">${esc(doc.title)}</div>
-    <div class="wk-reader-meta">${esc(doc.series_name || '大安法师')}${contributorHtml}</div>
+    <div class="wk-reader-meta">${esc(doc.series_name || '大安法师')}${doc.episode_num ? ` · 第 ${esc(doc.episode_num)} 讲` : ''}${contributorHtml}</div>
     <div class="wk-reader-body" id="readerBody" data-font="${settings.fontFamily}" style="font-size:${settings.fontSize}px">${bodyHtml}</div>
+    ${chapterNavHtml}
     ${nextHtml}`;
 
     // Top title
-    wkReader.querySelector('#readerTopTitle').textContent = doc.series_name || '';
+    wkReader.querySelector('#readerTopTitle').textContent = doc.title || doc.series_name || '';
 
     // Save state for bookmark on close
-    _readerState = { docId, title: doc.title, series: doc.series_name || '', query: highlightQuery || '' };
+    _readerState = {
+        docId,
+        title: doc.title,
+        series: doc.series_name || '',
+        episodeNum: doc.episode_num || null,
+        totalEpisodes: data.totalEpisodes || 0,
+        query: highlightQuery || '',
+        originType,
+    };
+
+    updateReaderLocation();
 
     // Highlight search
     if (highlightQuery) highlightText(highlightQuery);
@@ -870,21 +1020,14 @@ async function openReader(docId, highlightQuery, skipPush) {
 
     // Wire events
     wireReaderClose();
-    wireReaderCatalog(doc.series_name || '');
     wireReaderSettings(settings);
     wireReaderNext(scroll);
     wireBottombar();
     wireScrollCenterTap(scroll);
+    wkReader.querySelector('#readerReturnAi')?.addEventListener('click', handleAiReturnClick);
 
     // Preload next
     if (data.nextId) getWenkuDocument(data.nextId);
-}
-
-function updateReaderTopMeta(pct = 0) {
-    const el = document.getElementById('readerTopMeta');
-    if (!el) return;
-    const value = Number.isFinite(pct) ? Math.round(pct) : 0;
-    el.textContent = `已读 ${value}%`;
 }
 
 /* 工具栏显隐 */
@@ -919,7 +1062,6 @@ function wireScrollCenterTap(scroll) {
 /* 底部工具栏事件绑定 */
 function wireBottombar() {
     const slider = document.getElementById('bottombarSlider');
-    const settingsBtn = document.getElementById('bottombarSettingsBtn');
 
     if (slider) {
         slider.addEventListener('input', () => {
@@ -939,17 +1081,6 @@ function wireBottombar() {
             _bottombarDragging = false;
         });
     }
-
-    if (settingsBtn) {
-        settingsBtn.addEventListener('click', () => {
-            const panel = wkReader.querySelector('#readerSettings');
-            const backdrop = wkReader.querySelector('#readerSettingsBackdrop');
-            if (panel) {
-                panel.classList.add('open');
-                backdrop?.classList.add('open');
-            }
-        });
-    }
 }
 
 function closeReader() {
@@ -962,17 +1093,33 @@ function closeReader() {
     _readerState = null;
 }
 
-function wireReaderClose() {
-    wkReader.querySelector('#readerClose')?.addEventListener('click', () => {
-        closeReader();
-        history.back();
-    });
+async function closeReaderToContext() {
+    const state = _readerState ? { ..._readerState } : null;
+    const fromAi = hasAiOrigin();
+    closeReader();
+
+    if (state?.originType === 'search' && state.query && !fromAi) {
+        await restoreSearchContext(state.query);
+        return;
+    }
+
+    if (state?.series) {
+        const url = `/wenku?series=${encodeURIComponent(state.series)}${fromAi ? '&from=ai' : ''}`;
+        history.replaceState({ series: state.series }, '', url);
+        await renderHome(true);
+        openBookSheet(state.series);
+        renderHeaderActions();
+        return;
+    }
+
+    history.replaceState({}, '', `/wenku${fromAi ? '?from=ai' : ''}`);
+    await renderHome(true);
+    renderHeaderActions();
 }
 
-function wireReaderCatalog(seriesName) {
-    wkReader.querySelector('#readerCatalogBtn')?.addEventListener('click', () => {
-        if (!seriesName) return;
-        openBookSheet(seriesName);
+function wireReaderClose() {
+    wkReader.querySelector('#readerClose')?.addEventListener('click', () => {
+        void closeReaderToContext();
     });
 }
 
@@ -987,7 +1134,6 @@ function wireReaderScroll(scroll, docId) {
             const pct = sh > 0 ? Math.min(100, (scroll.scrollTop / sh) * 100) : 0;
             const bar = wkReader.querySelector('#readerProgress');
             if (bar) bar.style.width = pct + '%';
-            updateReaderTopMeta(pct);
             updateBottombar(pct);
             ticking = false;
         });
@@ -1006,18 +1152,24 @@ function cleanupReaderScroll() {
 
 function wireReaderSettings(settings) {
     const panel = wkReader.querySelector('#readerSettings');
-    const btn = wkReader.querySelector('#readerSettingsBtn');
+    const btn = wkReader.querySelector('#bottombarSettingsBtn');
     const backdrop = wkReader.querySelector('#readerSettingsBackdrop');
     if (!panel || !btn) return;
+
+    const syncExpanded = () => {
+        btn.setAttribute('aria-expanded', panel.classList.contains('open') ? 'true' : 'false');
+    };
 
     btn.addEventListener('click', () => {
         panel.classList.toggle('open');
         backdrop?.classList.toggle('open', panel.classList.contains('open'));
+        syncExpanded();
     });
 
     backdrop?.addEventListener('click', () => {
         panel.classList.remove('open');
         backdrop.classList.remove('open');
+        syncExpanded();
     });
 
     // Font size slider
@@ -1065,6 +1217,11 @@ function wireReaderNext(scroll) {
             if (nextId) openReader(nextId);
             const openBook = btn.dataset.openBook;
             if (openBook) openBookSheet(openBook);
+        }
+        const prevBtn = e.target.closest('[data-prev]');
+        if (prevBtn?.dataset.prev) {
+            openReader(prevBtn.dataset.prev);
+            return;
         }
     });
 }

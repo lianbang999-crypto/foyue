@@ -427,39 +427,69 @@ export async function ragAnswer(env, question, contextDocs, options = {}) {
   return { response: stripThinkTags(extractAIResponse(response)) };
 }
 
+export function buildRAGContext(contextDocs, options = {}) {
+  const { maxContextLength = 10000, vectorMatches = [] } = options;
+
+  let context = '';
+  let refIndex = 1;
+  const references = [];
+
+  if (vectorMatches.length > 0) {
+    const seen = new Set();
+    for (const match of vectorMatches) {
+      const docId = match.metadata?.doc_id;
+      const chunkText = String(match.metadata?.text || '').trim();
+      const doc = contextDocs.find(item => item.id === docId);
+      const title = doc?.title || match.metadata?.title || '未知';
+      if (!docId || !chunkText) continue;
+      if (context.length + chunkText.length + 60 >= maxContextLength) continue;
+
+      const key = `${docId}:${match.metadata?.chunk_index ?? references.length}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      context += `【资料${refIndex}】出处：${title}\n${chunkText}\n\n`;
+      references.push({
+        refIndex,
+        doc_id: docId,
+        title,
+        category: doc?.category || match.metadata?.category || '',
+        series_name: doc?.series_name || match.metadata?.series_name || '',
+        score: typeof match.score === 'number' ? Math.round(match.score * 100) / 100 : null,
+        text: chunkText,
+      });
+      refIndex += 1;
+    }
+  }
+
+  if (!context) {
+    const perDocLimit = Math.floor(maxContextLength / Math.max(contextDocs.length, 1));
+    for (const doc of contextDocs) {
+      const snippet = String(doc.content || '').slice(0, perDocLimit).trim();
+      if (!snippet) continue;
+      context += `【资料${refIndex}】出处：${doc.title}\n${snippet}\n\n`;
+      references.push({
+        refIndex,
+        doc_id: doc.id,
+        title: doc.title || '未知',
+        category: doc.category || '',
+        series_name: doc.series_name || '',
+        score: null,
+        text: snippet,
+      });
+      refIndex += 1;
+    }
+  }
+
+  return { context, references };
+}
+
 // ============================================================
 // Build RAG messages (shared by ragAnswer and streaming endpoint)
 // ============================================================
 export function buildRAGMessages(question, contextDocs, options = {}) {
   const { maxContextLength = 10000, history = [], vectorMatches = [] } = options;
-
-  let context = '';
-  let refIndex = 1;
-  if (vectorMatches.length > 0) {
-    const seen = new Set();
-    for (const m of vectorMatches) {
-      const docId = m.metadata?.doc_id;
-      const chunkText = m.metadata?.text || '';
-      const doc = contextDocs.find(d => d.id === docId);
-      const title = doc?.title || m.metadata?.title || '未知';
-      if (chunkText && context.length + chunkText.length + 60 < maxContextLength) {
-        const key = `${docId}:${m.metadata?.chunk_index}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        // 编号标记，让模型清楚每段是可以直接引用的原文
-        context += `【资料${refIndex}】出处：${title}\n${chunkText}\n\n`;
-        refIndex++;
-      }
-    }
-  }
-  if (!context) {
-    const perDocLimit = Math.floor(maxContextLength / Math.max(contextDocs.length, 1));
-    for (const doc of contextDocs) {
-      const snippet = doc.content ? doc.content.slice(0, perDocLimit) : '';
-      context += `【资料${refIndex}】出处：${doc.title}\n${snippet}\n\n`;
-      refIndex++;
-    }
-  }
+  const { context } = buildRAGContext(contextDocs, { maxContextLength, vectorMatches });
 
   const messages = [{ role: 'system', content: buildRagSystemPrompt(context) }];
   messages.push(...normalizeHistoryMessages(history));

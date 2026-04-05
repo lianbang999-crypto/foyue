@@ -2,6 +2,8 @@ export const AI_RESPONSE_DISCLAIMER = '以上回答由AI生成，仅供参考，
 
 export const AI_NO_RESULT_ANSWER = '抱歉，暂未找到与您问题相关的内容。请尝试换一种方式提问。';
 
+export const AI_INVALID_CITATION_ANSWER = '抱歉，这次没能稳定生成带资料编号的原文引用。请换个问法，或让我重新查找文库原文。';
+
 export const AI_TEMPORARY_UNAVAILABLE_ANSWER = '抱歉，AI 服务暂时不可用，请稍后再试。';
 
 export const AI_EMPTY_ANSWER = '抱歉，AI 暂时无法生成回答，请稍后再试。';
@@ -11,6 +13,17 @@ const FOLLOWUP_BLOCK_RE = /\s*\d*\s*\[FOLLOWUP\]([\s\S]*?)(?:\[\/FOLLOWUP\]|$)/i
 // 过滤模型原样输出的模板占位符文字
 const FOLLOWUP_PLACEHOLDER_RE = /^相关问题[一二三四五六]$|^问题[一二三四五六]$/;
 export const STOP_WORDS_RE = /什么|怎么|怎样|如何|为什么|哪些|哪个|可以|能够|应该|是不是|有没有|到底|究竟|请问|一下|的|了|吗|呢|吧|啊|在|是|有|和|与|或|也|都|就|把|被|对|又|要|让|给|从|用|以|而|但|却|不|很|最|更|还|这|那|它|你|我|他|她|们|个|着/g;
+
+const PURELAND_FOLLOWUP_POOL = [
+    { keywords: ['妄念', '散乱', '摄心', '昏沉'], questions: ['妄念很多时，法师教人怎样把心收回到佛号上', '昏沉散乱时，还有哪些相关原文可以继续引用'] },
+    { keywords: ['信愿行', '三资粮', '信愿', '发愿'], questions: ['什么是信愿行三资粮，文库原文是怎么说的', '发愿求生净土时，法师特别强调哪些关键处'] },
+    { keywords: ['带业往生', '业障', '忏悔', '罪业'], questions: ['带业往生的边界在哪里，法师原文怎样开示', '业障深重的人应怎样忏悔并安住在佛号上'] },
+    { keywords: ['临终', '助念', '往生'], questions: ['临终助念最重要的准备是什么，能继续引用原文吗', '关于临终正念，法师还有哪些相关开示'] },
+    { keywords: ['一心不乱', '功夫', '念佛', '持名'], questions: ['一心不乱到底指什么，文库原文怎么讲', '持名念佛时，应怎样理解功夫成片与一心不乱'] },
+    { keywords: ['极乐', '阿弥陀佛', '四十八愿', '愿'], questions: ['阿弥陀佛四十八愿里，和这个问题最相关的是哪几愿', '关于极乐世界依正庄严，法师有哪些直接开示'] },
+    { keywords: ['回向', '发心', '出离心', '菩提心'], questions: ['回向发愿心应怎样建立，法师原文有哪些提醒', '真实出离心和求生净土之间是什么关系'] },
+    { keywords: ['在家', '工作', '家庭', '居士'], questions: ['在家居士忙碌时，法师建议怎样安排日常念佛', '面对家庭和工作牵缠，净土行人应怎样保持不退'] },
+];
 
 export function normalizeHistoryMessages(history, options = {}) {
     const { maxItems = 4, maxChars = 300 } = options;
@@ -32,18 +45,24 @@ export function buildRagSystemPrompt(context) {
 做法：
 1. 从资料中选出 2-3 段与问题最相关的原文
 2. 用 > 完整引用每段原文（不要改写、不要截断、不要拼接不同段落）
-3. 每段引用后标注出处
+3. 每段引用后必须标注唯一资料编号与出处
 4. 引用之间可以用一句话简短过渡
 
 禁止：
 - 不要用自己的话解释或复述原文
 - 不要加入"我认为""可以理解为""总之""综上"等主观表述
 - 不要编造资料中没有的内容
+- 不要引用未提供资料编号的内容
 - 如果资料中没有相关内容，直接说明
 
 引用格式：
 > "直接复制资料中的原文段落"
 ——资料N，出处名称
+
+强制要求：
+- 每一段引用只能对应一个资料编号
+- 如果用了两段原文，就必须出现两个明确的“资料N”标记
+- 回答中出现的“资料N”必须能在下方资料列表里找到
 
 ${context}`;
 }
@@ -105,6 +124,47 @@ function deriveQuestionTopic(question) {
     return cleaned.slice(0, 18);
 }
 
+function deriveDocTopic(doc = {}) {
+    const title = String(doc.title || '').trim();
+    const series = String(doc.series_name || '').trim();
+    let topic = title
+        .replace(series, '')
+        .replace(/[《》〈〉【】「」『』]/g, '')
+        .replace(/第[一二三四五六七八九十百千万0-9]+讲/g, '')
+        .replace(/[（(].*?[)）]/g, '')
+        .replace(/[：:]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    if (!topic && doc.snippet) {
+        topic = String(doc.snippet).slice(0, 16).replace(/\s+/g, ' ').trim();
+    }
+    return topic.slice(0, 16);
+}
+
+function pushUniqueFollowUp(list, seen, question) {
+    const value = String(question || '').trim();
+    if (!value || seen.has(value)) return;
+    seen.add(value);
+    list.push(value);
+}
+
+function buildKnowledgePoolFollowUps(question, docs = []) {
+    const haystack = `${question} ${docs.map(doc => `${doc.title || ''} ${doc.series_name || ''} ${doc.snippet || ''}`).join(' ')}`;
+    const followUps = [];
+    const seen = new Set();
+
+    for (const item of PURELAND_FOLLOWUP_POOL) {
+        if (!item.keywords.some(keyword => haystack.includes(keyword))) continue;
+        for (const value of item.questions) {
+            pushUniqueFollowUp(followUps, seen, value);
+            if (followUps.length >= 3) return followUps;
+        }
+    }
+
+    return followUps;
+}
+
 export function buildFallbackFollowUps(question, options = {}) {
     const { noResult = false } = options;
     if (noResult) {
@@ -117,7 +177,7 @@ export function buildFallbackFollowUps(question, options = {}) {
     const topic = deriveQuestionTopic(question);
     return [
         topic ? `${topic}在修行中怎么落实` : '这段开示的重点是什么',
-        '能引用更多相关原文吗',
+        '能继续引用相关原文吗',
     ];
 }
 
@@ -127,24 +187,40 @@ export function buildSourceFollowUps(docs = [], currentQuestion = '') {
     const seen = new Set();
     const currentClean = currentQuestion.replace(/[？?。，！\s]/g, '').slice(0, 20);
 
+    for (const value of buildKnowledgePoolFollowUps(currentQuestion, docs)) {
+        pushUniqueFollowUp(followUps, seen, value);
+        if (followUps.length >= 3) return followUps;
+    }
+
     for (const doc of docs) {
         if (followUps.length >= 3) break;
         const title = (doc.title || '').trim();
-        if (!title || title.length < 3) continue;
+        const topic = deriveDocTopic(doc);
+        if (!title || title.length < 3 || !topic) continue;
         // 跳过和当前问题太相似的
         const titleClean = title.replace(/[（）()第一二三四五六七八九十讲\s]/g, '');
         if (seen.has(titleClean) || currentClean.includes(titleClean.slice(0, 6))) continue;
         seen.add(titleClean);
 
-        // 用文档标题生成自然的问题
         const series = doc.series_name || '';
-        const q = series && !title.includes(series)
-            ? `${series}中关于「${title}」讲了什么`
-            : `「${title}」的核心内容是什么`;
-        followUps.push(q);
+        const questions = series && !title.includes(series)
+            ? [
+                `${series}里关于「${topic}」还有哪些原文开示`,
+                `净土百问里有没有和「${topic}」相近的问题`,
+            ]
+            : [
+                `关于「${topic}」，还能继续引用哪些原文`,
+                `「${topic}」在净土百问里通常会怎样发问`,
+            ];
+        for (const value of questions) {
+            pushUniqueFollowUp(followUps, seen, value);
+            if (followUps.length >= 3) break;
+        }
     }
 
     if (!followUps.length) {
+        const poolFollowUps = buildKnowledgePoolFollowUps(currentQuestion);
+        if (poolFollowUps.length) return poolFollowUps;
         return buildFallbackFollowUps(currentQuestion);
     }
     return followUps;
