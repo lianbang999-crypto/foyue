@@ -231,20 +231,8 @@ function wireEvents() {
     previewCloseBtn?.addEventListener('click', previewController.closePreview);
     previewBody?.addEventListener('click', previewController.handleBodyClick);
 
-    // 推荐问题点击（事件委托）
+    // 来源标签 → 打开预览
     chatArea.addEventListener('click', (e) => {
-        const chip = e.target.closest('.ai-suggest-chip');
-        if (chip) {
-            const text = chip.dataset.question
-                || chip.querySelector('.ai-suggest-text')?.textContent.trim()
-                || chip.textContent.trim();
-            chatInput.value = text;
-            btnSend.disabled = false;
-            handleSubmit();
-            return;
-        }
-
-        // 来源标签 → 打开预览
         const tag = e.target.closest('.ai-source-tag');
         if (tag) {
             e.preventDefault();
@@ -407,8 +395,6 @@ async function handleSubmit(options = {}) {
     // 移除欢迎内容
     const welcome = chatArea.querySelector('.ai-welcome');
     if (welcome) welcome.remove();
-    const suggestions = chatArea.querySelector('.ai-suggestions');
-    if (suggestions) suggestions.remove();
 
     _lastQuestion = question;
     const conv = ensureActiveConv();
