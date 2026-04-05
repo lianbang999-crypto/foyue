@@ -59,8 +59,8 @@ function pickRandomQuestions(n = 4) {
 export function buildWelcomeHTML() {
     const greeting = getGreeting();
     const questions = pickRandomQuestions(4);
-        const chips = questions.map(item =>
-                `<button class="ai-suggest-chip ai-suggest-card" data-source="${escapeHtml(item.source)}" data-question="${escapeHtml(item.question)}">
+    const chips = questions.map(item =>
+        `<button class="ai-suggest-chip ai-suggest-card" data-source="${escapeHtml(item.source)}" data-question="${escapeHtml(item.question)}">
                         <span class="ai-suggest-source">${escapeHtml(item.source)}</span>
                         <span class="ai-suggest-text">${escapeHtml(item.question)}</span>
                         <span class="ai-chip-arrow">›</span>
@@ -299,6 +299,11 @@ export function extractFollowUps(text) {
     const cleanText = text.replace(/\[FOLLOWUP\].*?\[\/FOLLOWUP\]/s, '').trim();
     const followUps = match[1].split('|').map(q => q.trim()).filter(q => q.length > 0 && q.length < 100);
     return { cleanText, followUps };
+}
+
+// 仅清理 FOLLOWUP 标签，不解析内容
+export function stripFollowUpTags(text) {
+    return String(text || '').replace(/\[FOLLOWUP\][\s\S]*?(?:\[\/FOLLOWUP\]|$)/s, '').trim();
 }
 
 export function extractHighlightQuery(question) {

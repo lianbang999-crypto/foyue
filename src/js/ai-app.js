@@ -6,9 +6,9 @@ import { createAiConversationStore } from './ai-conversations.js';
 import {
     buildWelcomeHTML,
     escapeHtml,
-    extractFollowUps,
     extractHighlightQuery,
     formatAnswer,
+    stripFollowUpTags,
 } from './ai-format.js';
 import { createAiPreviewController } from './ai-preview.js';
 import { getWenkuDocument } from './wenku-api.js';
@@ -298,13 +298,6 @@ function wireEvents() {
             if (action === 'copy') {
                 const text = msgEl.querySelector('.ai-message-content')?.innerText || '';
                 _aiCopy(text, '已复制');
-            } else if (action === 'regen' && !isLoading) {
-                handleRegenerate(msgEl);
-            } else if (action === 'good' || action === 'bad') {
-                actionBtn.classList.toggle('active');
-                // 反对按钮互斥
-                const sibling = action === 'good' ? 'bad' : 'good';
-                msgEl.querySelector(`.ai-action-btn[data-action="${sibling}"]`)?.classList.remove('active');
             }
             return;
         }
@@ -470,12 +463,9 @@ async function handleSubmit(options = {}) {
 
         // 完成：格式化 HTML
         textEl.classList.remove('ai-streaming');
-        const { cleanText, followUps } = extractFollowUps(fullText);
+        const cleanText = stripFollowUpTags(fullText);
         const answerText = String(finalData.answer || cleanText || '').trim()
             || '抱歉，AI 暂时无法生成回答。';
-        const finalFollowUps = Array.isArray(finalData.followUps) && finalData.followUps.length
-            ? finalData.followUps
-            : followUps;
         textEl.innerHTML = formatAnswer(answerText);
 
         const renderedSources = attachSourcePreviewQuery(finalData.sources, question);
@@ -484,31 +474,13 @@ async function handleSubmit(options = {}) {
         if (renderedSources.length) {
             const sourceHeading = document.createElement('div');
             sourceHeading.className = 'ai-source-heading';
-            sourceHeading.textContent = '出处 · 打开文库原文';
+            sourceHeading.textContent = '引用出处';
             msgContent.appendChild(sourceHeading);
 
             const srcDiv = document.createElement('div');
             srcDiv.className = 'ai-sources';
             srcDiv.innerHTML = renderedSources.map(s => renderSourceTag(s)).join(' ');
             msgContent.appendChild(srcDiv);
-        }
-
-        // 追问建议
-        if (finalFollowUps.length > 0) {
-            const wrap = document.createElement('div');
-            wrap.className = 'ai-followups';
-            finalFollowUps.forEach(q => {
-                const chip = document.createElement('button');
-                chip.className = 'ai-suggest-chip';
-                chip.textContent = q;
-                chip.addEventListener('click', () => {
-                    chatInput.value = q;
-                    btnSend.disabled = false;
-                    handleSubmit();
-                });
-                wrap.appendChild(chip);
-            });
-            msgContent.appendChild(wrap);
         }
 
         // 添加操作栏 + 时间
@@ -539,8 +511,7 @@ async function handleSubmit(options = {}) {
         // 用户主动停止：保留已生成内容并格式化
         if (isAborted && textEl && fullText.trim()) {
             textEl.classList.remove('ai-streaming');
-            const { cleanText } = extractFollowUps(fullText);
-            const partialText = cleanText.trim();
+            const partialText = stripFollowUpTags(fullText).trim();
             textEl.innerHTML = formatAnswer(partialText);
             const parentMsg = textEl.closest('.ai-message');
             if (parentMsg) {
@@ -630,7 +601,7 @@ function addMessage(role, content, sources, disclaimer, silent, messageIndex, so
         if (sources?.length) {
             const sourceHeading = document.createElement('div');
             sourceHeading.className = 'ai-source-heading';
-            sourceHeading.textContent = '出处 · 打开文库原文';
+            sourceHeading.textContent = '引用出处';
             contentEl.appendChild(sourceHeading);
 
             const srcDiv = document.createElement('div');
@@ -654,36 +625,6 @@ function addMessage(role, content, sources, disclaimer, silent, messageIndex, so
 
     chatArea.appendChild(msg);
     if (!silent) scrollToBottom();
-}
-
-/* --- 重新生成上一条 AI 回复 --- */
-function handleRegenerate(msgEl) {
-    const conv = getActiveConv();
-    if (!conv?.messages?.length) return;
-
-    const latestAssistantIndex = conv.messages.length - 1;
-    if (latestAssistantIndex < 0 || conv.messages[latestAssistantIndex]?.role !== 'assistant') {
-        showAiToast('当前没有可重新生成的回答');
-        return;
-    }
-
-    const targetIndex = Number.parseInt(msgEl?.dataset?.messageIndex || '', 10);
-    if (!Number.isInteger(targetIndex) || targetIndex !== latestAssistantIndex) {
-        showAiToast('仅支持重新生成最后一条回答');
-        return;
-    }
-
-    const questionMsg = conv.messages.slice(0, latestAssistantIndex).reverse().find(item => item.role === 'user');
-    const question = questionMsg?.content?.trim();
-    if (!question) return;
-
-    conv.messages.splice(latestAssistantIndex, 1);
-    conv.updatedAt = Date.now();
-    saveConversations();
-    renderWelcomeOrHistory();
-    renderConvList();
-
-    handleSubmit({ question, skipUserMessage: true });
 }
 
 function addErrorMessage(errText, question) {
@@ -732,20 +673,19 @@ function renderSourceTag(s, fallbackQuery = '') {
         const rawQuery = String(s.preview_query || fallbackQuery || extractHighlightQuery(_lastQuestion) || '').trim();
         const queryAttr = rawQuery ? ` data-query="${escapeHtml(rawQuery)}"` : '';
         const snippetAttr = s.snippet ? ` data-snippet="${snippet}"` : '';
-        // 有摘要时显示引用卡片，否则显示简洁标签
+        // 简洁来源卡片：标题 + 查看原文链接
         if (snippet) {
             return `<button class="ai-source-card" data-doc-id="${escapeHtml(s.doc_id)}"${queryAttr}${snippetAttr}>
                 <span class="ai-source-card-title">${title}</span>
                 <span class="ai-source-card-snippet">${snippet}</span>
                 <span class="ai-source-card-meta">
-                    <span class="ai-source-card-action">查看文库原文</span>
-                    <span class="ai-source-card-arrow" aria-hidden="true">›</span>
+                    <span class="ai-source-card-action">查看文库原文 →</span>
                 </span>
             </button>`;
         }
-        return `<button class="ai-source-tag" data-doc-id="${escapeHtml(s.doc_id)}"${queryAttr}${snippetAttr}>出处 · ${title}</button>`;
+        return `<button class="ai-source-tag" data-doc-id="${escapeHtml(s.doc_id)}"${queryAttr}${snippetAttr}>${title} · 查看原文</button>`;
     }
-    return `<span class="ai-source-tag">出处 · ${title}</span>`;
+    return `<span class="ai-source-tag">${title}</span>`;
 }
 
 function loadAiContext() {
@@ -806,29 +746,12 @@ function buildMsgActions() {
     const bar = document.createElement('div');
     bar.className = 'ai-msg-actions';
     bar.innerHTML = `
-      <button class="ai-action-btn" data-action="copy" aria-label="复制" title="复制">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <button class="ai-action-btn" data-action="copy" aria-label="复制" title="复制回答">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
           <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
         </svg>
-      </button>
-      <button class="ai-action-btn" data-action="regen" aria-label="重新生成" title="重新生成">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="23 4 23 10 17 10"/>
-          <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
-        </svg>
-      </button>
-      <button class="ai-action-btn" data-action="good" aria-label="有帮助" title="有帮助">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/>
-          <path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/>
-        </svg>
-      </button>
-      <button class="ai-action-btn" data-action="bad" aria-label="不准确" title="不准确">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M10 15V19a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3H10z"/>
-          <path d="M17 2h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17"/>
-        </svg>
+        <span class="ai-action-label">复制</span>
       </button>`;
     return bar;
 }

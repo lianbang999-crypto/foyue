@@ -227,42 +227,20 @@ export function buildSourceFollowUps(docs = [], currentQuestion = '') {
 }
 
 export function normalizeAiAnswerContract(rawText, question, options = {}) {
-    const { forceNoResult = false, docs = [] } = options;
+    const { forceNoResult = false } = options;
     const source = String(rawText || '').trim();
-    // 仍然清理模型可能残留的 FOLLOWUP 标签
-    const followupMatch = source.match(FOLLOWUP_BLOCK_RE);
+    // 清理模型可能残留的 FOLLOWUP 标签
     const body = source.replace(FOLLOWUP_BLOCK_RE, '').replace(/\n{3,}/g, '\n\n').trim();
     const noResult = forceNoResult || !body;
     const answer = noResult ? AI_NO_RESULT_ANSWER : body;
 
-    // 优先使用知识库文档标题生成推荐问题
-    let followUps = [];
-    if (docs.length > 0) {
-        followUps = buildSourceFollowUps(docs, question);
-    }
-
-    // 兜底：解析模型生成的（如果有）
-    if (followUps.length === 0 && followupMatch) {
-        const parsedFollowUps = (followupMatch?.[1] || '')
-            .split('|')
-            .map(item => item.trim())
-            .filter(item => item && item.length < 100);
-        for (const item of parsedFollowUps) {
-            if (FOLLOWUP_PLACEHOLDER_RE.test(item)) continue;
-            if (!followUps.includes(item)) followUps.push(item);
-            if (followUps.length >= 3) break;
-        }
-    }
-
-    // 最终兜底
-    if (followUps.length === 0) {
-        followUps = buildFallbackFollowUps(question, { noResult });
-    }
+    // 追问功能已移除，返回空数组
+    const followUps = [];
 
     return {
         answer,
         followUps,
-        serialized: `${answer}\n[FOLLOWUP]${followUps.join('|')}[/FOLLOWUP]`,
+        serialized: answer,
         noResult,
     };
 }
