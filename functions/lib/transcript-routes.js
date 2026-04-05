@@ -1,9 +1,4 @@
-import {
-  AI_CONFIG,
-  GATEWAY_PROFILES,
-  extractAIResponse,
-  timingSafeCompare,
-} from './ai-utils.js';
+import { AI_CONFIG, GATEWAY_PROFILES, extractAIResponse, runAIWithLogging, timingSafeCompare, resolveAIModel } from './ai-utils.js';
 
 export async function handleTranscriptAvailability(db, seriesId, cors, json) {
   if (!seriesId || typeof seriesId !== 'string') {
@@ -200,7 +195,7 @@ export async function handleAutoMatchTranscripts(env, request, cors, json) {
            AND title LIKE '%第%讲%'
            AND type = 'transcript'`
       ).bind(ws.series_name).run();
-    } catch {}
+    } catch { }
 
     try {
       const result = await db.prepare(
@@ -237,7 +232,7 @@ export async function handleIncrementalTranscribe(env, request, cors, json) {
   }
 
   let body = {};
-  try { body = await request.json(); } catch {}
+  try { body = await request.json(); } catch { }
   const batchLimit = Math.min(body.limit || 3, 10);
   const db = env.DB;
 
@@ -279,7 +274,7 @@ export async function handleIncrementalTranscribe(env, request, cors, json) {
 
       const audioBuffer = await audioResponse.arrayBuffer();
       const transcription = await env.AI.run(
-        AI_CONFIG.models.whisper,
+        resolveAIModel(env, 'whisper'),
         { audio: [...new Uint8Array(audioBuffer)] },
         { gateway: GATEWAY_PROFILES.whisper }
       );
@@ -403,15 +398,17 @@ export async function handleGenerateChapters(env, request, cors, json) {
   ];
 
   let response;
+  const chatModel = resolveAIModel(env, 'chat');
+  const fallbackChatModel = resolveAIModel(env, 'chatFallback');
   try {
     response = await env.AI.run(
-      AI_CONFIG.models.chat,
+      chatModel,
       { messages, max_tokens: 500, temperature: 0.3 },
       { gateway: GATEWAY_PROFILES.ragChat }
     );
   } catch {
     response = await env.AI.run(
-      AI_CONFIG.models.chatFallback,
+      fallbackChatModel,
       { messages, max_tokens: 500, temperature: 0.3 },
       { gateway: GATEWAY_PROFILES.ragChat }
     );

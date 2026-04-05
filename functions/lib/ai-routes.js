@@ -14,6 +14,7 @@ import {
   extractAIResponse,
   stripThinkTags,
   runAIWithLogging,
+  resolveAIModel,
 } from './ai-utils.js';
 import {
   AI_EMPTY_ANSWER,
@@ -405,6 +406,8 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
 
   const keywords = extractSearchKeywords(askInput.question);
   const sources = buildSourceList(matches, docs, keywords);
+  const chatModel = resolveAIModel(env, 'chat');
+  const fallbackChatModel = resolveAIModel(env, 'chatFallback');
   const messages = buildRAGMessages(askInput.question, docs, {
     history: askInput.history,
     vectorMatches: matches,
@@ -414,7 +417,7 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
   try {
     aiStream = await runAIWithLogging(
       env,
-      AI_CONFIG.models.chat,
+      chatModel,
       { messages, max_tokens: 500, temperature: 0.2, stream: true },
       GATEWAY_PROFILES.ragStream,
       'ragStream',
@@ -425,7 +428,7 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
     try {
       aiStream = await runAIWithLogging(
         env,
-        AI_CONFIG.models.chatFallback,
+        fallbackChatModel,
         { messages, max_tokens: 500, temperature: 0.2, stream: true },
         GATEWAY_PROFILES.ragStream,
         'ragStream',
@@ -570,7 +573,7 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
         try {
           const fallbackResult = await runAIWithLogging(
             env,
-            AI_CONFIG.models.chat,
+            chatModel,
             { messages, max_tokens: 500, temperature: 0.2 },
             GATEWAY_PROFILES.ragChat,
             'ragChat',
@@ -586,7 +589,7 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
           try {
             const fallback2 = await runAIWithLogging(
               env,
-              AI_CONFIG.models.chatFallback,
+              fallbackChatModel,
               { messages, max_tokens: 500, temperature: 0.2 },
               GATEWAY_PROFILES.ragChat,
               'ragChat',
@@ -707,7 +710,7 @@ export async function handleAiSummary(env, documentId, request, cors, ctx, json)
   await env.DB.prepare(
     `INSERT OR REPLACE INTO ai_summaries (document_id, summary, model)
      VALUES (?, ?, ?)`
-  ).bind(summaryKey, summary, AI_CONFIG.models.chat).run();
+  ).bind(summaryKey, summary, resolveAIModel(env, 'chat')).run();
 
   return json({
     summary,
@@ -862,12 +865,14 @@ async function getEpisodeContext(db, seriesId, episodeNum) {
 
 async function generateRecommendIntros(env, episodes, contexts, ctx) {
   const messages = buildRecommendMessages(episodes, contexts);
+  const chatModel = resolveAIModel(env, 'chat');
+  const fallbackChatModel = resolveAIModel(env, 'chatFallback');
 
   let response;
   try {
     response = await runAIWithLogging(
       env,
-      AI_CONFIG.models.chat,
+      chatModel,
       { messages, max_tokens: 500, temperature: 0.6 },
       GATEWAY_PROFILES.recommend,
       'recommend',
@@ -877,7 +882,7 @@ async function generateRecommendIntros(env, episodes, contexts, ctx) {
     console.warn('[DailyRec] Primary model failed, trying fallback:', err.message);
     response = await runAIWithLogging(
       env,
-      AI_CONFIG.models.chatFallback,
+      fallbackChatModel,
       { messages, max_tokens: 500, temperature: 0.6 },
       GATEWAY_PROFILES.recommend,
       'recommend',
@@ -961,7 +966,7 @@ export async function handleDailyRecommend(env, cors, ctx, json) {
       `UPDATE ai_daily_recommendations
        SET recommendations = ?, model = ?, generation_ms = ?, status = 'ready'
        WHERE date_key = ?`
-    ).bind(JSON.stringify(recommendations), AI_CONFIG.models.chat, genMs, dateKey).run();
+    ).bind(JSON.stringify(recommendations), resolveAIModel(env, 'chat'), genMs, dateKey).run();
 
     // 非阻塞清理过期限流记录
     if (ctx?.waitUntil) ctx.waitUntil(cleanupRateLimits(env));
@@ -1011,7 +1016,7 @@ export async function handleVoiceToText(env, request, cors, json) {
   try {
     const result = await runAIWithLogging(
       env,
-      AI_CONFIG.models.whisper,
+      resolveAIModel(env, 'whisper'),
       { audio: new Uint8Array(audioBuffer) },
       GATEWAY_PROFILES.whisper,
       'voice_to_text',

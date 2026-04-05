@@ -367,6 +367,11 @@ function renderDiag(el) {
       <label class="adm-form-label">测试问题</label>
       <input class="adm-input" id="diag-chat-q" value="请用一句话解释什么是净土宗。">
     </div>
+    <div class="adm-form-group">
+      <label class="adm-form-label">模型 ID</label>
+      <input class="adm-input" id="diag-chat-model" placeholder="留空使用当前后台配置，例如 @cf/google/gemma-3-12b-it">
+      <div class="adm-text-muted" style="margin-top:6px">后台可通过 AI_CHAT_MODEL / AI_CHAT_FALLBACK_MODEL 切换默认模型，这里可临时试跑候选模型</div>
+    </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="adm-btn adm-btn-sm" id="diag-chat-run">运行测试</button>
     </div>
@@ -377,11 +382,13 @@ function renderDiag(el) {
     const btn = document.getElementById('diag-chat-run');
     const resultEl = document.getElementById('result-diag-chat');
     const q = document.getElementById('diag-chat-q').value;
+    const model = document.getElementById('diag-chat-model').value.trim();
     btn.disabled = true;
     resultEl.style.display = 'block';
     resultEl.textContent = '测试中...';
     try {
-      const data = await api.get('/test-chat?q=' + encodeURIComponent(q));
+      const modelQuery = model ? '&model=' + encodeURIComponent(model) : '';
+      const data = await api.get('/test-chat?q=' + encodeURIComponent(q) + modelQuery);
       resultEl.textContent = JSON.stringify(data, null, 2);
     } catch (err) {
       resultEl.textContent = '错误: ' + err.message;

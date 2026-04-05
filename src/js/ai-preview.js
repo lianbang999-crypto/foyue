@@ -4,6 +4,14 @@ function buildWenkuUrl(docId, query) {
     return `/wenku?doc=${encodeURIComponent(docId)}${query ? `&q=${encodeURIComponent(query)}` : ''}`;
 }
 
+function persistAiSnippet(snippet) {
+    try {
+        const value = String(snippet || '').trim();
+        if (value) sessionStorage.setItem('wenku-ai-snippet', value);
+        else sessionStorage.removeItem('wenku-ai-snippet');
+    } catch { /* 忽略 sessionStorage 失败 */ }
+}
+
 function buildPreviewMeta(doc) {
     const parts = [];
     if (doc.series_name) parts.push(doc.series_name);
@@ -162,11 +170,17 @@ export function createAiPreviewController(options) {
         docId: '',
         query: '',
         title: '',
+        sourceSnippet: '',
         excerpt: [],
         activeIndex: 0,
         matchIndex: -1,
         hasMatch: false,
     };
+
+    function getActiveSnippet() {
+        const current = previewState.excerpt?.[previewState.activeIndex];
+        return String(previewState.sourceSnippet || current?.text || current?.focusText || '').trim();
+    }
 
     let inputAreaResizeObserver = null;
 
@@ -218,33 +232,43 @@ export function createAiPreviewController(options) {
             : previewState.activeIndex < (previewState.matchIndex >= 0 ? previewState.matchIndex : 1)
                 ? '前文'
                 : '后文';
+        const displayIndex = previewState.activeIndex + 1;
+        const displayTotal = excerpt.length;
+        const focusText = current.focusText || current.text || '';
 
         previewBody.innerHTML = `
             <div class="ai-preview-summary">
-                <span class="ai-preview-badge">${hasMatch ? '相关原文' : '相关内容'}</span>
-                <p class="ai-preview-tip">${hasMatch ? '已为你找到相关原文。' : '先为你展示相关内容。'}</p>
+                <span class="ai-preview-badge">${hasMatch ? '已命中问句' : '文段预览'}</span>
+                <span class="ai-preview-tip">${hasMatch ? '已定位到与当前提问最接近的原文位置。' : '未找到直接命中词，展示文稿开头相关段落。'}</span>
             </div>
-            <div class="ai-preview-quote-card">
-                <div class="ai-preview-quote-head">
-                    <span class="ai-preview-quote-kicker">${sectionLabel}</span>
-                    <span class="ai-preview-quote-index">${previewState.activeIndex + 1} / ${excerpt.length}</span>
-                </div>
-                ${current.focusText ? `<blockquote class="ai-preview-focusquote">${renderHighlightedParagraph(current.focusText, current.terms)}</blockquote>` : ''}
-                <div class="ai-preview-excerpt">
+            <div class="ai-preview-excerpt">
+                <article class="ai-preview-quote-card">
+                    <div class="ai-preview-quote-head">
+                        <span class="ai-preview-quote-kicker">${sectionLabel}</span>
+                        <span class="ai-preview-quote-index">${displayIndex} / ${displayTotal}</span>
+                    </div>
+                    <blockquote class="ai-preview-focusquote">${renderHighlightedParagraph(focusText, current.terms)}</blockquote>
                     <p>${renderHighlightedParagraph(current.text, current.terms)}</p>
-                </div>
+                </article>
             </div>
-            <div class="ai-preview-nav">
-                <button class="ai-preview-nav-btn" data-preview-action="prev" ${canPrev ? '' : 'disabled'}>上一段</button>
-                ${hasMatch ? `<button class="ai-preview-nav-btn ai-preview-nav-btn--accent" data-preview-action="focus" ${current.isMatch ? 'disabled' : ''}>回到相关片段</button>` : ''}
-                <button class="ai-preview-nav-btn" data-preview-action="next" ${canNext ? '' : 'disabled'}>下一段</button>
+            <div class="ai-preview-foot">
+                <div class="ai-preview-nav">
+                    <button type="button" class="ai-preview-nav-btn" data-preview-action="prev" ${canPrev ? '' : 'disabled'}>上一段</button>
+                    <button type="button" class="ai-preview-nav-btn ai-preview-nav-btn--accent" data-preview-action="focus" ${hasMatch ? '' : 'disabled'}>定位命中</button>
+                    <button type="button" class="ai-preview-nav-btn" data-preview-action="next" ${canNext ? '' : 'disabled'}>下一段</button>
+                </div>
             </div>`;
 
         previewBody.scrollTop = 0;
     }
 
-    async function openPreview(docId, query, fallbackTitle = '') {
+    previewOpenBtn?.addEventListener('click', () => {
+        persistAiSnippet(getActiveSnippet());
+    });
+
+    async function openPreview(docId, query, fallbackTitle = '', sourceSnippet = '') {
         if (!previewDrawer || !previewBody || !previewOpenBtn) {
+            persistAiSnippet(sourceSnippet);
             window.location.href = buildWenkuUrl(docId, query);
             return;
         }
@@ -256,6 +280,7 @@ export function createAiPreviewController(options) {
         previewState.docId = docId;
         previewState.query = query || '';
         previewState.title = fallbackTitle || '';
+        previewState.sourceSnippet = sourceSnippet || '';
         previewState.excerpt = [];
         previewState.activeIndex = 0;
         previewState.matchIndex = -1;

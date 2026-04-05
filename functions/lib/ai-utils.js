@@ -39,6 +39,21 @@ export const AI_CONFIG = {
   },
 };
 
+const AI_MODEL_ENV_KEYS = {
+  embedding: 'AI_EMBEDDING_MODEL',
+  chat: 'AI_CHAT_MODEL',
+  chatFallback: 'AI_CHAT_FALLBACK_MODEL',
+  whisper: 'AI_WHISPER_MODEL',
+};
+
+export function resolveAIModel(env, modelKey) {
+  const envKey = AI_MODEL_ENV_KEYS[modelKey];
+  const configured = envKey && typeof env?.[envKey] === 'string'
+    ? env[envKey].trim()
+    : '';
+  return configured || AI_CONFIG.models[modelKey];
+}
+
 // ============================================================
 // AI Gateway 分场景配置 — 按调用类型区分缓存策略
 // ============================================================
@@ -215,7 +230,7 @@ export async function generateEmbeddings(env, texts, options = {}) {
   const { gatewayProfile = 'embedding', ctx = null } = options;
   const response = await runAIWithLogging(
     env,
-    AI_CONFIG.models.embedding,
+    resolveAIModel(env, 'embedding'),
     { text: texts },
     GATEWAY_PROFILES[gatewayProfile] || GATEWAY_PROFILES.embedding,
     gatewayProfile,
@@ -376,12 +391,14 @@ export function stripThinkTags(text) {
 export async function ragAnswer(env, question, contextDocs, options = {}) {
   const { history = [], vectorMatches = [], ctx = null } = options;
   const messages = buildRAGMessages(question, contextDocs, { history, vectorMatches });
+  const chatModel = resolveAIModel(env, 'chat');
+  const fallbackChatModel = resolveAIModel(env, 'chatFallback');
 
   let response;
   try {
     response = await runAIWithLogging(
       env,
-      AI_CONFIG.models.chat,
+      chatModel,
       {
         messages,
         max_tokens: 500,
@@ -395,7 +412,7 @@ export async function ragAnswer(env, question, contextDocs, options = {}) {
     console.warn('Primary chat model failed, using fallback:', err.message);
     response = await runAIWithLogging(
       env,
-      AI_CONFIG.models.chatFallback,
+      fallbackChatModel,
       {
         messages,
         max_tokens: 500,
@@ -457,12 +474,14 @@ export async function generateSummary(env, title, content, options = {}) {
   const { ctx = null } = options;
   const truncated = content.slice(0, 6000);
   const messages = buildSummaryMessages(title, truncated);
+  const chatModel = resolveAIModel(env, 'chat');
+  const fallbackChatModel = resolveAIModel(env, 'chatFallback');
 
   let response;
   try {
     response = await runAIWithLogging(
       env,
-      AI_CONFIG.models.chat,
+      chatModel,
       { messages, max_tokens: 300, temperature: 0.2 },
       GATEWAY_PROFILES.summary,
       'summary',
@@ -472,7 +491,7 @@ export async function generateSummary(env, title, content, options = {}) {
     console.warn('Summary primary model failed, using fallback:', err.message);
     response = await runAIWithLogging(
       env,
-      AI_CONFIG.models.chatFallback,
+      fallbackChatModel,
       { messages, max_tokens: 300, temperature: 0.2 },
       GATEWAY_PROFILES.summary,
       'summary',

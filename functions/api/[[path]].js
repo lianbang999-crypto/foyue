@@ -6,7 +6,7 @@
 import {
   AI_CONFIG, GATEWAY_PROFILES, chunkText, generateEmbeddings,
   checkRateLimit, cleanupRateLimits, timingSafeCompare,
-  extractAIResponse, stripThinkTags, getAICallStats, runAIWithLogging,
+  extractAIResponse, stripThinkTags, getAICallStats, runAIWithLogging, resolveAIModel,
 } from '../lib/ai-utils.js';
 import { buildAudioUrl } from '../lib/audio-utils.js';
 import {
@@ -390,7 +390,8 @@ export async function onRequest(context) {
           if (!doc) return json({ error: 'No documents found' }, cors);
           const chunks = chunkText(doc.content, doc.id, { title: doc.title });
           const firstChunk = chunks[0];
-          const resp = await runAIWithLogging(env, AI_CONFIG.models.embedding, { text: [firstChunk.text] }, GATEWAY_PROFILES.diagnostic, 'diagnostic', context);
+          const embeddingModel = resolveAIModel(env, 'embedding');
+          const resp = await runAIWithLogging(env, embeddingModel, { text: [firstChunk.text] }, GATEWAY_PROFILES.diagnostic, 'diagnostic', context);
           return json({
             success: true,
             docId: doc.id,
@@ -403,10 +404,11 @@ export async function onRequest(context) {
         }
         // mode=simple: 简单文本测试
         const testText = '南无阿弥陀佛';
-        const resp = await runAIWithLogging(env, AI_CONFIG.models.embedding, { text: [testText] }, GATEWAY_PROFILES.diagnostic, 'diagnostic', context);
+        const embeddingModel = resolveAIModel(env, 'embedding');
+        const resp = await runAIWithLogging(env, embeddingModel, { text: [testText] }, GATEWAY_PROFILES.diagnostic, 'diagnostic', context);
         return json({
           success: true,
-          model: '@cf/baai/bge-m3',
+          model: embeddingModel,
           inputText: testText,
           dimensions: resp.data?.[0]?.length || 'unknown',
           firstValues: resp.data?.[0]?.slice(0, 5) || null,
@@ -421,7 +423,7 @@ export async function onRequest(context) {
       const authErr = requireAdmin();
       if (authErr) return authErr;
       const testPrompt = url.searchParams.get('q') || '请用一句话解释什么是净土宗。';
-      const model = url.searchParams.get('model') || AI_CONFIG.models.chat;
+      const model = url.searchParams.get('model') || resolveAIModel(env, 'chat');
       try {
         const rawResponse = await runAIWithLogging(
           env,
