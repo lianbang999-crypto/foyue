@@ -142,7 +142,6 @@ function setupInputAreaResizeSync() {
 }
 
 function setupVisualViewportSync() {
-    // iOS 上直接改容器高度容易触发页面被顶到顶部；这里只在 Android 上跟随 viewport 改高度。
     if (!window.visualViewport) return;
 
     const app = document.getElementById('ai-app');
@@ -158,11 +157,11 @@ function setupVisualViewportSync() {
             const vv = window.visualViewport;
             const keyboardHeight = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
 
+            // iOS + Android 统一：跟随 visualViewport 调整容器高度
+            app.style.setProperty('--ai-app-height', `${Math.round(vv.height)}px`);
             if (isAndroid()) {
-                app.style.setProperty('--ai-app-height', `${Math.round(vv.height)}px`);
                 app.style.transform = `translateY(${vv.offsetTop}px)`;
             } else {
-                app.style.removeProperty('--ai-app-height');
                 app.style.transform = '';
             }
 
@@ -171,7 +170,7 @@ function setupVisualViewportSync() {
             if (document.activeElement === chatInput && keyboardHeight > 40) {
                 setTimeout(() => {
                     scrollToBottom();
-                }, isAndroid() ? 80 : 140);
+                }, isAndroid() ? 80 : 60);
             }
         });
     };
@@ -245,16 +244,15 @@ function wireEvents() {
             return;
         }
 
-        // 来源标签/卡片 → 打开预览
-        const tag = e.target.closest('.ai-source-tag, .ai-source-card');
+        // 来源标签 → 打开预览
+        const tag = e.target.closest('.ai-source-tag');
         if (tag) {
             e.preventDefault();
             const docId = tag.dataset.docId;
             const query = tag.dataset.query || _lastQuestion;
             const snippet = tag.dataset.snippet || '';
             if (docId) {
-                const titleEl = tag.querySelector('.ai-source-card-title');
-                const title = titleEl ? titleEl.textContent.trim() : tag.textContent.trim();
+                const title = tag.textContent.trim();
                 previewController.openPreview(docId, query, title, snippet);
             }
             return;
@@ -668,22 +666,11 @@ function removeTyping() {
 /* --- 来源引用卡片渲染 --- */
 function renderSourceTag(s, fallbackQuery = '') {
     const title = escapeHtml(s.title);
-    const snippet = escapeHtml(s.snippet || '');
     if (s.doc_id) {
         const rawQuery = String(s.preview_query || fallbackQuery || extractHighlightQuery(_lastQuestion) || '').trim();
         const queryAttr = rawQuery ? ` data-query="${escapeHtml(rawQuery)}"` : '';
-        const snippetAttr = s.snippet ? ` data-snippet="${snippet}"` : '';
-        // 简洁来源卡片：标题 + 查看原文链接
-        if (snippet) {
-            return `<button class="ai-source-card" data-doc-id="${escapeHtml(s.doc_id)}"${queryAttr}${snippetAttr}>
-                <span class="ai-source-card-title">${title}</span>
-                <span class="ai-source-card-snippet">${snippet}</span>
-                <span class="ai-source-card-meta">
-                    <span class="ai-source-card-action">查看文库原文 →</span>
-                </span>
-            </button>`;
-        }
-        return `<button class="ai-source-tag" data-doc-id="${escapeHtml(s.doc_id)}"${queryAttr}${snippetAttr}>${title} · 查看原文</button>`;
+        const snippetAttr = s.snippet ? ` data-snippet="${escapeHtml(s.snippet || '')}"` : '';
+        return `<button class="ai-source-tag" data-doc-id="${escapeHtml(s.doc_id)}"${queryAttr}${snippetAttr}>${title}</button>`;
     }
     return `<span class="ai-source-tag">${title}</span>`;
 }

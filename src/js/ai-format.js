@@ -169,7 +169,9 @@ function inlineFormat(text) {
 
 export function formatAnswer(text) {
     if (!text) return '';
-    const lines = text.split('\n');
+    // 剥离 "——资料N，出处名称" 类行（来源已独立展示，无需内联显示）
+    const cleaned = text.replace(/^[\u2014\u2500\-]{1,3}\s*资料\s*\d+[，,、\s].*$/gm, '');
+    const lines = cleaned.split('\n');
     let html = '';
     let inQuote = false;
     let inList = false;

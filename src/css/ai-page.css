@@ -501,8 +501,7 @@ body {
 /* 来源引用标签 */
 .ai-sources {
     display: flex;
-    flex-direction: column;
-    align-items: stretch;
+    flex-wrap: wrap;
     gap: 8px;
     margin-top: 16px;
     padding-top: 14px;
@@ -510,7 +509,8 @@ body {
 }
 
 .ai-source-heading {
-    margin-top: 16px;
+    width: 100%;
+    margin-bottom: 4px;
     font-size: var(--fs-caption);
     color: var(--ai-text-secondary);
     font-weight: 500;
@@ -533,63 +533,6 @@ body {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-}
-
-.ai-source-card {
-    appearance: none;
-    width: 100%;
-    border: 1px solid var(--ai-border);
-    border-radius: var(--ai-radius-sm);
-    background: var(--ai-bg-msg);
-    padding: 14px 16px;
-    text-align: left;
-    cursor: pointer;
-    transition: border-color 0.2s ease, background 0.2s ease;
-    box-shadow: none;
-}
-
-.ai-source-card:hover {
-    border-color: var(--ai-accent);
-    background: var(--ai-accent-light);
-}
-
-.ai-source-card:active {
-    transform: scale(0.99);
-}
-
-.ai-source-card-title {
-    display: block;
-    font-size: var(--fs-body);
-    font-weight: 600;
-    line-height: 1.55;
-    color: var(--ai-text);
-}
-
-.ai-source-card-snippet {
-    display: block;
-    margin-top: 8px;
-    font-size: var(--fs-small);
-    line-height: 1.75;
-    color: var(--ai-text-secondary);
-}
-
-.ai-source-card-meta {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    margin-top: 10px;
-}
-
-.ai-source-card-action {
-    font-size: var(--fs-caption);
-    font-weight: 600;
-    color: var(--ai-accent);
-}
-
-.ai-source-card-arrow {
-    font-size: 18px;
-    color: var(--ai-text-muted);
 }
 
 .ai-source-tag::before {
@@ -711,12 +654,10 @@ body {
 /* --- 输入区域 --- */
 .ai-input-area {
     flex-shrink: 0;
-    padding: 12px 16px;
-    padding-bottom: calc(12px + var(--ai-safe-bottom));
-    background: linear-gradient(180deg, rgba(247, 245, 240, 0), color-mix(in srgb, var(--ai-bg) 94%, transparent 6%) 22%, color-mix(in srgb, var(--ai-bg) 98%, transparent 2%) 100%);
-    border-top: 1px solid color-mix(in srgb, var(--ai-border) 72%, transparent 28%);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+    padding: 8px 12px;
+    padding-bottom: calc(8px + var(--ai-safe-bottom));
+    background: var(--ai-bg);
+    border-top: 1px solid var(--ai-border);
     position: relative;
     z-index: 10;
 }
@@ -725,17 +666,15 @@ body {
     display: flex;
     align-items: flex-end;
     gap: 8px;
-    background: color-mix(in srgb, var(--ai-bg-msg) 95%, transparent 5%);
-    border: 1px solid color-mix(in srgb, var(--ai-border) 88%, transparent 12%);
-    border-radius: 22px;
-    padding: 10px 10px 10px 16px;
-    box-shadow: var(--ai-shadow-sm);
-    transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+    background: var(--ai-bg-msg);
+    border: 1px solid var(--ai-border);
+    border-radius: 20px;
+    padding: 6px 6px 6px 16px;
+    transition: border-color 0.15s ease;
 }
 
 .ai-input-wrap:focus-within {
     border-color: var(--ai-accent);
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--ai-accent-light) 80%, transparent 20%);
 }
 
 .ai-input {
@@ -743,15 +682,15 @@ body {
     appearance: none;
     border: none;
     background: transparent;
-    font-size: 17px;
-    line-height: 1.65;
+    font-size: 16px;
+    line-height: 1.5;
     color: var(--ai-text);
     resize: none;
     outline: none;
-    max-height: 144px;
-    min-height: 32px;
+    max-height: 120px;
+    min-height: 28px;
     font-family: var(--ai-font-zh);
-    padding: 8px 0;
+    padding: 6px 0;
 }
 
 .ai-input::placeholder {
@@ -761,8 +700,8 @@ body {
 .ai-send-btn {
     appearance: none;
     flex-shrink: 0;
-    width: 44px;
-    height: 44px;
+    width: 36px;
+    height: 36px;
     border: none;
     border-radius: 50%;
     background: var(--ai-accent);
@@ -771,13 +710,12 @@ body {
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: opacity 0.2s, transform 0.15s;
-    box-shadow: 0 8px 18px color-mix(in srgb, var(--ai-accent) 26%, transparent);
+    transition: opacity 0.15s, transform 0.1s;
 }
 
 .ai-send-btn:disabled {
-    opacity: 0.3;
-    cursor: default;
+    opacity: 0;
+    pointer-events: none;
 }
 
 .ai-send-btn.hidden {
@@ -844,8 +782,8 @@ body {
 .ai-stop-btn {
     appearance: none;
     flex-shrink: 0;
-    width: 44px;
-    height: 44px;
+    width: 36px;
+    height: 36px;
     border: none;
     border-radius: 50%;
     background: var(--ai-accent);
@@ -854,7 +792,7 @@ body {
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: opacity 0.2s, transform 0.15s;
+    transition: opacity 0.15s, transform 0.1s;
 }
 
 .ai-stop-btn:hover {
@@ -1640,13 +1578,9 @@ body {
     background: rgba(232, 228, 222, 0.08);
 }
 
-/* --- 输入区 meta --- */
+/* --- 输入区 meta（隐藏，微信风格简洁） --- */
 .ai-input-meta {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 8px 4px 0;
+    display: none;
 }
 
 .ai-input-meta .ai-disclaimer-footer {
@@ -1698,8 +1632,8 @@ body {
     }
 
     .ai-input-area {
-        padding: 16px 24px;
-        padding-bottom: calc(16px + var(--ai-safe-bottom));
+        padding: 10px 24px;
+        padding-bottom: calc(10px + var(--ai-safe-bottom));
     }
 
     .ai-welcome {
@@ -1732,11 +1666,7 @@ body {
     }
 
     .ai-input-area {
-        padding-top: 10px;
-    }
-
-    .ai-input-meta {
-        align-items: flex-start;
+        padding-top: 8px;
     }
 }
 
@@ -1756,14 +1686,6 @@ body {
 
     .ai-suggestions-list {
         max-width: 100%;
-    }
-
-    .ai-source-card {
-        padding: 12px 13px;
-    }
-
-    .ai-source-card-snippet {
-        font-size: 0.8125rem;
     }
 }
 

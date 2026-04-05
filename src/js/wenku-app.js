@@ -1,7 +1,6 @@
 /* ===== 法音文库 独立页面入口 ===== */
 import '../css/wenku-page.css';
 import { getWenkuSeries, getWenkuDocuments, getWenkuDocument, searchWenku, recordWenkuRead } from './wenku-api.js';
-import { getEpisodeSummary } from './ai-client.js';
 import { initTheme } from './theme.js';
 
 /* --- 常量 --- */
@@ -264,140 +263,6 @@ function getSeriesResumeState(seriesName, documents) {
     return { docId: documents[0]?.id || '', mode: 'start', bookmark: null };
 }
 
-function normalizeIntroText(text) {
-    if (!text) return '';
-    return text
-        .replace(/\s+/g, ' ')
-        .replace(/[。！？；\s]*$/, '')
-        .trim();
-}
-
-function truncateSummary(text, maxLength = 88) {
-    const normalized = normalizeIntroText(text);
-    if (!normalized) return '';
-    if (normalized.length <= maxLength) return normalized;
-    return `${normalized.slice(0, maxLength).trim()}…`;
-}
-
-function getBookSummaryPreviewDocs(documents, resumeState) {
-    const picks = [];
-    const seen = new Set();
-    const pushDoc = (doc) => {
-        if (!doc?.id || seen.has(doc.id)) return;
-        seen.add(doc.id);
-        picks.push(doc);
-    };
-
-    const resumeIndex = documents.findIndex(doc => doc.id === resumeState.docId);
-    if (resumeIndex >= 0) {
-        pushDoc(documents[Math.max(0, resumeIndex - 1)]);
-        pushDoc(documents[resumeIndex]);
-        pushDoc(documents[Math.min(documents.length - 1, resumeIndex + 1)]);
-    }
-
-    documents.slice(0, 3).forEach(pushDoc);
-    return picks.slice(0, 3);
-}
-
-function getBookSummaryHydrationDocs(documents, resumeState) {
-    const previewDocs = getBookSummaryPreviewDocs(documents, resumeState);
-    const seen = new Set(previewDocs.map(doc => doc.id));
-    const picks = [...previewDocs];
-    for (const doc of documents.slice(0, 6)) {
-        if (seen.has(doc.id)) continue;
-        seen.add(doc.id);
-        picks.push(doc);
-    }
-    return picks.slice(0, 6);
-}
-
-function buildBookIntroState(documents, resumeState) {
-    const total = documents.length;
-    const lead = resumeState.mode === 'continue'
-        ? '先看你当前这讲和前后讲次的摘要，再决定是继续往下读，还是回头补看。'
-        : resumeState.mode === 'restart'
-            ? '这本书你已经读过，先扫一眼各讲摘要，再决定是否从头重读。'
-            : '先看每讲摘要，再决定从哪一讲进入，会比直接点进正文更不容易迷路。';
-
-    return {
-        kicker: '本书摘要 · 按讲查看',
-        lead,
-        tail: buildReadingHint(total, resumeState),
-    };
-}
-
-function renderBookSummaryCards(documents, resumeDocId) {
-    if (!documents.length) return '';
-    return documents.map((doc) => {
-        const summary = truncateSummary(doc.summary, 92);
-        const pending = !summary;
-        return `
-            <button class="wk-book-summary-card" type="button" data-action="book-sheet-read" data-doc="${esc(doc.id)}">
-                <div class="wk-book-summary-card-kicker">第 ${doc.episode_num || '?'} 讲${doc.id === resumeDocId ? ' · 当前阅读' : ''}</div>
-                <div class="wk-book-summary-card-title">${esc(doc.title || `第${doc.episode_num || '?'}讲`)}</div>
-                <p class="wk-book-summary-card-copy ${pending ? 'is-pending' : ''}" data-summary-doc="${esc(doc.id)}" data-summary-mode="card">${esc(summary || '正在整理本讲摘要…')}</p>
-            </button>`;
-    }).join('');
-}
-
-function renderDocSummary(doc, shouldHydrate) {
-    const summary = truncateSummary(doc.summary, 68);
-    if (!summary && !shouldHydrate) return '';
-    return `<div class="wk-doc-summary ${summary ? '' : 'is-pending'}" data-summary-doc="${esc(doc.id)}" data-summary-mode="list">${esc(summary || '正在整理本讲摘要…')}</div>`;
-}
-
-function updateSummaryNodes(scope, docId, summary) {
-    scope.querySelectorAll(`[data-summary-doc="${CSS.escape(docId)}"]`).forEach((node) => {
-        const text = truncateSummary(summary, node.dataset.summaryMode === 'card' ? 92 : 68);
-        node.textContent = text || '本讲摘要暂未生成，可先打开正文阅读。';
-        node.classList.toggle('is-pending', !text);
-    });
-}
-
-async function hydrateBookSheetSummaries(body, sheet, documents, resumeState, token) {
-    const targets = getBookSummaryHydrationDocs(documents, resumeState);
-    const missing = targets.filter(doc => !normalizeIntroText(doc.summary));
-
-    for (const doc of documents) {
-        if (normalizeIntroText(doc.summary)) updateSummaryNodes(body, doc.id, doc.summary);
-    }
-
-    if (!missing.length) return;
-
-    const resolved = await Promise.all(missing.map(async (doc) => {
-        try {
-            const data = await getEpisodeSummary(doc.id);
-            return { id: doc.id, summary: normalizeIntroText(data?.summary || '') };
-        } catch {
-            return { id: doc.id, summary: '' };
-        }
-    }));
-
-    if (!sheet.classList.contains('open') || sheet.dataset.seriesSummaryToken !== token) return;
-
-    for (const item of resolved) {
-        const doc = documents.find(entry => entry.id === item.id);
-        if (doc) doc.summary = item.summary;
-        updateSummaryNodes(body, item.id, item.summary);
-    }
-}
-
-function buildReadingHint(total, resumeState) {
-    if (resumeState.mode === 'continue') {
-        return total === 1
-            ? '你上次已经读到中途，这次接着读最顺。'
-            : '你之前已经读到一半，这次可以直接回到上次的位置；如果想重新理一遍，也可以先从目录换到别的讲次。';
-    }
-    if (resumeState.mode === 'restart') {
-        return total === 1
-            ? '这一篇你之前已经读过，想再看一遍就直接重新开始。'
-            : '这本书你之前已经读过，若想重新进入，直接从第 1 讲开始会更自然。';
-        if (introKickerEl) introKickerEl.textContent = introState.kicker;
-        introLeadEl.textContent = introState.lead;
-        introTailEl.textContent = introState.tail;
-    }
-}
-
 function ensureBookSheet() {
     if (_bookSheetEl) return _bookSheetEl;
     const el = document.createElement('div');
@@ -505,11 +370,8 @@ async function openBookSheet(seriesName) {
     const ctaMeta = resumeState.mode === 'continue'
         ? `上次读到 ${getDisplayPercent(resumeBookmark?.percent || 0)}%`
         : resumeState.mode === 'restart'
-            ? `已读过这本书，从第 1 讲重新开始`
-            : `从第 1 讲开始，共 ${documents.length} 讲`;
-    const introState = buildBookIntroState(documents, resumeState);
-    const summaryPreviewDocs = getBookSummaryPreviewDocs(documents, resumeState);
-    const hydrationDocs = new Set(getBookSummaryHydrationDocs(documents, resumeState).map(doc => doc.id));
+            ? `已读过，从第 1 讲开始`
+            : `共 ${documents.length} 讲`;
 
     let html = `
             <div class="wk-book-sheet-head">
@@ -521,19 +383,10 @@ async function openBookSheet(seriesName) {
                 <div class="wk-book-sheet-mark">${esc(seriesName.charAt(0))}</div>
                 <div class="wk-book-sheet-title">${esc(seriesName)}</div>
                 <div class="wk-book-sheet-meta">共 ${documents.length} 讲${readCount > 0 ? ` · 已读 ${readCount}/${documents.length}` : ''}</div>
-                <div class="wk-book-sheet-intro">
-                    <div class="wk-book-sheet-intro-kicker" data-role="book-sheet-intro-kicker">${esc(introState.kicker)}</div>
-                    <p class="wk-book-sheet-intro-lead" data-role="book-sheet-intro-lead">${esc(introState.lead)}</p>
-                    <p class="wk-book-sheet-intro-tail" data-role="book-sheet-intro-tail">${esc(introState.tail)}</p>
-                </div>
                 <button class="wk-book-sheet-primary" type="button" data-action="book-sheet-read" data-doc="${esc(resumeDocId)}">
                     <span>${ctaText}</span>
                     <span class="wk-book-sheet-primary-meta">${esc(ctaMeta)}</span>
                 </button>
-            </div>
-            <div class="wk-book-sheet-section">先看这几讲</div>
-            <div class="wk-book-summary-grid">
-                ${renderBookSummaryCards(summaryPreviewDocs, resumeDocId)}
             </div>
             <div class="wk-book-sheet-section">本书目录</div>
             <div class="wk-doc-list wk-book-sheet-list">`;
@@ -552,7 +405,6 @@ async function openBookSheet(seriesName) {
                         <div class="wk-doc-num-circle" style="${doc.id === resumeDocId ? `background:${color};color:#fff` : ''}">${idx + 1}</div>
                         <div class="wk-doc-info">
                             <div class="wk-doc-title">${esc(doc.title)}</div>
-                            ${renderDocSummary(doc, hydrationDocs.has(doc.id))}
                         </div>
                         ${badge}
                     </button>`;
@@ -560,7 +412,6 @@ async function openBookSheet(seriesName) {
 
     html += '</div>';
     body.innerHTML = html;
-    void hydrateBookSheetSummaries(body, sheet, documents, resumeState, summaryToken);
 
     // 自动滚动到当前阅读位置
     if (resumeDocId) {
@@ -634,28 +485,15 @@ async function renderHome(skipPush) {
 
     let html = '';
     const recents = getRecentBookmarks(3);
-        const sorted = [...data.series].sort((a, b) => {
-                const tsA = getSeriesLatestTs(a.series_name);
-                const tsB = getSeriesLatestTs(b.series_name);
-                if (tsA && !tsB) return -1;
-                if (!tsA && tsB) return 1;
-                return (tsB || 0) - (tsA || 0);
-        });
-        const starterSeries = sorted
-                .filter(item => getSeriesReadCount(item.series_name) === 0)
-                .sort((a, b) => a.count - b.count)
-                .slice(0, 3);
+    const sorted = [...data.series].sort((a, b) => {
+        const tsA = getSeriesLatestTs(a.series_name);
+        const tsB = getSeriesLatestTs(b.series_name);
+        if (tsA && !tsB) return -1;
+        if (!tsA && tsB) return 1;
+        return (tsB || 0) - (tsA || 0);
+    });
 
     html += `
-            <section class="wk-home-hero">
-                <p class="wk-home-hero-kicker">法音文库</p>
-                <h1 class="wk-home-hero-title">先搜问题，再读原文</h1>
-                <p class="wk-home-hero-copy">可以直接搜你关心的问题，也可以先打开一本到目录，先看每讲摘要，再进入正文。</p>
-                <div class="wk-home-hero-actions">
-                    <button class="wk-home-hero-btn" data-action="focus-search">搜索问题</button>
-                    <button class="wk-home-hero-btn wk-home-hero-btn--ghost" data-action="jump-series">浏览讲记</button>
-                </div>
-            </section>
       <div class="wk-home-search">
         <svg class="wk-home-search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input class="wk-home-search-input" id="wkHomeSearch" type="search" placeholder="搜索讲记内容..." enterkeyhint="search" autocomplete="off">
@@ -679,19 +517,6 @@ async function renderHome(skipPush) {
                 <div class="wk-home-continue-side">${recentPercent}%</div>
             </div>`;
         });
-    }
-
-    if (starterSeries.length > 0) {
-        html += `<div class="wk-section-label">适合先读</div><div class="wk-starter-grid">`;
-        starterSeries.forEach((series) => {
-            html += `
-                <button class="wk-starter-card" type="button" data-action="book" data-series="${esc(series.series_name)}">
-                    <span class="wk-starter-kicker">讲次较少，适合先熟悉文库</span>
-                    <span class="wk-starter-title">${esc(series.series_name)}</span>
-                    <span class="wk-starter-meta">${series.count} 讲 · 先看摘要再决定从哪一讲开始</span>
-                </button>`;
-        });
-        html += '</div>';
     }
 
     html += `<div class="wk-section-label" id="wkSeriesSection">大安法师讲记 · ${data.series.length} 部</div>`;
@@ -800,8 +625,6 @@ function handleContentClick(e) {
     const action = el.dataset.action;
     if (action === 'book') openBookSheet(el.dataset.series);
     else if (action === 'read') openReader(el.dataset.doc, el.dataset.query);
-    else if (action === 'focus-search') document.getElementById('wkHomeSearch')?.focus();
-    else if (action === 'jump-series') document.getElementById('wkSeriesSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 /* ================================================================
