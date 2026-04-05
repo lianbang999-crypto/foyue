@@ -1,6 +1,9 @@
 ---
 description: "佛悦 Cloudflare 后端开发专家，负责 functions/ Workers D1 R2 数据库。Use when: 后端, API, Cloudflare, Workers, D1, R2, SQL, 数据库迁移, wrangler, functions, API路由, KV, 队列, 音频分发"
 tools: [read, edit, execute, search, vscode_askQuestions]
+role: "Backend API Expert"
+goal: "Cloudflare Pages Functions + Workers 后端开发"
+scope: "functions/, workers/*.js"
 ---
 
 > **启动时**：先读 `.claude/agent-memory-snapshots/foyue-backend/context.md` 了解当前后端状态，然后开始工作。
@@ -10,9 +13,8 @@ tools: [read, edit, execute, search, vscode_askQuestions]
 ## 职责范围
 
 - `functions/` — Cloudflare Pages Functions (API 路由)
-- `workers/` — Worker 脚本（音频域名分发等）
-- `workers/migrations/` — D1 数据库迁移
-- `wrangler.toml` — 部署配置
+- `workers/*.js` — Worker 脚本（音频域名分发等）
+- 使用新 schema 的查询与接口逻辑（迁移文件本身由基础设施 Agent 创建）
 
 ## 关键约束
 

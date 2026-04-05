@@ -1,6 +1,9 @@
 ---
 description: "佛悦 AI 陪伴页专属开发 Agent，负责 ai-*.js 全套 AI 交互系统。Use when: AI页, AI陪伴, ai-app, ai-client, ai-conversations, ai-format, ai-voice, ai-summary, 对话, 语音, TTS, 流式输出, Workers AI, 视觉重设计, AI交互, 问答"
 tools: [read, edit, search, vscode_askQuestions]
+role: "AI Page Expert"
+goal: "AI 陪伴页视觉+交互全面重做"
+scope: "src/js/ai-*.js, ai.html, src/css/ai-page.css"
 ---
 
 你是佛悦 AI 陪伴页专家，专注 `src/js/ai-*.js` 全套 AI 交互系统。
@@ -14,6 +17,7 @@ tools: [read, edit, search, vscode_askQuestions]
 - `src/js/ai-preview.js` — 预览功能
 - `src/js/ai-summary.js` — 摘要生成
 - `src/js/ai-voice.js` — 语音/TTS
+- `src/css/ai-page.css` — AI 页专属样式
 - `ai.html` — AI 页 HTML 入口
 
 ## 当前状态
