@@ -11,8 +11,8 @@
 // ============================================================
 const SEGMENT_MAX_LEN = 6000;     // Google AI（Gemma4）上下文充足，可用大段落提升质量
 const SEGMENT_OVERLAP = 200;      // 段落间重叠，防止有效信息被截断
-const MAX_DOCS_PER_RUN = 30;      // 每次 Cron 最多处理几篇（加速批量学习期间）
-const MAX_SEGMENTS_PER_RUN = 200;  // 每次 Cron 最多处理几个段落（兜底防超时）
+const MAX_DOCS_PER_RUN = 15;      // 每次 Cron 最多处理几篇（受 Google AI 15 RPM 限制）
+const MAX_SEGMENTS_PER_RUN = 120;  // 每次 Cron 最多处理几个段落（~120×4.5s≈9分钟）
 const AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
 // ============================================================
@@ -99,7 +99,7 @@ function findPos(q, src) {
 
 /**
  * 调用 Google AI Studio 接口（Gemma4 等免费模型）
- * 需在 Worker 中设置 GOOGLE_AI_KEY secret
+ * 免费额度 15 RPM，需限速
  */
 async function callGoogleAI(apiKey, model, promptObj) {
     const sysMsg = promptObj.messages.find(m => m.role === 'system');
@@ -114,24 +114,48 @@ async function callGoogleAI(apiKey, model, promptObj) {
     if (sysMsg) body.system_instruction = { parts: [{ text: sysMsg.content }] };
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-    const r = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(60000),
-    });
-    const d = await r.json();
-    if (d.error) throw new Error(`Google AI: ${d.error.message}`);
-    return d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    // 最多重试 2 次（429 Rate Limit）
+    for (let attempt = 0; attempt < 3; attempt++) {
+        const r = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(60000),
+        });
+
+        if (r.status === 429) {
+            // 速率受限：等 8 秒后重试
+            await new Promise(resolve => setTimeout(resolve, 8000));
+            continue;
+        }
+
+        const d = await r.json();
+        if (d.error) throw new Error(`Google AI: ${d.error.message}`);
+        return d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    }
+
+    throw new Error('Google AI: rate limit exceeded after retries');
 }
 
 /**
  * 统一 AI 调用入口：
  *   有 GOOGLE_AI_KEY → 走 Google AI Studio（Gemma4 等免费模型）
  *   无               → 走 Cloudflare Workers AI（默认）
+ * 
+ * Google AI 免费额度 15 RPM → 每次调用后至少等 4.5 秒
  */
+let _lastGoogleAICall = 0;
+const GOOGLE_AI_MIN_INTERVAL = 4500; // ms
+
 async function runAI(env, promptObj) {
     if (env.GOOGLE_AI_KEY) {
+        // 限速：确保两次 Google AI 调用间隔 >= 4.5 秒
+        const now = Date.now();
+        const wait = GOOGLE_AI_MIN_INTERVAL - (now - _lastGoogleAICall);
+        if (wait > 0) await new Promise(r => setTimeout(r, wait));
+        _lastGoogleAICall = Date.now();
+
         const model = env.GOOGLE_AI_MODEL || 'gemma-3-27b-it';
         return await callGoogleAI(env.GOOGLE_AI_KEY, model, promptObj);
     }
