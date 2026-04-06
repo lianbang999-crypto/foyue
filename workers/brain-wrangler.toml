@@ -24,10 +24,10 @@ WORKER_ENV = "production"
 # 可选：Google AI 模型名称（设置 GOOGLE_AI_KEY secret 后生效）
 # Cloudflare 上第一次启用 Gemma 接口只需执行：
 #   wrangler secret put GOOGLE_AI_KEY --config brain-wrangler.toml
-# Gemma 4 最强档（2026-04-04 刚发布）
+# Gemma 4 最强档：31B Dense（2026-04-04 发布）
 # 可选值：
-#   gemma-4-27b-it     → Gemma 4 最强，27B（当前配置）
-#   gemma-4-9b-it      → Gemma 4 中档，速度更快
-#   gemma-3-27b-it     → Gemma 3 最强（如 Gemma4 型号不对时降级到此）
-# 验证型号：在浏览器访问 aistudio.google.com → 模型下拉菜单确认
-GOOGLE_AI_MODEL = "gemma-4-27b-it"
+#   gemma-4-31b-it          → Gemma 4 最强，31B Dense（当前配置）
+#   gemma-4-27b-it          → 如果 31B ID 不对时降级到此
+#   gemma-3-27b-it          → 最稳定备用
+# 在 aistudio.google.com 的模型下拉可确认准确型号
+GOOGLE_AI_MODEL = "gemma-4-31b-it"
