@@ -37,8 +37,8 @@ function splitDocForLearning(content) {
         else breakPoint += 1; // 包含标点
 
         segments.push(text.slice(start, breakPoint).trim());
-        start = breakPoint - SEGMENT_OVERLAP;
-        if (start < 0) start = 0;
+        const nextStart = breakPoint - SEGMENT_OVERLAP;
+        start = nextStart > start ? nextStart : breakPoint;
     }
     return segments.filter(s => s.length > 50); // 过滤过短段落
 }
@@ -341,7 +341,17 @@ export async function handleBrainLearn(env, request, cors, json) {
         }
 
         // 处理一个段落
-        const result = await processOneSegment(doc, env);
+        let result;
+        try {
+            result = await processOneSegment(doc, env);
+        } catch (err) {
+            await db.prepare(
+                `UPDATE ai_learning_state
+                 SET status = 'failed', error = ?, updated_at = datetime('now')
+                 WHERE doc_id = ?`
+            ).bind(String(err.message || err).slice(0, 500), doc.id).run();
+            throw err;
+        }
 
         // 查询剩余
         const remaining = await db.prepare(
