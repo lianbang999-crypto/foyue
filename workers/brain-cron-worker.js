@@ -11,8 +11,8 @@
 // ============================================================
 const SEGMENT_MAX_LEN = 6000;     // Google AI（Gemma4）上下文充足，可用大段落提升质量
 const SEGMENT_OVERLAP = 200;      // 段落间重叠，防止有效信息被截断
-const MAX_DOCS_PER_RUN = 8;       // 每次 Cron 最多处理几篇
-const MAX_SEGMENTS_PER_RUN = 60;  // 每次 Cron 最多处理几个段落（兜底防超时）
+const MAX_DOCS_PER_RUN = 30;      // 每次 Cron 最多处理几篇（加速批量学习期间）
+const MAX_SEGMENTS_PER_RUN = 200;  // 每次 Cron 最多处理几个段落（兜底防超时）
 const AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
 // ============================================================
