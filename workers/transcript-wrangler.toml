@@ -1,0 +1,23 @@
+# Groq Whisper 音频转文字 Worker 配置
+
+name = "foyue-transcript-worker"
+main = "transcript-groq-worker.js"
+compatibility_date = "2025-01-01"
+
+# Cron 触发器：每3小时运行一次（14400s/天 ÷ 8次 ≈ 每次1800s预算，留余量取1200s）
+[triggers]
+crons = ["30 */3 * * *"]
+
+# D1 数据库（和 Pages / Brain Worker 共享同一个）
+[[d1_databases]]
+binding = "DB"
+database_name = "foyue-db"
+database_id = "be0b21ab-4549-45bc-ac38-5f9e1864d061"
+
+# 环境变量
+[vars]
+WORKER_ENV = "production"
+
+# Secrets（部署后设置）:
+#   wrangler secret put GROQ_API_KEY --config transcript-wrangler.toml
+#   wrangler secret put ADMIN_TOKEN --config transcript-wrangler.toml
