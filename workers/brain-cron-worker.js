@@ -157,7 +157,13 @@ async function runAI(env, promptObj) {
         _lastGoogleAICall = Date.now();
 
         const model = env.GOOGLE_AI_MODEL || 'gemma-3-27b-it';
-        return await callGoogleAI(env.GOOGLE_AI_KEY, model, promptObj);
+        try {
+            return await callGoogleAI(env.GOOGLE_AI_KEY, model, promptObj);
+        } catch (err) {
+            // Google AI 失败 → 降级到 Workers AI
+            console.log(`Google AI failed (${err.message}), falling back to Workers AI`);
+            return await env.AI.run(AI_MODEL, promptObj);
+        }
     }
     return await env.AI.run(AI_MODEL, promptObj);
 }
