@@ -85,7 +85,7 @@ export function askQuestionStream(question, options = {}, callbacks = {}) {
 
   (async () => {
     try {
-      const res = await fetch(`${AI_BASE}/ask/stream`, {
+      const res = await fetch(`${AI_BASE}/ask-stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
