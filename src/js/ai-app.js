@@ -1,7 +1,7 @@
 /* ===== 法音AI 独立页面入口 ===== */
 import '../css/ai-page.css';
 import { syncSystemTheme } from './theme.js';
-import { askQuestion } from './ai-client.js';
+import { askQuestionStream } from './ai-client.js';
 import { createAiConversationStore } from './ai-conversations.js';
 import {
     buildWelcomeHTML,
@@ -411,56 +411,111 @@ async function handleSubmit(options = {}) {
 
     showTyping();
 
-    try {
-        // 获取最近几轮对话作为上下文
-        const recentHistory = getChatHistory()
-            .filter(m => m.role === 'user' || (m.role === 'assistant' && m.content))
-            .slice(-6)
-            .map(m => ({ role: m.role, content: m.content || '' }));
+    // 获取最近几轮对话作为上下文
+    const recentHistory = getChatHistory()
+        .filter(m => m.role === 'user' || (m.role === 'assistant' && m.content))
+        .slice(-6)
+        .map(m => ({ role: m.role, content: m.content || '' }));
 
-        const data = await askQuestion(question, {
-            series_id: aiContext?.series_id,
-            episode_num: aiContext?.episodeNum,
-            history: recentHistory,
-        });
+    const streamOpts = {
+        series_id: aiContext?.series_id,
+        episode_num: aiContext?.episodeNum,
+        history: recentHistory,
+    };
 
+    // 流式渲染状态
+    let rawTokens = '';
+    let streamingEl = null;
+    let streamingContent = null;
+
+    function ensureStreamingMessage() {
+        if (streamingEl) return;
         removeTyping();
-
-        const sourcesWithQuery = attachSourcePreviewQuery(data.sources || [], question);
-        addMessage('bot', data.answer, sourcesWithQuery, data.disclaimer, false, conv.messages.length);
-
-        // 渲染后续追问建议
-        if (data.followUps?.length) {
-            const followUpEl = document.createElement('div');
-            followUpEl.className = 'ai-followups';
-            followUpEl.innerHTML = data.followUps.map(q =>
-                `<button class="ai-hot-tag" data-question="${escapeHtml(q)}">${escapeHtml(q)}</button>`
-            ).join('');
-            chatArea.appendChild(followUpEl);
-        }
-
-        scrollToBottom();
-
-        // 持久化
-        conv.messages.push({
-            role: 'assistant',
-            content: data.answer || '',
-            sources: sourcesWithQuery,
-            disclaimer: data.disclaimer,
-        });
-        trimConversationMessages(conv);
-        conv.updatedAt = Date.now();
-        saveConversations();
-        renderConvList();
-
-    } catch (err) {
-        removeTyping();
-        addErrorMessage(err.message || '回答失败，请稍后再试', question);
-    } finally {
-        isLoading = false;
-        setGeneratingUI(false);
-        if (!isMobile()) chatInput.focus();
+        streamingEl = document.createElement('div');
+        streamingEl.className = 'ai-message ai-message--bot ai-enter';
+        streamingContent = document.createElement('div');
+        streamingContent.className = 'ai-message-content ai-streaming';
+        streamingEl.appendChild(streamingContent);
+        chatArea.appendChild(streamingEl);
     }
+
+    askQuestionStream(question, streamOpts, {
+        onToken(token) {
+            ensureStreamingMessage();
+            rawTokens += token;
+            // 流式阶段：plain text + 光标
+            streamingContent.innerHTML = `<p>${escapeHtml(rawTokens)}<span class="ai-cursor">▋</span></p>`;
+            scrollToBottom();
+        },
+
+        onDone(data) {
+            // 移除流式元素，用完整渲染替换
+            if (streamingEl) {
+                streamingEl.remove();
+                streamingEl = null;
+            } else {
+                removeTyping();
+            }
+
+            const finalAnswer = data.answer || rawTokens || '';
+            const sourcesWithQuery = attachSourcePreviewQuery(data.sources || [], question);
+            addMessage('bot', finalAnswer, sourcesWithQuery, data.disclaimer, false, conv.messages.length);
+
+            // 追问建议
+            if (data.followUps?.length) {
+                const followUpEl = document.createElement('div');
+                followUpEl.className = 'ai-followups';
+                followUpEl.innerHTML = data.followUps.map(q =>
+                    `<button class="ai-hot-tag" data-question="${escapeHtml(q)}">${escapeHtml(q)}</button>`
+                ).join('');
+                chatArea.appendChild(followUpEl);
+            }
+
+            scrollToBottom();
+
+            // 持久化
+            conv.messages.push({
+                role: 'assistant',
+                content: finalAnswer,
+                sources: sourcesWithQuery,
+                disclaimer: data.disclaimer,
+            });
+            trimConversationMessages(conv);
+            conv.updatedAt = Date.now();
+            saveConversations();
+            renderConvList();
+
+            isLoading = false;
+            setGeneratingUI(false);
+            if (!isMobile()) chatInput.focus();
+        },
+
+        onError(err) {
+            if (streamingEl) {
+                streamingEl.remove();
+                streamingEl = null;
+            } else {
+                removeTyping();
+            }
+
+            // 如果已有 token，尝试用已有内容落地（网络中断场景）
+            if (rawTokens.trim()) {
+                const sourcesWithQuery = attachSourcePreviewQuery([], question);
+                addMessage('bot', rawTokens, sourcesWithQuery, null, false, conv.messages.length);
+                conv.messages.push({ role: 'assistant', content: rawTokens, sources: [] });
+                trimConversationMessages(conv);
+                conv.updatedAt = Date.now();
+                saveConversations();
+                renderConvList();
+            } else {
+                addErrorMessage(err.message || '回答失败，请稍后再试', question);
+            }
+
+            isLoading = false;
+            setGeneratingUI(false);
+            if (!isMobile()) chatInput.focus();
+        },
+    });
 }
 
 /* --- 消息渲染 --- */

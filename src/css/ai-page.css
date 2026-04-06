@@ -690,6 +690,22 @@ body {
     display: none;
 }
 
+/* 流式输出光标 */
+.ai-cursor {
+    display: inline-block;
+    width: 2px;
+    height: 1.1em;
+    background: var(--ai-accent);
+    margin-left: 1px;
+    vertical-align: text-bottom;
+    animation: ai-cursor-blink 0.8s step-end infinite;
+}
+
+@keyframes ai-cursor-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
 /* 打字指示器 */
 .ai-typing {
     display: flex;

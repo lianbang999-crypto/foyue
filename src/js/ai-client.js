@@ -72,22 +72,83 @@ export async function searchQuotes(question, options = {}) {
 }
 
 /**
- * 法音 AI 问答 — 基于讲记内容的 RAG 问答，返回 AI 生成回答 + 来源引用
+ * 法音 AI 问答（流式）— 逐 token 回调，done 时返回完整 sources/followUps
  * @param {string} question
  * @param {object} options - { series_id?, episode_num?, history? }
- * @returns {{ answer, followUps, sources, disclaimer }}
+ * @param {object} callbacks - { onToken(token), onDone({answer,sources,followUps,disclaimer}), onError(err) }
+ * @returns {AbortController} — 调用 .abort() 可取消
  */
-export async function askQuestion(question, options = {}) {
-  return aiFetch(`${AI_BASE}/ask`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      question,
-      series_id: options.series_id,
-      episode_num: options.episode_num,
-      history: options.history || [],
-    }),
-  });
+export function askQuestionStream(question, options = {}, callbacks = {}) {
+  const { onToken, onDone, onError } = callbacks;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT);
+
+  (async () => {
+    try {
+      const res = await fetch(`${AI_BASE}/ask/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question,
+          series_id: options.series_id,
+          episode_num: options.episode_num,
+          history: options.history || [],
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        let errMsg = `请求失败 (${res.status})`;
+        try { const d = await res.json(); errMsg = d.error || errMsg; } catch { }
+        throw new Error(errMsg);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let eventType = 'message';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) { eventType = 'message'; continue; }
+          if (trimmed.startsWith('event:')) {
+            eventType = trimmed.slice(6).trim();
+          } else if (trimmed.startsWith('data:')) {
+            const payload = trimmed.slice(5).trim();
+            if (!payload || payload === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(payload);
+              if (eventType === 'done') {
+                onDone?.(parsed);
+              } else if (parsed.error) {
+                onError?.(new Error(parsed.error));
+              } else if (parsed.token) {
+                onToken?.(parsed.token);
+              }
+            } catch { }
+            eventType = 'message';
+          }
+        }
+      }
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        onError?.(new Error(controller.signal.reason === 'timeout' ? '请求超时，请稍后再试' : '请求已取消'));
+      } else {
+        onError?.(err);
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  })();
+
+  return controller;
 }
 
 /**
