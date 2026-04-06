@@ -1070,6 +1070,8 @@ export function onEnded() {
   }
 
   if (state.loopMode === 'one') {
+    // 单曲循环改用原生 audio.loop，避免手动重播与 ghost/stall 检测冲突。
+    if (dom.audio.loop) return;
     _userPaused = false;
     dom.audio.currentTime = 0;
     setPlayState(true);
@@ -1275,6 +1277,11 @@ export function nextTrack() {
 /* ===== Loop Modes ===== */
 export function applyLoopUI() {
   const btn = document.getElementById('expLoop');
+  const dom = getDOM();
+  if (dom?.audio) {
+    dom.audio.loop = state.loopMode === 'one';
+  }
+  if (!btn) return;
   if (state.loopMode === 'one') {
     btn.innerHTML = SVG.loopOne;
     btn.classList.add('active');
