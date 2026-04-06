@@ -53,4 +53,65 @@ export default defineConfig({
       },
     },
   },
+  plugins: [
+    {
+      name: 'mock-search-quotes',
+      configureServer(server) {
+        server.middlewares.use('/api/ai/search-quotes', (req, res) => {
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({
+            audioResults: [
+              {
+                type: 'series',
+                series_id: 'amituo-jing',
+                title: '佛说阿弥陀经要解',
+                total_episodes: 24,
+                speaker: '大安法师',
+                category: '净土五经',
+              },
+              {
+                type: 'series',
+                series_id: 'nianfo-yuanli',
+                title: '念佛的原理与方法',
+                total_episodes: 12,
+                speaker: '大安法师',
+                category: '念佛开示',
+              },
+            ],
+            results: [
+              {
+                doc_id: 'mock-1',
+                title: '佛说阿弥陀经讲记',
+                series_name: '佛说阿弥陀经',
+                audio_series_id: 'amituo-jing',
+                audio_episode_num: 3,
+                snippet: '念佛的时候妄念纷飞，这是正常现象。不要怕妄念多，你只要把注意力放在这句佛号上，妄念自然就少了。就好比一间暗室，你不需要去扫除黑暗，只要把灯打开，黑暗自然就消失了。',
+                score: 0.92,
+              },
+              {
+                doc_id: 'mock-2',
+                title: '净土资粮信愿行',
+                series_name: '净土资粮',
+                audio_series_id: 'jingtu-ziliang',
+                audio_episode_num: 7,
+                snippet: '妄念来了不要压制它，也不要随它转。你就老老实实回到这句阿弥陀佛名号上来，这就叫"不怕念起，只怕觉迟"。觉察到妄念了，马上回来念佛，这就是功夫。',
+                score: 0.88,
+              },
+              {
+                doc_id: 'mock-3',
+                title: '印光法师文钞选读',
+                series_name: '印光法师文钞',
+                audio_series_id: '',
+                audio_episode_num: null,
+                snippet: '念佛时有妄想杂念，乃吾等凡夫之通病。但须不随妄转，摄心念佛。久之，妄念自息。十念记数法，最为摄心之妙法。',
+                score: 0.85,
+              },
+            ],
+            keywords: ['念佛', '妄念'],
+            disclaimer: '以上均为法师讲记原文摘录',
+          }));
+        });
+      },
+    },
+  ],
 });

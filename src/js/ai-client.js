@@ -58,105 +58,17 @@ async function aiFetch(url, options = {}) {
 }
 
 /**
- * AI 问答 — RAG 管线
+ * 法音智搜 — 搜索法师讲记原文片段
+ * @param {string} question
+ * @param {object} options - { series_id? }
+ * @returns {{ results: Array, keywords: string[], disclaimer: string }}
  */
-export async function askQuestion(question, context = {}) {
-  return aiFetch(`${AI_BASE}/ask`, {
+export async function searchQuotes(question, options = {}) {
+  return aiFetch(`${AI_BASE}/search-quotes`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question, ...context }),
+    body: JSON.stringify({ question, series_id: options.series_id }),
   });
-}
-
-/**
- * AI 问答 — SSE 流式输出
- * @param {string} question
- * @param {object} context - { history?, series_id? }
- * @param {function} onToken - 回调，每收到一个 token 调用: onToken(tokenStr)
- * @returns {Promise<{ sources, disclaimer, answer, followUps }>} 流结束后返回最终数据
- */
-export async function askQuestionStream(question, context = {}, onToken, options = {}) {
-  const abortCtx = createAbortContext(AI_TIMEOUT, options.signal);
-
-  try {
-    const res = await fetch(`${AI_BASE}/ask-stream`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question, ...context }),
-      signal: abortCtx.controller.signal,
-    });
-
-    // Non-SSE response means an error or non-stream fallback
-    if (!res.ok || !res.headers.get('content-type')?.includes('text/event-stream')) {
-      let data;
-      try { data = await res.json(); } catch { throw new Error('请求失败'); }
-      if (data.error) throw new Error(data.error);
-      // Fallback: non-stream response with full answer
-      if (data.answer && onToken) onToken(data.answer);
-      return {
-        sources: data.sources || [],
-        disclaimer: data.disclaimer || '',
-        answer: data.answer || '',
-        followUps: Array.isArray(data.followUps) ? data.followUps : [],
-      };
-    }
-
-    // Parse SSE stream
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let finalData = { sources: [], disclaimer: '', answer: '', followUps: [] };
-
-    // eventType 必须在 while 外声明，避免跨 chunk 时状态丢失
-    let eventType = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-
-      // Process complete SSE lines
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || ''; // Keep incomplete line in buffer
-
-      for (const line of lines) {
-        if (line.startsWith('event: ')) {
-          eventType = line.slice(7).trim();
-        } else if (line.startsWith('data: ')) {
-          const payload = line.slice(6);
-          try {
-            const parsed = JSON.parse(payload);
-            if (eventType === 'done') {
-              finalData = parsed;
-            } else if (eventType === 'error') {
-              throw new Error(parsed.error || 'Stream error');
-            } else if (parsed.answer !== undefined && parsed.sources !== undefined) {
-              // 兜底：即使 eventType 丢失，也能识别 done 事件结构
-              finalData = parsed;
-            } else {
-              // Default: token event
-              if (parsed.token && onToken) onToken(parsed.token);
-            }
-          } catch (e) {
-            if (e instanceof SyntaxError) {
-              // JSON parse error — skip malformed SSE data
-            } else {
-              throw e;
-            }
-          }
-          eventType = '';
-        } else if (line === '') {
-          eventType = '';
-        }
-      }
-    }
-
-    return finalData;
-  } catch (err) {
-    rethrowAbortError(err, abortCtx.didTimeout(), '请求超时，请稍后再试');
-    throw err;
-  } finally {
-    abortCtx.clear();
-  }
 }
 
 /**

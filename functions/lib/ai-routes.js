@@ -1204,3 +1204,154 @@ export async function handlePersonalizedRecommend(env, request, url, cors, json)
 
   return json({ recommendations }, cors, 200, 'private, max-age=3600');
 }
+
+// ============================================================
+// 法音智搜 — 搜索法师讲记原文片段（无 LLM 生成）
+// ============================================================
+export async function handleSearchQuotes(env, request, cors, ctx, json) {
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const limit = await checkRateLimit(env, ip, 'ai_search');
+  if (!limit.allowed) return json({ error: limit.reason }, cors, 429);
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'Invalid JSON' }, cors, 400);
+  }
+
+  const question = typeof body?.question === 'string' ? body.question.trim() : '';
+  if (!question || question.length > 500) {
+    return json({ error: '问题不能为空且不超过500字' }, cors, 400);
+  }
+
+  const seriesId = typeof body?.series_id === 'string' ? body.series_id.trim().slice(0, 100) : null;
+  const keywords = extractSearchKeywords(question);
+
+  // 0. 音频标题搜索（series + episodes）
+  let audioResults = [];
+  if (env?.DB && keywords.length > 0) {
+    try {
+      const likePatterns = keywords.slice(0, 3).map(k => `%${k}%`);
+      const whereClauses = likePatterns.map(() => 's.title LIKE ?').join(' OR ');
+      const sql = `SELECT s.id, s.title, s.total_episodes, s.speaker, c.name as category_name
+        FROM series s LEFT JOIN categories c ON s.category_id = c.id
+        WHERE ${whereClauses} ORDER BY s.play_count DESC LIMIT 5`;
+      const seriesRows = await env.DB.prepare(sql).bind(...likePatterns).all();
+      for (const row of (seriesRows.results || [])) {
+        audioResults.push({
+          type: 'series',
+          series_id: row.id,
+          title: row.title,
+          total_episodes: row.total_episodes,
+          speaker: row.speaker,
+          category: row.category_name || '',
+        });
+      }
+    } catch (err) {
+      console.warn('Audio title search failed:', err.message);
+    }
+  }
+
+  // 1. 语义搜索
+  let matches = [];
+  if (env?.VECTORIZE) {
+    try {
+      const filter = seriesId ? { audio_series_id: seriesId } : undefined;
+      matches = await semanticSearch(env, question, { topK: 8, filter, ctx });
+      if (!matches.length && seriesId) {
+        matches = await semanticSearch(env, question, { topK: 8, ctx });
+      }
+    } catch (err) {
+      console.warn('Vectorize search failed:', err.message);
+    }
+  }
+
+  // 2. 关键词搜索补充
+  let keywordDocs = [];
+  try {
+    keywordDocs = await keywordSearchDocs(env, question, { seriesId, limit: 8 });
+    if (!keywordDocs.length && seriesId) {
+      keywordDocs = await keywordSearchDocs(env, question, { seriesId: null, limit: 6 });
+    }
+  } catch (err) {
+    console.warn('Keyword search failed:', err.message);
+  }
+
+  // 3. 合并文档
+  let docs = await retrieveDocuments(env, matches);
+  docs = mergeDocs(docs, keywordDocs);
+
+  // 为关键词命中补充 pseudo match
+  for (const doc of keywordDocs.slice(0, 4)) {
+    matches = appendPseudoMatch(matches, doc, buildKeywordSnippet(doc.content, keywords), 0.56);
+  }
+
+  // 4. 重排序
+  if (matches.length >= 2) {
+    matches = await rerankResults(env, question, matches, { topK: 8, ctx });
+  }
+
+  // 5. 上下文扩展
+  if (matches.length > 0 && docs.length > 0) {
+    matches = expandContextFromDocs(matches, docs);
+  }
+
+  // 6. 构建搜索结果（去重、最多返回 5 条）
+  const seenDocIds = new Set();
+  const results = [];
+  for (const match of matches) {
+    const docId = match.metadata?.doc_id;
+    if (!docId || seenDocIds.has(docId)) continue;
+    seenDocIds.add(docId);
+
+    const doc = docs.find(d => d.id === docId);
+    if (!doc) continue;
+
+    const chunkText = (match.metadata?.text || '').replace(/\s+/g, ' ').trim();
+    const snippet = keywords.length > 0
+      ? buildKeywordSnippet(chunkText, keywords) || chunkText.slice(0, 400)
+      : chunkText.slice(0, 400);
+
+    results.push({
+      doc_id: docId,
+      title: doc.title || '',
+      series_name: doc.series_name || '',
+      category: doc.category || '',
+      audio_series_id: doc.audio_series_id || '',
+      audio_episode_num: doc.audio_episode_num || null,
+      snippet,
+      score: typeof match.score === 'number' ? Math.round(match.score * 100) / 100 : null,
+    });
+
+    if (results.length >= 5) break;
+  }
+
+  // 无语义结果时用关键词文档兜底
+  if (!results.length && keywordDocs.length) {
+    for (const doc of keywordDocs.slice(0, 5)) {
+      if (seenDocIds.has(doc.id)) continue;
+      seenDocIds.add(doc.id);
+      const snippet = keywords.length > 0
+        ? buildKeywordSnippet(doc.content || '', keywords) || (doc.content || '').slice(0, 400)
+        : (doc.content || '').slice(0, 400);
+      results.push({
+        doc_id: doc.id,
+        title: doc.title || '',
+        series_name: doc.series_name || '',
+        category: doc.category || '',
+        audio_series_id: doc.audio_series_id || '',
+        audio_episode_num: doc.audio_episode_num || null,
+        snippet,
+        score: null,
+      });
+    }
+  }
+
+  return json({
+    results,
+    audioResults,
+    keywords,
+    disclaimer: results.length ? '以上开示摘录均出自法师讲记原文' : '',
+  }, cors, 200, 'no-store');
+}

@@ -351,6 +351,14 @@ export function startStallWatch() {
     }
     const now = dom.audio.currentTime;
 
+    // 原生循环检测：currentTime 大幅回退表示循环重播，重置追踪状态
+    if (dom.audio.loop && now < lastTime - 5) {
+      lastTime = now;
+      resetGhostPlaybackTracking();
+      _ghostPlaybackLastPlayedEnd = 0;
+      return;
+    }
+
     // 原始卡顿检测：currentTime 完全不推进
     if (now === lastTime && !dom.audio.seeking) {
       clearStallWatch();
@@ -360,23 +368,27 @@ export function startStallWatch() {
 
     // ✅ iOS 幽灵播放检测：currentTime 在推进但 played 时间段没有延伸
     // 这表明音频解码器已停止工作，但浏览器仍认为在"播放中"
-    const currentPlayedEnd = getLastPlayedEnd(dom.audio);
-    if (now > lastTime + 1 && currentPlayedEnd < lastPlayedEnd + 0.5) {
-      _ghostSuspectCount++;
-      if (_ghostSuspectCount >= 2) {
-        // 连续两次检测窗口内 played 未推进 → 确认幽灵播放
-        console.warn('[Player] Ghost playback — currentTime:', now.toFixed(1),
-          'played.end:', currentPlayedEnd.toFixed(1));
-        clearStallWatch();
-        onGhostPlaybackDetected(currentPlayedEnd > 0 ? currentPlayedEnd : lastPlayedEnd);
-        return;
+    // ⚠️ 原生循环模式下跳过：played TimeRanges 是累积的，循环后 played.end
+    // 永远等于总时长不再增长，会导致误判
+    if (!dom.audio.loop) {
+      const currentPlayedEnd = getLastPlayedEnd(dom.audio);
+      if (now > lastTime + 1 && currentPlayedEnd < lastPlayedEnd + 0.5) {
+        _ghostSuspectCount++;
+        if (_ghostSuspectCount >= 2) {
+          // 连续两次检测窗口内 played 未推进 → 确认幽灵播放
+          console.warn('[Player] Ghost playback — currentTime:', now.toFixed(1),
+            'played.end:', currentPlayedEnd.toFixed(1));
+          clearStallWatch();
+          onGhostPlaybackDetected(currentPlayedEnd > 0 ? currentPlayedEnd : lastPlayedEnd);
+          return;
+        }
+      } else {
+        _ghostSuspectCount = 0;
       }
-    } else {
-      _ghostSuspectCount = 0;
+      lastPlayedEnd = currentPlayedEnd;
     }
 
     lastTime = now;
-    lastPlayedEnd = currentPlayedEnd;
   }, STALL_DETECT_MS);
 }
 
@@ -998,7 +1010,7 @@ export function onTimeUpdate() {
     if (!dur || !isFinite(dur)) return;
     const ct = dom.audio.currentTime;
 
-    if (isAppleMobile() && !_isRecovering) {
+    if (isAppleMobile() && !_isRecovering && !dom.audio.loop) {
       if (!dom.audio.paused && !dom.audio.ended && !dom.audio.seeking && document.visibilityState === 'visible') {
         const playedEnd = getLastPlayedEnd(dom.audio);
         const playedAdvanced = playedEnd > _ghostPlaybackLastPlayedEnd + 0.35;

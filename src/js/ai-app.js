@@ -1,14 +1,14 @@
 /* ===== 法音AI 独立页面入口 ===== */
 import '../css/ai-page.css';
 import { syncSystemTheme } from './theme.js';
-import { askQuestion, askQuestionStream } from './ai-client.js';
+import { searchQuotes } from './ai-client.js';
 import { createAiConversationStore } from './ai-conversations.js';
 import {
     buildWelcomeHTML,
     escapeHtml,
     extractHighlightQuery,
     formatAnswer,
-    stripFollowUpTags,
+    renderSearchResults,
 } from './ai-format.js';
 import { createAiPreviewController } from './ai-preview.js';
 import { getWenkuDocument } from './wenku-api.js';
@@ -59,7 +59,6 @@ function ensureActiveConv() {
 let isLoading = false;
 let _lastQuestion = '';
 let aiContext = loadAiContext();
-let _streamAbortController = null;
 let _inputAreaResizeObserver = null;
 let _layoutResizeCleanup = null;
 let _visualViewportCleanup = null;
@@ -75,7 +74,6 @@ const chatArea = document.getElementById('chatArea');
 const chatInput = document.getElementById('chatInput');
 const btnSend = document.getElementById('btnSend');
 const btnClear = document.getElementById('btnClear');
-const btnStop = document.getElementById('btnStop');
 const charCount = document.getElementById('charCount');
 const inputArea = document.querySelector('.ai-input-area');
 const previewDrawer = document.getElementById('previewDrawer');
@@ -199,9 +197,21 @@ function wireEvents() {
         if (!isMobile()) return;
         requestAnimationFrame(() => {
             setTimeout(() => {
+                // iOS 12 等无 visualViewport 的老设备：键盘弹起后手动将输入区域滚入视野
+                if (!window.visualViewport) {
+                    chatInput.scrollIntoView({ block: 'end', behavior: 'smooth' });
+                }
                 scrollToBottom();
             }, 120);
         });
+    });
+
+    // iOS 12 键盘收起时重置滚动位置
+    chatInput.addEventListener('blur', () => {
+        if (!isMobile() || window.visualViewport) return;
+        setTimeout(() => {
+            window.scrollTo(0, 0);
+        }, 80);
     });
 
     // Enter 发送，Shift+Enter 换行
@@ -233,6 +243,40 @@ function wireEvents() {
 
     // 来源标签 → 打开预览
     chatArea.addEventListener('click', (e) => {
+        // 热门话题标签
+        const hotTag = e.target.closest('.ai-hot-tag');
+        if (hotTag) {
+            e.preventDefault();
+            const question = hotTag.dataset.question;
+            if (question) {
+                chatInput.value = question;
+                btnSend.disabled = false;
+                handleSubmit();
+            }
+            return;
+        }
+
+        // 搜索结果 - 播放按钮
+        const playBtn = e.target.closest('.ai-result-play');
+        if (playBtn) {
+            e.preventDefault();
+            const href = playBtn.getAttribute('href');
+            if (href) window.location.href = href;
+            return;
+        }
+
+        // 搜索结果 - 读讲记按钮
+        const readBtn = e.target.closest('.ai-result-read');
+        if (readBtn) {
+            e.preventDefault();
+            const docId = readBtn.dataset.docId;
+            const query = readBtn.dataset.query || _lastQuestion;
+            if (docId) {
+                previewController.openPreview(docId, query, '', '');
+            }
+            return;
+        }
+
         const tag = e.target.closest('.ai-source-tag');
         if (tag) {
             e.preventDefault();
@@ -313,14 +357,6 @@ function wireEvents() {
         });
     });
 
-    // 停止生成
-    btnStop?.addEventListener('click', () => {
-        if (_streamAbortController) {
-            _streamAbortController.abort();
-            _streamAbortController = null;
-        }
-    });
-
     // 桌面端自动聚焦（移动端不弹键盘）
     if (!isMobile()) chatInput.focus();
 }
@@ -331,6 +367,32 @@ function renderWelcomeOrHistory() {
     if (chatHistory.length > 0) {
         chatArea.innerHTML = '';
         for (const [index, msg] of chatHistory.entries()) {
+            // 搜索结果类型的消息：用结果卡片渲染
+            if (msg.role === 'assistant' && Array.isArray(msg.searchResults)) {
+                const resultsEl = document.createElement('div');
+                resultsEl.className = 'ai-message ai-message--bot';
+                resultsEl.dataset.messageIndex = String(index);
+                const contentEl = document.createElement('div');
+                contentEl.className = 'ai-message-content';
+                // 从历史中找到对应的用户问题
+                let question = '';
+                for (let i = index - 1; i >= 0; i--) {
+                    if (chatHistory[i]?.role === 'user') {
+                        question = chatHistory[i].content || '';
+                        break;
+                    }
+                }
+                contentEl.innerHTML = renderSearchResults(msg.searchResults, [], question, msg.audioResults);
+                resultsEl.appendChild(contentEl);
+                if (msg.disclaimer && msg.searchResults.length) {
+                    const disc = document.createElement('div');
+                    disc.className = 'ai-disclaimer';
+                    disc.textContent = msg.disclaimer;
+                    resultsEl.appendChild(disc);
+                }
+                chatArea.appendChild(resultsEl);
+                continue;
+            }
             const sourceQuery = msg.role === 'assistant'
                 ? getMessageSourceQuery(chatHistory, index, msg)
                 : '';
@@ -377,12 +439,8 @@ function trimConversationMessages(conv) {
 function setGeneratingUI(active) {
     if (active) {
         btnSend.disabled = true;
-        btnSend.classList.add('hidden');
-        btnStop?.classList.remove('hidden');
         return;
     }
-    btnStop?.classList.add('hidden');
-    btnSend.classList.remove('hidden');
     btnSend.disabled = !chatInput.value.trim();
 }
 
@@ -410,156 +468,67 @@ async function handleSubmit(options = {}) {
     setGeneratingUI(true);
     isLoading = true;
 
-    _streamAbortController = new AbortController();
-
     showTyping();
 
-    let msgContent = null;
-    let textEl = null;
-    let fullText = '';
-
     try {
-        const requestHistory = buildRequestHistory(conv.messages, question);
-
-        const finalData = await askQuestionStream(
-            question,
-            buildAskContext(requestHistory),
-            (token) => {
-                if (!textEl) {
-                    removeTyping();
-                    const stream = createStreamingMessage();
-                    msgContent = stream.msgContent;
-                    textEl = stream.textEl;
-                }
-                fullText += token;
-                textEl.textContent = fullText;
-                scrollToBottom();
-            },
-            { signal: _streamAbortController?.signal }
-        );
+        const data = await searchQuotes(question, { series_id: aiContext?.series_id });
 
         removeTyping();
-        if (!textEl) {
-            const stream = createStreamingMessage();
-            msgContent = stream.msgContent;
-            textEl = stream.textEl;
+
+        // 渲染搜索结果卡片
+        const resultsEl = document.createElement('div');
+        resultsEl.className = 'ai-message ai-message--bot';
+        const contentEl = document.createElement('div');
+        contentEl.className = 'ai-message-content';
+        contentEl.innerHTML = renderSearchResults(data.results, data.keywords, question, data.audioResults);
+        resultsEl.appendChild(contentEl);
+
+        // 免责声明
+        if (data.disclaimer && data.results?.length) {
+            const disc = document.createElement('div');
+            disc.className = 'ai-disclaimer';
+            disc.textContent = data.disclaimer;
+            resultsEl.appendChild(disc);
         }
 
-        // 完成：格式化 HTML
-        textEl.classList.remove('ai-streaming');
-        const cleanText = stripFollowUpTags(fullText);
-        const answerText = String(finalData.answer || cleanText || '').trim()
-            || '抱歉，AI 暂时无法生成回答。';
-        textEl.innerHTML = formatAnswer(answerText);
+        // 操作栏 + 时间
+        const actions = buildMsgActions();
+        const time = document.createElement('time');
+        time.className = 'ai-msg-time';
+        time.textContent = formatMsgTime(new Date());
+        actions.prepend(time);
+        resultsEl.appendChild(actions);
 
-        const renderedSources = attachSourcePreviewQuery(finalData.sources, question);
-
-        // 来源标签
-        if (renderedSources.length) {
-            const sourceHeading = document.createElement('div');
-            sourceHeading.className = 'ai-source-heading';
-            sourceHeading.textContent = '引用出处';
-            msgContent.appendChild(sourceHeading);
-
-            const srcDiv = document.createElement('div');
-            srcDiv.className = 'ai-sources';
-            srcDiv.innerHTML = renderedSources.map(s => renderSourceTag(s)).join(' ');
-            msgContent.appendChild(srcDiv);
-        }
-
-        // 添加操作栏 + 时间
-        const parentMsg = msgContent.closest('.ai-message');
-        if (parentMsg) {
-            const actions = buildMsgActions();
-            const time = document.createElement('time');
-            time.className = 'ai-msg-time';
-            time.textContent = formatMsgTime(new Date());
-            actions.prepend(time);
-            parentMsg.appendChild(actions);
-        }
-
+        chatArea.appendChild(resultsEl);
         scrollToBottom();
 
         // 持久化
-        const answer = answerText || '抱歉，AI 暂时无法生成回答。';
-        conv.messages.push({ role: 'assistant', content: answer, sources: renderedSources, disclaimer: finalData.disclaimer });
+        const docCount = data.results?.length || 0;
+        const audioCount = data.audioResults?.length || 0;
+        const parts = [];
+        if (audioCount) parts.push(`${audioCount} 个音频`);
+        if (docCount) parts.push(`${docCount} 段开示`);
+        const summary = parts.length ? `找到 ${parts.join('、')}` : '未找到相关内容';
+        conv.messages.push({
+            role: 'assistant',
+            content: summary,
+            searchResults: data.results,
+            audioResults: data.audioResults,
+            disclaimer: data.disclaimer,
+        });
         trimConversationMessages(conv);
-        if (parentMsg) parentMsg.dataset.messageIndex = String(conv.messages.length - 1);
+        resultsEl.dataset.messageIndex = String(conv.messages.length - 1);
         conv.updatedAt = Date.now();
         saveConversations();
         renderConvList();
 
     } catch (err) {
         removeTyping();
-        const isAborted = err?.name === 'AbortError' || err?.message === '请求已取消';
-        // 用户主动停止：保留已生成内容并格式化
-        if (isAborted && textEl && fullText.trim()) {
-            textEl.classList.remove('ai-streaming');
-            const partialText = stripFollowUpTags(fullText).trim();
-            textEl.innerHTML = formatAnswer(partialText);
-            const parentMsg = textEl.closest('.ai-message');
-            if (parentMsg) {
-                const actions = buildMsgActions();
-                const time = document.createElement('time');
-                time.className = 'ai-msg-time';
-                time.textContent = formatMsgTime(new Date()) + '（已停止）';
-                actions.prepend(time);
-                parentMsg.appendChild(actions);
-            }
-            conv.messages.push({ role: 'assistant', content: partialText });
-            trimConversationMessages(conv);
-            conv.updatedAt = Date.now();
-            saveConversations();
-            renderConvList();
-            scrollToBottom();
-        } else {
-            const emptyStream = chatArea.querySelector('.ai-message--bot:last-child .ai-streaming');
-            if (emptyStream && !emptyStream.textContent) emptyStream.closest('.ai-message').remove();
-            if (!isAborted) {
-                const fallbackSucceeded = await recoverWithNonStreamAnswer({
-                    question,
-                    conv,
-                    streamMessageEl: textEl?.closest('.ai-message') || null,
-                });
-                if (!fallbackSucceeded) {
-                    addErrorMessage(err.message || '请求失败，请稍后再试', question);
-                }
-            }
-        }
+        addErrorMessage(err.message || '搜索失败，请稍后再试', question);
     } finally {
         isLoading = false;
-        _streamAbortController = null;
         setGeneratingUI(false);
         if (!isMobile()) chatInput.focus();
-    }
-}
-
-async function recoverWithNonStreamAnswer({ question, conv, streamMessageEl }) {
-    try {
-        const requestHistory = buildRequestHistory(conv.messages, question);
-        const fallbackData = await askQuestion(question, buildAskContext(requestHistory));
-
-        streamMessageEl?.remove();
-
-        const answerText = String(fallbackData?.answer || '').trim() || '抱歉，AI 暂时无法生成回答。';
-        const renderedSources = attachSourcePreviewQuery(fallbackData?.sources || [], question);
-        const messageIndex = conv.messages.length;
-        addMessage('bot', answerText, renderedSources, fallbackData?.disclaimer, false, messageIndex, extractHighlightQuery(question));
-
-        conv.messages.push({
-            role: 'assistant',
-            content: answerText,
-            sources: renderedSources,
-            disclaimer: fallbackData?.disclaimer,
-        });
-        trimConversationMessages(conv);
-        conv.updatedAt = Date.now();
-        saveConversations();
-        renderConvList();
-        showAiToast('网络波动，已自动切换稳态回复');
-        return true;
-    } catch {
-        return false;
     }
 }
 
@@ -622,20 +591,6 @@ function addErrorMessage(errText, question) {
     scrollToBottom();
 }
 
-function createStreamingMessage() {
-    const msg = document.createElement('div');
-    msg.className = 'ai-message ai-message--bot';
-    const msgContent = document.createElement('div');
-    msgContent.className = 'ai-message-content';
-    const textEl = document.createElement('div');
-    textEl.className = 'ai-streaming';
-    msgContent.appendChild(textEl);
-    msg.appendChild(msgContent);
-    chatArea.appendChild(msg);
-    scrollToBottom();
-    return { msgContent, textEl };
-}
-
 function showTyping() {
     const el = document.createElement('div');
     el.className = 'ai-message ai-message--bot ai-typing-msg';
@@ -674,23 +629,6 @@ function loadAiContext() {
         return { seriesId: null, episodeNum: null };
     }
 }
-
-function buildAskContext(history) {
-    const context = { history: history.slice(-6) };
-    if (aiContext.seriesId) context.series_id = aiContext.seriesId;
-    if (aiContext.episodeNum) context.episode_num = aiContext.episodeNum;
-    return context;
-}
-
-function buildRequestHistory(messages, question) {
-    const history = Array.isArray(messages) ? messages.slice() : [];
-    const last = history[history.length - 1];
-    if (last?.role === 'user' && String(last.content || '').trim() === String(question || '').trim()) {
-        history.pop();
-    }
-    return history;
-}
-
 
 function autoResize() {
     chatInput.style.height = 'auto';
@@ -961,10 +899,6 @@ function isAndroid() {
 }
 
 function cleanupAiPage() {
-    if (_streamAbortController) {
-        _streamAbortController.abort();
-        _streamAbortController = null;
-    }
     _inputAreaResizeObserver?.disconnect();
     _inputAreaResizeObserver = null;
     _layoutResizeCleanup?.();

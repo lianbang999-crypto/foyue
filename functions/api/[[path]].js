@@ -65,6 +65,7 @@ import {
   handleDailyRecommend,
   handleVoiceToText,
   handlePersonalizedRecommend,
+  handleSearchQuotes,
 } from '../lib/ai-routes.js';
 
 let episodeMetaColumnCache = null;
@@ -261,6 +262,11 @@ export async function onRequest(context) {
     // POST /api/ai/ask — RAG 问答
     if (path === '/api/ai/ask' && method === 'POST') {
       return await handleAiAsk(env, request, cors, context, json);
+    }
+
+    // POST /api/ai/search-quotes — 法音智搜（搜索讲记原文）
+    if (path === '/api/ai/search-quotes' && method === 'POST') {
+      return await handleSearchQuotes(env, request, cors, context, json);
     }
 
     // POST /api/ai/ask-stream — RAG 问答（SSE 流式）
