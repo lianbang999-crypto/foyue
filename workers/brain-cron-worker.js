@@ -9,8 +9,8 @@
 // ============================================================
 // 配置
 // ============================================================
-const SEGMENT_MAX_LEN = 2000;
-const SEGMENT_OVERLAP = 150;
+const SEGMENT_MAX_LEN = 6000;     // Google AI（Gemma4）上下文充足，可用大段落提升质量
+const SEGMENT_OVERLAP = 200;      // 段落间重叠，防止有效信息被截断
 const MAX_DOCS_PER_RUN = 8;       // 每次 Cron 最多处理几篇
 const MAX_SEGMENTS_PER_RUN = 60;  // 每次 Cron 最多处理几个段落（兜底防超时）
 const AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
@@ -46,7 +46,7 @@ function buildPrompt(segment, meta, segIdx, segTotal) {
             {
                 role: 'system', content: `/no_think
 从佛法讲记中提取知识，严格输出 JSON。
-规则：只摘原文，不添加内容。qa_pairs 最多3个，key_quotes 最多2个，concepts 最多2个。
+规则：只摘原文，不添加内容。qa_pairs 最多5个，key_quotes 最多3个，concepts 最多3个。
 主题类目：信|愿|行|往生|净土庄严|阿弥陀佛|因果|菩提心|教理|实修问答
 输出格式：
 {"qa_pairs":[{"question":"问题","answer_quote":"法师原文100-300字","topic":"类目","importance":"high或medium"}],"key_quotes":[{"quote":"原文50-150字","topic":"类目","context":"一句话说明"}],"concepts":[{"name":"术语","definition":"法师解释原文","topic":"类目"}]}
@@ -57,7 +57,7 @@ function buildPrompt(segment, meta, segIdx, segTotal) {
                 content: `《${meta.series_name || ''}·${meta.title || ''}》第${segIdx + 1}/${segTotal}段：\n\n${segment}`
             },
         ],
-        max_tokens: 1024,
+        max_tokens: 2048,
         temperature: 0.3,
     };
 }
