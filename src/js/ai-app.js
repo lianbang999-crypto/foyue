@@ -251,15 +251,21 @@ function wireEvents() {
             return;
         }
 
-        // 引用出处标签 → 跳转到讲记
+        // 引用出处标签 → 跳转到讲记（带段落定位+高亮）
         const sourceTag = e.target.closest('.ai-source-tag');
         if (sourceTag) {
             e.preventDefault();
             const docId = sourceTag.dataset.docId;
             if (docId) {
                 const query = sourceTag.dataset.query || '';
+                const snippet = sourceTag.dataset.snippet || '';
+                // 文库页 highlightText() 会从 sessionStorage 读取 snippet 做精确定位
+                if (snippet) {
+                    try { sessionStorage.setItem('wenku-ai-snippet', snippet); } catch { }
+                }
                 const params = new URLSearchParams({ doc: docId });
                 if (query) params.set('q', query);
+                params.set('from', 'ai');
                 window.location.href = `/wenku?${params.toString()}`;
             }
             return;
