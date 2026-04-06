@@ -10,8 +10,6 @@ import {
     formatAnswer,
     renderSearchResults,
 } from './ai-format.js';
-import { createAiPreviewController } from './ai-preview.js';
-import { getWenkuDocument } from './wenku-api.js';
 
 const AI_CONTEXT_KEY = 'ai-latest-context';
 
@@ -76,24 +74,6 @@ const btnSend = document.getElementById('btnSend');
 const btnClear = document.getElementById('btnClear');
 const charCount = document.getElementById('charCount');
 const inputArea = document.querySelector('.ai-input-area');
-const previewDrawer = document.getElementById('previewDrawer');
-const previewBackdrop = document.getElementById('previewBackdrop');
-const previewTitle = document.getElementById('previewTitle');
-const previewMeta = document.getElementById('previewMeta');
-const previewBody = document.getElementById('previewBody');
-const previewOpenBtn = document.getElementById('previewOpenBtn');
-const previewCloseBtn = document.getElementById('previewClose');
-
-const previewController = createAiPreviewController({
-    previewDrawer,
-    previewBackdrop,
-    previewTitle,
-    previewMeta,
-    previewBody,
-    previewOpenBtn,
-    inputArea,
-    getWenkuDocument,
-});
 
 function init() {
     setupLayoutSync();
@@ -237,11 +217,7 @@ function wireEvents() {
         renderConvList();
     });
 
-    previewBackdrop?.addEventListener('click', previewController.closePreview);
-    previewCloseBtn?.addEventListener('click', previewController.closePreview);
-    previewBody?.addEventListener('click', previewController.handleBodyClick);
-
-    // 来源标签 → 打开预览
+    // 来源标签 → 跳转
     chatArea.addEventListener('click', (e) => {
         // 热门话题标签
         const hotTag = e.target.closest('.ai-hot-tag');
@@ -266,43 +242,12 @@ function wireEvents() {
         }
 
         // 搜索结果 - 读讲记按钮
-        const readBtn = e.target.closest('.ai-result-read');
-        if (readBtn) {
-            e.preventDefault();
-            const docId = readBtn.dataset.docId;
-            const query = readBtn.dataset.query || _lastQuestion;
-            if (docId) {
-                previewController.openPreview(docId, query, '', '');
-            }
-            return;
-        }
+        // 搜索结果 - 读讲记链接（已改为 <a>，不再需要 JS 拦截）
 
-        const tag = e.target.closest('.ai-source-tag');
-        if (tag) {
-            e.preventDefault();
-            const docId = tag.dataset.docId;
-            const query = tag.dataset.query || _lastQuestion;
-            const snippet = tag.dataset.snippet || '';
-            if (docId) {
-                const title = tag.textContent.trim();
-                previewController.openPreview(docId, query, title, snippet);
-            }
-            return;
-        }
-
+        // 内联来源链接 → 直接跳转
         const inlineSourceLink = e.target.closest('.ai-inline-source-link');
         if (inlineSourceLink) {
-            e.preventDefault();
-            const docId = inlineSourceLink.dataset.docId;
-            const query = inlineSourceLink.dataset.query || _lastQuestion;
-            if (docId) {
-                previewController.openPreview(docId, query, inlineSourceLink.textContent.trim());
-                return;
-            }
-            const href = inlineSourceLink.getAttribute('href');
-            if (href) {
-                window.location.href = href;
-            }
+            // 自然导航到 /wenku?doc=xxx
             return;
         }
 
@@ -335,10 +280,6 @@ function wireEvents() {
 
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            if (previewDrawer?.classList.contains('open')) {
-                previewController.closePreview();
-                return;
-            }
             if (convDrawer?.classList.contains('open')) {
                 closeConvDrawer();
             }
@@ -905,17 +846,15 @@ function cleanupAiPage() {
     _layoutResizeCleanup = null;
     _visualViewportCleanup?.();
     _visualViewportCleanup = null;
-    previewController.destroy();
 }
 
 /* --- 初始化 --- */
 init();
 window.addEventListener('pagehide', cleanupAiPage, { once: true });
 
-// bfcache 恢复时关闭所有抽屉，避免遮挡输入框
+// bfcache 恢复时关闭抽屉，避免遮挡输入框
 window.addEventListener('pageshow', (e) => {
     if (!e.persisted) return;
-    previewController.closePreview();
     closeConvDrawer();
 });
 /* --- 离线检测 --- */

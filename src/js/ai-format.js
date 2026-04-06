@@ -86,9 +86,9 @@ export function renderSearchResults(results, keywords, question, audioResults) {
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5,3 19,12 5,21"/></svg>
                         </a>`
                     : ''}
-                        <button class="ai-result-read" data-doc-id="${escapeHtml(item.doc_id)}" data-query="${escapeHtml(question)}" title="读讲记">
+                        <a class="ai-result-read" href="/wenku?doc=${encodeURIComponent(item.doc_id)}&q=${encodeURIComponent(question)}" title="读讲记">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
-                        </button>
+                        </a>
                     </span>
                 </div>
             </div>`;
