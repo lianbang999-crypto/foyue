@@ -1046,6 +1046,12 @@ function wireReaderNext(scroll) {
             openReader(prevBtn.dataset.prev);
             return;
         }
+        // 章节导航按钮（上一讲/下一讲）
+        const navNext = e.target.closest('.wk-chapter-nav-btn[data-next]');
+        if (navNext?.dataset.next) {
+            openReader(navNext.dataset.next);
+            return;
+        }
     });
 }
 
