@@ -179,6 +179,13 @@ body {
     }
 }
 
+.ai-welcome-icon {
+    font-size: 2.5rem;
+    line-height: 1;
+    margin-bottom: 16px;
+    opacity: 0.85;
+}
+
 .ai-welcome h1 {
     font-family: var(--ai-font-serif);
     font-size: clamp(1.5rem, 4vw, 2rem);
@@ -224,10 +231,12 @@ body {
     border-color: var(--ai-accent);
     color: var(--ai-accent);
     background: var(--ai-accent-soft);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(217, 119, 87, 0.1);
 }
 
 .ai-hot-tag:active {
-    transform: scale(0.96);
+    transform: scale(0.96) translateY(0);
 }
 
 /* --- Messages --- */
@@ -262,6 +271,7 @@ body {
     background: var(--ai-bg-user);
     padding: 10px 16px;
     border-radius: var(--ai-radius);
+    border-bottom-right-radius: var(--ai-radius-xs);
     font-size: 15px;
 }
 
@@ -625,6 +635,7 @@ body {
     padding-bottom: calc(10px + var(--ai-safe-bottom));
     background: var(--ai-bg);
     z-index: 10;
+    box-shadow: 0 -1px 0 var(--ai-border);
 }
 
 .ai-input-wrap {
@@ -675,12 +686,13 @@ body {
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: opacity 0.15s, transform 0.1s;
+    transition: opacity 0.2s ease, transform 0.2s cubic-bezier(.22, 1, .36, 1);
 }
 
 .ai-send-btn:disabled {
     opacity: 0;
     pointer-events: none;
+    transform: scale(0.8);
 }
 
 .ai-send-btn:not(:disabled):hover {
@@ -1181,6 +1193,14 @@ body {
 
 [data-theme="dark"] .ai-message-content a {
     text-decoration-color: rgba(215, 177, 90, 0.4);
+}
+
+[data-theme="dark"] .ai-hot-tag:hover {
+    box-shadow: 0 2px 8px rgba(215, 177, 90, 0.1);
+}
+
+[data-theme="dark"] .ai-welcome-icon {
+    opacity: 0.75;
 }
 
 /* --- Reduced Motion --- */

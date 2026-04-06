@@ -12,6 +12,7 @@ export function buildWelcomeHTML() {
     ).join('');
     return `
     <div class="ai-welcome">
+      <div class="ai-welcome-icon" aria-hidden="true">☸</div>
       <h1>有什么可以帮您的？</h1>
       <p class="ai-welcome-sub">基于法师讲记，为您解答净土法门疑问</p>
       <div class="ai-suggestions">${tags}</div>

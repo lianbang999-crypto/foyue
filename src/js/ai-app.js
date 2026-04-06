@@ -251,6 +251,20 @@ function wireEvents() {
             return;
         }
 
+        // 引用出处标签 → 跳转到讲记
+        const sourceTag = e.target.closest('.ai-source-tag');
+        if (sourceTag) {
+            e.preventDefault();
+            const docId = sourceTag.dataset.docId;
+            if (docId) {
+                const query = sourceTag.dataset.query || '';
+                const params = new URLSearchParams({ doc: docId });
+                if (query) params.set('q', query);
+                window.location.href = `/wenku?${params.toString()}`;
+            }
+            return;
+        }
+
         // 重试按钮
         const retry = e.target.closest('.ai-retry-btn');
         if (retry && !isLoading) {
@@ -693,10 +707,12 @@ function isDesktop() {
 
 function openSidebar() {
     convDrawer?.classList.add('open');
+    convBackdrop?.classList.add('open');
 }
 
 function closeSidebar() {
     convDrawer?.classList.remove('open');
+    convBackdrop?.classList.remove('open');
     if (convDrawer) convDrawer.style.transform = '';
 }
 
