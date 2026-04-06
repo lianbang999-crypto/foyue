@@ -18,6 +18,10 @@ database_id = "be0b21ab-4549-45bc-ac38-5f9e1864d061"
 [ai]
 binding = "AI"
 
-# 环境变量（部署时通过 secret 设置 ADMIN_TOKEN）
+# 环境变量（部署时通过 secret 设置 ADMIN_TOKEN 和 GOOGLE_AI_KEY）
 [vars]
 WORKER_ENV = "production"
+# 可选：Google AI 模型名称（设置 GOOGLE_AI_KEY secret 后生效）
+# Cloudflare 上第一次启用 Gemma 接口只需执行：
+#   wrangler secret put GOOGLE_AI_KEY --config brain-wrangler.toml
+GOOGLE_AI_MODEL = "gemma-3-27b-it"

@@ -94,6 +94,51 @@ function findPos(q, src) {
 }
 
 // ============================================================
+// AI 调度（Workers AI 或 Google AI Studio / Gemma）
+// ============================================================
+
+/**
+ * 调用 Google AI Studio 接口（Gemma4 等免费模型）
+ * 需在 Worker 中设置 GOOGLE_AI_KEY secret
+ */
+async function callGoogleAI(apiKey, model, promptObj) {
+    const sysMsg = promptObj.messages.find(m => m.role === 'system');
+    const userMsg = promptObj.messages.find(m => m.role === 'user');
+    const body = {
+        contents: [{ role: 'user', parts: [{ text: userMsg?.content || '' }] }],
+        generationConfig: {
+            maxOutputTokens: promptObj.max_tokens || 1024,
+            temperature: promptObj.temperature || 0.3,
+        },
+    };
+    if (sysMsg) body.system_instruction = { parts: [{ text: sysMsg.content }] };
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(60000),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(`Google AI: ${d.error.message}`);
+    return d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
+
+/**
+ * 统一 AI 调用入口：
+ *   有 GOOGLE_AI_KEY → 走 Google AI Studio（Gemma4 等免费模型）
+ *   无               → 走 Cloudflare Workers AI（默认）
+ */
+async function runAI(env, promptObj) {
+    if (env.GOOGLE_AI_KEY) {
+        const model = env.GOOGLE_AI_MODEL || 'gemma-3-27b-it';
+        return await callGoogleAI(env.GOOGLE_AI_KEY, model, promptObj);
+    }
+    return await env.AI.run(AI_MODEL, promptObj);
+}
+
+// ============================================================
 // 主题缓存
 // ============================================================
 
@@ -108,7 +153,7 @@ async function getTopics(db) {
 // 单文档处理
 // ============================================================
 
-async function processDocument(doc, db, ai, topics, log) {
+async function processDocument(doc, db, env, topics, log) {
     const segments = splitDoc(doc.content);
     const total = segments.length;
 
@@ -144,7 +189,7 @@ async function processDocument(doc, db, ai, topics, log) {
 
         try {
             const prompt = buildPrompt(seg, doc, i, total);
-            const result = await ai.run(AI_MODEL, prompt);
+            const result = await runAI(env, prompt);
 
             // AI 可能返回 string 或 object
             const rawText = typeof result === 'object' && result?.response !== undefined
@@ -215,7 +260,6 @@ async function processDocument(doc, db, ai, topics, log) {
 export default {
     async scheduled(event, env, ctx) {
         const db = env.DB;
-        const ai = env.AI;
         const logs = [];
         const log = (msg) => { logs.push(`[${new Date().toISOString()}] ${msg}`); };
 
@@ -266,7 +310,7 @@ export default {
                 if (!doc) { log('✅ 无更多待处理文档'); break; }
 
                 log(`📖 [${d + 1}] ${doc.title} (${doc.content?.length || 0}字)`);
-                const result = await processDocument(doc, db, ai, topics, log);
+                const result = await processDocument(doc, db, env, topics, log);
                 docsProcessed++;
                 totalSegments += result.segmentsProcessed;
 
