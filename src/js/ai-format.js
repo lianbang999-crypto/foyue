@@ -1,38 +1,20 @@
 const STOP_WORDS_RE = /什么|怎么|怎样|如何|为什么|哪些|哪个|可以|能够|应该|是不是|有没有|到底|究竟|请问|的|了|吗|呢|吧|啊|在|是|有|和|与|或|也|都|就|把|被|对|又|要|让|给|从|用|以|而|但|却|不|很|最|更|还|这|那|它|你|我|他|她|们|个|着/g;
 
-const HOT_TOPICS = [
+const SUGGESTIONS = [
     '念佛时妄念多怎么办',
+    '什么是信愿行',
     '临终助念要注意什么',
-    '信愿行是什么意思',
-    '如何做到都摄六根',
-    '带业往生的条件',
-    '一心不乱是什么境界',
 ];
 
-function getGreeting() {
-    const h = new Date().getHours();
-    if (h < 6) return '夜深了，还在用功呢';
-    if (h < 9) return '早安，新的一天';
-    if (h < 12) return '上午好';
-    if (h < 14) return '午安';
-    if (h < 18) return '下午好';
-    if (h < 21) return '晚上好';
-    return '夜深了，早点休息';
-}
-
 export function buildWelcomeHTML() {
-    const greeting = getGreeting();
-    const hotTags = HOT_TOPICS.map(t =>
+    const tags = SUGGESTIONS.map(t =>
         `<button class="ai-hot-tag" data-question="${escapeHtml(t)}">${escapeHtml(t)}</button>`
     ).join('');
     return `
     <div class="ai-welcome">
-      <h1>${greeting}</h1>
-      <p class="ai-welcome-sub">基于法师讲记，AI 为您生成准确答复，注明引用出处</p>
-      <div class="ai-hot-topics">
-        <span class="ai-hot-label">常见问题</span>
-        <div class="ai-hot-list">${hotTags}</div>
-      </div>
+      <h1>有什么可以帮您的？</h1>
+      <p class="ai-welcome-sub">基于法师讲记，为您解答净土法门疑问</p>
+      <div class="ai-suggestions">${tags}</div>
     </div>`;
 }
 
