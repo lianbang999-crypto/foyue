@@ -190,6 +190,59 @@ function buildSeriesSummaryContent(seriesName, documents) {
   return parts.join('\n\n');
 }
 
+// ============================================================
+// 从 ai_qa_pairs 知识库检索精华问答对，作为高优先级资料注入 RAG 上下文
+// brain-cron-worker 每日提炼后存入此表，回答质量随时间持续提升
+// ============================================================
+async function loadKnowledgeQAPseudoMatches(env, question, keywords, seriesId) {
+  if (!env?.DB) return [];
+  try {
+    const kw = (keywords[0] && keywords[0].length >= 2) ? keywords[0] : question.slice(0, 15);
+    const like = `%${kw}%`;
+    let rows;
+    if (seriesId) {
+      const { results } = await env.DB.prepare(
+        `SELECT q.id, q.question, q.answer_quote, q.importance, q.doc_id,
+                d.title, d.series_name, d.audio_series_id
+         FROM ai_qa_pairs q
+         LEFT JOIN documents d ON q.doc_id = d.id
+         WHERE d.audio_series_id = ?
+           AND (q.question LIKE ? OR q.answer_quote LIKE ?)
+         ORDER BY CASE q.importance WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END
+         LIMIT 3`
+      ).bind(seriesId, like, like).all();
+      rows = results;
+    } else {
+      const { results } = await env.DB.prepare(
+        `SELECT q.id, q.question, q.answer_quote, q.importance, q.doc_id,
+                d.title, d.series_name, d.audio_series_id
+         FROM ai_qa_pairs q
+         LEFT JOIN documents d ON q.doc_id = d.id
+         WHERE q.question LIKE ? OR q.answer_quote LIKE ?
+         ORDER BY CASE q.importance WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END
+         LIMIT 3`
+      ).bind(like, like).all();
+      rows = results;
+    }
+    return (rows || [])
+      .filter(item => item.doc_id && item.answer_quote)
+      .map(item => ({
+        score: item.importance === 'high' ? 0.88 : 0.74,
+        metadata: {
+          doc_id: item.doc_id,
+          title: item.title || '法音文库',
+          text: `【精华解析】\n问：${item.question}\n\n${item.answer_quote}`,
+          series_name: item.series_name || '',
+          category: 'knowledge',
+          audio_series_id: item.audio_series_id || '',
+        },
+      }));
+  } catch (err) {
+    console.warn('Knowledge QA lookup failed:', err.message);
+    return [];
+  }
+}
+
 async function keywordSearchDocs(env, query, { seriesId = null, limit = 10 } = {}) {
   const keyword = String(query || '').trim().slice(0, 20);
   if (!keyword) return [];
@@ -391,6 +444,16 @@ async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
 
   if (matches.length > 0 && docs.length > 0) {
     matches = expandContextFromDocs(matches, docs);
+  }
+
+  // 知识库精华 Q&A：brain 每日提炼的高质量问答对，置于最前以优先被引用
+  try {
+    const knowledgeMatches = await loadKnowledgeQAPseudoMatches(env, question, keywords, seriesId);
+    if (knowledgeMatches.length > 0) {
+      matches = [...knowledgeMatches, ...matches];
+    }
+  } catch (err) {
+    console.warn('Knowledge QA integration failed:', err.message);
   }
 
   if (!docs.length) {

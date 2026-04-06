@@ -11,8 +11,8 @@
 // ============================================================
 const SEGMENT_MAX_LEN = 2000;
 const SEGMENT_OVERLAP = 150;
-const MAX_DOCS_PER_RUN = 3;       // 每次 Cron 最多处理几篇
-const MAX_SEGMENTS_PER_RUN = 30;  // 每次 Cron 最多处理几个段落（兜底防超时）
+const MAX_DOCS_PER_RUN = 8;       // 每次 Cron 最多处理几篇
+const MAX_SEGMENTS_PER_RUN = 60;  // 每次 Cron 最多处理几个段落（兜底防超时）
 const AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
 // ============================================================
