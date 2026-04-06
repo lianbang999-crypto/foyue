@@ -410,7 +410,7 @@
   stroke-linejoin: round
 }
 
-/* AI Button in header — plain icon + text */
+/* AI Button in header — accent text, bg on tap only */
 .ai-pill-btn {
   -webkit-appearance: none;
   appearance: none;
@@ -418,7 +418,7 @@
   align-items: center;
   gap: 4px;
   background: none;
-  color: var(--text-secondary);
+  color: var(--accent);
   border: none;
   border-radius: 8px;
   padding: 6px 10px;
@@ -427,7 +427,7 @@
   font-weight: 500;
   letter-spacing: .03em;
   cursor: pointer;
-  transition: opacity .15s;
+  transition: opacity .15s, background .15s;
   min-height: 32px
 }
 
@@ -444,13 +444,27 @@
 }
 
 @keyframes aiBtnTap {
-  0%   { transform: scale(0.93); background: var(--accent-dim); color: var(--accent); }
-  60%  { transform: scale(1.04); background: var(--accent-dim); color: var(--accent); }
-  100% { transform: scale(1.00); background: transparent;        color: var(--text-secondary); }
+  0% {
+    transform: scale(0.93);
+    background: var(--accent-dim);
+    color: var(--accent);
+  }
+
+  60% {
+    transform: scale(1.04);
+    background: var(--accent-dim);
+    color: var(--accent);
+  }
+
+  100% {
+    transform: scale(1.00);
+    background: transparent;
+    color: var(--text-secondary);
+  }
 }
 
 .ai-pill-btn.tapped {
-  animation: aiBtnTap 0.35s cubic-bezier(.22,1,.36,1) forwards;
+  animation: aiBtnTap 0.35s cubic-bezier(.22, 1, .36, 1) forwards;
 }
 
 .ai-pill-icon {
