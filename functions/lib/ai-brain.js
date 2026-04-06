@@ -383,64 +383,60 @@ export async function handleBrainLearn(env, request, cors, json) {
             extracted: result.newInSegment || null,
             totals_for_doc: { qa: result.qa, quotes: result.quotes, concepts: result.concepts },
             remaining_docs: remaining?.cnt || 0,
-            // 如果文档还没处理完，提示继续调用
             next_action: result.done
                 ? (remaining?.cnt > 1 ? 'call_again' : 'all_done')
                 : 'call_again',
-        } catch (err) {
-            return json({ error: err.message, stack: err.stack?.split('\n').slice(0, 5) }, cors, 500);
-        }
+        }, cors);
+    } catch (err) {
+        return json({ error: err.message, stack: err.stack?.split('\n').slice(0, 5) }, cors, 500);
     }
+}
 
 /**
  * GET /api/ai/brain/status — 查看学习进度
  */
 export async function handleBrainStatus(env, cors, json) {
-        const db = env.DB;
+    const db = env.DB;
 
-        // 各状态计数
-        const statusCounts = await db.prepare(
-            `SELECT status, COUNT(*) as cnt FROM ai_learning_state GROUP BY status`
-        ).all();
+    const statusCounts = await db.prepare(
+        `SELECT status, COUNT(*) as cnt FROM ai_learning_state GROUP BY status`
+    ).all();
 
-        // 总提取量
-        const totals = await db.prepare(
-            `SELECT
-       SUM(qa_extracted) as total_qa,
-       SUM(quotes_extracted) as total_quotes,
-       SUM(concepts_extracted) as total_concepts
-     FROM ai_learning_state WHERE status = 'learned'`
-        ).first();
+    const totals = await db.prepare(
+        `SELECT
+         SUM(qa_extracted) as total_qa,
+         SUM(quotes_extracted) as total_quotes,
+         SUM(concepts_extracted) as total_concepts
+         FROM ai_learning_state WHERE status = 'learned'`
+    ).first();
 
-        // 最近处理的文档
-        const recent = await db.prepare(
-            `SELECT doc_id, status, qa_extracted, quotes_extracted, concepts_extracted, completed_at, error
-     FROM ai_learning_state
-     ORDER BY updated_at DESC LIMIT 5`
-        ).all();
+    const recent = await db.prepare(
+        `SELECT doc_id, status, qa_extracted, quotes_extracted, concepts_extracted, completed_at, error
+         FROM ai_learning_state
+         ORDER BY updated_at DESC LIMIT 5`
+    ).all();
 
-        // 主题分布
-        const topicDist = await db.prepare(
-            `SELECT t.name, COUNT(q.id) as qa_count
-     FROM ai_topics t
-     LEFT JOIN ai_qa_pairs q ON q.topic_id = t.id
-     GROUP BY t.id ORDER BY t.sort_order`
-        ).all();
+    const topicDist = await db.prepare(
+        `SELECT t.name, COUNT(q.id) as qa_count
+         FROM ai_topics t
+         LEFT JOIN ai_qa_pairs q ON q.topic_id = t.id
+         GROUP BY t.id ORDER BY t.sort_order`
+    ).all();
 
-        return json({
-            status_counts: statusCounts.results,
-            totals: {
-                qa_pairs: totals?.total_qa || 0,
-                key_quotes: totals?.total_quotes || 0,
-                concepts: totals?.total_concepts || 0,
-            },
-            recent: recent.results,
-            topic_distribution: topicDist.results,
-        }, cors);
-    }
+    return json({
+        status_counts: statusCounts.results,
+        totals: {
+            qa_pairs: totals?.total_qa || 0,
+            key_quotes: totals?.total_quotes || 0,
+            concepts: totals?.total_concepts || 0,
+        },
+        recent: recent.results,
+        topic_distribution: topicDist.results,
+    }, cors);
+}
 
-    /**
-     * POST /api/ai/brain/reset — 重置学习状态（清空知识，重新来过）
+/**
+ * POST /api/ai/brain/reset — 重置学习状态
  * 可选参数 ?doc_id=xxx 只重置一篇
  */
 export async function handleBrainReset(env, request, cors, json) {
@@ -459,10 +455,12 @@ export async function handleBrainReset(env, request, cors, json) {
         return json({ success: true, message: `文档 ${specificDoc} 已重置` }, cors);
     }
 
-            db.prepare('DELETE FROM ai_key_quotes'),
-            db.prepare('DELETE FROM ai_concepts'),
-            db.prepare('DELETE FROM ai_learning_state'),
-        ]);
-        _topicCache = null;
-        return json({ success: true, message: '知识库已清空，可重新开始学习' }, cors);
-    }
+    await db.batch([
+        db.prepare('DELETE FROM ai_qa_pairs'),
+        db.prepare('DELETE FROM ai_key_quotes'),
+        db.prepare('DELETE FROM ai_concepts'),
+        db.prepare('DELETE FROM ai_learning_state'),
+    ]);
+    _topicCache = null;
+    return json({ success: true, message: '知识库已清空，可重新开始学习' }, cors);
+}
