@@ -148,14 +148,11 @@ function buildVerifiedAiAnswerPayload(rawText, question, options = {}) {
 
   const sources = buildBoundSourceList(normalized.answer, references, keywords, [], docs);
   const hasValidCitations = extractAnswerReferenceIndexes(normalized.answer, references).length > 0 && sources.length > 0;
-  if (!hasValidCitations) {
-    return buildAiAnswerPayload(AI_INVALID_CITATION_ANSWER, question, { sources: [], docs });
-  }
 
   return {
     answer: normalized.answer,
     followUps: normalized.followUps,
-    sources,
+    sources: hasValidCitations ? sources : [],
     disclaimer: AI_RESPONSE_DISCLAIMER,
   };
 }
