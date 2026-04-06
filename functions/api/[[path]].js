@@ -67,6 +67,11 @@ import {
   handlePersonalizedRecommend,
   handleSearchQuotes,
 } from '../lib/ai-routes.js';
+import {
+  handleBrainLearn,
+  handleBrainStatus,
+  handleBrainReset,
+} from '../lib/ai-brain.js';
 
 let episodeMetaColumnCache = null;
 
@@ -357,6 +362,34 @@ export async function onRequest(context) {
     }
 
     // ==================== 管理员路由 ====================
+
+    // ---- AI Brain 知识学习 ----
+    // POST /api/admin/brain/learn — 启动/继续知识提取
+    if (path === '/api/admin/brain/learn' && method === 'POST') {
+      const token = request.headers.get('X-Admin-Token');
+      if (!token || !env.ADMIN_TOKEN || !timingSafeCompare(token, env.ADMIN_TOKEN)) {
+        return json({ error: 'Unauthorized' }, cors, 401);
+      }
+      return await handleBrainLearn(env, request, cors, json);
+    }
+
+    // GET /api/admin/brain/status — 查看学习进度
+    if (path === '/api/admin/brain/status' && method === 'GET') {
+      const token = request.headers.get('X-Admin-Token');
+      if (!token || !env.ADMIN_TOKEN || !timingSafeCompare(token, env.ADMIN_TOKEN)) {
+        return json({ error: 'Unauthorized' }, cors, 401);
+      }
+      return await handleBrainStatus(env, cors, json);
+    }
+
+    // POST /api/admin/brain/reset — 重置知识库
+    if (path === '/api/admin/brain/reset' && method === 'POST') {
+      const token = request.headers.get('X-Admin-Token');
+      if (!token || !env.ADMIN_TOKEN || !timingSafeCompare(token, env.ADMIN_TOKEN)) {
+        return json({ error: 'Unauthorized' }, cors, 401);
+      }
+      return await handleBrainReset(env, cors, json);
+    }
 
     // POST /api/admin/embeddings/build — 批量构建向量
     if (path === '/api/admin/embeddings/build' && method === 'POST') {
