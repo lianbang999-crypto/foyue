@@ -156,141 +156,142 @@ async function getTopicMap(db) {
 }
 
 /**
- * 处理单篇文档的知识提取
+ * 处理单篇文档的「一个段落」知识提取
+ * 每次 HTTP 请求只处理一个段落，避免超时
+ * 返回 { done, segIndex, segTotal, qa, quotes, concepts }
  */
-async function processDocument(doc, env) {
+async function processOneSegment(doc, env) {
     const db = env.DB;
     const topicMap = await getTopicMap(db);
-
-    // 标记为处理中
-    await db.prepare(
-        `INSERT OR REPLACE INTO ai_learning_state (doc_id, status, started_at, updated_at)
-     VALUES (?, 'processing', datetime('now'), datetime('now'))`
-    ).bind(doc.id).run();
 
     const segments = splitDocForLearning(doc.content);
     const totalSegments = segments.length;
 
-    // 更新总段数
-    await db.prepare(
-        `UPDATE ai_learning_state SET segments_total = ? WHERE doc_id = ?`
-    ).bind(totalSegments, doc.id).run();
+    // 读取当前进度
+    const state = await db.prepare(
+        `SELECT segments_done, qa_extracted, quotes_extracted, concepts_extracted
+         FROM ai_learning_state WHERE doc_id = ?`
+    ).bind(doc.id).first();
 
-    let totalQA = 0;
-    let totalQuotes = 0;
-    let totalConcepts = 0;
+    const segIndex = state?.segments_done || 0;
 
-    for (let i = 0; i < segments.length; i++) {
-        const segment = segments[i];
-        const { system, user } = buildExtractionPrompt(
-            segment,
-            { series_name: doc.series_name, title: doc.title },
-            i,
-            totalSegments
-        );
+    // 初始化或更新 learning_state
+    if (!state) {
+        await db.prepare(
+            `INSERT INTO ai_learning_state (doc_id, status, segments_total, segments_done, started_at, updated_at)
+             VALUES (?, 'processing', ?, 0, datetime('now'), datetime('now'))`
+        ).bind(doc.id, totalSegments).run();
+    } else {
+        await db.prepare(
+            `UPDATE ai_learning_state SET status = 'processing', segments_total = ?, updated_at = datetime('now') WHERE doc_id = ?`
+        ).bind(totalSegments, doc.id).run();
+    }
 
-        try {
-            // 调用 LLM 提取知识
-            const model = resolveAIModel(env, 'chat');
-            const response = await runAIWithLogging(
-                env,
-                model,
-                {
-                    messages: [
-                        { role: 'system', content: system },
-                        { role: 'user', content: user },
-                    ],
-                    max_tokens: 2048,
-                    temperature: 0.3,
-                },
-                GATEWAY_PROFILES.ragChat,
-                'brain-extract'
-            );
+    // 所有段落已处理完 → 标记完成
+    if (segIndex >= totalSegments) {
+        await db.prepare(
+            `UPDATE ai_learning_state SET status = 'learned', completed_at = datetime('now'), updated_at = datetime('now') WHERE doc_id = ?`
+        ).bind(doc.id).run();
+        return {
+            done: true, segIndex, segTotal: totalSegments,
+            qa: state?.qa_extracted || 0, quotes: state?.quotes_extracted || 0, concepts: state?.concepts_extracted || 0,
+        };
+    }
 
-            const rawText = typeof response === 'string'
-                ? response
-                : response?.response || response?.result?.response || '';
+    // 处理当前段落
+    const segment = segments[segIndex];
+    const { system, user } = buildExtractionPrompt(
+        segment,
+        { series_name: doc.series_name, title: doc.title },
+        segIndex,
+        totalSegments
+    );
 
-            const extracted = parseLLMJson(rawText);
-            if (!extracted) {
-                // LLM 没返回有效 JSON，跳过此段
+    let newQA = 0, newQuotes = 0, newConcepts = 0;
+
+    const model = resolveAIModel(env, 'chat');
+    const response = await runAIWithLogging(
+        env,
+        model,
+        {
+            messages: [
+                { role: 'system', content: system },
+                { role: 'user', content: user },
+            ],
+            max_tokens: 2048,
+            temperature: 0.3,
+        },
+        GATEWAY_PROFILES.ragChat,
+        'brain-extract'
+    );
+
+    const rawText = typeof response === 'string'
+        ? response
+        : response?.response || response?.result?.response || '';
+
+    const extracted = parseLLMJson(rawText);
+
+    if (extracted) {
+        // 存储问答对
+        if (Array.isArray(extracted.qa_pairs)) {
+            for (const qa of extracted.qa_pairs) {
+                if (!qa.question || !qa.answer_quote) continue;
+                if (!validateQuoteInSource(qa.answer_quote, doc.content)) continue;
+                const topicId = topicMap[qa.topic] || topicMap['教理'] || 9;
+                const position = findQuotePosition(qa.answer_quote, doc.content);
                 await db.prepare(
-                    `UPDATE ai_learning_state SET segments_done = segments_done + 1, updated_at = datetime('now') WHERE doc_id = ?`
-                ).bind(doc.id).run();
-                continue;
+                    `INSERT INTO ai_qa_pairs (doc_id, topic_id, question, answer_quote, answer_position, importance, confidence)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)`
+                ).bind(doc.id, topicId, qa.question.trim(), qa.answer_quote.trim(), position, qa.importance || 'medium', 0.9).run();
+                newQA++;
             }
-
-            // 存储问答对
-            if (Array.isArray(extracted.qa_pairs)) {
-                for (const qa of extracted.qa_pairs) {
-                    if (!qa.question || !qa.answer_quote) continue;
-                    // 验证引文真实性
-                    const isValid = validateQuoteInSource(qa.answer_quote, doc.content);
-                    if (!isValid) continue; // 跳过无法在原文中验证的引文
-                    const topicId = topicMap[qa.topic] || topicMap['教理'] || 9;
-                    const position = findQuotePosition(qa.answer_quote, doc.content);
-                    await db.prepare(
-                        `INSERT INTO ai_qa_pairs (doc_id, topic_id, question, answer_quote, answer_position, importance, confidence)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`
-                    ).bind(
-                        doc.id, topicId, qa.question.trim(), qa.answer_quote.trim(),
-                        position, qa.importance || 'medium', isValid ? 0.9 : 0.5
-                    ).run();
-                    totalQA++;
-                }
+        }
+        // 存储关键引文
+        if (Array.isArray(extracted.key_quotes)) {
+            for (const kq of extracted.key_quotes) {
+                if (!kq.quote || !validateQuoteInSource(kq.quote, doc.content)) continue;
+                const topicId = topicMap[kq.topic] || topicMap['教理'] || 9;
+                const position = findQuotePosition(kq.quote, doc.content);
+                await db.prepare(
+                    `INSERT INTO ai_key_quotes (doc_id, topic_id, quote, context, position)
+                     VALUES (?, ?, ?, ?, ?)`
+                ).bind(doc.id, topicId, kq.quote.trim(), kq.context || '', position).run();
+                newQuotes++;
             }
-
-            // 存储关键引文
-            if (Array.isArray(extracted.key_quotes)) {
-                for (const kq of extracted.key_quotes) {
-                    if (!kq.quote) continue;
-                    const isValid = validateQuoteInSource(kq.quote, doc.content);
-                    if (!isValid) continue;
-                    const topicId = topicMap[kq.topic] || topicMap['教理'] || 9;
-                    const position = findQuotePosition(kq.quote, doc.content);
-                    await db.prepare(
-                        `INSERT INTO ai_key_quotes (doc_id, topic_id, quote, context, position)
-             VALUES (?, ?, ?, ?, ?)`
-                    ).bind(doc.id, topicId, kq.quote.trim(), kq.context || '', position).run();
-                    totalQuotes++;
-                }
+        }
+        // 存储概念
+        if (Array.isArray(extracted.concepts)) {
+            for (const concept of extracted.concepts) {
+                if (!concept.name || !concept.definition) continue;
+                const topicId = topicMap[concept.topic] || topicMap['教理'] || 9;
+                await db.prepare(
+                    `INSERT INTO ai_concepts (name, definition, doc_id, topic_id)
+                     VALUES (?, ?, ?, ?)`
+                ).bind(concept.name.trim(), concept.definition.trim(), doc.id, topicId).run();
+                newConcepts++;
             }
-
-            // 存储概念
-            if (Array.isArray(extracted.concepts)) {
-                for (const concept of extracted.concepts) {
-                    if (!concept.name || !concept.definition) continue;
-                    const topicId = topicMap[concept.topic] || topicMap['教理'] || 9;
-                    await db.prepare(
-                        `INSERT INTO ai_concepts (name, definition, doc_id, topic_id)
-             VALUES (?, ?, ?, ?)`
-                    ).bind(concept.name.trim(), concept.definition.trim(), doc.id, topicId).run();
-                    totalConcepts++;
-                }
-            }
-
-            // 更新段进度
-            await db.prepare(
-                `UPDATE ai_learning_state
-         SET segments_done = ?, qa_extracted = ?, quotes_extracted = ?, concepts_extracted = ?, updated_at = datetime('now')
-         WHERE doc_id = ?`
-            ).bind(i + 1, totalQA, totalQuotes, totalConcepts, doc.id).run();
-
-        } catch (err) {
-            // 记录段级错误但继续处理
-            console.error(`Brain extract error doc=${doc.id} seg=${i}:`, err.message);
         }
     }
 
-    // 标记完成
+    // 更新段进度（原子递增）
+    const totalQA = (state?.qa_extracted || 0) + newQA;
+    const totalQuotes = (state?.quotes_extracted || 0) + newQuotes;
+    const totalConcepts = (state?.concepts_extracted || 0) + newConcepts;
+    const nextSeg = segIndex + 1;
+    const isDone = nextSeg >= totalSegments;
+
     await db.prepare(
         `UPDATE ai_learning_state
-     SET status = 'learned', completed_at = datetime('now'), updated_at = datetime('now'),
-         qa_extracted = ?, quotes_extracted = ?, concepts_extracted = ?
-     WHERE doc_id = ?`
-    ).bind(totalQA, totalQuotes, totalConcepts, doc.id).run();
+         SET segments_done = ?, qa_extracted = ?, quotes_extracted = ?, concepts_extracted = ?,
+             status = ?, ${isDone ? "completed_at = datetime('now')," : ''} updated_at = datetime('now')
+         WHERE doc_id = ?`
+    ).bind(nextSeg, totalQA, totalQuotes, totalConcepts, isDone ? 'learned' : 'processing', doc.id).run();
 
-    return { qa: totalQA, quotes: totalQuotes, concepts: totalConcepts, segments: totalSegments };
+    return {
+        done: isDone, segIndex: nextSeg, segTotal: totalSegments,
+        qa: totalQA, quotes: totalQuotes, concepts: totalConcepts,
+        newInSegment: { qa: newQA, quotes: newQuotes, concepts: newConcepts },
+    };
 }
 
 // ============================================================
@@ -298,164 +299,170 @@ async function processDocument(doc, env) {
 // ============================================================
 
 /**
- * POST /api/ai/brain/learn — 启动/继续知识学习
- * 每次处理 limit 篇文档（默认1，最大3）
- * 支持参数：?limit=1&retry=true&doc_id=xxx
+ * POST /api/ai/brain/learn — 逐段学习
+ * 每次请求只处理一个段落（避免超时）
+ * 前端/脚本循环调用直到所有文档完成
+ * 
+ * 参数：
+ *   ?doc_id=xxx  — 指定处理某篇文档
+ *   ?retry=true  — 重试失败的文档
+ *   不传参数     — 自动取下一篇 pending 或 processing 的文档
  */
 export async function handleBrainLearn(env, request, cors, json) {
-    const url = new URL(request.url);
-    const limit = Math.min(parseInt(url.searchParams.get('limit') || '1', 10), 3);
-    const retryFailed = url.searchParams.get('retry') === 'true';
-    const specificDoc = url.searchParams.get('doc_id');
+    try {
+        const url = new URL(request.url);
+        const retryFailed = url.searchParams.get('retry') === 'true';
+        const specificDoc = url.searchParams.get('doc_id');
 
-    const db = env.DB;
+        const db = env.DB;
 
-    // 初始化学习状态（为所有未在 ai_learning_state 中的文档创建 pending 记录）
-    await db.prepare(
-        `INSERT OR IGNORE INTO ai_learning_state (doc_id, status)
-     SELECT d.id, 'pending'
-     FROM documents d
-     WHERE d.content IS NOT NULL AND d.content != ''
-       AND d.id NOT IN (SELECT doc_id FROM ai_learning_state)`
-    ).run();
+        // 初始化学习状态（为所有未在 ai_learning_state 中的文档创建 pending 记录）
+        await db.prepare(
+            `INSERT OR IGNORE INTO ai_learning_state (doc_id, status)
+         SELECT d.id, 'pending'
+         FROM documents d
+         WHERE d.content IS NOT NULL AND d.content != ''
+           AND d.id NOT IN (SELECT doc_id FROM ai_learning_state)`
+        ).run();
 
-    // 获取待处理文档
-    let query;
-    if (specificDoc) {
-        query = db.prepare(
-            `SELECT d.id, d.title, d.content, d.series_name, d.audio_episode_num
-       FROM documents d WHERE d.id = ? AND d.content IS NOT NULL AND d.content != ''`
-        ).bind(specificDoc);
-    } else if (retryFailed) {
-        query = db.prepare(
-            `SELECT d.id, d.title, d.content, d.series_name, d.audio_episode_num
-       FROM documents d
-       INNER JOIN ai_learning_state ls ON ls.doc_id = d.id AND ls.status = 'failed'
-       WHERE d.content IS NOT NULL AND d.content != ''
-       ORDER BY d.id LIMIT ?`
-        ).bind(limit);
-    } else {
-        query = db.prepare(
-            `SELECT d.id, d.title, d.content, d.series_name, d.audio_episode_num
-       FROM documents d
-       INNER JOIN ai_learning_state ls ON ls.doc_id = d.id AND ls.status = 'pending'
-       WHERE d.content IS NOT NULL AND d.content != ''
-       ORDER BY d.id LIMIT ?`
-        ).bind(limit);
-    }
+        // 获取要处理的文档
+        let doc;
+        if (specificDoc) {
+            doc = await db.prepare(
+                `SELECT d.id, d.title, d.content, d.series_name, d.audio_episode_num
+             FROM documents d WHERE d.id = ? AND d.content IS NOT NULL AND d.content != ''`
+            ).bind(specificDoc).first();
+        } else if (retryFailed) {
+            doc = await db.prepare(
+                `SELECT d.id, d.title, d.content, d.series_name, d.audio_episode_num
+             FROM documents d
+             INNER JOIN ai_learning_state ls ON ls.doc_id = d.id AND ls.status = 'failed'
+             WHERE d.content IS NOT NULL AND d.content != ''
+             ORDER BY d.id LIMIT 1`
+            ).first();
+            // 重试前先重置段进度
+            if (doc) {
+                await db.prepare(
+                    `UPDATE ai_learning_state SET status = 'pending', segments_done = 0,
+                 qa_extracted = 0, quotes_extracted = 0, concepts_extracted = 0, error = NULL WHERE doc_id = ?`
+                ).bind(doc.id).run();
+            }
+        } else {
+            // 优先处理已经在 processing 中的（续传），然后取 pending 的
+            doc = await db.prepare(
+                `SELECT d.id, d.title, d.content, d.series_name, d.audio_episode_num
+             FROM documents d
+             INNER JOIN ai_learning_state ls ON ls.doc_id = d.id AND ls.status IN ('processing', 'pending')
+             WHERE d.content IS NOT NULL AND d.content != ''
+             ORDER BY CASE ls.status WHEN 'processing' THEN 0 ELSE 1 END, d.id
+             LIMIT 1`
+            ).first();
+        }
 
-    const { results: documents } = await query.all();
+        if (!doc) {
+            const stats = await db.prepare(
+                `SELECT status, COUNT(*) as cnt FROM ai_learning_state GROUP BY status`
+            ).all();
+            return json({ success: true, message: '无待处理文档', all_done: true, stats: stats.results }, cors);
+        }
 
-    if (!documents.length) {
-        // 查询总体状态
-        const stats = await db.prepare(
-            `SELECT status, COUNT(*) as cnt FROM ai_learning_state GROUP BY status`
-        ).all();
+        // 处理一个段落
+        const result = await processOneSegment(doc, env);
+
+        // 查询剩余
+        const remaining = await db.prepare(
+            `SELECT COUNT(*) as cnt FROM ai_learning_state WHERE status IN ('pending', 'processing')`
+        ).first();
+
         return json({
             success: true,
-            message: '无待处理文档',
-            stats: stats.results,
-        }, cors);
-    }
-
-    const results = [];
-    for (const doc of documents) {
-        try {
-            const result = await processDocument(doc, env);
-            results.push({ doc_id: doc.id, title: doc.title, ...result, status: 'learned' });
+            doc_id: doc.id,
+            title: doc.title,
+            segment: `${result.segIndex}/${result.segTotal}`,
+            doc_done: result.done,
+            extracted: result.newInSegment || null,
+            totals_for_doc: { qa: result.qa, quotes: result.quotes, concepts: result.concepts },
+            remaining_docs: remaining?.cnt || 0,
+            // 如果文档还没处理完，提示继续调用
+            next_action: result.done
+                ? (remaining?.cnt > 1 ? 'call_again' : 'all_done')
+                : 'call_again',
         } catch (err) {
-            // 标记失败
-            await db.prepare(
-                `UPDATE ai_learning_state SET status = 'failed', error = ?, updated_at = datetime('now') WHERE doc_id = ?`
-            ).bind(err.message, doc.id).run();
-            results.push({ doc_id: doc.id, title: doc.title, error: err.message, status: 'failed' });
+            return json({ error: err.message, stack: err.stack?.split('\n').slice(0, 5) }, cors, 500);
         }
     }
-
-    // 查询剩余待处理数
-    const remaining = await db.prepare(
-        `SELECT COUNT(*) as cnt FROM ai_learning_state WHERE status = 'pending'`
-    ).first();
-
-    // 查询总体统计
-    const totalStats = await db.prepare(
-        `SELECT
-       SUM(qa_extracted) as total_qa,
-       SUM(quotes_extracted) as total_quotes,
-       SUM(concepts_extracted) as total_concepts
-     FROM ai_learning_state WHERE status = 'learned'`
-    ).first();
-
-    return json({
-        success: true,
-        processed: results,
-        remaining: remaining?.cnt || 0,
-        totals: {
-            qa_pairs: totalStats?.total_qa || 0,
-            key_quotes: totalStats?.total_quotes || 0,
-            concepts: totalStats?.total_concepts || 0,
-        },
-    }, cors);
-}
 
 /**
  * GET /api/ai/brain/status — 查看学习进度
  */
 export async function handleBrainStatus(env, cors, json) {
-    const db = env.DB;
+        const db = env.DB;
 
-    // 各状态计数
-    const statusCounts = await db.prepare(
-        `SELECT status, COUNT(*) as cnt FROM ai_learning_state GROUP BY status`
-    ).all();
+        // 各状态计数
+        const statusCounts = await db.prepare(
+            `SELECT status, COUNT(*) as cnt FROM ai_learning_state GROUP BY status`
+        ).all();
 
-    // 总提取量
-    const totals = await db.prepare(
-        `SELECT
+        // 总提取量
+        const totals = await db.prepare(
+            `SELECT
        SUM(qa_extracted) as total_qa,
        SUM(quotes_extracted) as total_quotes,
        SUM(concepts_extracted) as total_concepts
      FROM ai_learning_state WHERE status = 'learned'`
-    ).first();
+        ).first();
 
-    // 最近处理的文档
-    const recent = await db.prepare(
-        `SELECT doc_id, status, qa_extracted, quotes_extracted, concepts_extracted, completed_at, error
+        // 最近处理的文档
+        const recent = await db.prepare(
+            `SELECT doc_id, status, qa_extracted, quotes_extracted, concepts_extracted, completed_at, error
      FROM ai_learning_state
      ORDER BY updated_at DESC LIMIT 5`
-    ).all();
+        ).all();
 
-    // 主题分布
-    const topicDist = await db.prepare(
-        `SELECT t.name, COUNT(q.id) as qa_count
+        // 主题分布
+        const topicDist = await db.prepare(
+            `SELECT t.name, COUNT(q.id) as qa_count
      FROM ai_topics t
      LEFT JOIN ai_qa_pairs q ON q.topic_id = t.id
      GROUP BY t.id ORDER BY t.sort_order`
-    ).all();
+        ).all();
 
-    return json({
-        status_counts: statusCounts.results,
-        totals: {
-            qa_pairs: totals?.total_qa || 0,
-            key_quotes: totals?.total_quotes || 0,
-            concepts: totals?.total_concepts || 0,
-        },
-        recent: recent.results,
-        topic_distribution: topicDist.results,
-    }, cors);
-}
+        return json({
+            status_counts: statusCounts.results,
+            totals: {
+                qa_pairs: totals?.total_qa || 0,
+                key_quotes: totals?.total_quotes || 0,
+                concepts: totals?.total_concepts || 0,
+            },
+            recent: recent.results,
+            topic_distribution: topicDist.results,
+        }, cors);
+    }
 
-/**
- * POST /api/ai/brain/reset — 重置学习状态（清空知识，重新来过）
+    /**
+     * POST /api/ai/brain/reset — 重置学习状态（清空知识，重新来过）
+ * 可选参数 ?doc_id=xxx 只重置一篇
  */
-export async function handleBrainReset(env, cors, json) {
+export async function handleBrainReset(env, request, cors, json) {
     const db = env.DB;
-    await db.batch([
-        db.prepare('DELETE FROM ai_qa_pairs'),
-        db.prepare('DELETE FROM ai_key_quotes'),
-        db.prepare('DELETE FROM ai_concepts'),
-        db.prepare('DELETE FROM ai_learning_state'),
-    ]);
-    _topicCache = null;
-    return json({ success: true, message: '知识库已清空，可重新开始学习' }, cors);
-}
+    const url = new URL(request.url);
+    const specificDoc = url.searchParams.get('doc_id');
+
+    if (specificDoc) {
+        await db.batch([
+            db.prepare('DELETE FROM ai_qa_pairs WHERE doc_id = ?').bind(specificDoc),
+            db.prepare('DELETE FROM ai_key_quotes WHERE doc_id = ?').bind(specificDoc),
+            db.prepare('DELETE FROM ai_concepts WHERE doc_id = ?').bind(specificDoc),
+            db.prepare('DELETE FROM ai_learning_state WHERE doc_id = ?').bind(specificDoc),
+        ]);
+        _topicCache = null;
+        return json({ success: true, message: `文档 ${specificDoc} 已重置` }, cors);
+    }
+
+            db.prepare('DELETE FROM ai_key_quotes'),
+            db.prepare('DELETE FROM ai_concepts'),
+            db.prepare('DELETE FROM ai_learning_state'),
+        ]);
+        _topicCache = null;
+        return json({ success: true, message: '知识库已清空，可重新开始学习' }, cors);
+    }

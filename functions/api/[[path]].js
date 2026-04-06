@@ -388,7 +388,7 @@ export async function onRequest(context) {
       if (!token || !env.ADMIN_TOKEN || !timingSafeCompare(token, env.ADMIN_TOKEN)) {
         return json({ error: 'Unauthorized' }, cors, 401);
       }
-      return await handleBrainReset(env, cors, json);
+      return await handleBrainReset(env, request, cors, json);
     }
 
     // POST /api/admin/embeddings/build — 批量构建向量
