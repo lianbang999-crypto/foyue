@@ -3,11 +3,11 @@
  * 后台学习文库讲记，提取结构化知识存入 D1
  */
 
-import { AI_CONFIG, GATEWAY_PROFILES, runAIWithLogging, resolveAIModel } from './ai-utils.js';
+import { resolveAIModel } from './ai-utils.js';
 
 // 知识提取的分段参数
-const SEGMENT_MAX_LEN = 3500;  // 每段最大字数
-const SEGMENT_OVERLAP = 200;   // 段间重叠字数
+const SEGMENT_MAX_LEN = 2000;  // 每段最大字数（小段 = LLM 更快完成）
+const SEGMENT_OVERLAP = 150;   // 段间重叠字数
 
 // 主题ID缓存（避免重复查询）
 let _topicCache = null;
@@ -47,57 +47,18 @@ function splitDocForLearning(content) {
  * 构建知识提取 Prompt
  */
 function buildExtractionPrompt(segment, docMeta, segIndex, segTotal) {
-    const system = `你是净土宗讲记知识整理专家。从讲记片段中提取结构化知识。
+    const system = `/no_think
+从佛法讲记中提取知识，严格输出 JSON。
 
-## 提取规则
-1. 只提取法师原文中的内容，不添加自己的理解
-2. 每个知识条目必须包含原文引用（逐字摘录，100-400字）
-3. 问答对的"question"用普通信众可能问的自然提问方式
-4. 关键引文选择法师精彩、有修行指导意义的论述
-5. 概念选择净土宗核心术语
+规则：只摘原文，不添加内容。qa_pairs 最多3个，key_quotes 最多2个，concepts 最多2个。
+主题类目：信|愿|行|往生|净土庄严|阿弥陀佛|因果|菩提心|教理|实修问答
 
-## 主题类目（选一个最匹配的）
-信 | 愿 | 行 | 往生 | 净土庄严 | 阿弥陀佛 | 因果 | 菩提心 | 教理 | 实修问答
+输出格式：
+{"qa_pairs":[{"question":"问题","answer_quote":"法师原文100-300字","topic":"类目","importance":"high或medium"}],"key_quotes":[{"quote":"原文50-150字","topic":"类目","context":"一句话说明"}],"concepts":[{"name":"术语","definition":"法师解释原文","topic":"类目"}]}
 
-## 输出严格 JSON 格式
-{
-  "qa_pairs": [
-    {
-      "question": "信众可能问的问题",
-      "answer_quote": "法师原文逐字摘录（100-400字，必须是原文中连续的文字）",
-      "topic": "主题类目",
-      "importance": "high 或 medium"
-    }
-  ],
-  "key_quotes": [
-    {
-      "quote": "法师精彩论述原文（50-200字）",
-      "topic": "主题类目",
-      "context": "一句话说明上下文"
-    }
-  ],
-  "concepts": [
-    {
-      "name": "净土宗术语",
-      "definition": "法师对此术语的解释原文",
-      "topic": "主题类目"
-    }
-  ]
-}
+无实质内容则返回 {"qa_pairs":[],"key_quotes":[],"concepts":[]}`;
 
-注意：
-- 如果片段是寒暄、开场白等非实质内容，可以返回空数组
-- qa_pairs 最多 5 个，key_quotes 最多 3 个，concepts 最多 3 个
-- 必须输出合法 JSON，不要加额外文字`;
-
-    const user = `## 文档信息
-- 系列：${docMeta.series_name || '未知'}
-- 标题：${docMeta.title || '未知'}
-- 片段：第${segIndex + 1}/${segTotal}段
-
-## 讲记原文
-
-${segment}`;
+    const user = `《${docMeta.series_name || ''}·${docMeta.title || ''}》第${segIndex + 1}/${segTotal}段：\n\n${segment}`;
 
     return { system, user };
 }
@@ -209,25 +170,38 @@ async function processOneSegment(doc, env) {
 
     let newQA = 0, newQuotes = 0, newConcepts = 0;
 
-    const model = resolveAIModel(env, 'chat');
-    const response = await runAIWithLogging(
-        env,
-        model,
-        {
-            messages: [
-                { role: 'system', content: system },
-                { role: 'user', content: user },
-            ],
-            max_tokens: 2048,
-            temperature: 0.3,
-        },
-        GATEWAY_PROFILES.ragChat,
-        'brain-extract'
-    );
+    // 用 fast 模型 + 流式调用，收集完整文本后解析
+    // 流式调用不会触发 Pages Functions 的 wall clock 超时
+    const model = resolveAIModel(env, 'chatFallback');
+    const streamResponse = await env.AI.run(model, {
+        messages: [
+            { role: 'system', content: system },
+            { role: 'user', content: user },
+        ],
+        max_tokens: 1024,
+        temperature: 0.3,
+        stream: true,
+    });
 
-    const rawText = typeof response === 'string'
-        ? response
-        : response?.response || response?.result?.response || '';
+    // 从 EventSource stream 收集完整文本
+    let rawText = '';
+    const reader = streamResponse.getReader();
+    const decoder = new TextDecoder();
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        // SSE 格式: data: {"response":"token"}
+        for (const line of chunk.split('\n')) {
+            if (!line.startsWith('data: ')) continue;
+            const data = line.slice(6).trim();
+            if (data === '[DONE]') continue;
+            try {
+                const parsed = JSON.parse(data);
+                if (parsed.response) rawText += parsed.response;
+            } catch { /* skip malformed chunks */ }
+        }
+    }
 
     const extracted = parseLLMJson(rawText);
 
