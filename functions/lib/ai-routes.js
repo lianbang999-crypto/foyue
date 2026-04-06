@@ -1309,9 +1309,14 @@ export async function handleSearchQuotes(env, request, cors, ctx, json) {
     if (!doc) continue;
 
     const chunkText = (match.metadata?.text || '').replace(/\s+/g, ' ').trim();
-    const snippet = keywords.length > 0
-      ? buildKeywordSnippet(chunkText, keywords) || chunkText.slice(0, 400)
-      : chunkText.slice(0, 400);
+    // 当 Vectorize metadata.text 缺失时，从源文档内容提取片段
+    let snippet = '';
+    const textSource = chunkText || (doc.content || '').replace(/\s+/g, ' ').trim();
+    if (textSource) {
+      snippet = keywords.length > 0
+        ? buildKeywordSnippet(textSource, keywords) || textSource.slice(0, 400)
+        : textSource.slice(0, 400);
+    }
 
     results.push({
       doc_id: docId,
