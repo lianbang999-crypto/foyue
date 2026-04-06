@@ -72,6 +72,25 @@ export async function searchQuotes(question, options = {}) {
 }
 
 /**
+ * 法音 AI 问答 — 基于讲记内容的 RAG 问答，返回 AI 生成回答 + 来源引用
+ * @param {string} question
+ * @param {object} options - { series_id?, episode_num?, history? }
+ * @returns {{ answer, followUps, sources, disclaimer }}
+ */
+export async function askQuestion(question, options = {}) {
+  return aiFetch(`${AI_BASE}/ask`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      question,
+      series_id: options.series_id,
+      episode_num: options.episode_num,
+      history: options.history || [],
+    }),
+  });
+}
+
+/**
  * 获取集摘要
  */
 export async function getEpisodeSummary(documentId) {

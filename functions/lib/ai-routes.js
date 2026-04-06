@@ -124,6 +124,8 @@ function buildBoundSourceList(answer, references, keywords = [], fallbackMatches
       score: reference.score,
       category: reference.category || '',
       series_name: reference.series_name || '',
+      audio_series_id: reference.audio_series_id || '',
+      audio_episode_num: reference.audio_episode_num || null,
       snippet: matchedQuoteByRef.get(reference.refIndex)
         || (keywords.length > 0
           ? buildKeywordSnippet(reference.text, keywords) || reference.text.slice(0, 300)

@@ -455,6 +455,8 @@ export function buildRAGContext(contextDocs, options = {}) {
         title,
         category: doc?.category || match.metadata?.category || '',
         series_name: doc?.series_name || match.metadata?.series_name || '',
+        audio_series_id: doc?.audio_series_id || match.metadata?.audio_series_id || '',
+        audio_episode_num: doc?.audio_episode_num || null,
         score: typeof match.score === 'number' ? Math.round(match.score * 100) / 100 : null,
         text: chunkText,
       });
@@ -474,6 +476,8 @@ export function buildRAGContext(contextDocs, options = {}) {
         title: doc.title || '未知',
         category: doc.category || '',
         series_name: doc.series_name || '',
+        audio_series_id: doc.audio_series_id || '',
+        audio_episode_num: doc.audio_episode_num || null,
         score: null,
         text: snippet,
       });

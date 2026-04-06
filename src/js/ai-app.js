@@ -1,7 +1,7 @@
 /* ===== 法音AI 独立页面入口 ===== */
 import '../css/ai-page.css';
 import { syncSystemTheme } from './theme.js';
-import { searchQuotes } from './ai-client.js';
+import { askQuestion } from './ai-client.js';
 import { createAiConversationStore } from './ai-conversations.js';
 import {
     buildWelcomeHTML,
@@ -412,60 +412,50 @@ async function handleSubmit(options = {}) {
     showTyping();
 
     try {
-        const data = await searchQuotes(question, { series_id: aiContext?.series_id });
+        // 获取最近几轮对话作为上下文
+        const recentHistory = getChatHistory()
+            .filter(m => m.role === 'user' || (m.role === 'assistant' && m.content))
+            .slice(-6)
+            .map(m => ({ role: m.role, content: m.content || '' }));
+
+        const data = await askQuestion(question, {
+            series_id: aiContext?.series_id,
+            episode_num: aiContext?.episodeNum,
+            history: recentHistory,
+        });
 
         removeTyping();
 
-        // 渲染搜索结果卡片
-        const resultsEl = document.createElement('div');
-        resultsEl.className = 'ai-message ai-message--bot';
-        const contentEl = document.createElement('div');
-        contentEl.className = 'ai-message-content';
-        contentEl.innerHTML = renderSearchResults(data.results, data.keywords, question, data.audioResults);
-        resultsEl.appendChild(contentEl);
+        const sourcesWithQuery = attachSourcePreviewQuery(data.sources || [], question);
+        addMessage('bot', data.answer, sourcesWithQuery, data.disclaimer, false, conv.messages.length);
 
-        // 免责声明
-        if (data.disclaimer && data.results?.length) {
-            const disc = document.createElement('div');
-            disc.className = 'ai-disclaimer';
-            disc.textContent = data.disclaimer;
-            resultsEl.appendChild(disc);
+        // 渲染后续追问建议
+        if (data.followUps?.length) {
+            const followUpEl = document.createElement('div');
+            followUpEl.className = 'ai-followups';
+            followUpEl.innerHTML = data.followUps.map(q =>
+                `<button class="ai-hot-tag" data-question="${escapeHtml(q)}">${escapeHtml(q)}</button>`
+            ).join('');
+            chatArea.appendChild(followUpEl);
         }
 
-        // 操作栏 + 时间
-        const actions = buildMsgActions();
-        const time = document.createElement('time');
-        time.className = 'ai-msg-time';
-        time.textContent = formatMsgTime(new Date());
-        actions.prepend(time);
-        resultsEl.appendChild(actions);
-
-        chatArea.appendChild(resultsEl);
         scrollToBottom();
 
         // 持久化
-        const docCount = data.results?.length || 0;
-        const audioCount = data.audioResults?.length || 0;
-        const parts = [];
-        if (audioCount) parts.push(`${audioCount} 个音频`);
-        if (docCount) parts.push(`${docCount} 段开示`);
-        const summary = parts.length ? `找到 ${parts.join('、')}` : '未找到相关内容';
         conv.messages.push({
             role: 'assistant',
-            content: summary,
-            searchResults: data.results,
-            audioResults: data.audioResults,
+            content: data.answer || '',
+            sources: sourcesWithQuery,
             disclaimer: data.disclaimer,
         });
         trimConversationMessages(conv);
-        resultsEl.dataset.messageIndex = String(conv.messages.length - 1);
         conv.updatedAt = Date.now();
         saveConversations();
         renderConvList();
 
     } catch (err) {
         removeTyping();
-        addErrorMessage(err.message || '搜索失败，请稍后再试', question);
+        addErrorMessage(err.message || '回答失败，请稍后再试', question);
     } finally {
         isLoading = false;
         setGeneratingUI(false);
@@ -548,13 +538,27 @@ function removeTyping() {
 /* --- 来源引用卡片渲染 --- */
 function renderSourceTag(s, fallbackQuery = '') {
     const title = escapeHtml(s.title);
+    const series = s.series_name ? `<span class="ai-source-series">${escapeHtml(s.series_name)}</span>` : '';
+    const epNum = s.audio_episode_num ? `<span class="ai-source-ep">第${s.audio_episode_num}讲</span>` : '';
+
+    // 播放链接（有音频数据时）
+    const playBtn = s.audio_series_id
+        ? `<a class="ai-source-play" href="/?series=${encodeURIComponent(s.audio_series_id)}${s.audio_episode_num ? `&ep=${s.audio_episode_num}` : ''}" title="播放此讲">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5,3 19,12 5,21"/></svg>
+          </a>`
+        : '';
+
     if (s.doc_id) {
         const rawQuery = String(s.preview_query || fallbackQuery || extractHighlightQuery(_lastQuestion) || '').trim();
         const queryAttr = rawQuery ? ` data-query="${escapeHtml(rawQuery)}"` : '';
         const snippetAttr = s.snippet ? ` data-snippet="${escapeHtml(s.snippet || '')}"` : '';
-        return `<button class="ai-source-tag" data-doc-id="${escapeHtml(s.doc_id)}"${queryAttr}${snippetAttr}>${title}</button>`;
+        return `<span class="ai-source-card">
+            <button class="ai-source-tag" data-doc-id="${escapeHtml(s.doc_id)}"${queryAttr}${snippetAttr}>
+                <span class="ai-source-title">${title}</span>${series}${epNum}
+            </button>${playBtn}
+        </span>`;
     }
-    return `<span class="ai-source-tag">${title}</span>`;
+    return `<span class="ai-source-card"><span class="ai-source-tag"><span class="ai-source-title">${title}</span>${series}${epNum}</span>${playBtn}</span>`;
 }
 
 function loadAiContext() {

@@ -619,6 +619,72 @@ body {
     color: var(--ai-accent);
 }
 
+/* 来源卡片容器（包含讲记按钮 + 播放按钮） */
+.ai-source-card {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.ai-source-tag {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    row-gap: 2px;
+}
+
+.ai-source-title {
+    flex-shrink: 0;
+}
+
+.ai-source-series {
+    font-size: 11px;
+    color: var(--ai-text-muted);
+    font-style: normal;
+}
+
+.ai-source-ep {
+    font-size: 11px;
+    color: var(--ai-text-muted);
+}
+
+/* 来源播放按钮 */
+.ai-source-play {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--ai-accent-dim);
+    color: var(--ai-accent);
+    text-decoration: none;
+    flex-shrink: 0;
+    transition: background 0.15s, transform 0.15s;
+}
+
+.ai-source-play:hover {
+    background: var(--ai-accent);
+    color: #fff;
+    transform: scale(1.1);
+}
+
+/* 追问建议区 */
+.ai-followups {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 4px 18px 12px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.ai-followups .ai-hot-tag {
+    font-size: 13px;
+    opacity: 0.85;
+}
+
 /* 免责声明（隐藏） */
 .ai-disclaimer {
     display: none;

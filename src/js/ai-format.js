@@ -4,9 +4,9 @@ const HOT_TOPICS = [
     '念佛时妄念多怎么办',
     '临终助念要注意什么',
     '信愿行是什么意思',
-    '怎样发菩提心',
-    '带业往生的条件',
     '如何做到都摄六根',
+    '带业往生的条件',
+    '一心不乱是什么境界',
 ];
 
 function getGreeting() {
@@ -28,7 +28,7 @@ export function buildWelcomeHTML() {
     return `
     <div class="ai-welcome">
       <h1>${greeting}</h1>
-      <p class="ai-welcome-sub">搜索法师讲记原文，为您精准定位法师的开示</p>
+      <p class="ai-welcome-sub">基于法师讲记，AI 为您生成准确答复，注明引用出处</p>
       <div class="ai-hot-topics">
         <span class="ai-hot-label">常见问题</span>
         <div class="ai-hot-list">${hotTags}</div>
