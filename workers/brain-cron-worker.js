@@ -425,6 +425,37 @@ export default {
             }
         }
 
+        // GET /test-ai — 测试 Google AI 连通性（临时调试用）
+        if (url.pathname === '/test-ai') {
+            const model = env.GOOGLE_AI_MODEL || 'gemma-3-27b-it';
+            const apiKey = env.GOOGLE_AI_KEY;
+            if (!apiKey) return Response.json({ error: 'GOOGLE_AI_KEY not set' }, { status: 400 });
+            const testUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+            try {
+                const r = await fetch(testUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ role: 'user', parts: [{ text: '请用一句话回答：南无阿弥陀佛是什么意思？' }] }],
+                        generationConfig: { maxOutputTokens: 100, temperature: 0.3 },
+                    }),
+                });
+                const data = await r.json();
+                return Response.json({
+                    model,
+                    http_status: r.status,
+                    response: data,
+                });
+            } catch (err) {
+                return Response.json({
+                    model,
+                    error: err.message,
+                    error_name: err.name,
+                    error_cause: String(err.cause || ''),
+                }, { status: 500 });
+            }
+        }
+
         return new Response('Not Found', { status: 404 });
     },
 };
