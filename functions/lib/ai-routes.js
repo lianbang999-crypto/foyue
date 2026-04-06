@@ -1228,7 +1228,36 @@ export async function handleSearchQuotes(env, request, cors, ctx, json) {
   const seriesId = typeof body?.series_id === 'string' ? body.series_id.trim().slice(0, 100) : null;
   const keywords = extractSearchKeywords(question);
 
-  // 0. 音频标题搜索（series + episodes）
+  // 0a. 知识库优先匹配（预提取的问答对）
+  let knowledgeResults = [];
+  if (env?.DB && keywords.length > 0) {
+    try {
+      const likeQ = keywords.slice(0, 3).map(k => `%${k}%`);
+      const whereQ = likeQ.map(() => 'q.question LIKE ?').join(' OR ');
+      const kbSql = `SELECT q.id, q.question, q.answer_quote, q.answer_position, q.importance,
+        q.doc_id, d.title, d.series_name, d.audio_series_id, d.audio_episode_num
+        FROM ai_qa_pairs q LEFT JOIN documents d ON q.doc_id = d.id
+        WHERE (${whereQ}) ORDER BY q.importance DESC, q.confidence DESC LIMIT 5`;
+      const kbRows = await env.DB.prepare(kbSql).bind(...likeQ).all();
+      for (const r of (kbRows.results || [])) {
+        knowledgeResults.push({
+          doc_id: r.doc_id,
+          title: r.title || '',
+          series_name: r.series_name || '',
+          audio_series_id: r.audio_series_id || '',
+          audio_episode_num: r.audio_episode_num || null,
+          snippet: r.answer_quote || '',
+          score: r.importance === 'high' ? 0.95 : 0.85,
+          source: 'knowledge',
+          question_match: r.question,
+        });
+      }
+    } catch (err) {
+      console.warn('Knowledge base query failed:', err.message);
+    }
+  }
+
+  // 0b. 音频标题搜索（series + episodes）
   let audioResults = [];
   if (env?.DB && keywords.length > 0) {
     try {
@@ -1297,9 +1326,28 @@ export async function handleSearchQuotes(env, request, cors, ctx, json) {
     matches = expandContextFromDocs(matches, docs);
   }
 
-  // 6. 构建搜索结果（去重、最多返回 5 条）
+  // 6. 构建搜索结果（知识库优先、然后向量+关键词结果，去重、最多 5 条）
   const seenDocIds = new Set();
   const results = [];
+
+  // 知识库结果优先（来自预提取的问答对）
+  for (const kr of knowledgeResults) {
+    if (!kr.doc_id || seenDocIds.has(kr.doc_id)) continue;
+    seenDocIds.add(kr.doc_id);
+    results.push({
+      doc_id: kr.doc_id,
+      title: kr.title,
+      series_name: kr.series_name,
+      category: '',
+      audio_series_id: kr.audio_series_id,
+      audio_episode_num: kr.audio_episode_num,
+      snippet: kr.snippet,
+      score: kr.score,
+    });
+    if (results.length >= 5) break;
+  }
+
+  // 向量/关键词结果补充
   for (const match of matches) {
     const docId = match.metadata?.doc_id;
     if (!docId || seenDocIds.has(docId)) continue;
