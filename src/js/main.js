@@ -9,6 +9,7 @@ import '../css/player.css';
 import '../css/cards.css';
 import '../css/pages.css';
 import '../css/components.css';
+import '../css/share.css';
 // AI / 文库 / 共修等独立页样式在各自入口中按需加载，主站仅保留共享 UI。
 import { state, beginContentRequest, isContentRequestCurrent, getCurrentTrack } from './state.js';
 import { initDOM, getDOM } from './dom.js';

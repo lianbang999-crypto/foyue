@@ -1322,7 +1322,14 @@ export function cycleLoop() {
 export function shareTrack(ep, series) {
   const title = '\u300A' + (series.title || '') + '\u300B' + (ep.title || ep.fileName);
   const url = window.location.origin + '/share/' + encodeURIComponent(series.id) + '/' + ep.id;
-  shareContent(title, url);
+  import('./share-panel.js').then(mod => {
+    mod.showSharePanel({
+      type: 'track',
+      title: series.title || '',
+      subtitle: ep.title || ep.fileName,
+      url,
+    });
+  }).catch(() => shareContent(title, url));
 }
 
 export function shareSeries(series) {
@@ -1330,7 +1337,14 @@ export function shareSeries(series) {
   const unit = t('episodes') || '\u96C6';
   const title = '\u300A' + (series.title || '') + '\u300B' + (epCount ? '\u5171' + epCount + unit : '');
   const url = window.location.origin + '/share/' + encodeURIComponent(series.id);
-  shareContent(title, url);
+  import('./share-panel.js').then(mod => {
+    mod.showSharePanel({
+      type: 'series',
+      title: series.title || '',
+      subtitle: epCount ? '\u5171' + epCount + unit : (series.speaker || ''),
+      url,
+    });
+  }).catch(() => shareContent(title, url));
 }
 
 /* ===== Speed Control ===== */

@@ -1,0 +1,147 @@
+/* ============================================================
+   分享面板 — 底部弹出式 
+   极简风格，与水墨设计方案一致
+   ============================================================ */
+
+.share-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .35);
+    z-index: 9998;
+    opacity: 0;
+    transition: opacity .2s ease;
+    pointer-events: none;
+}
+
+.share-backdrop--in {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.share-panel {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--bg);
+    border-radius: 16px 16px 0 0;
+    padding: 12px 20px calc(20px + var(--safe-bottom));
+    z-index: 9999;
+    transform: translateY(100%);
+    transition: transform .25s cubic-bezier(.22, 1, .36, 1);
+    max-height: 85vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.share-panel--in {
+    transform: translateY(0);
+}
+
+/* 拖拽条 */
+.share-handle {
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    margin: 0 auto 16px;
+}
+
+/* 海报预览 */
+.share-preview {
+    width: 100%;
+    max-width: 300px;
+    margin: 0 auto 20px;
+    aspect-ratio: 3/4;
+    background: var(--bg-secondary);
+    border-radius: var(--radius);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.share-preview-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.share-preview-loading {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+/* 分享操作按钮区 */
+.share-actions {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    padding: 8px 0 16px;
+}
+
+.share-action-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    padding: 8px 12px;
+    cursor: pointer;
+    color: var(--text);
+    min-width: 64px;
+    -webkit-appearance: none;
+}
+
+.share-action-btn svg {
+    color: var(--text-secondary);
+}
+
+.share-action-btn span {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.share-action-btn:active {
+    opacity: 0.6;
+}
+
+/* 取消按钮 */
+.share-cancel {
+    display: block;
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-top: 1px solid var(--border);
+    background: none;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    cursor: pointer;
+    -webkit-appearance: none;
+}
+
+.share-cancel:active {
+    background: var(--bg-secondary);
+}
+
+/* 深色模式 */
+[data-theme="dark"] .share-panel {
+    background: var(--bg-secondary);
+}
+
+/* 桌面端限制宽度 */
+@media (min-width: 768px) {
+    .share-panel {
+        max-width: 420px;
+        left: 50%;
+        right: auto;
+        transform: translate(-50%, 100%);
+        border-radius: 16px 16px 0 0;
+    }
+
+    .share-panel--in {
+        transform: translate(-50%, 0);
+    }
+}
