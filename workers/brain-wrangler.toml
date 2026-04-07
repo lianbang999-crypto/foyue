@@ -4,10 +4,9 @@ name = "foyue-brain-worker"
 main = "brain-cron-worker.js"
 compatibility_date = "2025-01-01"
 
-# Cron 触发器：每4小时运行一次（加速批量学习期间）
-# 学习完成后改回 "0 20 * * *"（每天北京时间凌晨4点）
+# Cron 触发器：每4小时自动学习
 [triggers]
-crons = ["0 */4 * * *"]
+crons = ["0 3 * * *"]
 
 # D1 数据库（和 Pages 共享同一个）
 [[d1_databases]]

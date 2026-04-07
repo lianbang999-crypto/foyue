@@ -11,8 +11,8 @@
 // ============================================================
 const SEGMENT_MAX_LEN = 6000;     // 外部 LLM 上下文充足，可用大段落提升质量
 const SEGMENT_OVERLAP = 200;      // 段落间重叠，防止有效信息被截断
-const MAX_DOCS_PER_RUN = 15;      // 每次 Cron 最多处理几篇
-const MAX_SEGMENTS_PER_RUN = 120;  // 每次 Cron 最多处理几个段落（~120×4.5s≈9分钟）
+const MAX_DOCS_PER_RUN = 3;       // 每次 Cron 最多处理几篇（每天1次，控制在1-3篇/天）
+const MAX_SEGMENTS_PER_RUN = 30;   // 每次 Cron 最多处理几个段落（~30×4.5s≈2分钟）
 const AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
 // ============================================================
@@ -358,6 +358,23 @@ export default {
         log('🧠 Brain Cron 开始');
 
         try {
+            // 分布式锁：防止并发 cron 竞争 LLM 配额
+            const lockRow = await db.prepare(
+                `SELECT doc_id, updated_at FROM ai_learning_state WHERE status = 'processing' LIMIT 1`
+            ).first();
+            if (lockRow) {
+                const elapsed = Date.now() - new Date(lockRow.updated_at + 'Z').getTime();
+                if (elapsed < 8 * 60 * 1000) { // 8 分钟内有活跃任务，跳过
+                    log(`⏭ 跳过：另一 cron 正在处理 (${lockRow.doc_id}, ${Math.round(elapsed / 1000)}秒前)`);
+                    return;
+                }
+                // 超时 8 分钟，可能卡住了，标记为 failed 继续
+                log(`⚠️ 清理超时任务: ${lockRow.doc_id}`);
+                await db.prepare(
+                    `UPDATE ai_learning_state SET status='failed', error='cron timeout', updated_at=datetime('now') WHERE doc_id=? AND status='processing'`
+                ).bind(lockRow.doc_id).run();
+            }
+
             // 初始化：把新文档加入 pending
             await db.prepare(
                 `INSERT OR IGNORE INTO ai_learning_state (doc_id, status)
