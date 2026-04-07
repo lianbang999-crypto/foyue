@@ -127,6 +127,77 @@ function shouldRetryWithoutGateway(err) {
 }
 
 // ============================================================
+// 外部 LLM API（OpenAI 兼容格式 — 智谱 GLM/DeepSeek 等）
+// 不消耗 Workers AI neuron 配额
+// ============================================================
+const DEFAULT_EXTERNAL_LLM_BASE = 'https://open.bigmodel.cn/api/paas/v4';
+const DEFAULT_EXTERNAL_LLM_MODEL = 'glm-4.7-flash';
+
+function getExternalLLMConfig(env) {
+  const apiKey = env?.EXTERNAL_LLM_KEY;
+  if (!apiKey) return null;
+  return {
+    apiKey,
+    baseUrl: (env?.EXTERNAL_LLM_BASE || DEFAULT_EXTERNAL_LLM_BASE).replace(/\/+$/, ''),
+    model: env?.EXTERNAL_LLM_MODEL || DEFAULT_EXTERNAL_LLM_MODEL,
+  };
+}
+
+// 非流式调用外部 LLM
+export async function callExternalLLM(env, messages, options = {}) {
+  const config = getExternalLLMConfig(env);
+  if (!config) throw new Error('External LLM not configured');
+  const { maxTokens = 500, temperature = 0.2 } = options;
+  const url = `${config.baseUrl}/chat/completions`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${config.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: config.model,
+      messages,
+      max_tokens: maxTokens,
+      temperature,
+    }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`External LLM ${res.status}: ${errText.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  return data?.choices?.[0]?.message?.content || '';
+}
+
+// 流式调用外部 LLM（返回 ReadableStream of SSE）
+export async function streamExternalLLM(env, messages, options = {}) {
+  const config = getExternalLLMConfig(env);
+  if (!config) throw new Error('External LLM not configured');
+  const { maxTokens = 500, temperature = 0.2 } = options;
+  const url = `${config.baseUrl}/chat/completions`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${config.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: config.model,
+      messages,
+      max_tokens: maxTokens,
+      temperature,
+      stream: true,
+    }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`External LLM stream ${res.status}: ${errText.slice(0, 200)}`);
+  }
+  return res.body;
+}
+
+// ============================================================
 // 短 hash — 将长字符串压缩为 12 字符的 hex
 // ============================================================
 function shortHash(str) {
@@ -391,6 +462,18 @@ export function stripThinkTags(text) {
 export async function ragAnswer(env, question, contextDocs, options = {}) {
   const { history = [], vectorMatches = [], ctx = null } = options;
   const messages = buildRAGMessages(question, contextDocs, { history, vectorMatches });
+
+  // 优先使用外部 LLM（不消耗 Workers AI neuron 配额）
+  if (env?.EXTERNAL_LLM_KEY) {
+    try {
+      const text = await callExternalLLM(env, messages, { maxTokens: 500, temperature: 0.2 });
+      if (text) return { response: stripThinkTags(text) };
+    } catch (err) {
+      console.warn('External LLM ragAnswer failed, falling back to Workers AI:', err.message);
+    }
+  }
+
+  // Fallback: Workers AI
   const chatModel = resolveAIModel(env, 'chat');
   const fallbackChatModel = resolveAIModel(env, 'chatFallback');
 
@@ -508,6 +591,17 @@ export async function generateSummary(env, title, content, options = {}) {
   const { ctx = null } = options;
   const truncated = content.slice(0, 6000);
   const messages = buildSummaryMessages(title, truncated);
+
+  // 优先使用外部 LLM
+  if (env?.EXTERNAL_LLM_KEY) {
+    try {
+      const text = await callExternalLLM(env, messages, { maxTokens: 300, temperature: 0.2 });
+      if (text) return text;
+    } catch (err) {
+      console.warn('External LLM summary failed, falling back to Workers AI:', err.message);
+    }
+  }
+
   const chatModel = resolveAIModel(env, 'chat');
   const fallbackChatModel = resolveAIModel(env, 'chatFallback');
 

@@ -16,6 +16,7 @@ import {
   stripThinkTags,
   runAIWithLogging,
   resolveAIModel,
+  streamExternalLLM,
 } from './ai-utils.js';
 import {
   AI_EMPTY_ANSWER,
@@ -490,7 +491,7 @@ async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
 }
 
 export async function handleAiAsk(env, request, cors, ctx, json) {
-  if (!env?.AI?.run) {
+  if (!env?.AI?.run && !env?.EXTERNAL_LLM_KEY) {
     return json({ error: 'AI 服务暂未配置，请稍后再试' }, cors, 503, 'no-store');
   }
 
@@ -542,7 +543,7 @@ export async function handleAiAsk(env, request, cors, ctx, json) {
 }
 
 export async function handleAiAskStream(env, request, cors, ctx, json) {
-  if (!env?.AI?.run) {
+  if (!env?.AI?.run && !env?.EXTERNAL_LLM_KEY) {
     return json({ error: 'AI 服务暂未配置，请稍后再试' }, cors, 503, 'no-store');
   }
 
@@ -575,28 +576,42 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
   });
 
   let aiStream;
-  try {
-    aiStream = await runAIWithLogging(
-      env,
-      chatModel,
-      { messages, max_tokens: 500, temperature: 0.2, stream: true },
-      GATEWAY_PROFILES.ragStream,
-      'ragStream',
-      ctx
-    );
-  } catch (err) {
-    console.warn('Primary chat model failed, using fallback:', err.message);
+  let isGoogleStream = false;
+
+  // 优先使用外部 LLM（OpenAI 兼容格式，SSE 解析通用）
+  if (env?.EXTERNAL_LLM_KEY) {
+    try {
+      aiStream = await streamExternalLLM(env, messages, { maxTokens: 500, temperature: 0.2 });
+    } catch (err) {
+      console.warn('External LLM stream failed, falling back to Workers AI:', err.message);
+    }
+  }
+
+  // Fallback: Workers AI
+  if (!aiStream) {
     try {
       aiStream = await runAIWithLogging(
         env,
-        fallbackChatModel,
+        chatModel,
         { messages, max_tokens: 500, temperature: 0.2, stream: true },
         GATEWAY_PROFILES.ragStream,
         'ragStream',
         ctx
       );
-    } catch {
-      return json(buildAiAnswerPayload(AI_TEMPORARY_UNAVAILABLE_ANSWER, askInput.question), cors, 503, 'no-store');
+    } catch (err) {
+      console.warn('Primary chat model failed, using fallback:', err.message);
+      try {
+        aiStream = await runAIWithLogging(
+          env,
+          fallbackChatModel,
+          { messages, max_tokens: 500, temperature: 0.2, stream: true },
+          GATEWAY_PROFILES.ragStream,
+          'ragStream',
+          ctx
+        );
+      } catch {
+        return json(buildAiAnswerPayload(AI_TEMPORARY_UNAVAILABLE_ANSWER, askInput.question), cors, 503, 'no-store');
+      }
     }
   }
 
@@ -629,7 +644,8 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
               if (payload === '[DONE]') continue;
               try {
                 const parsed = JSON.parse(payload);
-                const token = parsed.response
+                const token = parsed.candidates?.[0]?.content?.parts?.[0]?.text
+                  || parsed.response
                   || parsed.choices?.[0]?.delta?.content
                   || parsed.choices?.[0]?.text
                   || parsed.result?.response
@@ -678,7 +694,7 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
             if (trimmed.startsWith('{')) {
               try {
                 const parsed = JSON.parse(trimmed);
-                const token = parsed.response || parsed.choices?.[0]?.delta?.content || parsed.text || '';
+                const token = parsed.candidates?.[0]?.content?.parts?.[0]?.text || parsed.response || parsed.choices?.[0]?.delta?.content || parsed.text || '';
                 if (token) {
                   tokenCount++;
                   rawAnswer += token;
@@ -696,7 +712,7 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
             if (payload !== '[DONE]') {
               try {
                 const parsed = JSON.parse(payload);
-                const token = parsed.response || parsed.choices?.[0]?.delta?.content || '';
+                const token = parsed.candidates?.[0]?.content?.parts?.[0]?.text || parsed.response || parsed.choices?.[0]?.delta?.content || '';
                 if (token) {
                   tokenCount++;
                   rawAnswer += token;
