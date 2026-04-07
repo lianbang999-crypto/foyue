@@ -10,7 +10,7 @@ const GROQ_API_URL = 'https://api.groq.com/openai/v1/audio/transcriptions';
 const WHISPER_MODEL = 'whisper-large-v3-turbo';
 const MAX_FILE_SIZE = 25 * 1024 * 1024;  // Groq 25MB 限制
 const MAX_EPISODES_PER_RUN = 50;         // 每次最多处理几集
-const MAX_AUDIO_SECONDS_PER_RUN = 3600;  // 每次最多处理 60 分钟音频（Groq 日额度 14400s）
+const MAX_AUDIO_SECONDS_PER_RUN = 3600;  // 每次最多处理 60 分钟音频（Groq 日额度 14400sq 日额度 14400s）
 const GROQ_MIN_INTERVAL = 3200;          // 20 RPM → 每次间隔 3.2 秒
 
 // ============================================================
@@ -245,6 +245,14 @@ export default {
            JOIN episodes e ON e.series_id = t.series_id AND e.episode_num = t.episode_num
            JOIN series s ON s.id = t.series_id
            WHERE t.status IN ('processing', 'pending')
+           ORDER BY
+             CASE t.status WHEN 'processing' THEN 0 ELSE 1 END,
+             CASE s.category_id
+               WHEN 'youshengshu' THEN 0
+               WHEN 'fohao' THEN 1
+               WHEN 'jingdiandusong' THEN 2
+               ELSE 3
+            
            ORDER BY
              CASE t.status WHEN 'processing' THEN 0 ELSE 1 END,
              CASE s.category_id

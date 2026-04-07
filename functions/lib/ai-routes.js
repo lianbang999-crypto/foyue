@@ -624,6 +624,7 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
       let rawAnswer = '';
       let inThinkBlock = false;
       let thinkBuffer = '';
+      let heartbeatSent = false;
       try {
         const reader = aiStream.getReader();
         const decoder = new TextDecoder();
@@ -644,6 +645,16 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
               if (payload === '[DONE]') continue;
               try {
                 const parsed = JSON.parse(payload);
+                // 智谱/DeepSeek 等模型把思维链放在 reasoning_content 字段
+                const isReasoning = !!(parsed.choices?.[0]?.delta?.reasoning_content);
+                if (isReasoning) {
+                  // 思维阶段：发 SSE 注释保持连接，但不输出内容
+                  if (!heartbeatSent) {
+                    controller.enqueue(encoder.encode(`: thinking\n\n`));
+                    heartbeatSent = true;
+                  }
+                  continue;
+                }
                 const token = parsed.candidates?.[0]?.content?.parts?.[0]?.text
                   || parsed.response
                   || parsed.choices?.[0]?.delta?.content
