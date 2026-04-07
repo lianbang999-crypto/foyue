@@ -143,9 +143,23 @@ function getExternalLLMConfig(env) {
   };
 }
 
-// 非流式调用外部 LLM
+// Groq 备用 LLM（OpenAI 兼容格式，免费 LLaMA 3.3 70B）
+const DEFAULT_GROQ_BASE = 'https://api.groq.com/openai/v1';
+const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
+
+export function getGroqConfig(env) {
+  const apiKey = env?.GROQ_API_KEY;
+  if (!apiKey) return null;
+  return {
+    apiKey,
+    baseUrl: (env?.GROQ_BASE || DEFAULT_GROQ_BASE).replace(/\/+$/, ''),
+    model: env?.GROQ_MODEL || DEFAULT_GROQ_MODEL,
+  };
+}
+
+// 非流式调用外部 LLM（支持 config 注入，用于 Groq 等备用提供商）
 export async function callExternalLLM(env, messages, options = {}) {
-  const config = getExternalLLMConfig(env);
+  const config = options.config || getExternalLLMConfig(env);
   if (!config) throw new Error('External LLM not configured');
   const { maxTokens = 500, temperature = 0.2 } = options;
   const url = `${config.baseUrl}/chat/completions`;
@@ -170,9 +184,9 @@ export async function callExternalLLM(env, messages, options = {}) {
   return data?.choices?.[0]?.message?.content || '';
 }
 
-// 流式调用外部 LLM（返回 ReadableStream of SSE）
+// 流式调用外部 LLM（返回 ReadableStream of SSE，支持 config 注入）
 export async function streamExternalLLM(env, messages, options = {}) {
-  const config = getExternalLLMConfig(env);
+  const config = options.config || getExternalLLMConfig(env);
   if (!config) throw new Error('External LLM not configured');
   const { maxTokens = 500, temperature = 0.2 } = options;
   const url = `${config.baseUrl}/chat/completions`;
@@ -469,7 +483,17 @@ export async function ragAnswer(env, question, contextDocs, options = {}) {
       const text = await callExternalLLM(env, messages, { maxTokens: 500, temperature: 0.2 });
       if (text) return { response: stripThinkTags(text) };
     } catch (err) {
-      console.warn('External LLM ragAnswer failed, falling back to Workers AI:', err.message);
+      console.warn('External LLM ragAnswer failed:', err.message);
+    }
+  }
+
+  // 备用外部 LLM: Groq（不消耗 Workers AI neuron 配额）
+  if (env?.GROQ_API_KEY) {
+    try {
+      const text = await callExternalLLM(env, messages, { maxTokens: 500, temperature: 0.2, config: getGroqConfig(env) });
+      if (text) return { response: stripThinkTags(text) };
+    } catch (err) {
+      console.warn('Groq ragAnswer failed:', err.message);
     }
   }
 
@@ -598,7 +622,17 @@ export async function generateSummary(env, title, content, options = {}) {
       const text = await callExternalLLM(env, messages, { maxTokens: 300, temperature: 0.2 });
       if (text) return text;
     } catch (err) {
-      console.warn('External LLM summary failed, falling back to Workers AI:', err.message);
+      console.warn('External LLM summary failed:', err.message);
+    }
+  }
+
+  // 备用外部 LLM: Groq
+  if (env?.GROQ_API_KEY) {
+    try {
+      const text = await callExternalLLM(env, messages, { maxTokens: 300, temperature: 0.2, config: getGroqConfig(env) });
+      if (text) return text;
+    } catch (err) {
+      console.warn('Groq summary failed:', err.message);
     }
   }
 

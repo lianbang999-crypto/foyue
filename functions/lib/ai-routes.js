@@ -17,6 +17,7 @@ import {
   runAIWithLogging,
   resolveAIModel,
   streamExternalLLM,
+  getGroqConfig,
 } from './ai-utils.js';
 import {
   AI_EMPTY_ANSWER,
@@ -583,7 +584,16 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
     try {
       aiStream = await streamExternalLLM(env, messages, { maxTokens: 500, temperature: 0.2 });
     } catch (err) {
-      console.warn('External LLM stream failed, falling back to Workers AI:', err.message);
+      console.warn('External LLM stream failed:', err.message);
+    }
+  }
+
+  // 备用外部 LLM: Groq（不消耗 Workers AI neuron 配额）
+  if (!aiStream && env?.GROQ_API_KEY) {
+    try {
+      aiStream = await streamExternalLLM(env, messages, { maxTokens: 500, temperature: 0.2, config: getGroqConfig(env) });
+    } catch (err) {
+      console.warn('Groq stream failed:', err.message);
     }
   }
 
