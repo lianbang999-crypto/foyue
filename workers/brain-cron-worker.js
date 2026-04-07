@@ -125,7 +125,7 @@ async function callExternalLLM(apiKey, baseUrl, model, promptObj) {
 }
 
 /**
- * 调用 Google AI Studio 接口（Gemma4 等免费模型）
+ * 调用 Google AI Studio 接口（Gemini 2.5 Flash / Gemma4 等）
  * 免费额度 15 RPM，需限速
  */
 async function callGoogleAI(apiKey, model, promptObj) {
@@ -159,7 +159,10 @@ async function callGoogleAI(apiKey, model, promptObj) {
 
         const d = await r.json();
         if (d.error) throw new Error(`Google AI: ${d.error.message}`);
-        return d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        // 提取非思维的最后一个文本部分（Gemini 2.5 内置思考模式会把 thought=true 的 part 放前面）
+        const parts = d.candidates?.[0]?.content?.parts || [];
+        const textPart = parts.filter(p => !p.thought).pop();
+        return textPart?.text || '';
     }
 
     throw new Error('Google AI: rate limit exceeded after retries');
@@ -167,16 +170,31 @@ async function callGoogleAI(apiKey, model, promptObj) {
 
 /**
  * 统一 AI 调用入口：
- *   优先级1：EXTERNAL_LLM_KEY  → 智谱 GLM / DeepSeek（OpenAI 兼容）
- *   优先级2：GROQ_API_KEY      → Groq LLaMA 3.3 70B（OpenAI 兼容）
- *   优先级3：GOOGLE_AI_KEY     → Google AI Studio（Gemma4）
+ *   优先级1：GOOGLE_AI_KEY     → Gemini 2.5 Flash（Brain 学习主力）
+ *   优先级2：EXTERNAL_LLM_KEY  → 智谱 GLM / DeepSeek（OpenAI 兼容）
+ *   优先级3：GROQ_API_KEY      → Groq LLaMA 3.3 70B（OpenAI 兼容）
  *   优先级4：Workers AI        → Cloudflare 内置（受 neuron 限制）
  */
 let _lastExternalCall = 0;
 const EXTERNAL_LLM_MIN_INTERVAL = 2000; // ms
 
 async function runAI(env, promptObj) {
-    // 优先：外部 LLM（智谱 GLM 等，OpenAI 兼容）
+    // 优先：Google AI Studio（Gemini 2.5 Flash，学习任务主力）
+    if (env.GOOGLE_AI_KEY) {
+        const now = Date.now();
+        const wait = 4500 - (now - _lastExternalCall);
+        if (wait > 0) await new Promise(r => setTimeout(r, wait));
+        _lastExternalCall = Date.now();
+
+        const model = env.GOOGLE_AI_MODEL || 'gemini-2.5-flash-preview-04-17';
+        try {
+            return await callGoogleAI(env.GOOGLE_AI_KEY, model, promptObj);
+        } catch (err) {
+            console.log(`Google AI failed (${err.message}), trying next backend`);
+        }
+    }
+
+    // 备选：外部 LLM（智谱 GLM 等，OpenAI 兼容）
     if (env.EXTERNAL_LLM_KEY) {
         const now = Date.now();
         const wait = EXTERNAL_LLM_MIN_INTERVAL - (now - _lastExternalCall);
@@ -205,21 +223,6 @@ async function runAI(env, promptObj) {
             return await callExternalLLM(env.GROQ_API_KEY, groqBase, groqModel, promptObj);
         } catch (err) {
             console.log(`Groq failed (${err.message}), trying next backend`);
-        }
-    }
-
-    // 备选：Google AI Studio
-    if (env.GOOGLE_AI_KEY) {
-        const now = Date.now();
-        const wait = 4500 - (now - _lastExternalCall);
-        if (wait > 0) await new Promise(r => setTimeout(r, wait));
-        _lastExternalCall = Date.now();
-
-        const model = env.GOOGLE_AI_MODEL || 'gemma-3-27b-it';
-        try {
-            return await callGoogleAI(env.GOOGLE_AI_KEY, model, promptObj);
-        } catch (err) {
-            console.log(`Google AI failed (${err.message}), falling back to Workers AI`);
         }
     }
 
@@ -486,7 +489,7 @@ export default {
 
         // GET /test-ai — 测试 Google AI 连通性（临时调试用）
         if (url.pathname === '/test-ai') {
-            const model = env.GOOGLE_AI_MODEL || 'gemma-3-27b-it';
+            const model = env.GOOGLE_AI_MODEL || 'gemini-2.5-flash-preview-04-17';
             const apiKey = env.GOOGLE_AI_KEY;
             if (!apiKey) return Response.json({ error: 'GOOGLE_AI_KEY not set' }, { status: 400 });
             const testUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;

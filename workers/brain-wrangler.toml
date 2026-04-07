@@ -35,4 +35,4 @@ WORKER_ENV = "production"
 #
 # 备选：Google AI（如果以上均不可用）
 # wrangler secret put GOOGLE_AI_KEY --config brain-wrangler.toml
-GOOGLE_AI_MODEL = "gemma-4-31b-it"
+GOOGLE_AI_MODEL = "gemini-2.5-flash-preview-04-17"
