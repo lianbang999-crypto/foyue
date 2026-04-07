@@ -22,13 +22,12 @@ binding = "AI"
 # 环境变量（部署时通过 secret 设置 ADMIN_TOKEN 和 GOOGLE_AI_KEY）
 [vars]
 WORKER_ENV = "production"
-# 可选：Google AI 模型名称（设置 GOOGLE_AI_KEY secret 后生效）
-# Cloudflare 上第一次启用 Gemma 接口只需执行：
-#   wrangler secret put GOOGLE_AI_KEY --config brain-wrangler.toml
-# Gemma 4 最强档：31B Dense（2026-04-04 发布）
-# 可选值：
-#   gemma-4-31b-it          → Gemma 4 最强，31B Dense（当前配置）
-#   gemma-4-27b-it          → 如果 31B ID 不对时降级到此
-#   gemma-3-27b-it          → 最稳定备用
-# 在 aistudio.google.com 的模型下拉可确认准确型号
+# 外部 LLM 配置（优先级最高，OpenAI 兼容格式）
+# 设置方式：wrangler secret put EXTERNAL_LLM_KEY --config brain-wrangler.toml
+# 默认使用智谱 GLM-4.7-Flash，也支持 DeepSeek 等
+# EXTERNAL_LLM_BASE = "https://open.bigmodel.cn/api/paas/v4"  # 默认值
+# EXTERNAL_LLM_MODEL = "glm-4.7-flash"                        # 默认值
+#
+# 备选：Google AI（如果 EXTERNAL_LLM_KEY 不可用）
+# wrangler secret put GOOGLE_AI_KEY --config brain-wrangler.toml
 GOOGLE_AI_MODEL = "gemma-4-31b-it"

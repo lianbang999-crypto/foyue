@@ -9,9 +9,9 @@
 // ============================================================
 // 配置
 // ============================================================
-const SEGMENT_MAX_LEN = 6000;     // Google AI（Gemma4）上下文充足，可用大段落提升质量
+const SEGMENT_MAX_LEN = 6000;     // 外部 LLM 上下文充足，可用大段落提升质量
 const SEGMENT_OVERLAP = 200;      // 段落间重叠，防止有效信息被截断
-const MAX_DOCS_PER_RUN = 15;      // 每次 Cron 最多处理几篇（受 Google AI 15 RPM 限制）
+const MAX_DOCS_PER_RUN = 15;      // 每次 Cron 最多处理几篇
 const MAX_SEGMENTS_PER_RUN = 120;  // 每次 Cron 最多处理几个段落（~120×4.5s≈9分钟）
 const AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
@@ -94,8 +94,35 @@ function findPos(q, src) {
 }
 
 // ============================================================
-// AI 调度（Workers AI 或 Google AI Studio / Gemma）
+// AI 调度（外部 LLM / Workers AI）
 // ============================================================
+
+/**
+ * 调用 OpenAI 兼容外部 LLM（智谱 GLM / DeepSeek 等）
+ */
+async function callExternalLLM(apiKey, baseUrl, model, promptObj) {
+    const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+            model,
+            messages: promptObj.messages,
+            max_tokens: promptObj.max_tokens || 2048,
+            temperature: promptObj.temperature || 0.3,
+        }),
+        signal: AbortSignal.timeout(60000),
+    });
+    if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(`External LLM ${res.status}: ${errText.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    return data?.choices?.[0]?.message?.content || '';
+}
 
 /**
  * 调用 Google AI Studio 接口（Gemma4 等免费模型）
@@ -140,31 +167,46 @@ async function callGoogleAI(apiKey, model, promptObj) {
 
 /**
  * 统一 AI 调用入口：
- *   有 GOOGLE_AI_KEY → 走 Google AI Studio（Gemma4 等免费模型）
- *   无               → 走 Cloudflare Workers AI（默认）
- * 
- * Google AI 免费额度 15 RPM → 每次调用后至少等 4.5 秒
+ *   优先级1：EXTERNAL_LLM_KEY  → 智谱 GLM / DeepSeek（OpenAI 兼容）
+ *   优先级2：GOOGLE_AI_KEY     → Google AI Studio（Gemma4）
+ *   优先级3：Workers AI        → Cloudflare 内置（受 neuron 限制）
  */
-let _lastGoogleAICall = 0;
-const GOOGLE_AI_MIN_INTERVAL = 4500; // ms
+let _lastExternalCall = 0;
+const EXTERNAL_LLM_MIN_INTERVAL = 2000; // ms
 
 async function runAI(env, promptObj) {
-    if (env.GOOGLE_AI_KEY) {
-        // 限速：确保两次 Google AI 调用间隔 >= 4.5 秒
+    // 优先：外部 LLM（智谱 GLM 等，OpenAI 兼容）
+    if (env.EXTERNAL_LLM_KEY) {
         const now = Date.now();
-        const wait = GOOGLE_AI_MIN_INTERVAL - (now - _lastGoogleAICall);
+        const wait = EXTERNAL_LLM_MIN_INTERVAL - (now - _lastExternalCall);
         if (wait > 0) await new Promise(r => setTimeout(r, wait));
-        _lastGoogleAICall = Date.now();
+        _lastExternalCall = Date.now();
+
+        const baseUrl = env.EXTERNAL_LLM_BASE || 'https://open.bigmodel.cn/api/paas/v4';
+        const model = env.EXTERNAL_LLM_MODEL || 'glm-4.7-flash';
+        try {
+            return await callExternalLLM(env.EXTERNAL_LLM_KEY, baseUrl, model, promptObj);
+        } catch (err) {
+            console.log(`External LLM failed (${err.message}), trying next backend`);
+        }
+    }
+
+    // 备选：Google AI Studio
+    if (env.GOOGLE_AI_KEY) {
+        const now = Date.now();
+        const wait = 4500 - (now - _lastExternalCall);
+        if (wait > 0) await new Promise(r => setTimeout(r, wait));
+        _lastExternalCall = Date.now();
 
         const model = env.GOOGLE_AI_MODEL || 'gemma-3-27b-it';
         try {
             return await callGoogleAI(env.GOOGLE_AI_KEY, model, promptObj);
         } catch (err) {
-            // Google AI 失败 → 降级到 Workers AI
             console.log(`Google AI failed (${err.message}), falling back to Workers AI`);
-            return await env.AI.run(AI_MODEL, promptObj);
         }
     }
+
+    // 最后：Workers AI
     return await env.AI.run(AI_MODEL, promptObj);
 }
 
