@@ -28,6 +28,11 @@ WORKER_ENV = "production"
 # EXTERNAL_LLM_BASE = "https://open.bigmodel.cn/api/paas/v4"  # 默认值
 # EXTERNAL_LLM_MODEL = "glm-4.7-flash"                        # 默认值
 #
-# 备选：Google AI（如果 EXTERNAL_LLM_KEY 不可用）
+# 备用：Groq（OpenAI 兼容，免费 LLaMA 3.3 70B）
+# wrangler secret put GROQ_API_KEY --config brain-wrangler.toml
+# GROQ_BASE = "https://api.groq.com/openai/v1"                # 默认值
+# GROQ_MODEL = "llama-3.3-70b-versatile"                       # 默认值
+#
+# 备选：Google AI（如果以上均不可用）
 # wrangler secret put GOOGLE_AI_KEY --config brain-wrangler.toml
 GOOGLE_AI_MODEL = "gemma-4-31b-it"

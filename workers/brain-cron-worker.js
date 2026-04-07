@@ -168,8 +168,9 @@ async function callGoogleAI(apiKey, model, promptObj) {
 /**
  * 统一 AI 调用入口：
  *   优先级1：EXTERNAL_LLM_KEY  → 智谱 GLM / DeepSeek（OpenAI 兼容）
- *   优先级2：GOOGLE_AI_KEY     → Google AI Studio（Gemma4）
- *   优先级3：Workers AI        → Cloudflare 内置（受 neuron 限制）
+ *   优先级2：GROQ_API_KEY      → Groq LLaMA 3.3 70B（OpenAI 兼容）
+ *   优先级3：GOOGLE_AI_KEY     → Google AI Studio（Gemma4）
+ *   优先级4：Workers AI        → Cloudflare 内置（受 neuron 限制）
  */
 let _lastExternalCall = 0;
 const EXTERNAL_LLM_MIN_INTERVAL = 2000; // ms
@@ -188,6 +189,22 @@ async function runAI(env, promptObj) {
             return await callExternalLLM(env.EXTERNAL_LLM_KEY, baseUrl, model, promptObj);
         } catch (err) {
             console.log(`External LLM failed (${err.message}), trying next backend`);
+        }
+    }
+
+    // 备选：Groq（OpenAI 兼容，免费 LLaMA 3.3 70B）
+    if (env.GROQ_API_KEY) {
+        const now = Date.now();
+        const wait = EXTERNAL_LLM_MIN_INTERVAL - (now - _lastExternalCall);
+        if (wait > 0) await new Promise(r => setTimeout(r, wait));
+        _lastExternalCall = Date.now();
+
+        const groqBase = env.GROQ_BASE || 'https://api.groq.com/openai/v1';
+        const groqModel = env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+        try {
+            return await callExternalLLM(env.GROQ_API_KEY, groqBase, groqModel, promptObj);
+        } catch (err) {
+            console.log(`Groq failed (${err.message}), trying next backend`);
         }
     }
 
