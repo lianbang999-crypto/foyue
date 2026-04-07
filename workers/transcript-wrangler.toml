@@ -4,9 +4,9 @@ name = "foyue-transcript-worker"
 main = "transcript-groq-worker.js"
 compatibility_date = "2025-01-01"
 
-# Cron 触发器：每3小时运行一次（14400s/天 ÷ 8次 ≈ 每次1800s预算，留余量取1200s）
+# Cron 触发器：每小时运行一次（日额度14400s，每次3600s × 4次左右用完）
 [triggers]
-crons = ["30 */3 * * *"]
+crons = ["30 * * * *"]
 
 # D1 数据库（和 Pages / Brain Worker 共享同一个）
 [[d1_databases]]

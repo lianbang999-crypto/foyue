@@ -9,8 +9,8 @@
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/audio/transcriptions';
 const WHISPER_MODEL = 'whisper-large-v3-turbo';
 const MAX_FILE_SIZE = 25 * 1024 * 1024;  // Groq 25MB 限制
-const MAX_EPISODES_PER_RUN = 30;         // 每次最多处理几集
-const MAX_AUDIO_SECONDS_PER_RUN = 1200;  // 每次最多处理 20 分钟音频（留余量）
+const MAX_EPISODES_PER_RUN = 50;         // 每次最多处理几集
+const MAX_AUDIO_SECONDS_PER_RUN = 3600;  // 每次最多处理 60 分钟音频（Groq 日额度 14400s）
 const GROQ_MIN_INTERVAL = 3200;          // 20 RPM → 每次间隔 3.2 秒
 
 // ============================================================
@@ -237,14 +237,22 @@ export default {
                     break;
                 }
 
-                // 优先 processing（续传），再 pending（按时长升序）
+                // 优先 processing（续传），再 pending
+                // 有声书/佛号/经典读诵 优先于讲座，同分类内按时长升序
                 const ep = await db.prepare(
                     `SELECT t.series_id, t.episode_num, t.audio_url, e.title, e.duration
            FROM episode_transcripts t
            JOIN episodes e ON e.series_id = t.series_id AND e.episode_num = t.episode_num
+           JOIN series s ON s.id = t.series_id
            WHERE t.status IN ('processing', 'pending')
            ORDER BY
              CASE t.status WHEN 'processing' THEN 0 ELSE 1 END,
+             CASE s.category_id
+               WHEN 'youshengshu' THEN 0
+               WHEN 'fohao' THEN 1
+               WHEN 'jingdiandusong' THEN 2
+               ELSE 3
+             END,
              COALESCE(e.duration, 999999) ASC
            LIMIT 1`
                 ).first();
