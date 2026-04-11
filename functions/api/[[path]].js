@@ -211,7 +211,20 @@ export async function onRequest(context) {
     // GET /api/play-count/:id
     const pm = path.match(/^\/api\/play-count\/([^/]+)$/);
     if (pm && method === 'GET') {
-      return json(await getPlayCount(db, pm[1]), cors);
+      const seriesId = decodeURIComponent(pm[1]);
+      return getEdgeCachedJson(
+        request,
+        buildPathCacheKey(url, {
+          pathname: `/api/play-count/${encodeURIComponent(seriesId)}`,
+        }),
+        waitUntil,
+        async () => json(
+          await getPlayCount(db, seriesId),
+          cors,
+          200,
+          'public, max-age=60, s-maxage=300, stale-while-revalidate=1800'
+        )
+      );
     }
 
     // POST /api/appreciate/:id
@@ -224,7 +237,20 @@ export async function onRequest(context) {
 
     // GET /api/appreciate/:id — get total appreciate count
     if (am && method === 'GET') {
-      return json(await getAppreciateCount(db, am[1]), cors);
+      const seriesId = decodeURIComponent(am[1]);
+      return getEdgeCachedJson(
+        request,
+        buildPathCacheKey(url, {
+          pathname: `/api/appreciate/${encodeURIComponent(seriesId)}`,
+        }),
+        waitUntil,
+        async () => json(
+          await getAppreciateCount(db, seriesId),
+          cors,
+          200,
+          'public, max-age=60, s-maxage=300, stale-while-revalidate=1800'
+        )
+      );
     }
 
     // GET /api/stats
@@ -1324,7 +1350,12 @@ async function handleGetMessages(db, url, cors) {
      LIMIT ? OFFSET ?`
   ).bind(limit, offset).all();
 
-  return json({ messages, total, page, limit }, cors, 200, 'public, max-age=30');
+  return json(
+    { messages, total, page, limit },
+    cors,
+    200,
+    'public, max-age=30, s-maxage=120, stale-while-revalidate=600'
+  );
 }
 
 /**
@@ -1418,7 +1449,7 @@ async function handleGetGongxiu(db, url, cors) {
     grand_total: Number(allTime.grand_total) || 0,
     grand_participants: Number(allTime.grand_participants) || 0,
     entries: entries || [],
-  }, cors, 200, 'public, max-age=30, s-maxage=60');
+  }, cors, 200, 'public, max-age=60, s-maxage=300, stale-while-revalidate=1800');
 }
 
 /**

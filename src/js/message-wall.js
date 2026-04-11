@@ -5,6 +5,8 @@ import { escapeHtml, showToast, formatRelTime } from './utils.js';
 import { get as storeGet, patch as storePatch } from './store.js';
 
 const PAGE_SIZE = 20;
+const MESSAGE_CACHE_PREFIX = 'message-wall-cache:';
+const MESSAGE_CACHE_TTL = 60 * 1000;
 let currentPage = 1;
 let totalMessages = 0;
 let isLoading = false;
@@ -95,6 +97,7 @@ async function submitMessage(input, nicknameInput, submitBtn, section) {
 
     // Save nickname for next time
     saveNickname(nickname);
+    invalidateMessageCache();
 
     // Clear input
     input.value = '';
@@ -138,51 +141,60 @@ async function loadMessages(section, append = false) {
   isLoading = true;
 
   const list = section.querySelector('#msgList');
+  const cacheKey = getMessageCacheKey(currentPage, PAGE_SIZE);
+  const cached = getCachedMessages(cacheKey);
   if (!append) {
-    list.innerHTML = `<div class="msg-loading">${escapeHtml(t('loading') || '加载中...')}</div>`;
+    if (cached) {
+      renderMessageResponse(section, cached, append);
+    } else {
+      list.innerHTML = `<div class="msg-loading">${escapeHtml(t('loading') || '加载中...')}</div>`;
+    }
   }
 
   try {
     const resp = await fetch(`/api/messages?page=${currentPage}&limit=${PAGE_SIZE}`);
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const data = await resp.json();
-
-    if (!append) list.innerHTML = '';
-
-    // Remove "load more" button if exists
-    const oldMore = list.querySelector('.msg-load-more');
-    if (oldMore) oldMore.remove();
-
-    const messages = data.messages || [];
-    totalMessages = data.total || 0;
-    updateCount(section);
-
-    if (messages.length === 0 && currentPage === 1) {
-      list.innerHTML = `<div class="msg-empty">${escapeHtml(t('msg_empty') || '还没有留言，来写第一条吧')}</div>`;
-      return;
-    }
-
-    const frag = document.createDocumentFragment();
-    messages.forEach(msg => frag.appendChild(buildMessageCard(msg)));
-    list.appendChild(frag);
-
-    // Show "load more" if there are more pages
-    if (currentPage * PAGE_SIZE < totalMessages) {
-      const more = document.createElement('div');
-      more.className = 'msg-load-more';
-      more.textContent = t('msg_load_more') || '加载更多留言';
-      more.addEventListener('click', () => {
-        currentPage++;
-        loadMessages(section, true);
-      });
-      list.appendChild(more);
-    }
+    setCachedMessages(cacheKey, data);
+    renderMessageResponse(section, data, append);
   } catch (err) {
-    if (!append) {
+    if (!append && !cached) {
       list.innerHTML = `<div class="msg-empty">${escapeHtml(t('msg_load_fail') || '留言加载失败')}</div>`;
     }
   } finally {
     isLoading = false;
+  }
+}
+
+function renderMessageResponse(section, data, append) {
+  const list = section.querySelector('#msgList');
+  if (!append) list.innerHTML = '';
+
+  const oldMore = list.querySelector('.msg-load-more');
+  if (oldMore) oldMore.remove();
+
+  const messages = data.messages || [];
+  totalMessages = data.total || 0;
+  updateCount(section);
+
+  if (messages.length === 0 && currentPage === 1) {
+    list.innerHTML = `<div class="msg-empty">${escapeHtml(t('msg_empty') || '还没有留言，来写第一条吧')}</div>`;
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  messages.forEach(msg => frag.appendChild(buildMessageCard(msg)));
+  list.appendChild(frag);
+
+  if (currentPage * PAGE_SIZE < totalMessages) {
+    const more = document.createElement('div');
+    more.className = 'msg-load-more';
+    more.textContent = t('msg_load_more') || '加载更多留言';
+    more.addEventListener('click', () => {
+      currentPage++;
+      loadMessages(section, true);
+    });
+    list.appendChild(more);
   }
 }
 
@@ -217,6 +229,43 @@ function updateCount(section) {
 
 function getSavedNickname() {
   return (storeGet('profile') || {}).messageNickname || '';
+}
+
+function getMessageCacheKey(page, limit) {
+  return `${MESSAGE_CACHE_PREFIX}${page}:${limit}`;
+}
+
+function getCachedMessages(cacheKey) {
+  try {
+    const raw = sessionStorage.getItem(cacheKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (Date.now() - (parsed.ts || 0) > MESSAGE_CACHE_TTL) return null;
+    return parsed.data || null;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedMessages(cacheKey, data) {
+  try {
+    sessionStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data }));
+  } catch {
+    // Ignore quota/storage failures.
+  }
+}
+
+function invalidateMessageCache() {
+  try {
+    const keysToDelete = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (key?.startsWith(MESSAGE_CACHE_PREFIX)) keysToDelete.push(key);
+    }
+    keysToDelete.forEach(key => sessionStorage.removeItem(key));
+  } catch {
+    // Ignore storage access failures.
+  }
 }
 
 function saveNickname(name) {

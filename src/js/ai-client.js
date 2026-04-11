@@ -2,6 +2,9 @@
 
 const AI_BASE = '/api/ai';
 const AI_TIMEOUT = 60000; // #19: 60s — AI operations (RAG, summary) need more time
+const DAILY_RECOMMENDATION_CACHE_KEY = 'ai-daily-recommend-cache';
+const DAILY_RECOMMENDATION_TTL_MS = 6 * 60 * 60 * 1000;
+let dailyRecommendationPromise = null;
 
 function isLocalStaticDev() {
   return (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && window.location.port === '8080';
@@ -197,7 +200,49 @@ export async function getTranscriptAvailability(seriesId) {
  * Returns: { date, recommendations: [...], cached, generating? }
  */
 export async function getDailyRecommendation() {
-  return aiFetch(`${AI_BASE}/daily-recommend`);
+  const cached = getCachedDailyRecommendation();
+  if (cached) return cached;
+
+  if (dailyRecommendationPromise) return dailyRecommendationPromise;
+
+  dailyRecommendationPromise = aiFetch(`${AI_BASE}/daily-recommend`)
+    .then((data) => {
+      cacheDailyRecommendation(data);
+      return data;
+    })
+    .finally(() => {
+      dailyRecommendationPromise = null;
+    });
+
+  return dailyRecommendationPromise;
+}
+
+function getCachedDailyRecommendation() {
+  try {
+    const raw = localStorage.getItem(DAILY_RECOMMENDATION_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const todayDate = new Date().toISOString().slice(0, 10);
+    if (!parsed?.date || parsed.date !== todayDate) return null;
+    if (Date.now() - (parsed.timestamp || 0) > DAILY_RECOMMENDATION_TTL_MS) return null;
+    if (!parsed.data?.recommendations?.length) return null;
+    return parsed.data;
+  } catch {
+    return null;
+  }
+}
+
+function cacheDailyRecommendation(data) {
+  if (!data?.date || !data?.recommendations?.length) return;
+  try {
+    localStorage.setItem(DAILY_RECOMMENDATION_CACHE_KEY, JSON.stringify({
+      date: data.date,
+      timestamp: Date.now(),
+      data,
+    }));
+  } catch {
+    // Ignore storage failures and continue serving the fresh response.
+  }
 }
 
 /**
