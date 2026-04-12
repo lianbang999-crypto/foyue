@@ -12,6 +12,8 @@ import QRCode from 'qrcode';
 // ============================================================
 const W = 750;
 const H = 1000;
+// 固定 2x 缩放，确保输出 1500×2000 高清海报
+const POSTER_DPR = 2;
 
 const COLORS = {
   paper: '#F7F5F0',
@@ -31,13 +33,16 @@ const FONT = {
 // 工具函数
 // ============================================================
 
-/** 等待字体加载 */
+/** 等待字体加载（3s 超时兜底，避免无限等待） */
 async function ensureFonts() {
   try {
-    await Promise.all([
-      document.fonts.load(`600 40px ${FONT.serif}`),
-      document.fonts.load(`500 24px ${FONT.sans}`),
-      document.fonts.load(`400 18px ${FONT.sans}`),
+    await Promise.race([
+      Promise.all([
+        document.fonts.load(`600 40px ${FONT.serif}`),
+        document.fonts.load(`500 24px ${FONT.sans}`),
+        document.fonts.load(`400 18px ${FONT.sans}`),
+      ]),
+      new Promise(r => setTimeout(r, 3000)),
     ]);
   } catch { /* 字体加载失败则降级系统字体 */ }
 }
@@ -305,9 +310,10 @@ export async function generatePoster(config) {
   await ensureFonts();
 
   const canvas = document.createElement('canvas');
-  canvas.width = W;
-  canvas.height = H;
+  canvas.width = W * POSTER_DPR;
+  canvas.height = H * POSTER_DPR;
   const ctx = canvas.getContext('2d');
+  ctx.scale(POSTER_DPR, POSTER_DPR);
 
   // 宣纸底色
   ctx.fillStyle = COLORS.paper;

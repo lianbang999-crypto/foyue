@@ -33,6 +33,18 @@ function buildBaseHeaders(object) {
   return headers;
 }
 
+/**
+ * 从 R2 key 提取下载文件名（URL decode 后取最后一段路径）
+ */
+function extractDownloadFilename(candidateKeys) {
+  for (const key of candidateKeys) {
+    const segments = key.split('/');
+    const last = segments[segments.length - 1];
+    if (last) return last;
+  }
+  return 'audio.m4a';
+}
+
 function resolveBucketRequest(pathname, env) {
   const rawPath = pathname.startsWith('/') ? pathname.slice(1) : pathname;
   const slashIndex = rawPath.indexOf('/');
@@ -180,6 +192,22 @@ function logCacheFailure(action, error) {
   console.warn(`[audio-cache] ${action} failed`, error);
 }
 
+/**
+ * 为下载请求（?dl=1）添加 Content-Disposition 头
+ */
+function applyDownloadHeader(response, isDownload, candidateKeys) {
+  if (!isDownload) return response;
+  const filename = extractDownloadFilename(candidateKeys);
+  const encoded = encodeURIComponent(filename);
+  const headers = new Headers(response.headers);
+  headers.set('Content-Disposition', `attachment; filename="${encoded}"; filename*=UTF-8''${encoded}`);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -189,6 +217,7 @@ export default {
     }
 
     const { bucket, candidateKeys } = bucketRequest;
+    const isDownload = url.searchParams.has('dl');
 
     // OPTIONS 预检请求（浏览器 fetch cors 模式会发送）
     if (request.method === 'OPTIONS') {
@@ -242,7 +271,7 @@ export default {
     if (!rangeHeader) {
       // 无 Range：直接查全量缓存
       const cachedFull = await cache.match(cacheKey);
-      if (cachedFull) return withWorkerCacheStatus(cachedFull, 'HIT', 'full');
+      if (cachedFull) return applyDownloadHeader(withWorkerCacheStatus(cachedFull, 'HIT', 'full'), isDownload, candidateKeys);
     } else {
       // Cloudflare 会基于完整对象缓存自动处理 Range 响应。
       const cachedRange = await cache.match(rangeLookupRequest);
@@ -335,6 +364,6 @@ export default {
       cache.put(cacheKey, response.clone())
         .catch((error) => logCacheFailure('store-full-object', error))
     );
-    return withWorkerCacheStatus(response, 'MISS', 'full-r2-store-scheduled');
+    return applyDownloadHeader(withWorkerCacheStatus(response, 'MISS', 'full-r2-store-scheduled'), isDownload, candidateKeys);
   }
 };

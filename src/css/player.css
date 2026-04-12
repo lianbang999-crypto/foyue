@@ -526,6 +526,32 @@ body.player-modal-open .content {
   height: 44px
 }
 
+/* Download button states */
+#expDownload.dl-downloading {
+  color: var(--accent);
+  animation: dl-pulse 1.2s ease-in-out infinite;
+}
+
+#expDownload.dl-done {
+  color: var(--accent);
+}
+
+#expDownload.dl-error {
+  color: var(--text-muted);
+}
+
+@keyframes dl-pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
+
 /* Progress bar */
 .exp-progress {
   margin-bottom: 16px;

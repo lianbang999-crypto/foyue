@@ -28,6 +28,7 @@ export function initDOM() {
     expPlay: $('expPlay'),
     expCollapse: $('expCollapse'),
     expQueue: $('expQueue'),
+    expDownload: $('expDownload'),
     expPlayerContent: $('expPlayerContent'),
     playlistPanel: $('playlistPanel'),
     plItems: $('plItems'),

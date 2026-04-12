@@ -69,6 +69,7 @@ export function showEpisodes(...args) {
 }
 import { initInstallPrompt, initBackGuard, initRefreshPrompt, observeRefreshRegistration, isInAppBrowser } from './pwa.js';
 import { appreciate } from './api.js';
+import { downloadAudio, DL_STATE } from './audio-download.js';
 import { monitor } from './monitor.js';
 
 const IN_APP_BROWSER = isInAppBrowser();
@@ -244,15 +245,22 @@ function buildSeriesUrl(seriesId) {
 }
 
 async function fetchCategoriesData({ home = false } = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
   try {
-    const response = await fetch(buildCategoriesUrl({ home }));
+    const response = await fetch(buildCategoriesUrl({ home }), { signal: controller.signal });
+    clearTimeout(timeout);
     if (!response.ok) throw new Error('HTTP ' + response.status);
     return response.json();
   } catch (error) {
-    // Fallback to mock data for local development
-    console.warn('[DEV] Using mock data:', error.message);
-    const { mockCategoriesData } = await import('./mock-data.js');
-    return mockCategoriesData;
+    clearTimeout(timeout);
+    if (import.meta.env.DEV) {
+      // 仅开发环境使用 mock 数据
+      console.warn('[DEV] Using mock data:', error.message);
+      const { mockCategoriesData } = await import('./mock-data.js');
+      return mockCategoriesData;
+    }
+    throw error;
   }
 }
 
@@ -621,6 +629,42 @@ async function ensureSeriesDetail(seriesId, categoryId) {
       _appreciating = false;
     }
   });
+
+  // Download button
+  {
+    let _dlBusy = false;
+    const dlBtn = dom.expDownload;
+    if (dlBtn) {
+      dlBtn.addEventListener('click', () => {
+        haptic();
+        if (_dlBusy) return;
+        const tr = getCurrentTrack();
+        if (!tr?.url) return;
+        _dlBusy = true;
+        downloadAudio(tr, (dlState) => {
+          dlBtn.classList.remove('dl-downloading', 'dl-done', 'dl-error');
+          if (dlState === DL_STATE.DOWNLOADING) {
+            dlBtn.classList.add('dl-downloading');
+          } else if (dlState === DL_STATE.DONE) {
+            dlBtn.classList.add('dl-done');
+            // 显示对勾图标
+            const arrowIcon = dlBtn.querySelector('.dl-icon-arrow');
+            const checkIcon = dlBtn.querySelector('.dl-icon-check');
+            if (arrowIcon) arrowIcon.style.display = 'none';
+            if (checkIcon) checkIcon.style.display = '';
+            setTimeout(() => {
+              dlBtn.classList.remove('dl-done');
+              if (arrowIcon) arrowIcon.style.display = '';
+              if (checkIcon) checkIcon.style.display = 'none';
+              _dlBusy = false;
+            }, 2000);
+          } else {
+            _dlBusy = false;
+          }
+        }).catch(() => { _dlBusy = false; });
+      });
+    }
+  }
 
   // Swipe-down gesture to close expanded player (with visual follow-along)
   // #2 & #3: Use a single swipeTimer to prevent rapid-touch race conditions
@@ -1159,7 +1203,9 @@ function handleShareHash() {
     const epIdx = foundSeries.episodes.findIndex(ep => ep.id === epId);
     const idx = epIdx >= 0 ? epIdx : 0;
     showEpisodes(foundSeries, foundCatId);
-    playList(foundSeries.episodes, idx, foundSeries);
+    // 分享链接跳转无用户手势上下文，iOS 会拒绝自动播放
+    // 使用 prepareList 准备播放器 UI，让用户手动点击播放
+    prepareList(foundSeries.episodes, idx, foundSeries);
   } else {
     // Just show the series episode list
     showEpisodes(foundSeries, foundCatId);

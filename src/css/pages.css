@@ -1556,12 +1556,14 @@
     appearance: none;
     width: 100%;
     max-width: 320px;
-    border: 1px solid color-mix(in srgb, var(--accent) 72%, var(--border) 28%);
+    border: 1px solid var(--accent);
     border-radius: 999px;
     padding: 14px 24px;
+    background: var(--accent);
     background: linear-gradient(135deg,
             color-mix(in srgb, var(--accent) 82%, white 18%) 0%,
             var(--accent) 100%);
+    border-color: color-mix(in srgb, var(--accent) 72%, var(--border) 28%);
     color: var(--text-inverse);
     font-family: var(--font-zh);
     font-size: var(--fs-body);

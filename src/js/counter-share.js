@@ -13,7 +13,7 @@
 import QRCode from 'qrcode';
 import { shareImageBlob, formatCount } from './utils.js';
 
-const APP_URL = 'https://foyue.org';
+const APP_URL = 'https://foyue.org/nianfo';
 
 /* ── Color palette (matches light theme accent) ── */
 const COLORS = {
@@ -61,8 +61,8 @@ function roundRect(ctx, x, y, w, h, r) {
 export async function generateSharePoster(stats) {
   const W = 375, H = 660; // taller to accommodate full 回向文
   const canvas = document.createElement('canvas');
-  // Retina-quality output
-  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  // 高清输出：最低 2x，确保分享到社交平台不模糊
+  const dpr = Math.max(Math.min(window.devicePixelRatio || 2, 3), 2);
   canvas.width = W * dpr;
   canvas.height = H * dpr;
   const ctx = canvas.getContext('2d');

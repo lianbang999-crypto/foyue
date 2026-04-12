@@ -4,7 +4,7 @@
  * 支持：生成海报、复制链接、保存图片、原生分享
  */
 
-import { shareContent, shareImageBlob, showToast } from './utils.js';
+import { shareContent, showToast } from './utils.js';
 import { generatePoster } from './share-poster.js';
 
 let _panel = null;
@@ -42,12 +42,6 @@ function createPanelHTML() {
         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
       </svg>
       <span>保存图片</span>
-    </button>
-    <button class="share-action-btn" id="sharePoster" aria-label="分享海报">
-      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
-      </svg>
-      <span>海报分享</span>
     </button>
   </div>
   <button class="share-cancel" id="shareCancel">取消</button>
@@ -89,12 +83,22 @@ function ensurePanel() {
         if (navigator.clipboard?.writeText) {
             navigator.clipboard.writeText(config.url).then(() => {
                 showToast('链接已复制');
-            }).catch(() => { });
+            }).catch(() => showToast('复制失败'));
+        } else {
+            // 降级：使用 execCommand 兼容旧浏览器
+            const ta = document.createElement('textarea');
+            ta.value = config.url;
+            ta.style.cssText = 'position:fixed;opacity:0';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            showToast('链接已复制');
         }
     });
 
     wrapper.querySelector('#shareSave').addEventListener('click', () => {
-        if (!_blob) return;
+        if (!_blob) { showToast('海报生成中，请稍候'); return; }
         const url = URL.createObjectURL(_blob);
         const a = document.createElement('a');
         a.href = url;
@@ -102,11 +106,6 @@ function ensurePanel() {
         a.click();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
         showToast('图片已保存');
-    });
-
-    wrapper.querySelector('#sharePoster').addEventListener('click', async () => {
-        if (!_blob) return;
-        await shareImageBlob(_blob, 'foyue-share.png', _panel._config?.title || '净土法音');
     });
 }
 
