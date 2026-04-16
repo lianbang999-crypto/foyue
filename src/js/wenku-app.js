@@ -722,6 +722,9 @@ async function openReader(docId, highlightQuery, skipPush) {
                 <span class="wk-reader-topbar-title" id="readerTopTitle"></span>
             </div>
         ${fromAi ? `<a class="wk-reader-return" id="readerReturnAi" href="${esc(getAiReturnHref())}">回到 AI</a>` : ''}
+            <button class="wk-reader-btn" id="readerShare" aria-label="分享" title="分享">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            </button>
     </div>
     <div class="wk-reader-scroll" id="readerScroll">
             <div class="wk-empty wk-empty--reader" style="padding-top:30vh">${buildEmptyStateMarkup('正在加载讲记…', '稍候片刻，法义原文即将展开。')}</div>
@@ -843,6 +846,7 @@ async function openReader(docId, highlightQuery, skipPush) {
 
     // Wire events
     wireReaderClose();
+    wireReaderShare(doc);
     wireReaderSettings(settings);
     wireReaderNext(scroll);
     wireBottombar();
@@ -938,6 +942,27 @@ async function closeReaderToContext() {
     history.replaceState({}, '', `/wenku${fromAi ? '?from=ai' : ''}`);
     await renderHome(true);
     renderHeaderActions();
+}
+
+function wireReaderShare(data) {
+    wkReader.querySelector('#readerShare')?.addEventListener('click', async () => {
+        const bookName = data.series_name || '大安法师讲记';
+        const chapterName = data.title || '';
+        const selectedText = window.getSelection()?.toString().trim() || '';
+
+        try {
+            const { showSharePanel } = await import('./share-panel.js');
+            showSharePanel({
+                type: 'wenku',
+                title: bookName,
+                subtitle: chapterName,
+                quote: selectedText || '开经释义，断疑生信。',
+                url: window.location.href
+            });
+        } catch (e) {
+            console.error('加载分享面板失败', e);
+        }
+    });
 }
 
 function wireReaderClose() {

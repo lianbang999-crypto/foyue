@@ -68,7 +68,7 @@ function ensurePanel() {
         const config = _panel._config;
         if (!config) return;
         if (_blob && navigator.canShare) {
-            const file = new File([_blob], 'foyue-share.png', { type: 'image/png' });
+            const file = new File([_blob], 'foyue-share.jpg', { type: 'image/jpeg' });
             if (navigator.canShare({ files: [file] })) {
                 navigator.share({ title: config.title, files: [file] }).catch(() => { });
                 return;
@@ -102,7 +102,7 @@ function ensurePanel() {
         const url = URL.createObjectURL(_blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'foyue-share.png';
+        a.download = 'foyue-share.jpg';
         a.click();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
         showToast('图片已保存');
@@ -128,7 +128,7 @@ function closeSharePanel() {
 /**
  * 显示分享面板
  * @param {Object} config
- * @param {'track'|'series'|'quote'|'practice'} config.type
+ * @param {'track'|'series'|'quote'|'practice'|'wenku'|'ai'} config.type
  * @param {string} config.title
  * @param {string} [config.subtitle]
  * @param {string} [config.quote]

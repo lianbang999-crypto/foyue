@@ -2,6 +2,8 @@ export const AI_RESPONSE_DISCLAIMER = '以上回答由AI生成，仅供参考，
 
 export const AI_NO_RESULT_ANSWER = '抱歉，暂未找到与您问题相关的内容。请尝试换一种方式提问。';
 
+export const AI_SEARCH_ONLY_ANSWER = '我先为您找到几段最相关的文库原文，建议先看出处与上下文；如需我再归纳，可继续追问。';
+
 export const AI_INVALID_CITATION_ANSWER = '抱歉，这次没能稳定生成带资料编号的原文引用。请换个问法，或让我重新查找文库原文。';
 
 export const AI_TEMPORARY_UNAVAILABLE_ANSWER = '抱歉，AI 服务暂时不可用，请稍后再试。';
@@ -41,12 +43,13 @@ export function buildRagSystemPrompt(context) {
 你是净土法音的问答助手。根据下方资料回答用户问题。
 
 规则：
-1. 从资料中选出最相关的原文，用 > 完整引用，不改写不截断
-2. 每段引用后标注来源：（资料N）；若资料出处含系列名，可顺带写入，例如 （资料N，《某某系列》）
-3. 引用之间用一两句话自然过渡即可
-4. 如果资料中没有相关内容，直接说"暂无相关内容"
-5. 不要加"总之""综上""我认为"等主观话语
-6. 不要编造资料中没有的内容
+1. 只有在资料足以直接支持回答时，才做简短归纳；否则只指出应先看哪些资料
+2. 从资料中选出最相关的原文，用 > 完整引用，不改写不截断
+3. 每段引用后标注来源：（资料N）；若资料出处含系列名，可顺带写入，例如 （资料N，《某某系列》）
+4. 任何归纳结论都必须能对应到资料编号；如果做不到，就不要补全推断
+5. 如果资料中没有相关内容，或证据不足以稳妥作答，直接说"暂无相关内容"
+6. 不要加"总之""综上""我认为"等主观话语
+7. 不要编造资料中没有的内容
 
 ${context}`;
 }
@@ -208,6 +211,49 @@ export function buildSourceFollowUps(docs = [], currentQuestion = '') {
         return buildFallbackFollowUps(currentQuestion);
     }
     return followUps;
+}
+
+export function buildRewriteSuggestions(question, options = {}) {
+    const { keywords = [], docs = [] } = options;
+    const suggestions = [];
+    const seen = new Set();
+    const topic = deriveQuestionTopic(question);
+    const docTopics = docs
+        .map(doc => deriveDocTopic(doc))
+        .filter(Boolean);
+    const seriesNames = docs
+        .map(doc => String(doc.series_name || '').trim())
+        .filter(Boolean);
+    const primaryKeyword = keywords.find(item => item.length >= 2) || topic || docTopics[0] || '';
+    const secondaryKeyword = keywords.find(item => item !== primaryKeyword && item.length >= 2) || docTopics[1] || '';
+    const primaryTopic = docTopics[0] || primaryKeyword || topic;
+    const primarySeries = seriesNames[0] || '';
+
+    if (primaryKeyword) {
+        pushUniqueFollowUp(suggestions, seen, `请只检索文库原文里与「${primaryKeyword}」直接相关的开示`);
+    }
+
+    if (primarySeries && primaryTopic) {
+        pushUniqueFollowUp(suggestions, seen, `在「${primarySeries}」里，关于「${primaryTopic}」有哪些原文依据`);
+    }
+
+    if (primaryTopic) {
+        pushUniqueFollowUp(suggestions, seen, `把问题改成「${primaryTopic}」相关的原文出处有哪些`);
+    }
+
+    if (primaryKeyword && secondaryKeyword) {
+        pushUniqueFollowUp(suggestions, seen, `同时限定「${primaryKeyword}」和「${secondaryKeyword}」，最相关的原文是哪几段`);
+    }
+
+    if (suggestions.length < 2 && topic) {
+        pushUniqueFollowUp(suggestions, seen, `请检索文库中与「${topic}」最相关的原文段落`);
+    }
+
+    if (suggestions.length < 3) {
+        pushUniqueFollowUp(suggestions, seen, '请指定某位法师、某个系列，或改用更短的关键词再问一次');
+    }
+
+    return suggestions.slice(0, 3);
 }
 
 export function normalizeAiAnswerContract(rawText, question, options = {}) {

@@ -6,6 +6,65 @@ const SUGGESTIONS = [
     '临终助念要注意什么',
 ];
 
+const BOT_MODE_LABELS = Object.freeze({
+    answer: '文库回答',
+    search_only: '文库检索',
+    no_result: '未找到直接依据',
+});
+
+const BOT_MODE_DETAILS = Object.freeze({
+    search_only: '先看相关原文，再决定是否继续追问',
+    no_result: '这次检索没有找到可直接支持结论的原文',
+});
+
+export function normalizeAnswerMode(mode) {
+    if (mode === 'search_only' || mode === 'no_result') return mode;
+    return 'answer';
+}
+
+export function formatConfidenceHint(confidence) {
+    const numeric = Number(confidence);
+    if (!Number.isFinite(numeric)) return '';
+
+    const ratio = Math.max(0, Math.min(1, numeric));
+    return `依据匹配约 ${Math.round(ratio * 100)}%`;
+}
+
+export function getAnswerModePresentation(mode, confidence) {
+    const normalizedMode = normalizeAnswerMode(mode);
+    const detail = normalizedMode === 'answer'
+        ? formatConfidenceHint(confidence) || '基于检索到的讲记原文整理'
+        : BOT_MODE_DETAILS[normalizedMode];
+
+    return {
+        mode: normalizedMode,
+        label: BOT_MODE_LABELS[normalizedMode],
+        detail,
+    };
+}
+
+export function mergeQuestionSuggestions(rewriteSuggestions = [], followUps = [], maxCount = 4) {
+    const merged = [];
+    const seen = new Set();
+
+    for (const value of [...rewriteSuggestions, ...followUps]) {
+        const normalized = String(value || '').trim();
+        if (!normalized || seen.has(normalized)) continue;
+        seen.add(normalized);
+        merged.push(normalized);
+        if (merged.length >= maxCount) break;
+    }
+
+    return merged;
+}
+
+export function summarizeEvidenceSnippet(snippet, maxLength = 120) {
+    const normalized = String(snippet || '').replace(/\s+/g, ' ').trim();
+    if (!normalized) return '';
+    if (normalized.length <= maxLength) return normalized;
+    return `${normalized.slice(0, maxLength).trim()}...`;
+}
+
 export function buildWelcomeHTML() {
     const tags = SUGGESTIONS.map(t =>
         `<button class="ai-hot-tag" data-question="${escapeHtml(t)}">${escapeHtml(t)}</button>`
@@ -14,7 +73,7 @@ export function buildWelcomeHTML() {
     <div class="ai-welcome">
       <div class="ai-welcome-icon" aria-hidden="true">☸</div>
       <h1>有什么可以帮您的？</h1>
-      <p class="ai-welcome-sub">基于法师讲记，为您解答净土法门疑问</p>
+            <p class="ai-welcome-sub">基于法音文库检索，优先呈现原文出处与相关讲记</p>
       <div class="ai-suggestions">${tags}</div>
     </div>`;
 }

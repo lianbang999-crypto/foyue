@@ -7,35 +7,54 @@ import {
   rerankResults,
   expandContextFromDocs,
   ragAnswer,
-  buildRAGMessages,
   buildRAGContext,
   generateSummary,
   checkRateLimit,
   cleanupRateLimits,
   extractAIResponse,
-  stripThinkTags,
   runAIWithLogging,
   resolveAIModel,
-  streamExternalLLM,
-  getGroqConfig,
 } from './ai-utils.js';
 import {
-  AI_EMPTY_ANSWER,
-  AI_INVALID_CITATION_ANSWER,
   AI_NO_RESULT_ANSWER,
   AI_RESPONSE_DISCLAIMER,
-  AI_TEMPORARY_UNAVAILABLE_ANSWER,
+  AI_SEARCH_ONLY_ANSWER,
   STOP_WORDS_RE,
   buildRecommendMessages,
+  buildRewriteSuggestions,
   normalizeAiAnswerContract,
 } from './ai-prompts.js';
 import { getTodayBeijing } from './crypto-utils.js';
 
-function buildSourceList(matches, docs, keywords = []) {
+const AI_RESPONSE_MODE = Object.freeze({
+  ANSWER: 'answer',
+  SEARCH_ONLY: 'search_only',
+  NO_RESULT: 'no_result',
+});
+
+const AI_RESPONSE_THRESHOLDS = Object.freeze({
+  answerConfidence: 0.75,
+  answerTopScore: 0.72,
+  supportScore: 0.58,
+  singleSourceAnswer: 0.88,
+});
+
+function roundConfidence(value) {
+  const normalized = Number.isFinite(value) ? value : 0;
+  return Math.max(0, Math.min(1, Math.round(normalized * 100) / 100));
+}
+
+function hasAnswerGenerationCapability(env) {
+  return !!(env?.AI?.run || env?.EXTERNAL_LLM_KEY || env?.GROQ_API_KEY);
+}
+
+function buildSourceList(matches, docs, keywords = [], options = {}) {
+  const { includeKnowledge = true } = options;
   const seenDocIds = new Set();
   const sources = [];
   for (const match of matches) {
     const docId = match.metadata?.doc_id || '';
+    if (!includeKnowledge && match.metadata?.category === 'knowledge') continue;
     if (!docId || seenDocIds.has(docId)) continue;
     seenDocIds.add(docId);
     const doc = docs.find(item => item.id === docId);
@@ -45,11 +64,13 @@ function buildSourceList(matches, docs, keywords = []) {
       ? buildKeywordSnippet(chunkText, keywords) || chunkText.slice(0, 300)
       : chunkText.slice(0, 300);
     sources.push({
-      title: match.metadata.title || '',
+      title: doc?.title || match.metadata.title || '',
       doc_id: docId,
-      score: Math.round(match.score * 100) / 100,
+      score: typeof match.score === 'number' ? Math.round(match.score * 100) / 100 : null,
       category: doc?.category || match.metadata.category || '',
       series_name: doc?.series_name || match.metadata.series_name || '',
+      audio_series_id: doc?.audio_series_id || match.metadata.audio_series_id || '',
+      audio_episode_num: doc?.audio_episode_num || null,
       snippet,
     });
     if (sources.length >= 3) break;
@@ -136,27 +157,285 @@ function buildBoundSourceList(answer, references, keywords = [], fallbackMatches
     }));
 }
 
-function buildVerifiedAiAnswerPayload(rawText, question, options = {}) {
-  const { references = [], keywords = [], docs = [], forceNoResult = false } = options;
-  const normalized = normalizeAiAnswerContract(rawText, question, { forceNoResult, docs });
-  if (normalized.noResult) {
+function buildDocFallbackSources(docs, keywords = []) {
+  return (docs || [])
+    .slice(0, 3)
+    .map(doc => {
+      const content = String(doc.content || '').replace(/\s+/g, ' ').trim();
+      return {
+        title: doc.title || '',
+        doc_id: doc.id,
+        score: null,
+        category: doc.category || '',
+        series_name: doc.series_name || '',
+        audio_series_id: doc.audio_series_id || '',
+        audio_episode_num: doc.audio_episode_num || null,
+        snippet: keywords.length > 0
+          ? buildKeywordSnippet(content, keywords) || content.slice(0, 300)
+          : content.slice(0, 300),
+      };
+    })
+    .filter(item => item.doc_id && item.snippet);
+}
+
+function buildSearchSourceList(matches, docs, keywords = []) {
+  const merged = [];
+  const seenDocIds = new Set();
+  const primary = buildSourceList(matches, docs, keywords, { includeKnowledge: false });
+  const secondary = primary.length ? primary : buildSourceList(matches, docs, keywords);
+
+  for (const source of secondary) {
+    if (!source.doc_id || seenDocIds.has(source.doc_id)) continue;
+    seenDocIds.add(source.doc_id);
+    merged.push(source);
+    if (merged.length >= 3) return merged;
+  }
+
+  for (const source of buildDocFallbackSources(docs, keywords)) {
+    if (!source.doc_id || seenDocIds.has(source.doc_id)) continue;
+    seenDocIds.add(source.doc_id);
+    merged.push(source);
+    if (merged.length >= 3) break;
+  }
+
+  return merged;
+}
+
+function evaluateRetrievalEvidence(matches = [], docs = []) {
+  if (!docs.length) {
     return {
-      answer: normalized.answer,
-      followUps: normalized.followUps,
-      sources: [],
-      disclaimer: AI_RESPONSE_DISCLAIMER,
+      mode: AI_RESPONSE_MODE.NO_RESULT,
+      confidence: 0,
+      topScore: 0,
+      secondScore: 0,
+      strongMatchCount: 0,
+      supportMatchCount: 0,
+      uniqueMatchedDocCount: 0,
     };
   }
 
-  const sources = buildBoundSourceList(normalized.answer, references, keywords, [], docs);
-  const hasValidCitations = extractAnswerReferenceIndexes(normalized.answer, references).length > 0 && sources.length > 0;
+  const scores = (matches || [])
+    .map(match => (typeof match.score === 'number' ? match.score : null))
+    .filter(score => Number.isFinite(score))
+    .sort((left, right) => right - left);
+  const topScore = scores[0] || 0;
+  const secondScore = scores[1] || 0;
+  const strongMatchCount = scores.filter(score => score >= AI_RESPONSE_THRESHOLDS.answerTopScore).length;
+  const supportMatchCount = scores.filter(score => score >= AI_RESPONSE_THRESHOLDS.supportScore).length;
+  const uniqueMatchedDocCount = new Set(
+    (matches || []).map(match => match.metadata?.doc_id).filter(Boolean)
+  ).size;
+
+  let confidence = 0.22;
+  if (!scores.length) {
+    confidence += 0.08;
+  } else if (topScore >= 0.85) {
+    confidence += 0.4;
+  } else if (topScore >= 0.75) {
+    confidence += 0.32;
+  } else if (topScore >= 0.65) {
+    confidence += 0.22;
+  } else if (topScore >= AI_RESPONSE_THRESHOLDS.supportScore) {
+    confidence += 0.12;
+  } else {
+    confidence += 0.05;
+  }
+
+  if (secondScore >= AI_RESPONSE_THRESHOLDS.answerTopScore) {
+    confidence += 0.12;
+  } else if (secondScore >= 0.6) {
+    confidence += 0.07;
+  }
+
+  if (strongMatchCount >= 2) {
+    confidence += 0.08;
+  } else if (supportMatchCount >= 2) {
+    confidence += 0.04;
+  }
+
+  if (uniqueMatchedDocCount >= 2) {
+    confidence += 0.04;
+  }
+
+  confidence = roundConfidence(confidence);
+
+  const answerReady = confidence >= AI_RESPONSE_THRESHOLDS.answerConfidence
+    && topScore >= AI_RESPONSE_THRESHOLDS.answerTopScore
+    && (strongMatchCount >= 2 || secondScore >= 0.6);
 
   return {
+    mode: answerReady ? AI_RESPONSE_MODE.ANSWER : AI_RESPONSE_MODE.SEARCH_ONLY,
+    confidence,
+    topScore,
+    secondScore,
+    strongMatchCount,
+    supportMatchCount,
+    uniqueMatchedDocCount,
+  };
+}
+
+function resolveRewriteSuggestions(question, keywords = [], docs = [], suggestions = []) {
+  const merged = [];
+  const seen = new Set();
+
+  for (const value of [...(Array.isArray(suggestions) ? suggestions : []), ...buildRewriteSuggestions(question, { keywords, docs })]) {
+    const normalized = String(value || '').trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    merged.push(normalized);
+    if (merged.length >= 3) break;
+  }
+
+  return merged;
+}
+
+function buildAiAnswerPayload(rawText, question, options = {}) {
+  const {
+    mode = AI_RESPONSE_MODE.ANSWER,
+    sources = [],
+    forceNoResult = false,
+    docs = [],
+    confidence = mode === AI_RESPONSE_MODE.NO_RESULT ? 0 : AI_RESPONSE_THRESHOLDS.answerConfidence,
+    rewriteSuggestions = [],
+  } = options;
+
+  const normalized = mode === AI_RESPONSE_MODE.SEARCH_ONLY
+    ? {
+      answer: String(rawText || AI_SEARCH_ONLY_ANSWER).trim(),
+      followUps: [],
+    }
+    : normalizeAiAnswerContract(rawText, question, {
+      forceNoResult: mode === AI_RESPONSE_MODE.NO_RESULT || forceNoResult,
+      docs,
+    });
+
+  return {
+    mode,
+    confidence: mode === AI_RESPONSE_MODE.NO_RESULT ? 0 : roundConfidence(confidence),
+    rewriteSuggestions,
     answer: normalized.answer,
     followUps: normalized.followUps,
-    sources: hasValidCitations ? sources : [],
+    sources,
     disclaimer: AI_RESPONSE_DISCLAIMER,
   };
+}
+
+function buildSearchOnlyPayload(question, options = {}) {
+  const {
+    matches = [],
+    docs = [],
+    keywords = [],
+    confidence = 0.52,
+    sources = [],
+    rewriteSuggestions = [],
+    answer = AI_SEARCH_ONLY_ANSWER,
+  } = options;
+  const finalSources = Array.isArray(sources) && sources.length > 0
+    ? sources.slice(0, 3)
+    : buildSearchSourceList(matches, docs, keywords);
+
+  return buildAiAnswerPayload(answer, question, {
+    mode: AI_RESPONSE_MODE.SEARCH_ONLY,
+    sources: finalSources,
+    docs,
+    confidence: Math.min(roundConfidence(confidence), AI_RESPONSE_THRESHOLDS.answerConfidence - 0.01),
+    rewriteSuggestions: resolveRewriteSuggestions(question, keywords, docs, rewriteSuggestions),
+  });
+}
+
+function buildNoResultPayload(question, options = {}) {
+  const { keywords = [], docs = [], rewriteSuggestions = [] } = options;
+  return buildAiAnswerPayload(AI_NO_RESULT_ANSWER, question, {
+    mode: AI_RESPONSE_MODE.NO_RESULT,
+    sources: [],
+    docs,
+    confidence: 0,
+    rewriteSuggestions: resolveRewriteSuggestions(question, keywords, docs, rewriteSuggestions),
+  });
+}
+
+function splitAnswerIntoChunks(answer, chunkSize = 48) {
+  const text = String(answer || '');
+  if (!text) return [];
+
+  const chunks = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    let end = Math.min(cursor + chunkSize, text.length);
+    if (end < text.length) {
+      const boundary = Math.max(
+        text.lastIndexOf('。', end),
+        text.lastIndexOf('！', end),
+        text.lastIndexOf('？', end),
+        text.lastIndexOf('；', end),
+        text.lastIndexOf('\n', end)
+      );
+      if (boundary >= cursor + 12) end = boundary + 1;
+    }
+    chunks.push(text.slice(cursor, end));
+    cursor = end;
+  }
+  return chunks;
+}
+
+function buildVerifiedAiAnswerPayload(rawText, question, options = {}) {
+  const {
+    references = [],
+    keywords = [],
+    docs = [],
+    matches = [],
+    forceNoResult = false,
+    retrieval = evaluateRetrievalEvidence(matches, docs),
+  } = options;
+
+  if (forceNoResult || !docs.length) {
+    return buildNoResultPayload(question, { keywords, docs });
+  }
+
+  const normalized = normalizeAiAnswerContract(rawText, question, { docs });
+  const searchSources = buildSearchSourceList(matches, docs, keywords);
+
+  if (retrieval.mode !== AI_RESPONSE_MODE.ANSWER || normalized.noResult) {
+    return buildSearchOnlyPayload(question, {
+      matches,
+      docs,
+      keywords,
+      confidence: retrieval.confidence,
+      sources: searchSources,
+    });
+  }
+
+  const sources = buildBoundSourceList(normalized.answer, references, keywords, [], docs);
+  const citationIndexes = extractAnswerReferenceIndexes(normalized.answer, references);
+  const canKeepSingleSourceAnswer = sources.length === 1
+    && citationIndexes.length >= 1
+    && retrieval.confidence >= AI_RESPONSE_THRESHOLDS.singleSourceAnswer;
+  const hasValidCitations = citationIndexes.length > 0 && (sources.length >= 2 || canKeepSingleSourceAnswer);
+
+  if (!hasValidCitations) {
+    return buildSearchOnlyPayload(question, {
+      matches,
+      docs,
+      keywords,
+      confidence: retrieval.confidence,
+      sources: searchSources,
+    });
+  }
+
+  const answerConfidence = roundConfidence(Math.min(
+    0.96,
+    retrieval.confidence
+    + (sources.length >= 2 ? 0.08 : 0.04)
+    + (citationIndexes.length >= 2 ? 0.04 : 0)
+  ));
+
+  return buildAiAnswerPayload(normalized.answer, question, {
+    mode: AI_RESPONSE_MODE.ANSWER,
+    sources,
+    docs,
+    confidence: Math.max(answerConfidence, AI_RESPONSE_THRESHOLDS.answerConfidence),
+    rewriteSuggestions: resolveRewriteSuggestions(question, keywords, docs),
+  });
 }
 
 function normalizeSummaryKey(documentId) {
@@ -357,17 +636,6 @@ function appendPseudoMatch(matches, doc, snippet, score = 0.58) {
   ];
 }
 
-function buildAiAnswerPayload(rawText, question, options = {}) {
-  const { sources = [], forceNoResult = false, docs = [] } = options;
-  const normalized = normalizeAiAnswerContract(rawText, question, { forceNoResult, docs });
-  return {
-    answer: normalized.answer,
-    followUps: normalized.followUps,
-    sources,
-    disclaimer: AI_RESPONSE_DISCLAIMER,
-  };
-}
-
 function parseAskInput(body) {
   const { question, series_id, episode_id, episode_num, history } = body || {};
   const normalizedQuestion = typeof question === 'string' ? question.trim() : '';
@@ -492,10 +760,6 @@ async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
 }
 
 export async function handleAiAsk(env, request, cors, ctx, json) {
-  if (!env?.AI?.run && !env?.EXTERNAL_LLM_KEY) {
-    return json({ error: 'AI 服务暂未配置，请稍后再试' }, cors, 503, 'no-store');
-  }
-
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
   const limit = await checkRateLimit(env, ip, 'ai_ask');
   if (!limit.allowed) return json({ error: limit.reason }, cors, 429);
@@ -510,10 +774,21 @@ export async function handleAiAsk(env, request, cors, ctx, json) {
   const askInput = parseAskInput(body);
   if (askInput.error) return json({ error: askInput.error }, cors, 400);
 
+  const keywords = extractSearchKeywords(askInput.question);
   const { matches, docs } = await loadAiDocs(env, askInput.question, askInput.seriesId, askInput.episodeNum, ctx);
+  const retrieval = evaluateRetrievalEvidence(matches, docs);
 
   if (!docs.length) {
-    return json(buildAiAnswerPayload(AI_NO_RESULT_ANSWER, askInput.question, { forceNoResult: true }), cors);
+    return json(buildNoResultPayload(askInput.question, { keywords }), cors, 200, 'no-store');
+  }
+
+  if (retrieval.mode !== AI_RESPONSE_MODE.ANSWER || !hasAnswerGenerationCapability(env)) {
+    return json(buildSearchOnlyPayload(askInput.question, {
+      matches,
+      docs,
+      keywords,
+      confidence: retrieval.confidence,
+    }), cors, 200, 'no-store');
   }
 
   const { references } = buildRAGContext(docs, { vectorMatches: matches });
@@ -527,27 +802,34 @@ export async function handleAiAsk(env, request, cors, ctx, json) {
     });
   } catch (err) {
     console.error('RAG answer failed:', err.message);
-    return json(buildAiAnswerPayload(AI_TEMPORARY_UNAVAILABLE_ANSWER, askInput.question), cors, 503, 'no-store');
+    return json(buildSearchOnlyPayload(askInput.question, {
+      matches,
+      docs,
+      keywords,
+      confidence: retrieval.confidence,
+    }), cors, 200, 'no-store');
   }
 
   const answer = result?.response?.trim();
   if (!answer) {
-    return json(buildAiAnswerPayload(AI_EMPTY_ANSWER, askInput.question), cors, 200, 'no-store');
+    return json(buildSearchOnlyPayload(askInput.question, {
+      matches,
+      docs,
+      keywords,
+      confidence: retrieval.confidence,
+    }), cors, 200, 'no-store');
   }
 
-  const keywords = extractSearchKeywords(askInput.question);
   return json(buildVerifiedAiAnswerPayload(answer, askInput.question, {
     references,
     keywords,
     docs,
+    matches,
+    retrieval,
   }), cors, 200, 'no-store');
 }
 
 export async function handleAiAskStream(env, request, cors, ctx, json) {
-  if (!env?.AI?.run && !env?.EXTERNAL_LLM_KEY) {
-    return json({ error: 'AI 服务暂未配置，请稍后再试' }, cors, 503, 'no-store');
-  }
-
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
   const limit = await checkRateLimit(env, ip, 'ai_ask');
   if (!limit.allowed) return json({ error: limit.reason }, cors, 429);
@@ -562,262 +844,66 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
   const askInput = parseAskInput(body);
   if (askInput.error) return json({ error: askInput.error }, cors, 400);
 
-  const { matches, docs } = await loadAiDocs(env, askInput.question, askInput.seriesId, askInput.episodeNum, ctx);
-  if (!docs.length) {
-    return json(buildAiAnswerPayload(AI_NO_RESULT_ANSWER, askInput.question, { forceNoResult: true }), cors);
-  }
-
   const keywords = extractSearchKeywords(askInput.question);
+  const { matches, docs } = await loadAiDocs(env, askInput.question, askInput.seriesId, askInput.episodeNum, ctx);
+  const retrieval = evaluateRetrievalEvidence(matches, docs);
+  if (!docs.length) {
+    return json(buildNoResultPayload(askInput.question, { keywords }), cors, 200, 'no-store');
+  }
+
+  if (retrieval.mode !== AI_RESPONSE_MODE.ANSWER || !hasAnswerGenerationCapability(env)) {
+    return json(buildSearchOnlyPayload(askInput.question, {
+      matches,
+      docs,
+      keywords,
+      confidence: retrieval.confidence,
+    }), cors, 200, 'no-store');
+  }
+
   const { references } = buildRAGContext(docs, { vectorMatches: matches });
-  const chatModel = resolveAIModel(env, 'chat');
-  const fallbackChatModel = resolveAIModel(env, 'chatFallback');
-  const messages = buildRAGMessages(askInput.question, docs, {
-    history: askInput.history,
-    vectorMatches: matches,
-  });
-
-  let aiStream;
-  let isGoogleStream = false;
-
-  // 优先使用外部 LLM（OpenAI 兼容格式，SSE 解析通用）
-  if (env?.EXTERNAL_LLM_KEY) {
-    try {
-      aiStream = await streamExternalLLM(env, messages, { maxTokens: 500, temperature: 0.2 });
-    } catch (err) {
-      console.warn('External LLM stream failed:', err.message);
-    }
-  }
-
-  // 备用外部 LLM: Groq（不消耗 Workers AI neuron 配额）
-  if (!aiStream && env?.GROQ_API_KEY) {
-    try {
-      aiStream = await streamExternalLLM(env, messages, { maxTokens: 500, temperature: 0.2, config: getGroqConfig(env) });
-    } catch (err) {
-      console.warn('Groq stream failed:', err.message);
-    }
-  }
-
-  // Fallback: Workers AI
-  if (!aiStream) {
-    try {
-      aiStream = await runAIWithLogging(
-        env,
-        chatModel,
-        { messages, max_tokens: 500, temperature: 0.2, stream: true },
-        GATEWAY_PROFILES.ragStream,
-        'ragStream',
-        ctx
-      );
-    } catch (err) {
-      console.warn('Primary chat model failed, using fallback:', err.message);
-      try {
-        aiStream = await runAIWithLogging(
-          env,
-          fallbackChatModel,
-          { messages, max_tokens: 500, temperature: 0.2, stream: true },
-          GATEWAY_PROFILES.ragStream,
-          'ragStream',
-          ctx
-        );
-      } catch {
-        return json(buildAiAnswerPayload(AI_TEMPORARY_UNAVAILABLE_ANSWER, askInput.question), cors, 503, 'no-store');
-      }
-    }
-  }
-
   const encoder = new TextEncoder();
-  const disclaimer = AI_RESPONSE_DISCLAIMER;
 
   const sseStream = new ReadableStream({
     async start(controller) {
-      let tokenCount = 0;
-      let rawAnswer = '';
-      let inThinkBlock = false;
-      let thinkBuffer = '';
-      let heartbeatSent = false;
+      controller.enqueue(encoder.encode(': retrieving\n\n'));
+
+      let finalPayload;
       try {
-        const reader = aiStream.getReader();
-        const decoder = new TextDecoder();
-        let sseBuffer = '';
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const text = typeof value === 'string' ? value : decoder.decode(value, { stream: true });
-          sseBuffer += text;
-          const segments = sseBuffer.split('\n');
-          sseBuffer = segments.pop() || '';
-
-          for (const line of segments) {
-            const trimmed = line.trim();
-            if (!trimmed || trimmed.startsWith('event:')) continue;
-            if (trimmed.startsWith('data:')) {
-              const payload = trimmed.slice(5).trim();
-              if (payload === '[DONE]') continue;
-              try {
-                const parsed = JSON.parse(payload);
-                // 智谱/DeepSeek 等模型把思维链放在 reasoning_content 字段
-                const isReasoning = !!(parsed.choices?.[0]?.delta?.reasoning_content);
-                if (isReasoning) {
-                  // 思维阶段：发 SSE 注释保持连接，但不输出内容
-                  if (!heartbeatSent) {
-                    controller.enqueue(encoder.encode(`: thinking\n\n`));
-                    heartbeatSent = true;
-                  }
-                  continue;
-                }
-                const token = parsed.candidates?.[0]?.content?.parts?.[0]?.text
-                  || parsed.response
-                  || parsed.choices?.[0]?.delta?.content
-                  || parsed.choices?.[0]?.text
-                  || parsed.result?.response
-                  || parsed.text
-                  || parsed.token
-                  || '';
-                if (token) {
-                  thinkBuffer += token;
-                  if (inThinkBlock) {
-                    const endIdx = thinkBuffer.indexOf('</think>');
-                    if (endIdx !== -1) {
-                      inThinkBlock = false;
-                      thinkBuffer = thinkBuffer.slice(endIdx + 8);
-                    } else {
-                      continue;
-                    }
-                  }
-                  const startIdx = thinkBuffer.indexOf('<think>');
-                  if (startIdx !== -1) {
-                    const before = thinkBuffer.slice(0, startIdx);
-                    if (before.trim()) {
-                      tokenCount++;
-                      rawAnswer += before;
-                      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: before })}\n\n`));
-                    }
-                    const endIdx = thinkBuffer.indexOf('</think>', startIdx);
-                    if (endIdx !== -1) {
-                      thinkBuffer = thinkBuffer.slice(endIdx + 8);
-                    } else {
-                      inThinkBlock = true;
-                      thinkBuffer = '';
-                      continue;
-                    }
-                  }
-                  if (thinkBuffer.trim()) {
-                    tokenCount++;
-                    rawAnswer += thinkBuffer;
-                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: thinkBuffer })}\n\n`));
-                  }
-                  thinkBuffer = '';
-                }
-              } catch { }
-              continue;
-            }
-
-            if (trimmed.startsWith('{')) {
-              try {
-                const parsed = JSON.parse(trimmed);
-                const token = parsed.candidates?.[0]?.content?.parts?.[0]?.text || parsed.response || parsed.choices?.[0]?.delta?.content || parsed.text || '';
-                if (token) {
-                  tokenCount++;
-                  rawAnswer += token;
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token })}\n\n`));
-                }
-              } catch { }
-            }
-          }
-        }
-
-        if (sseBuffer.trim()) {
-          const trimmed = sseBuffer.trim();
-          if (trimmed.startsWith('data:')) {
-            const payload = trimmed.slice(5).trim();
-            if (payload !== '[DONE]') {
-              try {
-                const parsed = JSON.parse(payload);
-                const token = parsed.candidates?.[0]?.content?.parts?.[0]?.text || parsed.response || parsed.choices?.[0]?.delta?.content || '';
-                if (token) {
-                  tokenCount++;
-                  rawAnswer += token;
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token })}\n\n`));
-                }
-              } catch { }
-            }
-          }
-        }
+        const result = await ragAnswer(env, askInput.question, docs, {
+          history: askInput.history,
+          vectorMatches: matches,
+          ctx,
+        });
+        const answer = result?.response?.trim();
+        finalPayload = answer
+          ? buildVerifiedAiAnswerPayload(answer, askInput.question, {
+            references,
+            keywords,
+            docs,
+            matches,
+            retrieval,
+          })
+          : buildSearchOnlyPayload(askInput.question, {
+            matches,
+            docs,
+            keywords,
+            confidence: retrieval.confidence,
+          });
       } catch (err) {
-        console.error('Stream processing error:', err.message);
-        if (tokenCount === 0) {
-          try {
-            const fallbackResult = await env.AI.run(
-              AI_CONFIG.models.chat,
-              { messages, max_tokens: 500, temperature: 0.2 },
-              { gateway: GATEWAY_PROFILES.ragChat }
-            );
-            const answer = stripThinkTags(extractAIResponse(fallbackResult));
-            if (answer) {
-              rawAnswer += answer;
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: answer })}\n\n`));
-              tokenCount++;
-            }
-          } catch { }
-        }
-        if (tokenCount === 0) {
-          controller.enqueue(encoder.encode(
-            `event: error\ndata: ${JSON.stringify({ error: err.message || 'Stream failed' })}\n\n`
-          ));
-        }
+        console.error('Ask stream answer failed:', err.message);
+        finalPayload = buildSearchOnlyPayload(askInput.question, {
+          matches,
+          docs,
+          keywords,
+          confidence: retrieval.confidence,
+        });
       }
 
-      if (tokenCount === 0) {
-        try {
-          const fallbackResult = await runAIWithLogging(
-            env,
-            chatModel,
-            { messages, max_tokens: 500, temperature: 0.2 },
-            GATEWAY_PROFILES.ragChat,
-            'ragChat',
-            ctx
-          );
-          const answer = stripThinkTags(extractAIResponse(fallbackResult));
-          if (answer) {
-            rawAnswer += answer;
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: answer })}\n\n`));
-            tokenCount++;
-          }
-        } catch {
-          try {
-            const fallback2 = await runAIWithLogging(
-              env,
-              fallbackChatModel,
-              { messages, max_tokens: 500, temperature: 0.2 },
-              GATEWAY_PROFILES.ragChat,
-              'ragChat',
-              ctx
-            );
-            const answer2 = stripThinkTags(extractAIResponse(fallback2));
-            if (answer2) {
-              rawAnswer += answer2;
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: answer2 })}\n\n`));
-              tokenCount++;
-            }
-          } catch { }
-        }
+      for (const token of splitAnswerIntoChunks(finalPayload.answer)) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token })}\n\n`));
       }
 
-      const normalized = normalizeAiAnswerContract(rawAnswer, askInput.question, { forceNoResult: tokenCount === 0, docs });
-      const finalPayload = buildVerifiedAiAnswerPayload(normalized.answer, askInput.question, {
-        references,
-        keywords,
-        docs,
-        forceNoResult: tokenCount === 0,
-      });
-      controller.enqueue(encoder.encode(
-        `event: done\ndata: ${JSON.stringify({
-          sources: finalPayload.sources,
-          disclaimer,
-          answer: finalPayload.answer,
-          followUps: finalPayload.followUps,
-        })}\n\n`
-      ));
+      controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify(finalPayload)}\n\n`));
       controller.close();
     }
   });

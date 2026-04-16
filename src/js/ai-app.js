@@ -8,7 +8,11 @@ import {
     escapeHtml,
     extractHighlightQuery,
     formatAnswer,
+    getAnswerModePresentation,
+    mergeQuestionSuggestions,
+    normalizeAnswerMode,
     renderSearchResults,
+    summarizeEvidenceSnippet,
 } from './ai-format.js';
 
 const AI_CONTEXT_KEY = 'ai-latest-context';
@@ -292,7 +296,15 @@ function wireEvents() {
             const msgEl = actionBtn.closest('.ai-message');
             if (action === 'copy') {
                 const text = msgEl.querySelector('.ai-message-content')?.innerText || '';
-                _aiCopy(text, '已复制');
+                // 获取对应的问题标题
+                const questionEl = msgEl.previousElementSibling?.classList.contains('ai-message--user') ? msgEl.previousElementSibling : null;
+                const title = questionEl ? questionEl.innerText.trim() : 'AI 解答';
+                import('./share-panel.js').then(m => m.showSharePanel({
+                    type: 'ai',
+                    title: title,
+                    quote: text,
+                    url: window.location.href
+                }));
             }
             return;
         }
@@ -357,7 +369,12 @@ function renderWelcomeOrHistory() {
             const sourceQuery = msg.role === 'assistant'
                 ? getMessageSourceQuery(chatHistory, index, msg)
                 : '';
-            addMessage(msg.role === 'user' ? 'user' : 'bot', msg.content, msg.sources, msg.disclaimer, true, index, sourceQuery);
+            addMessage(msg.role === 'user' ? 'user' : 'bot', msg.content, {
+                ...msg,
+                silent: true,
+                messageIndex: index,
+                sourceQuery,
+            });
         }
         scrollToBottom();
     } else {
@@ -397,6 +414,19 @@ function trimConversationMessages(conv) {
     }
 }
 
+function buildAssistantMessage(question, payload = {}, fallbackAnswer = '') {
+    return conversationStore.normalizeMessage({
+        role: 'assistant',
+        content: payload?.answer ?? payload?.content ?? fallbackAnswer ?? '',
+        sources: attachSourcePreviewQuery(payload?.sources || [], question),
+        disclaimer: payload?.disclaimer,
+        mode: payload?.mode,
+        confidence: payload?.confidence,
+        rewriteSuggestions: payload?.rewriteSuggestions,
+        followUps: payload?.followUps,
+    });
+}
+
 function setGeneratingUI(active) {
     if (active) {
         btnSend.disabled = true;
@@ -418,8 +448,8 @@ async function handleSubmit(options = {}) {
     _lastQuestion = question;
     const conv = ensureActiveConv();
     if (!options.skipUserMessage) {
-        addMessage('user', question, null, null, false, conv.messages.length);
-        conv.messages.push({ role: 'user', content: question });
+        addMessage('user', question, { messageIndex: conv.messages.length });
+        conv.messages.push(conversationStore.normalizeMessage({ role: 'user', content: question }));
     }
     if (!conv.title) conv.title = question.slice(0, 20);
 
@@ -477,29 +507,15 @@ async function handleSubmit(options = {}) {
                 removeTyping();
             }
 
-            const finalAnswer = data.answer || rawTokens || '';
-            const sourcesWithQuery = attachSourcePreviewQuery(data.sources || [], question);
-            addMessage('bot', finalAnswer, sourcesWithQuery, data.disclaimer, false, conv.messages.length);
-
-            // 追问建议
-            if (data.followUps?.length) {
-                const followUpEl = document.createElement('div');
-                followUpEl.className = 'ai-followups';
-                followUpEl.innerHTML = data.followUps.map(q =>
-                    `<button class="ai-hot-tag" data-question="${escapeHtml(q)}">${escapeHtml(q)}</button>`
-                ).join('');
-                chatArea.appendChild(followUpEl);
-            }
-
-            scrollToBottom();
+            const assistantMessage = buildAssistantMessage(question, data, rawTokens);
+            addMessage('bot', assistantMessage.content, {
+                ...assistantMessage,
+                messageIndex: conv.messages.length,
+                sourceQuery: extractHighlightQuery(question),
+            });
 
             // 持久化
-            conv.messages.push({
-                role: 'assistant',
-                content: finalAnswer,
-                sources: sourcesWithQuery,
-                disclaimer: data.disclaimer,
-            });
+            conv.messages.push(assistantMessage);
             trimConversationMessages(conv);
             conv.updatedAt = Date.now();
             saveConversations();
@@ -520,9 +536,16 @@ async function handleSubmit(options = {}) {
 
             // 如果已有 token，尝试用已有内容落地（网络中断场景）
             if (rawTokens.trim()) {
-                const sourcesWithQuery = attachSourcePreviewQuery([], question);
-                addMessage('bot', rawTokens, sourcesWithQuery, null, false, conv.messages.length);
-                conv.messages.push({ role: 'assistant', content: rawTokens, sources: [] });
+                const partialMessage = buildAssistantMessage(question, {
+                    answer: rawTokens,
+                    sources: [],
+                }, rawTokens);
+                addMessage('bot', partialMessage.content, {
+                    ...partialMessage,
+                    messageIndex: conv.messages.length,
+                    sourceQuery: extractHighlightQuery(question),
+                });
+                conv.messages.push(partialMessage);
                 trimConversationMessages(conv);
                 conv.updatedAt = Date.now();
                 saveConversations();
@@ -539,7 +562,19 @@ async function handleSubmit(options = {}) {
 }
 
 /* --- 消息渲染 --- */
-function addMessage(role, content, sources, disclaimer, silent, messageIndex, sourceQuery = '') {
+function addMessage(role, content, options = {}) {
+    const {
+        sources = [],
+        disclaimer = '',
+        silent = false,
+        messageIndex,
+        sourceQuery = '',
+        mode = 'answer',
+        confidence = null,
+        rewriteSuggestions = [],
+        followUps = [],
+    } = options;
+
     while (chatArea.children.length > MAX_MESSAGES) {
         chatArea.removeChild(chatArea.children[0]);
     }
@@ -556,18 +591,19 @@ function addMessage(role, content, sources, disclaimer, silent, messageIndex, so
     if (role === 'user') {
         contentEl.innerHTML = `<p>${escapeHtml(content)}</p>`;
     } else {
-        contentEl.innerHTML = formatAnswer(content);
-        if (sources?.length) {
-            const sourceHeading = document.createElement('div');
-            sourceHeading.className = 'ai-source-heading';
-            sourceHeading.textContent = '引用出处';
-            contentEl.appendChild(sourceHeading);
-
-            const srcDiv = document.createElement('div');
-            srcDiv.className = 'ai-sources';
-            srcDiv.innerHTML = sources.map(s => renderSourceTag(s, sourceQuery)).join(' ');
-            contentEl.appendChild(srcDiv);
-        }
+        const normalizedMode = normalizeAnswerMode(mode);
+        msg.dataset.replyMode = normalizedMode;
+        msg.classList.add(`ai-message--${normalizedMode.replace('_', '-')}`);
+        renderBotMessage(contentEl, {
+            content,
+            sources,
+            disclaimer,
+            sourceQuery,
+            mode: normalizedMode,
+            confidence,
+            rewriteSuggestions,
+            followUps,
+        });
     }
 
     msg.appendChild(contentEl);
@@ -584,6 +620,116 @@ function addMessage(role, content, sources, disclaimer, silent, messageIndex, so
 
     chatArea.appendChild(msg);
     if (!silent) scrollToBottom();
+}
+
+function renderBotMessage(contentEl, options) {
+    const {
+        content,
+        sources = [],
+        disclaimer = '',
+        sourceQuery = '',
+        mode = 'answer',
+        confidence = null,
+        rewriteSuggestions = [],
+        followUps = [],
+    } = options;
+    const presentation = getAnswerModePresentation(mode, confidence);
+    const suggestions = mergeQuestionSuggestions(rewriteSuggestions, followUps);
+
+    contentEl.appendChild(buildStatusHeader(presentation));
+
+    if (presentation.mode === 'search_only' && sources.length) {
+        contentEl.appendChild(buildSourceSection(sources, sourceQuery, {
+            heading: '相关原文',
+            prominent: true,
+        }));
+    }
+
+    if (content) {
+        const summaryEl = document.createElement('div');
+        summaryEl.className = 'ai-bot-summary';
+        if (presentation.mode === 'search_only') summaryEl.classList.add('ai-bot-summary--search');
+        if (presentation.mode === 'no_result') summaryEl.classList.add('ai-bot-summary--no-result');
+        summaryEl.innerHTML = formatAnswer(content);
+        contentEl.appendChild(summaryEl);
+    }
+
+    if (presentation.mode !== 'search_only' && sources.length) {
+        contentEl.appendChild(buildSourceSection(sources, sourceQuery, {
+            heading: presentation.mode === 'answer' ? '引用出处' : '相关原文',
+            prominent: false,
+        }));
+    }
+
+    if (disclaimer) {
+        const disc = document.createElement('div');
+        disc.className = 'ai-disclaimer';
+        disc.textContent = disclaimer;
+        contentEl.appendChild(disc);
+    }
+
+    if (suggestions.length) {
+        contentEl.appendChild(buildSuggestionSection(suggestions, {
+            prioritized: Array.isArray(rewriteSuggestions) && rewriteSuggestions.length > 0,
+            mode: presentation.mode,
+        }));
+    }
+}
+
+function buildStatusHeader(presentation) {
+    const status = document.createElement('div');
+    status.className = 'ai-bot-status';
+    status.innerHTML = `
+        <span class="ai-bot-status-badge">${escapeHtml(presentation.label)}</span>
+        ${presentation.detail ? `<span class="ai-bot-status-detail">${escapeHtml(presentation.detail)}</span>` : ''}
+    `;
+    return status;
+}
+
+function buildSourceSection(sources, sourceQuery, options = {}) {
+    const { heading = '引用出处', prominent = false } = options;
+    const section = document.createElement('section');
+    section.className = `ai-evidence-section${prominent ? ' ai-evidence-section--prominent' : ''}`;
+
+    const headingEl = document.createElement('div');
+    headingEl.className = `ai-source-heading${prominent ? ' ai-source-heading--primary' : ''}`;
+    headingEl.textContent = heading;
+    section.appendChild(headingEl);
+
+    const list = document.createElement('div');
+    list.className = prominent ? 'ai-evidence-list' : 'ai-sources';
+    list.innerHTML = prominent
+        ? sources.map((source) => renderEvidenceCard(source, sourceQuery)).join('')
+        : sources.map((source) => renderSourceTag(source, sourceQuery)).join(' ');
+    section.appendChild(list);
+
+    return section;
+}
+
+function buildSuggestionSection(suggestions, options = {}) {
+    const { prioritized = false, mode = 'answer' } = options;
+    const section = document.createElement('div');
+    section.className = 'ai-followup-section';
+
+    const heading = document.createElement('div');
+    heading.className = 'ai-followup-heading';
+    if (prioritized || mode === 'no_result') {
+        heading.textContent = '换个问法试试';
+    } else if (mode === 'search_only') {
+        heading.textContent = '相关问法';
+    } else {
+        heading.textContent = '继续追问';
+    }
+    section.appendChild(heading);
+
+    const tags = document.createElement('div');
+    tags.className = 'ai-followups';
+    tags.innerHTML = suggestions.map((question) =>
+        `<button class="ai-hot-tag" data-question="${escapeHtml(question)}">${escapeHtml(question)}</button>`
+    ).join('');
+    section.appendChild(tags);
+
+    return section;
 }
 
 function addErrorMessage(errText, question) {
@@ -634,6 +780,46 @@ function renderSourceTag(s, fallbackQuery = '') {
         </span>`;
     }
     return `<span class="ai-source-card"><span class="ai-source-tag"><span class="ai-source-title">${title}</span>${series}${epNum}</span>${playBtn}</span>`;
+}
+
+function renderEvidenceCard(s, fallbackQuery = '') {
+    const title = escapeHtml(s.title || '相关讲记');
+    const originParts = [];
+    if (s.series_name) originParts.push(escapeHtml(s.series_name));
+    if (s.audio_episode_num) originParts.push(`第${s.audio_episode_num}讲`);
+    const origin = originParts.join(' · ');
+    const snippet = summarizeEvidenceSnippet(s.snippet, 118);
+
+    const playBtn = s.audio_series_id
+        ? `<a class="ai-source-play ai-source-play--card" href="/?series=${encodeURIComponent(s.audio_series_id)}${s.audio_episode_num ? `&ep=${s.audio_episode_num}` : ''}" title="播放此讲">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5,3 19,12 5,21"/></svg>
+          </a>`
+        : '';
+
+    const contentHtml = `
+        <span class="ai-evidence-title">${title}</span>
+        ${origin ? `<span class="ai-evidence-origin">${origin}</span>` : ''}
+        ${snippet ? `<span class="ai-evidence-snippet">${escapeHtml(snippet)}</span>` : ''}
+    `;
+
+    if (s.doc_id) {
+        const rawQuery = String(s.preview_query || fallbackQuery || extractHighlightQuery(_lastQuestion) || '').trim();
+        const queryAttr = rawQuery ? ` data-query="${escapeHtml(rawQuery)}"` : '';
+        const snippetAttr = s.snippet ? ` data-snippet="${escapeHtml(s.snippet || '')}"` : '';
+        return `<article class="ai-evidence-card">
+            <button type="button" class="ai-evidence-link ai-source-tag" data-doc-id="${escapeHtml(s.doc_id)}"${queryAttr}${snippetAttr}>
+                ${contentHtml}
+            </button>
+            ${playBtn}
+        </article>`;
+    }
+
+    return `<article class="ai-evidence-card">
+        <div class="ai-evidence-link ai-evidence-link--static">
+            ${contentHtml}
+        </div>
+        ${playBtn}
+    </article>`;
 }
 
 function loadAiContext() {
@@ -866,16 +1052,6 @@ function renderConvList() {
 }
 
 /* --- 分享工具 --- */
-function _aiCopy(text, toastMsg = '已复制') {
-    if (navigator.clipboard?.writeText) {
-        navigator.clipboard.writeText(text)
-            .then(() => showAiToast(toastMsg))
-            .catch(() => _aiLegacyCopy(text, toastMsg));
-        return;
-    }
-    _aiLegacyCopy(text, toastMsg);
-}
-
 function _aiLegacyCopy(text, toastMsg = '已复制') {
     const ta = document.createElement('textarea');
     ta.value = text;
@@ -980,5 +1156,5 @@ function exportConversation() {
         lines.push('');
     }
     const text = lines.join('\n');
-    _aiCopy(text, '对话已复制到剪贴板');
+    import('./share-panel.js').then(m => m.quickShare('AI 解答全记录', text));
 }

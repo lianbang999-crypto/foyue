@@ -4,7 +4,7 @@ import { get, patch } from './store.js';
 import { haptic, showToast, escapeHtml, formatCount, HUIXIANG_TEXT, localTodayStr, HUIXIANG_DISPLAY_AUTO_MS } from './utils.js';
 
 /* 条件导入：独立页面不加载 player 模块 */
-let pausePlaybackForCounter = () => {};
+let pausePlaybackForCounter = () => { };
 let _standaloneDeps = false;
 
 /** 加载主站依赖（仅非独立页场景调用） */
@@ -404,18 +404,18 @@ function wireCounterEvents(view, data, _session) {
   /* ── Full UI update (settings change, loop complete, goal done, reset) ── */
   function updateUI(bump = false) {
     const dimmerBtn = view.querySelector('#counterDimmerToggle');
-    if(dimmerBtn) dimmerBtn.classList.toggle('counter-tool-icon--active', isDimmerEnabled());
+    if (dimmerBtn) dimmerBtn.classList.toggle('counter-tool-icon--active', isDimmerEnabled());
 
     const muyuBtn = view.querySelector('#counterMuyuToggle');
-    if(muyuBtn) muyuBtn.classList.toggle('counter-tool-icon--active', isMuyuEnabled());
+    if (muyuBtn) muyuBtn.classList.toggle('counter-tool-icon--active', isMuyuEnabled());
 
-    
 
-    
 
-    
 
-    
+
+
+
+
 
     const ps = getPracticeStats(data);
     const beadPos = ps.total % BEADS_PER_LOOP;
@@ -915,8 +915,8 @@ function showPracticePicker(parentView, data, onDone) {
 
         <div class="practice-picker-list" id="practicePickerList">
           ${allPractices.map(({ name, isPreset }) =>
-            _buildPracticeItemHTML(name, data.practice === name, isPreset)
-          ).join('')}
+      _buildPracticeItemHTML(name, data.practice === name, isPreset)
+    ).join('')}
         </div>
 
         <div class="practice-add-section" id="practiceAddSection">
@@ -1055,7 +1055,7 @@ function todayDateStr() { return mkDateStr(new Date()); }
 function fmtCalCount(n) {
   if (!n || n <= 0) return '';
   if (n >= 10000) return (n / 10000).toFixed(1).replace(/\.0$/, '') + '万';
-  if (n >= 1000)  return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
   return String(n);
 }
 
@@ -1064,7 +1064,7 @@ function calcMonthTotal(log, year, month) {
   let total = 0;
   const days = new Date(year, month, 0).getDate();
   for (let d = 1; d <= days; d++) {
-    const ds = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const ds = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const dayData = log[ds] || {};
     total += Object.values(dayData).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
   }
@@ -1087,11 +1087,11 @@ function buildCalendarGrid(data, year, month) {
   for (let i = 0; i < startDow; i++) cells.push({ type: 'pad' });
 
   for (let d = 1; d <= totalDays; d++) {
-    const ds = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const ds = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const isFuture = ds > todayStr;
-    const isToday  = ds === todayStr;
-    const dayData  = log[ds] || {};
-    const total    = Object.values(dayData).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
+    const isToday = ds === todayStr;
+    const dayData = log[ds] || {};
+    const total = Object.values(dayData).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
     cells.push({ type: 'day', d, ds, total, isFuture, isToday, goalDone: goal > 0 && total >= goal });
   }
 
@@ -1099,9 +1099,9 @@ function buildCalendarGrid(data, year, month) {
     if (c.type === 'pad') return `<div class="chi-cal-pad"></div>`;
     const cls = ['chi-cal-cell'];
     if (c.total > 0) cls.push('chi-cal-cell--active');
-    if (c.goalDone)  cls.push('chi-cal-cell--goal');
-    if (c.isToday)   cls.push('chi-cal-cell--today');
-    if (c.isFuture)  cls.push('chi-cal-cell--future');
+    if (c.goalDone) cls.push('chi-cal-cell--goal');
+    if (c.isToday) cls.push('chi-cal-cell--today');
+    if (c.isFuture) cls.push('chi-cal-cell--future');
     return `<div class="${cls.join(' ')}" data-date="${c.ds}">
       <span class="chi-cal-day">${c.d}</span>
       ${c.total > 0 ? `<span class="chi-cal-count">${fmtCalCount(c.total)}</span>` : ''}
@@ -1113,26 +1113,26 @@ const CHI_CHEVRON = '<svg class="chi-tool-chevron" viewBox="0 0 24 24" width="17
 
 /** 构建完整历史面板 HTML（日历视图） */
 function buildHistoryHTML(data, year, month) {
-  const todayStr  = todayDateStr();
-  const log       = data.dailyLog || {};
-  const streak    = getStreak(data);
+  const todayStr = todayDateStr();
+  const log = data.dailyLog || {};
+  const streak = getStreak(data);
 
   // 累计总声数
   let grandTotal = 0;
   for (const dd of Object.values(log)) {
     grandTotal += Object.values(dd).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
   }
-  const todayData  = log[todayStr] || {};
+  const todayData = log[todayStr] || {};
   const todayTotal = Object.values(todayData).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
 
-  const monthTotal  = calcMonthTotal(log, year, month);
-  const monthLabel  = `${year}年${month}月`;
+  const monthTotal = calcMonthTotal(log, year, month);
+  const monthLabel = `${year}年${month}月`;
 
   const now = new Date();
   const canGoNext = !(year === now.getFullYear() && month === now.getMonth() + 1);
 
   const gridHtml = buildCalendarGrid(data, year, month);
-  const dayHdrs  = WDS.map(w => `<div class="chi-cal-wday">${w}</div>`).join('');
+  const dayHdrs = WDS.map(w => `<div class="chi-cal-wday">${w}</div>`).join('');
 
   const psProg = getPracticeStats(data);
   const progGoal = psProg.goal > 0 ? psProg.goal : 108;
@@ -1278,7 +1278,7 @@ function showBuluSheet(parentView, data, onDone, fixedDate = null) {
   const dateOptions = fixedDate ? [] : Array.from({ length: 31 }, (_, i) => {
     const d = new Date(today); d.setDate(d.getDate() - i);
     const ds = mkDateStr(d);
-    const label = i === 0 ? '今天' : i === 1 ? '昨天' : `${d.getMonth()+1}月${d.getDate()}日`;
+    const label = i === 0 ? '今天' : i === 1 ? '昨天' : `${d.getMonth() + 1}月${d.getDate()}日`;
     return { dateStr: ds, label };
   });
 
@@ -1336,9 +1336,9 @@ function showBuluSheet(parentView, data, onDone, fixedDate = null) {
   setTimeout(() => sheet.querySelector('#buluCount').focus(), 300);
 
   const confirm = () => {
-    const dateStr  = fixedDate || sheet.querySelector('#buluDate').value;
+    const dateStr = fixedDate || sheet.querySelector('#buluDate').value;
     const practice = sheet.querySelector('#buluPractice').value;
-    const count    = parseInt(sheet.querySelector('#buluCount').value);
+    const count = parseInt(sheet.querySelector('#buluCount').value);
     if (isNaN(count) || count < 1) {
       sheet.querySelector('#buluCount').classList.add('counter-goal-custom-input--error');
       showToast('请输入有效的正整数');
@@ -1382,7 +1382,7 @@ export function openHistory(counterView, data, hooks = {}) {
   counterView.querySelectorAll('.counter-history').forEach(el => el.remove());
 
   const now = new Date();
-  let curYear  = now.getFullYear();
+  let curYear = now.getFullYear();
   let curMonth = now.getMonth() + 1;
 
   const hist = document.createElement('div');
@@ -1408,9 +1408,9 @@ export function openHistory(counterView, data, hooks = {}) {
     }
     const ts = todayDateStr();
     const td = Object.values(log[ts] || {}).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
-    const gEl = hist.querySelector('#chiGrand');   if (gEl) gEl.textContent = formatCount(grand);
-    const tEl = hist.querySelector('#chiToday');   if (tEl) tEl.textContent = formatCount(td);
-    const sEl = hist.querySelector('#chiStreak');  if (sEl) sEl.textContent = getStreak(data);
+    const gEl = hist.querySelector('#chiGrand'); if (gEl) gEl.textContent = formatCount(grand);
+    const tEl = hist.querySelector('#chiToday'); if (tEl) tEl.textContent = formatCount(td);
+    const sEl = hist.querySelector('#chiStreak'); if (sEl) sEl.textContent = getStreak(data);
 
     const ps = getPracticeStats(data);
     const g = ps.goal > 0 ? ps.goal : 108;
@@ -1496,13 +1496,14 @@ export function openHistory(counterView, data, hooks = {}) {
 
   hist.querySelector('#chToolShare')?.addEventListener('click', () => {
     const ps = getPracticeStats(data);
-    const streak = getStreak(data);
-    import('./counter-share.js').then(mod => {
-      mod.showSharePoster(counterView, {
+    import('./share-panel.js').then(mod => {
+      mod.showSharePanel({
+        type: 'practice',
+        title: getPracticeDisplayName(data),
+        url: window.location.href.split('#')[0] + '#nianfo',
+        count: ps.daily || 0,
+        totalCount: ps.total || 0,
         practice: getPracticeDisplayName(data),
-        daily: ps.daily || 0,
-        total: ps.total || 0,
-        streak,
       });
     });
   });

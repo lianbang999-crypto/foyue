@@ -10,10 +10,10 @@ import QRCode from 'qrcode';
 // ============================================================
 // 海报常量
 // ============================================================
-const W = 750;
-const H = 1000;
-// 固定 2x 缩放，确保输出 1500×2000 高清海报
-const POSTER_DPR = 2;
+const W = 600;
+const H = 800;
+// 固定 1.5x 缩放，输出适中尺寸以限制文件大小 (< 100KB)
+const POSTER_DPR = 1.5;
 
 const COLORS = {
   paper: '#F7F5F0',
@@ -296,6 +296,116 @@ function formatNumber(n) {
   return n.toLocaleString('zh-CN');
 }
 
+/**
+ * 文库分享海报
+ */
+async function drawWenkuPoster(ctx, config) {
+  const { title, subtitle, quote, url } = config;
+  let y = 100;
+
+  // 品牌
+  ctx.font = `500 16px ${FONT.sans}`;
+  ctx.fillStyle = COLORS.inkMuted;
+  ctx.textAlign = 'center';
+  ctx.fillText('净土法音 · 文库', W / 2, y);
+  y += 60;
+
+  // 书名 & 章节名
+  ctx.font = `600 28px ${FONT.serif}`;
+  ctx.fillStyle = COLORS.ink;
+  ctx.fillText(`《${title}》`, W / 2, y);
+  y += 40;
+
+  if (subtitle) {
+    ctx.font = `400 18px ${FONT.sans}`;
+    ctx.fillStyle = COLORS.inkLight;
+    ctx.fillText(subtitle, W / 2, y);
+    y += 50;
+  }
+
+  // 阅读摘录
+  if (quote) {
+    ctx.font = `400 22px ${FONT.serif}`;
+    ctx.fillStyle = COLORS.ink;
+    ctx.textAlign = 'left';
+
+    const startY = y;
+    // 文本换行
+    const res = wrapText(ctx, quote, 100, startY + 16, W - 180, 40);
+
+    // 画左侧引导线
+    ctx.strokeStyle = COLORS.cinnabar;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(80, startY);
+  }
+
+  // QR 码区
+  const qrY = H - 180;
+  try {
+    const qrCanvas = await generateQR(url);
+    ctx.drawImage(qrCanvas, W / 2 - 60, qrY);
+  } catch { /* */ }
+
+  ctx.font = `400 16px ${FONT.sans}`;
+  ctx.fillStyle = COLORS.inkMuted;
+  ctx.textAlign = 'center';
+  ctx.fillText('扫码阅读 · foyue.org', W / 2, qrY + 145);
+}
+
+/**
+ * AI 问答海报
+ */
+async function drawAIPoster(ctx, config) {
+  const { title, quote, url } = config;
+  let y = 100;
+
+  // 品牌
+  ctx.font = `500 16px ${FONT.sans}`;
+  ctx.fillStyle = COLORS.inkMuted;
+  ctx.textAlign = 'center';
+  ctx.fillText('净土法音 · AI 答疑', W / 2, y);
+  y += 60;
+
+  // 问题 (提要)
+  ctx.font = `600 24px ${FONT.sans}`;
+  ctx.fillStyle = COLORS.ink;
+  ctx.textAlign = 'left';
+  const qLines = wrapText(ctx, `Q: ${title}`, 80, y, W - 160, 36);
+  y = qLines.endY + 30;
+
+  // 装饰线
+  ctx.strokeStyle = COLORS.inkMuted;
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(80, y);
+  ctx.lineTo(W - 80, y);
+  ctx.stroke();
+  y += 40;
+
+  // 解答
+  if (quote) {
+    ctx.font = `400 20px ${FONT.serif}`;
+    ctx.fillStyle = COLORS.ink;
+    ctx.textAlign = 'left';
+    // 截取核心解答（避免过长）
+    let previewText = quote.length > 200 ? quote.slice(0, 200) + '...' : quote;
+    wrapText(ctx, previewText, 80, y, W - 160, 36);
+  }
+
+  // QR 码区
+  const qrY = H - 180;
+  try {
+    const qrCanvas = await generateQR(url);
+    ctx.drawImage(qrCanvas, W / 2 - 60, qrY);
+  } catch { /* */ }
+
+  ctx.font = `400 16px ${FONT.sans}`;
+  ctx.fillStyle = COLORS.inkMuted;
+  ctx.textAlign = 'center';
+  ctx.fillText('扫码继续提问 · foyue.org/ai', W / 2, qrY + 145);
+}
+
 // ============================================================
 // 公开 API
 // ============================================================
@@ -326,6 +436,12 @@ export async function generatePoster(config) {
     case 'practice':
       await drawPracticePoster(ctx, config);
       break;
+    case 'wenku':
+      await drawWenkuPoster(ctx, config);
+      break;
+    case 'ai':
+      await drawAIPoster(ctx, config);
+      break;
     case 'track':
     case 'series':
     default:
@@ -334,6 +450,7 @@ export async function generatePoster(config) {
   }
 
   return new Promise((resolve) => {
-    canvas.toBlob((blob) => resolve(blob), 'image/png');
+    // 采用 JPEG 格式，0.7 压缩率以确保 <100KB
+    canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.7);
   });
 }
