@@ -609,6 +609,9 @@ function enterDimmerMode(counterView, getSession, doCount) {
   dimmer.innerHTML = `
     <div class="counter-dimmer__hint">双指轻触退出熄灯模式</div>
   `;
+  const numDisplay = document.createElement('div');
+  numDisplay.className = 'counter-dimmer__num';
+  dimmer.appendChild(numDisplay);
   counterView.appendChild(dimmer);
 
   // Fade in
@@ -616,7 +619,7 @@ function enterDimmerMode(counterView, getSession, doCount) {
 
   // Hide hint after 2s
   const hint = dimmer.querySelector('.counter-dimmer__hint');
-  setTimeout(() => { if (hint) hint.style.opacity = '0'; }, 2000);
+  setTimeout(() => { if (hint) hint.style.opacity = '0'; }, 3000);
 
   const exitDimmer = () => {
     setDimmerPref(false);
@@ -624,6 +627,15 @@ function enterDimmerMode(counterView, getSession, doCount) {
     if (toggle) toggle.classList.remove('counter-tool-icon--active');
     dimmer.classList.remove('counter-dimmer--active');
     setTimeout(() => dimmer.remove(), 300);
+  };
+
+  const spawnDimmerRipple = (x, y) => {
+    const r = document.createElement('div');
+    r.className = 'counter-dimmer__ripple';
+    r.style.left = x + 'px';
+    r.style.top = y + 'px';
+    dimmer.appendChild(r);
+    r.addEventListener('animationend', () => r.remove());
   };
 
   // Single-finger tap to count; two-finger touch to exit
@@ -654,7 +666,12 @@ function enterDimmerMode(counterView, getSession, doCount) {
     const dy = Math.abs(e.clientY - dimmerStartY);
     if (dx > 20 || dy > 20) return;
     e.preventDefault(); // suppress synthetic click
+    spawnDimmerRipple(e.clientX, e.clientY);
     doCount();
+    numDisplay.textContent = getSession();
+    numDisplay.style.opacity = '1';
+    clearTimeout(numDisplay.hideTid);
+    numDisplay.hideTid = setTimeout(() => { numDisplay.style.opacity = '0'; }, 1000);
   });
 
   dimmer.addEventListener('pointercancel', (e) => {
