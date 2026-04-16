@@ -165,6 +165,10 @@ function setDimmerPref(on) {
   patch('preferences', { dimmerMode: !!on });
 }
 
+function getNianfoShareUrl() {
+  return new URL('/nianfo', window.location.origin).toString();
+}
+
 function getCounterData() {
   let data = get('counter');
   let shouldPersist = false;
@@ -366,9 +370,13 @@ function buildCounterHTML(data, session) {
 function closeCounter(view, sourceTab, popHandler, escHandler, visHandler, options = {}) {
   if (!view || !view.isConnected) return;
   const { skipAnimation = false, skipNavigation = false } = options;
+  if (typeof view.__counterDimmerCleanup === 'function') {
+    view.__counterDimmerCleanup({ keepPreference: true, immediate: true });
+  }
   if (popHandler) window.removeEventListener('popstate', popHandler);
   if (escHandler) window.removeEventListener('keydown', escHandler);
   if (visHandler) document.removeEventListener('visibilitychange', visHandler);
+  delete view.__counterDimmerCleanup;
   delete view.__counterCleanup;
   // Remove counter-active guard so audio can resume normally after counter closes
   document.body.removeAttribute('data-counter-active');
@@ -601,8 +609,11 @@ function wireCounterEvents(view, data, _session) {
  * 熄灯模式 — 全黑屏幕，仅响应触摸计数，双指触退出
  */
 function enterDimmerMode(counterView, getSession, doCount) {
-  // Remove any existing dimmer
-  counterView.querySelectorAll('.counter-dimmer').forEach(el => el.remove());
+  if (typeof counterView.__counterDimmerCleanup === 'function') {
+    counterView.__counterDimmerCleanup({ keepPreference: true, immediate: true });
+  } else {
+    counterView.querySelectorAll('.counter-dimmer').forEach(el => el.remove());
+  }
 
   const dimmer = document.createElement('div');
   dimmer.className = 'counter-dimmer';
@@ -619,15 +630,7 @@ function enterDimmerMode(counterView, getSession, doCount) {
 
   // Hide hint after 2s
   const hint = dimmer.querySelector('.counter-dimmer__hint');
-  setTimeout(() => { if (hint) hint.style.opacity = '0'; }, 3000);
-
-  const exitDimmer = () => {
-    setDimmerPref(false);
-    const toggle = counterView.querySelector('#counterDimmerToggle');
-    if (toggle) toggle.classList.remove('counter-tool-icon--active');
-    dimmer.classList.remove('counter-dimmer--active');
-    setTimeout(() => dimmer.remove(), 300);
-  };
+  const hintHideTid = setTimeout(() => { if (hint) hint.style.opacity = '0'; }, 3000);
 
   const spawnDimmerRipple = (x, y) => {
     const r = document.createElement('div');
@@ -644,14 +647,44 @@ function enterDimmerMode(counterView, getSession, doCount) {
   const activePointers = new Set();
   let dimmerStartX = 0;
   let dimmerStartY = 0;
+  let cleanedUp = false;
+  let escHandler = null;
+
+  const cleanupDimmer = ({ keepPreference = false, immediate = false } = {}) => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    activePointers.clear();
+    clearTimeout(hintHideTid);
+    clearTimeout(numDisplay.hideTid);
+    if (escHandler) window.removeEventListener('keydown', escHandler);
+    if (counterView.__counterDimmerCleanup === cleanupDimmer) {
+      delete counterView.__counterDimmerCleanup;
+    }
+    if (!keepPreference) {
+      setDimmerPref(false);
+      const toggle = counterView.querySelector('#counterDimmerToggle');
+      if (toggle) toggle.classList.remove('counter-tool-icon--active');
+    }
+    if (!dimmer.isConnected) return;
+    dimmer.style.pointerEvents = 'none';
+    if (immediate) {
+      dimmer.remove();
+      return;
+    }
+    dimmer.classList.remove('counter-dimmer--active');
+    setTimeout(() => dimmer.remove(), 300);
+  };
+
+  counterView.__counterDimmerCleanup = cleanupDimmer;
 
   dimmer.addEventListener('pointerdown', (e) => {
+    if (cleanedUp) return;
     activePointers.add(e.pointerId);
     // Two or more simultaneous touches → exit dimmer mode
     if (activePointers.size >= 2) {
       e.preventDefault();
       activePointers.clear();
-      exitDimmer();
+      cleanupDimmer();
       return;
     }
     dimmerStartX = e.clientX;
@@ -659,6 +692,7 @@ function enterDimmerMode(counterView, getSession, doCount) {
   }, { passive: false });
 
   dimmer.addEventListener('pointerup', (e) => {
+    if (cleanedUp) return;
     activePointers.delete(e.pointerId);
     // Skip if another pointer is still down (trailing finger after two-finger gesture)
     if (activePointers.size > 0) return;
@@ -675,14 +709,14 @@ function enterDimmerMode(counterView, getSession, doCount) {
   });
 
   dimmer.addEventListener('pointercancel', (e) => {
+    if (cleanedUp) return;
     activePointers.delete(e.pointerId);
   });
 
   // Escape to exit
-  const escHandler = (e) => {
+  escHandler = (e) => {
     if (e.key === 'Escape') {
-      exitDimmer();
-      window.removeEventListener('keydown', escHandler);
+      cleanupDimmer();
     }
   };
   window.addEventListener('keydown', escHandler);
@@ -1517,7 +1551,7 @@ export function openHistory(counterView, data, hooks = {}) {
       mod.showSharePanel({
         type: 'practice',
         title: getPracticeDisplayName(data),
-        url: window.location.href.split('#')[0] + '#nianfo',
+        url: getNianfoShareUrl(),
         count: ps.daily || 0,
         totalCount: ps.total || 0,
         practice: getPracticeDisplayName(data),

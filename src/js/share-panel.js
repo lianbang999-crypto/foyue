@@ -9,6 +9,14 @@ import { generatePoster } from './share-poster.js';
 
 let _panel = null;
 let _blob = null;
+let _previewUrl = null;
+let _requestSeq = 0;
+
+function revokePreviewUrl() {
+  if (!_previewUrl) return;
+  URL.revokeObjectURL(_previewUrl);
+  _previewUrl = null;
+}
 
 // ============================================================
 // 面板 HTML
@@ -64,14 +72,18 @@ function ensurePanel() {
     wrapper.querySelector('#shareBackdrop').addEventListener('click', closeSharePanel);
     wrapper.querySelector('#shareCancel').addEventListener('click', closeSharePanel);
 
-    wrapper.querySelector('#shareNative').addEventListener('click', () => {
+    wrapper.querySelector('#shareNative').addEventListener('click', async () => {
         const config = _panel._config;
         if (!config) return;
         if (_blob && navigator.canShare) {
             const file = new File([_blob], 'foyue-share.jpg', { type: 'image/jpeg' });
             if (navigator.canShare({ files: [file] })) {
-                navigator.share({ title: config.title, files: [file] }).catch(() => { });
-                return;
+          try {
+            await navigator.share({ title: config.title, files: [file] });
+            return;
+          } catch (err) {
+            if (err?.name === 'AbortError') return;
+          }
             }
         }
         shareContent(config.title, config.url);
@@ -111,6 +123,7 @@ function ensurePanel() {
 
 function closeSharePanel() {
     if (!_panel) return;
+  _requestSeq += 1;
     const panel = _panel.querySelector('.share-panel');
     const backdrop = _panel.querySelector('.share-backdrop');
     panel.classList.remove('share-panel--in');
@@ -119,6 +132,7 @@ function closeSharePanel() {
         _panel.style.display = 'none';
     }, 250);
     _blob = null;
+  revokePreviewUrl();
 }
 
 // ============================================================
@@ -140,9 +154,11 @@ function closeSharePanel() {
  */
 export async function showSharePanel(config) {
     ensurePanel();
+  const requestSeq = ++_requestSeq;
     _panel._config = config;
     _panel.style.display = '';
     _blob = null;
+  revokePreviewUrl();
 
     const preview = _panel.querySelector('#sharePosterPreview');
     preview.innerHTML = '<div class="share-preview-loading">生成海报中...</div>';
@@ -155,10 +171,14 @@ export async function showSharePanel(config) {
 
     // 异步生成海报
     try {
-        _blob = await generatePoster(config);
-        const imgUrl = URL.createObjectURL(_blob);
-        preview.innerHTML = `<img class="share-preview-img" src="${imgUrl}" alt="海报预览">`;
+      const blob = await generatePoster(config);
+      if (requestSeq !== _requestSeq) return;
+      _blob = blob;
+      revokePreviewUrl();
+      _previewUrl = URL.createObjectURL(blob);
+      preview.innerHTML = `<img class="share-preview-img" src="${_previewUrl}" alt="海报预览">`;
     } catch (err) {
+      if (requestSeq !== _requestSeq) return;
         console.error('[Share] Poster generation failed:', err);
         preview.innerHTML = '<div class="share-preview-loading">海报生成失败</div>';
     }

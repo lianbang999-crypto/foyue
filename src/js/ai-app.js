@@ -468,7 +468,7 @@ async function handleSubmit(options = {}) {
         .map(m => ({ role: m.role, content: m.content || '' }));
 
     const streamOpts = {
-        series_id: aiContext?.series_id,
+        series_id: aiContext?.seriesId,
         episode_num: aiContext?.episodeNum,
         history: recentHistory,
     };
