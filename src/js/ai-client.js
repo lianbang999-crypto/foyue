@@ -75,10 +75,10 @@ export async function searchQuotes(question, options = {}) {
 }
 
 /**
- * 法音 AI 问答（流式）— 逐 token 回调，done 时返回完整 answer/sources/mode/confidence/rewriteSuggestions
+ * 法音 AI 问答（流式）— 逐 token 回调，done 时返回完整结构化 payload
  * @param {string} question
  * @param {object} options - { series_id?, episode_num?, history? }
- * @param {object} callbacks - { onToken(token), onDone({answer,sources,followUps,disclaimer,mode,confidence,rewriteSuggestions}), onError(err) }
+ * @param {object} callbacks - { onToken(token), onDone({answer,sources,citations,claimMap,uncertainty,downgradeReason,followUps,disclaimer,mode,confidence,rewriteSuggestions,contractVersion,promptVersion,modelInfo}), onError(err) }
  * @returns {AbortController} — 调用 .abort() 可取消
  */
 export function askQuestionStream(question, options = {}, callbacks = {}) {

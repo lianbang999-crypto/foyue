@@ -5,6 +5,9 @@
 
 import {
   buildRagSystemPrompt,
+  buildRouterMessages,
+  buildEvidenceMessages,
+  buildPhase3AnswerControlPrompt,
   buildSummaryMessages,
   normalizeHistoryMessages,
 } from './ai-prompts.js';
@@ -86,6 +89,18 @@ export const GATEWAY_PROFILES = {
     skipCache: true,
   },
 
+  // 问题路由：短输出、低风险，不缓存
+  router: {
+    ...GATEWAY_BASE,
+    skipCache: true,
+  },
+
+  // 证据评估：与当前检索结果强绑定，不缓存
+  evidence: {
+    ...GATEWAY_BASE,
+    skipCache: true,
+  },
+
   // 文档摘要：确定性高（同标题+同内容），长缓存
   summary: {
     ...GATEWAY_BASE,
@@ -133,7 +148,7 @@ function shouldRetryWithoutGateway(err) {
 const DEFAULT_EXTERNAL_LLM_BASE = 'https://open.bigmodel.cn/api/paas/v4';
 const DEFAULT_EXTERNAL_LLM_MODEL = 'glm-4.7-flash';
 
-function getExternalLLMConfig(env) {
+export function getExternalLLMConfig(env) {
   const apiKey = env?.EXTERNAL_LLM_KEY;
   if (!apiKey) return null;
   return {
@@ -163,6 +178,442 @@ export function isEnvFlagEnabled(env, envKey, defaultValue = true) {
   const normalized = String(rawValue).trim();
   if (!normalized) return defaultValue;
   return !/^(false|0|off|no)$/i.test(normalized);
+}
+
+const ROUTER_DECISION = Object.freeze({
+  QUOTE_LOOKUP: 'quote_lookup',
+  GROUNDED_EXPLANATION: 'grounded_explanation',
+  PRACTICE_GUIDANCE: 'practice_guidance',
+  UNSUPPORTED: 'unsupported',
+});
+
+const PHASE3_RESPONSE_MODE = Object.freeze({
+  ANSWER: 'answer',
+  SEARCH_ONLY: 'search_only',
+  NO_RESULT: 'no_result',
+});
+
+const EVIDENCE_STRENGTH = Object.freeze({
+  HIGH: 'high',
+  MEDIUM: 'medium',
+  LOW: 'low',
+});
+
+const EVIDENCE_STRENGTH_RANK = Object.freeze({
+  low: 0,
+  medium: 1,
+  high: 2,
+});
+
+const QUOTE_LOOKUP_RE = /原文|出处|哪一段|哪一讲|哪一篇|哪部|引文|引用|原话|怎么说|有没有说|开示中说/;
+const PRACTICE_GUIDANCE_RE = /怎么做|如何做|该怎么办|怎么修|如何修|怎么念佛|如何念佛|怎么落实|如何安住|怎样对治|日常|功课|实修|下手/;
+const UNSUPPORTED_RE = /写代码|编程|javascript|typescript|python|sql|bug|报错|天气|股票|彩票|数学|物理|化学|时政|新闻|翻译成英文|旅游攻略/i;
+
+function normalizeProbability(value, fallback = 0.5) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(0, Math.min(1, Math.round(numeric * 100) / 100));
+}
+
+function extractJsonObject(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return null;
+
+  const candidates = [];
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) candidates.push(fenced[1].trim());
+  candidates.push(raw);
+
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      // continue
+    }
+
+    const start = candidate.indexOf('{');
+    const end = candidate.lastIndexOf('}');
+    if (start === -1 || end === -1 || end <= start) continue;
+    try {
+      return JSON.parse(candidate.slice(start, end + 1));
+    } catch {
+      // continue
+    }
+  }
+
+  return null;
+}
+
+function normalizeRouteKind(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === ROUTER_DECISION.QUOTE_LOOKUP || /quote|原文|出处|引文/.test(normalized)) {
+    return ROUTER_DECISION.QUOTE_LOOKUP;
+  }
+  if (normalized === ROUTER_DECISION.PRACTICE_GUIDANCE || /practice|guidance|建议|修行|落实/.test(normalized)) {
+    return ROUTER_DECISION.PRACTICE_GUIDANCE;
+  }
+  if (normalized === ROUTER_DECISION.UNSUPPORTED || /unsupported|超出|无关/.test(normalized)) {
+    return ROUTER_DECISION.UNSUPPORTED;
+  }
+  if (normalized === ROUTER_DECISION.GROUNDED_EXPLANATION || /grounded|explanation|解释|义理/.test(normalized)) {
+    return ROUTER_DECISION.GROUNDED_EXPLANATION;
+  }
+  return null;
+}
+
+function normalizeEvidenceStrength(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === EVIDENCE_STRENGTH.HIGH || /high|强/.test(normalized)) return EVIDENCE_STRENGTH.HIGH;
+  if (normalized === EVIDENCE_STRENGTH.MEDIUM || /medium|中/.test(normalized)) return EVIDENCE_STRENGTH.MEDIUM;
+  if (normalized === EVIDENCE_STRENGTH.LOW || /low|弱/.test(normalized)) return EVIDENCE_STRENGTH.LOW;
+  return null;
+}
+
+function normalizeRecommendedMode(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === PHASE3_RESPONSE_MODE.ANSWER || /answer|grounded/.test(normalized)) {
+    return PHASE3_RESPONSE_MODE.ANSWER;
+  }
+  if (normalized === PHASE3_RESPONSE_MODE.NO_RESULT || /no_result|noresult|无结果/.test(normalized)) {
+    return PHASE3_RESPONSE_MODE.NO_RESULT;
+  }
+  if (normalized === PHASE3_RESPONSE_MODE.SEARCH_ONLY || /search_only|searchonly|检索/.test(normalized)) {
+    return PHASE3_RESPONSE_MODE.SEARCH_ONLY;
+  }
+  return null;
+}
+
+function buildWorkersAiProviderDescriptors(env) {
+  if (!env?.AI?.run) return [];
+
+  const primaryModel = resolveAIModel(env, 'chat');
+  const fallbackModel = resolveAIModel(env, 'chatFallback');
+  const providers = [
+    {
+      provider: 'workers_ai',
+      model: primaryModel,
+      stage: 'primary',
+      supportsNativeStream: false,
+      type: 'workers_ai',
+    },
+  ];
+
+  if (fallbackModel && fallbackModel !== primaryModel) {
+    providers.push({
+      provider: 'workers_ai',
+      model: fallbackModel,
+      stage: 'fallback',
+      supportsNativeStream: false,
+      type: 'workers_ai',
+    });
+  }
+
+  return providers;
+}
+
+export function getChatProviderPriority(env) {
+  const providers = [...buildWorkersAiProviderDescriptors(env)];
+  const hasWorkersAi = providers.length > 0;
+  const externalConfig = getExternalLLMConfig(env);
+  const groqConfig = getGroqConfig(env);
+
+  if (externalConfig) {
+    providers.push({
+      provider: 'external_openai_compatible',
+      model: externalConfig.model,
+      stage: hasWorkersAi ? 'fallback' : 'primary',
+      supportsNativeStream: true,
+      type: 'external',
+      config: externalConfig,
+    });
+  }
+
+  if (groqConfig) {
+    providers.push({
+      provider: 'groq',
+      model: groqConfig.model,
+      stage: hasWorkersAi || externalConfig ? 'fallback' : 'primary',
+      supportsNativeStream: true,
+      type: 'external',
+      config: groqConfig,
+    });
+  }
+
+  return providers;
+}
+
+export function getPreferredChatProvider(env) {
+  return getChatProviderPriority(env)[0] || null;
+}
+
+function buildHeuristicRouteDecision(question) {
+  const text = String(question || '').trim();
+  const unsupported = UNSUPPORTED_RE.test(text);
+  const quoteLookup = QUOTE_LOOKUP_RE.test(text);
+  const practiceGuidance = PRACTICE_GUIDANCE_RE.test(text);
+  const needsClarification = text.length <= 5
+    || (/^(这个|那个|这句|那句|这里|那里)/.test(text) && text.length <= 14);
+
+  if (unsupported) {
+    return {
+      kind: ROUTER_DECISION.UNSUPPORTED,
+      needsClarification,
+      confidence: 0.93,
+      reason: '问题明显超出净土资料问答范围',
+      searchHint: '',
+      source: 'heuristic',
+      modelInfo: null,
+    };
+  }
+
+  if (quoteLookup) {
+    return {
+      kind: ROUTER_DECISION.QUOTE_LOOKUP,
+      needsClarification,
+      confidence: 0.84,
+      reason: '问题更像在索要原文出处或直接引文',
+      searchHint: '优先检索直接出处与原文片段',
+      source: 'heuristic',
+      modelInfo: null,
+    };
+  }
+
+  if (practiceGuidance) {
+    return {
+      kind: ROUTER_DECISION.PRACTICE_GUIDANCE,
+      needsClarification,
+      confidence: 0.8,
+      reason: '问题更像在询问修行落实或具体做法',
+      searchHint: '优先检索可直接支撑做法建议的开示',
+      source: 'heuristic',
+      modelInfo: null,
+    };
+  }
+
+  return {
+    kind: ROUTER_DECISION.GROUNDED_EXPLANATION,
+    needsClarification,
+    confidence: 0.66,
+    reason: '默认按依据原文解释处理',
+    searchHint: '优先检索能直接支撑问题核心概念的原文',
+    source: 'heuristic',
+    modelInfo: null,
+  };
+}
+
+function normalizeModeledRouteDecision(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+
+  const kind = normalizeRouteKind(payload.route || payload.kind);
+  if (!kind) return null;
+
+  return {
+    kind,
+    needsClarification: Boolean(payload.needsClarification ?? payload.needs_clarification),
+    confidence: normalizeProbability(payload.confidence, 0.5),
+    reason: String(payload.reason || '').trim().slice(0, 120),
+    searchHint: String(payload.searchHint || payload.search_hint || '').trim().slice(0, 80),
+  };
+}
+
+function mergeRouteDecisions(heuristic, modeled, modelInfo) {
+  if (!modeled) return heuristic;
+
+  let kind = modeled.kind || heuristic.kind;
+  if (heuristic.kind === ROUTER_DECISION.UNSUPPORTED && kind !== ROUTER_DECISION.UNSUPPORTED) {
+    kind = heuristic.kind;
+  } else if (
+    kind === ROUTER_DECISION.UNSUPPORTED
+    && heuristic.kind !== ROUTER_DECISION.UNSUPPORTED
+    && normalizeProbability(modeled.confidence, 0) < 0.85
+  ) {
+    kind = heuristic.kind;
+  }
+
+  return {
+    kind,
+    needsClarification: Boolean(modeled.needsClarification ?? heuristic.needsClarification),
+    confidence: normalizeProbability(
+      kind === heuristic.kind
+        ? Math.max(heuristic.confidence, modeled.confidence || 0)
+        : (modeled.confidence || heuristic.confidence),
+      heuristic.confidence
+    ),
+    reason: modeled.reason || heuristic.reason,
+    searchHint: modeled.searchHint || heuristic.searchHint || '',
+    source: 'hybrid',
+    modelInfo,
+  };
+}
+
+function buildHeuristicEvidenceAssessment(question, options = {}) {
+  const {
+    routeDecision = null,
+    retrieval = {},
+    references = [],
+    docs = [],
+  } = options;
+
+  const routeKind = routeDecision?.kind || ROUTER_DECISION.GROUNDED_EXPLANATION;
+  const retrievalConfidence = Number.isFinite(retrieval?.confidence) ? retrieval.confidence : 0;
+  const topScore = Number.isFinite(retrieval?.topScore) ? retrieval.topScore : 0;
+  const secondScore = Number.isFinite(retrieval?.secondScore) ? retrieval.secondScore : 0;
+  const referenceCount = Array.isArray(references) ? references.length : 0;
+  const signals = {
+    routeKind,
+    retrievalConfidence: normalizeProbability(retrievalConfidence, 0),
+    topScore: normalizeProbability(topScore, 0),
+    secondScore: normalizeProbability(secondScore, 0),
+    referenceCount,
+    docCount: Array.isArray(docs) ? docs.length : 0,
+    strongMatchCount: Number(retrieval?.strongMatchCount || 0),
+    supportMatchCount: Number(retrieval?.supportMatchCount || 0),
+    uniqueMatchedDocCount: Number(retrieval?.uniqueMatchedDocCount || 0),
+  };
+
+  if (!signals.docCount) {
+    return {
+      strength: EVIDENCE_STRENGTH.LOW,
+      recommendedMode: PHASE3_RESPONSE_MODE.NO_RESULT,
+      confidence: 0,
+      reason: '未检索到可用文档',
+      reasonCode: 'no_documents',
+      missing: '缺少相关文库原文',
+      source: 'heuristic',
+      signals,
+      modelInfo: null,
+    };
+  }
+
+  if (routeKind === ROUTER_DECISION.UNSUPPORTED) {
+    return {
+      strength: EVIDENCE_STRENGTH.LOW,
+      recommendedMode: PHASE3_RESPONSE_MODE.SEARCH_ONLY,
+      confidence: normalizeProbability(Math.min(retrievalConfidence || 0.35, 0.45), 0.35),
+      reason: '问题超出产品资料边界，不进入 grounded answer',
+      reasonCode: 'unsupported_request',
+      missing: '缺少与净土资料直接相关的提问边界',
+      source: 'heuristic',
+      signals,
+      modelInfo: null,
+    };
+  }
+
+  let strength = EVIDENCE_STRENGTH.LOW;
+  let recommendedMode = PHASE3_RESPONSE_MODE.SEARCH_ONLY;
+  let reason = '证据偏弱，先返回检索结果更稳妥';
+
+  if (retrievalConfidence >= 0.82 && topScore >= 0.72 && referenceCount >= 2) {
+    strength = EVIDENCE_STRENGTH.HIGH;
+    recommendedMode = PHASE3_RESPONSE_MODE.ANSWER;
+    reason = '已有多条较强证据，可进入 grounded answer';
+  } else if (retrievalConfidence >= 0.63 && topScore >= 0.58 && referenceCount >= 1) {
+    strength = EVIDENCE_STRENGTH.MEDIUM;
+    reason = '已有部分相关证据，但仍需谨慎';
+  }
+
+  if (
+    routeKind === ROUTER_DECISION.QUOTE_LOOKUP
+    && strength === EVIDENCE_STRENGTH.MEDIUM
+    && topScore >= 0.68
+    && referenceCount >= 1
+  ) {
+    recommendedMode = PHASE3_RESPONSE_MODE.ANSWER;
+    reason = '用户主要在找出处，单条强相关证据可支持简短作答';
+  }
+
+  if (
+    routeKind === ROUTER_DECISION.PRACTICE_GUIDANCE
+    && recommendedMode === PHASE3_RESPONSE_MODE.ANSWER
+    && (referenceCount < 2 || retrievalConfidence < 0.86)
+  ) {
+    strength = EVIDENCE_STRENGTH.MEDIUM;
+    recommendedMode = PHASE3_RESPONSE_MODE.SEARCH_ONLY;
+    reason = '修行建议需要更高证据门槛，当前先返回原文更稳妥';
+  }
+
+  return {
+    strength,
+    recommendedMode,
+    confidence: normalizeProbability(
+      Math.max(
+        retrievalConfidence,
+        strength === EVIDENCE_STRENGTH.HIGH ? 0.84 : (strength === EVIDENCE_STRENGTH.MEDIUM ? 0.64 : 0.34)
+      ),
+      retrievalConfidence
+    ),
+    reason,
+    reasonCode: recommendedMode === PHASE3_RESPONSE_MODE.ANSWER ? null : 'insufficient_evidence',
+    missing: strength === EVIDENCE_STRENGTH.HIGH
+      ? ''
+      : (routeKind === ROUTER_DECISION.PRACTICE_GUIDANCE
+        ? '缺少足够直接支撑做法建议的原文'
+        : '还缺少更直接、更多条的原文支撑'),
+    source: 'heuristic',
+    signals,
+    modelInfo: null,
+  };
+}
+
+function normalizeModeledEvidenceAssessment(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+
+  const strength = normalizeEvidenceStrength(payload.strength || payload.evidenceStrength || payload.evidence_strength);
+  const recommendedMode = normalizeRecommendedMode(payload.recommendedMode || payload.recommended_mode);
+  if (!strength && !recommendedMode) return null;
+
+  return {
+    strength: strength || EVIDENCE_STRENGTH.MEDIUM,
+    recommendedMode: recommendedMode || PHASE3_RESPONSE_MODE.SEARCH_ONLY,
+    confidence: normalizeProbability(payload.confidence, 0.5),
+    reason: String(payload.reason || '').trim().slice(0, 120),
+    missing: String(payload.missing || '').trim().slice(0, 120),
+  };
+}
+
+function mergeEvidenceAssessments(heuristic, modeled, modelInfo) {
+  if (!modeled) return heuristic;
+
+  const heuristicRank = EVIDENCE_STRENGTH_RANK[heuristic.strength] ?? 0;
+  const modeledRank = EVIDENCE_STRENGTH_RANK[modeled.strength] ?? heuristicRank;
+  const strength = modeledRank < heuristicRank ? modeled.strength : heuristic.strength;
+
+  let recommendedMode = heuristic.recommendedMode;
+  if (modeled.recommendedMode === PHASE3_RESPONSE_MODE.NO_RESULT) {
+    recommendedMode = PHASE3_RESPONSE_MODE.NO_RESULT;
+  } else if (
+    heuristic.recommendedMode === PHASE3_RESPONSE_MODE.ANSWER
+    && modeled.recommendedMode
+    && modeled.recommendedMode !== PHASE3_RESPONSE_MODE.ANSWER
+  ) {
+    recommendedMode = modeled.recommendedMode;
+  }
+
+  if (strength === EVIDENCE_STRENGTH.LOW && recommendedMode === PHASE3_RESPONSE_MODE.ANSWER) {
+    recommendedMode = PHASE3_RESPONSE_MODE.SEARCH_ONLY;
+  }
+
+  return {
+    strength,
+    recommendedMode,
+    confidence: normalizeProbability(
+      recommendedMode === heuristic.recommendedMode
+        ? Math.max(heuristic.confidence, modeled.confidence || 0)
+        : Math.min(heuristic.confidence, modeled.confidence || heuristic.confidence),
+      heuristic.confidence
+    ),
+    reason: modeled.reason || heuristic.reason,
+    reasonCode: recommendedMode === PHASE3_RESPONSE_MODE.NO_RESULT
+      ? 'no_documents'
+      : (recommendedMode === heuristic.recommendedMode ? heuristic.reasonCode : 'insufficient_evidence'),
+    missing: modeled.missing || heuristic.missing || '',
+    source: 'hybrid',
+    signals: { ...heuristic.signals },
+    modelInfo,
+  };
 }
 
 // 非流式调用外部 LLM（支持 config 注入，用于 Groq 等备用提供商）
@@ -571,68 +1022,165 @@ export function stripThinkTags(text) {
   return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 }
 
+function buildAnswerModelInfo(provider, model, options = {}) {
+  return {
+    provider,
+    model: model || null,
+    used: true,
+    stage: options.stage || 'primary',
+    via: options.via || 'rag',
+    supportsNativeStream: options.supportsNativeStream === true,
+  };
+}
+
+async function invokeChatProvider(env, descriptor, messages, options = {}) {
+  const {
+    maxTokens = 500,
+    temperature = 0.2,
+    gatewayProfile = GATEWAY_PROFILES.ragChat,
+    scenario = 'chat',
+    ctx = null,
+  } = options;
+
+  if (descriptor.type === 'workers_ai') {
+    const response = await runAIWithLogging(
+      env,
+      descriptor.model,
+      {
+        messages,
+        max_tokens: maxTokens,
+        temperature,
+      },
+      gatewayProfile,
+      scenario,
+      ctx
+    );
+
+    return stripThinkTags(extractAIResponse(response));
+  }
+
+  return stripThinkTags(await callExternalLLM(env, messages, {
+    maxTokens,
+    temperature,
+    config: descriptor.config,
+  }));
+}
+
+export async function generateChatText(env, messages, options = {}) {
+  const providers = getChatProviderPriority(env);
+  if (!providers.length) {
+    throw new Error('No chat provider configured');
+  }
+
+  let lastError = null;
+  for (const descriptor of providers) {
+    try {
+      const text = await invokeChatProvider(env, descriptor, messages, options);
+      const normalized = String(text || '').trim();
+      if (!normalized) {
+        lastError = new Error(`${descriptor.provider} returned empty response`);
+        continue;
+      }
+
+      return {
+        response: normalized,
+        modelInfo: buildAnswerModelInfo(descriptor.provider, descriptor.model, {
+          stage: descriptor.stage,
+          via: options.via || 'chat',
+          supportsNativeStream: descriptor.supportsNativeStream,
+        }),
+      };
+    } catch (err) {
+      lastError = err;
+      console.warn(`[AI] ${descriptor.provider} ${options.scenario || 'chat'} failed:`, err.message);
+    }
+  }
+
+  throw lastError || new Error('No chat provider succeeded');
+}
+
+export async function routeQuestion(env, question, options = {}) {
+  const heuristic = buildHeuristicRouteDecision(question);
+  if (!isEnvFlagEnabled(env, 'AI_PHASE3_ROUTER_ENABLED', true) || !getPreferredChatProvider(env)) {
+    return heuristic;
+  }
+
+  try {
+    const result = await generateChatText(env, buildRouterMessages(question, {
+      history: options.history,
+    }), {
+      maxTokens: 120,
+      temperature: 0,
+      gatewayProfile: GATEWAY_PROFILES.router,
+      scenario: 'router',
+      ctx: options.ctx || null,
+      via: 'router',
+    });
+    const modeled = normalizeModeledRouteDecision(extractJsonObject(result.response));
+    return mergeRouteDecisions(heuristic, modeled, result.modelInfo);
+  } catch (err) {
+    console.warn('[AI] routeQuestion fallback to heuristic:', err.message);
+    return heuristic;
+  }
+}
+
+export async function assessEvidence(env, question, options = {}) {
+  const heuristic = buildHeuristicEvidenceAssessment(question, options);
+  if (
+    !isEnvFlagEnabled(env, 'AI_PHASE3_EVIDENCE_ENABLED', true)
+    || !getPreferredChatProvider(env)
+    || heuristic.recommendedMode === PHASE3_RESPONSE_MODE.NO_RESULT
+  ) {
+    return heuristic;
+  }
+
+  try {
+    const result = await generateChatText(env, buildEvidenceMessages(question, {
+      routeDecision: options.routeDecision,
+      references: options.references,
+      retrieval: options.retrieval,
+    }), {
+      maxTokens: 160,
+      temperature: 0,
+      gatewayProfile: GATEWAY_PROFILES.evidence,
+      scenario: 'evidence',
+      ctx: options.ctx || null,
+      via: 'evidence',
+    });
+    const modeled = normalizeModeledEvidenceAssessment(extractJsonObject(result.response));
+    return mergeEvidenceAssessments(heuristic, modeled, result.modelInfo);
+  } catch (err) {
+    console.warn('[AI] assessEvidence fallback to heuristic:', err.message);
+    return heuristic;
+  }
+}
+
 // ============================================================
 // RAG 问答 — 检索增强生成
 // ============================================================
 export async function ragAnswer(env, question, contextDocs, options = {}) {
-  const { history = [], vectorMatches = [], ctx = null } = options;
-  const messages = buildRAGMessages(question, contextDocs, { history, vectorMatches });
+  const {
+    history = [],
+    vectorMatches = [],
+    ctx = null,
+    routeDecision = null,
+    evidenceAssessment = null,
+  } = options;
+  const messages = buildRAGMessages(question, contextDocs, {
+    history,
+    vectorMatches,
+    routeDecision,
+    evidenceAssessment,
+  });
 
-  // 优先使用外部 LLM（不消耗 Workers AI neuron 配额）
-  if (env?.EXTERNAL_LLM_KEY) {
-    try {
-      const text = await callExternalLLM(env, messages, { maxTokens: 500, temperature: 0.2 });
-      if (text) return { response: stripThinkTags(text) };
-    } catch (err) {
-      console.warn('External LLM ragAnswer failed:', err.message);
-    }
-  }
-
-  // 备用外部 LLM: Groq（不消耗 Workers AI neuron 配额）
-  if (env?.GROQ_API_KEY) {
-    try {
-      const text = await callExternalLLM(env, messages, { maxTokens: 500, temperature: 0.2, config: getGroqConfig(env) });
-      if (text) return { response: stripThinkTags(text) };
-    } catch (err) {
-      console.warn('Groq ragAnswer failed:', err.message);
-    }
-  }
-
-  // Fallback: Workers AI
-  const chatModel = resolveAIModel(env, 'chat');
-  const fallbackChatModel = resolveAIModel(env, 'chatFallback');
-
-  let response;
-  try {
-    response = await runAIWithLogging(
-      env,
-      chatModel,
-      {
-        messages,
-        max_tokens: 500,
-        temperature: 0.2,
-      },
-      GATEWAY_PROFILES.ragChat,
-      'ragChat',
-      ctx
-    );
-  } catch (err) {
-    console.warn('Primary chat model failed, using fallback:', err.message);
-    response = await runAIWithLogging(
-      env,
-      fallbackChatModel,
-      {
-        messages,
-        max_tokens: 500,
-        temperature: 0.2,
-      },
-      GATEWAY_PROFILES.ragChat,
-      'ragChat',
-      ctx
-    );
-  }
-
-  return { response: stripThinkTags(extractAIResponse(response)) };
+  return generateChatText(env, messages, {
+    maxTokens: 500,
+    temperature: 0.2,
+    gatewayProfile: GATEWAY_PROFILES.ragChat,
+    scenario: 'ragChat',
+    ctx,
+    via: 'rag',
+  });
 }
 
 export function buildRAGContext(contextDocs, options = {}) {
@@ -649,20 +1197,24 @@ export function buildRAGContext(contextDocs, options = {}) {
       const chunkText = String(match.metadata?.text || '').trim();
       const doc = contextDocs.find(item => item.id === docId);
       const title = doc?.title || match.metadata?.title || '未知';
+      const seriesName = doc?.series_name || match.metadata?.series_name || '';
+      const citationId = `S${refIndex}`;
+      const header = `【${citationId}】出处：${title}${seriesName ? `｜${seriesName}` : ''}\n`;
       if (!docId || !chunkText) continue;
-      if (context.length + chunkText.length + 60 >= maxContextLength) continue;
+      if (context.length + header.length + chunkText.length + 2 >= maxContextLength) continue;
 
       const key = `${docId}:${match.metadata?.chunk_index ?? references.length}`;
       if (seen.has(key)) continue;
       seen.add(key);
 
-      context += `【资料${refIndex}】出处：${title}\n${chunkText}\n\n`;
+      context += `${header}${chunkText}\n\n`;
       references.push({
+        id: citationId,
         refIndex,
         doc_id: docId,
         title,
         category: doc?.category || match.metadata?.category || '',
-        series_name: doc?.series_name || match.metadata?.series_name || '',
+        series_name: seriesName,
         audio_series_id: doc?.audio_series_id || match.metadata?.audio_series_id || '',
         audio_episode_num: doc?.audio_episode_num || null,
         score: typeof match.score === 'number' ? Math.round(match.score * 100) / 100 : null,
@@ -676,14 +1228,18 @@ export function buildRAGContext(contextDocs, options = {}) {
     const perDocLimit = Math.floor(maxContextLength / Math.max(contextDocs.length, 1));
     for (const doc of contextDocs) {
       const snippet = String(doc.content || '').slice(0, perDocLimit).trim();
+      const title = doc.title || '未知';
+      const seriesName = doc.series_name || '';
+      const citationId = `S${refIndex}`;
       if (!snippet) continue;
-      context += `【资料${refIndex}】出处：${doc.title}\n${snippet}\n\n`;
+      context += `【${citationId}】出处：${title}${seriesName ? `｜${seriesName}` : ''}\n${snippet}\n\n`;
       references.push({
+        id: citationId,
         refIndex,
         doc_id: doc.id,
-        title: doc.title || '未知',
+        title,
         category: doc.category || '',
-        series_name: doc.series_name || '',
+        series_name: seriesName,
         audio_series_id: doc.audio_series_id || '',
         audio_episode_num: doc.audio_episode_num || null,
         score: null,
@@ -700,10 +1256,22 @@ export function buildRAGContext(contextDocs, options = {}) {
 // Build RAG messages (shared by ragAnswer and streaming endpoint)
 // ============================================================
 export function buildRAGMessages(question, contextDocs, options = {}) {
-  const { maxContextLength = 10000, history = [], vectorMatches = [] } = options;
+  const {
+    maxContextLength = 10000,
+    history = [],
+    vectorMatches = [],
+    routeDecision = null,
+    evidenceAssessment = null,
+  } = options;
   const { context } = buildRAGContext(contextDocs, { maxContextLength, vectorMatches });
 
   const messages = [{ role: 'system', content: buildRagSystemPrompt(context) }];
+  if (routeDecision || evidenceAssessment) {
+    messages.push({
+      role: 'system',
+      content: buildPhase3AnswerControlPrompt(routeDecision, evidenceAssessment),
+    });
+  }
   messages.push(...normalizeHistoryMessages(history));
   messages.push({ role: 'user', content: question });
   return messages;
@@ -717,52 +1285,16 @@ export async function generateSummary(env, title, content, options = {}) {
   const truncated = content.slice(0, 6000);
   const messages = buildSummaryMessages(title, truncated);
 
-  // 优先使用外部 LLM
-  if (env?.EXTERNAL_LLM_KEY) {
-    try {
-      const text = await callExternalLLM(env, messages, { maxTokens: 300, temperature: 0.2 });
-      if (text) return text;
-    } catch (err) {
-      console.warn('External LLM summary failed:', err.message);
-    }
-  }
+  const result = await generateChatText(env, messages, {
+    maxTokens: 300,
+    temperature: 0.2,
+    gatewayProfile: GATEWAY_PROFILES.summary,
+    scenario: 'summary',
+    ctx,
+    via: 'summary',
+  });
 
-  // 备用外部 LLM: Groq
-  if (env?.GROQ_API_KEY) {
-    try {
-      const text = await callExternalLLM(env, messages, { maxTokens: 300, temperature: 0.2, config: getGroqConfig(env) });
-      if (text) return text;
-    } catch (err) {
-      console.warn('Groq summary failed:', err.message);
-    }
-  }
-
-  const chatModel = resolveAIModel(env, 'chat');
-  const fallbackChatModel = resolveAIModel(env, 'chatFallback');
-
-  let response;
-  try {
-    response = await runAIWithLogging(
-      env,
-      chatModel,
-      { messages, max_tokens: 300, temperature: 0.2 },
-      GATEWAY_PROFILES.summary,
-      'summary',
-      ctx
-    );
-  } catch (err) {
-    console.warn('Summary primary model failed, using fallback:', err.message);
-    response = await runAIWithLogging(
-      env,
-      fallbackChatModel,
-      { messages, max_tokens: 300, temperature: 0.2 },
-      GATEWAY_PROFILES.summary,
-      'summary',
-      ctx
-    );
-  }
-
-  return extractAIResponse(response);
+  return result.response;
 }
 
 // ============================================================

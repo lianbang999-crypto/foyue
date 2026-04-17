@@ -11,6 +11,8 @@ import {
     getAnswerModePresentation,
     mergeQuestionSuggestions,
     normalizeAnswerMode,
+    normalizeClaimMapItems,
+    normalizeEvidenceItems,
     renderSearchResults,
     summarizeEvidenceSnippet,
 } from './ai-format.js';
@@ -468,6 +470,13 @@ function buildAssistantMessage(question, payload = {}, fallbackAnswer = '') {
         role: 'assistant',
         content: payload?.answer ?? payload?.content ?? fallbackAnswer ?? '',
         sources: attachSourcePreviewQuery(payload?.sources || [], question),
+        citations: payload?.citations,
+        claimMap: payload?.claimMap,
+        uncertainty: payload?.uncertainty,
+        downgradeReason: payload?.downgradeReason,
+        contractVersion: payload?.contractVersion,
+        promptVersion: payload?.promptVersion,
+        modelInfo: payload?.modelInfo,
         disclaimer: payload?.disclaimer,
         mode: payload?.mode,
         confidence: payload?.confidence,
@@ -587,7 +596,14 @@ async function handleSubmit(options = {}) {
             if (rawTokens.trim()) {
                 const partialMessage = buildAssistantMessage(question, {
                     answer: rawTokens,
+                    mode: 'partial',
                     sources: [],
+                    downgradeReason: 'stream_interrupted',
+                    uncertainty: {
+                        level: 'high',
+                        message: '回答生成过程中断，仅保留已生成片段供参考。',
+                        reason: 'stream_interrupted',
+                    },
                 }, rawTokens);
                 addMessage('bot', partialMessage.content, {
                     ...partialMessage,
@@ -622,6 +638,10 @@ function addMessage(role, content, options = {}) {
         confidence = null,
         rewriteSuggestions = [],
         followUps = [],
+        citations = [],
+        claimMap = [],
+        uncertainty = null,
+        downgradeReason = '',
     } = options;
 
     while (chatArea.children.length > MAX_MESSAGES) {
@@ -652,6 +672,10 @@ function addMessage(role, content, options = {}) {
             confidence,
             rewriteSuggestions,
             followUps,
+            citations,
+            claimMap,
+            uncertainty,
+            downgradeReason,
         });
     }
 
@@ -675,21 +699,37 @@ function renderBotMessage(contentEl, options) {
     const {
         content,
         sources = [],
+        citations = [],
+        claimMap = [],
         disclaimer = '',
         sourceQuery = '',
         mode = 'answer',
         confidence = null,
         rewriteSuggestions = [],
         followUps = [],
+        uncertainty = null,
+        downgradeReason = '',
     } = options;
-    const presentation = getAnswerModePresentation(mode, confidence);
+    const evidence = normalizeEvidenceItems({ citations, sources, question: sourceQuery || _lastQuestion });
+    const presentation = getAnswerModePresentation(mode, confidence, {
+        uncertainty,
+        downgradeReason,
+        evidenceSource: evidence.source,
+    });
     const suggestions = mergeQuestionSuggestions(rewriteSuggestions, followUps);
+    const claimEntries = normalizeClaimMapItems({ claimMap, citations: evidence.items });
 
     contentEl.appendChild(buildStatusHeader(presentation));
 
-    if (presentation.mode === 'search_only' && sources.length) {
-        contentEl.appendChild(buildSourceSection(sources, sourceQuery, {
-            heading: '相关原文',
+    const modeNote = buildModeNote(presentation, { evidenceCount: evidence.items.length, claimCount: claimMap.length });
+    if (modeNote) {
+        contentEl.appendChild(modeNote);
+    }
+
+    const shouldLeadWithEvidence = (presentation.mode === 'search_only' || presentation.mode === 'no_result') && evidence.items.length > 0;
+    if (shouldLeadWithEvidence) {
+        contentEl.appendChild(buildSourceSection(evidence.items, sourceQuery, {
+            heading: getEvidenceHeading(presentation.mode, evidence.source),
             prominent: true,
         }));
     }
@@ -698,15 +738,20 @@ function renderBotMessage(contentEl, options) {
         const summaryEl = document.createElement('div');
         summaryEl.className = 'ai-bot-summary';
         if (presentation.mode === 'search_only') summaryEl.classList.add('ai-bot-summary--search');
+        if (presentation.mode === 'partial') summaryEl.classList.add('ai-bot-summary--partial');
         if (presentation.mode === 'no_result') summaryEl.classList.add('ai-bot-summary--no-result');
         summaryEl.innerHTML = formatAnswer(content);
         contentEl.appendChild(summaryEl);
     }
 
-    if (presentation.mode !== 'search_only' && sources.length) {
-        contentEl.appendChild(buildSourceSection(sources, sourceQuery, {
-            heading: presentation.mode === 'answer' ? '引用出处' : '相关原文',
-            prominent: false,
+    if (claimEntries.length) {
+        contentEl.appendChild(buildClaimMapSection(claimEntries));
+    }
+
+    if (!shouldLeadWithEvidence && evidence.items.length) {
+        contentEl.appendChild(buildSourceSection(evidence.items, sourceQuery, {
+            heading: getEvidenceHeading(presentation.mode, evidence.source),
+            prominent: evidence.source === 'citations' || presentation.mode === 'partial',
         }));
     }
 
@@ -725,9 +770,55 @@ function renderBotMessage(contentEl, options) {
     }
 }
 
+function buildModeNote(presentation, stats = {}) {
+    const evidenceCount = Number.isFinite(Number(stats.evidenceCount)) ? Number(stats.evidenceCount) : 0;
+    const uncertainty = presentation.uncertainty;
+
+    let label = '';
+    let text = '';
+    let level = uncertainty?.level || 'medium';
+
+    if (presentation.mode === 'partial') {
+        label = presentation.downgrade?.label || '回答中断';
+        text = uncertainty?.message || '回答生成过程中断，仅保留已生成片段供参考。';
+        if (evidenceCount > 0) {
+            text += ` 当前可核对 ${evidenceCount} 条依据。`;
+        }
+    } else if (presentation.mode === 'search_only' || presentation.mode === 'no_result') {
+        label = presentation.downgrade?.label || presentation.label;
+        text = uncertainty?.message || '';
+    } else if (uncertainty && uncertainty.level !== 'low') {
+        label = presentation.downgrade?.label || '使用提示';
+        text = uncertainty.message || '';
+    }
+
+    if (!text) return null;
+
+    const note = document.createElement('div');
+    note.className = `ai-answer-note ai-answer-note--${level}`;
+    note.innerHTML = `
+        <span class="ai-answer-note-label">${escapeHtml(label)}</span>
+        <span class="ai-answer-note-text">${escapeHtml(text)}</span>
+    `;
+    return note;
+}
+
+function getEvidenceHeading(mode, evidenceSource) {
+    if (mode === 'search_only' || mode === 'no_result') return '相关原文';
+    if (evidenceSource === 'citations') {
+        return mode === 'partial' ? '当前可核对的依据（S 编号）' : '回答依据（S 编号）';
+    }
+    if (mode === 'partial') return '当前可核对的原文';
+    return '引用出处';
+}
+
 function buildStatusHeader(presentation) {
     const status = document.createElement('div');
     status.className = 'ai-bot-status';
+    status.dataset.mode = presentation.mode;
+    if (presentation.uncertainty?.level) {
+        status.dataset.uncertaintyLevel = presentation.uncertainty.level;
+    }
     status.innerHTML = `
         <span class="ai-bot-status-badge">${escapeHtml(presentation.label)}</span>
         ${presentation.detail ? `<span class="ai-bot-status-detail">${escapeHtml(presentation.detail)}</span>` : ''}
@@ -753,6 +844,39 @@ function buildSourceSection(sources, sourceQuery, options = {}) {
     section.appendChild(list);
 
     return section;
+}
+
+function buildClaimMapSection(claimEntries) {
+    const section = document.createElement('section');
+    section.className = 'ai-claim-map-section';
+
+    const header = document.createElement('div');
+    header.className = 'ai-claim-map-header';
+    header.innerHTML = `
+        <div class="ai-source-heading ai-source-heading--primary">关键判断</div>
+        <p class="ai-claim-map-note">每条判断都对应本次回答里的 S 编号</p>
+    `;
+    section.appendChild(header);
+
+    const list = document.createElement('div');
+    list.className = 'ai-claim-map-list';
+    list.innerHTML = claimEntries.map((item) => renderClaimMapItem(item)).join('');
+    section.appendChild(list);
+
+    return section;
+}
+
+function renderClaimMapItem(item) {
+    const citationBadges = item.citationIds
+        .map((citationId) => `<span class="ai-claim-map-badge">${escapeHtml(citationId)}</span>`)
+        .join('');
+
+    return `
+        <article class="ai-claim-map-item">
+            <p class="ai-claim-map-text">${escapeHtml(item.claim)}</p>
+            <div class="ai-claim-map-citations" aria-label="对应依据编号">${citationBadges}</div>
+        </article>
+    `;
 }
 
 function buildSuggestionSection(suggestions, options = {}) {
@@ -807,7 +931,8 @@ function removeTyping() {
 
 /* --- 来源引用卡片渲染 --- */
 function renderSourceTag(s, fallbackQuery = '') {
-    const title = escapeHtml(s.title);
+    const title = escapeHtml(s.title || '相关讲记');
+    const citationId = s.citation_id ? `<span class="ai-source-ref">${escapeHtml(s.citation_id)}</span>` : '';
     const series = s.series_name ? `<span class="ai-source-series">${escapeHtml(s.series_name)}</span>` : '';
     const epNum = s.audio_episode_num ? `<span class="ai-source-ep">第${s.audio_episode_num}讲</span>` : '';
 
@@ -824,15 +949,16 @@ function renderSourceTag(s, fallbackQuery = '') {
         const snippetAttr = s.snippet ? ` data-snippet="${escapeHtml(s.snippet || '')}"` : '';
         return `<span class="ai-source-card">
             <button class="ai-source-tag" data-doc-id="${escapeHtml(s.doc_id)}"${queryAttr}${snippetAttr}>
-                <span class="ai-source-title">${title}</span>${series}${epNum}
+                <span class="ai-source-title-row">${citationId}<span class="ai-source-title">${title}</span></span>${series}${epNum}
             </button>${playBtn}
         </span>`;
     }
-    return `<span class="ai-source-card"><span class="ai-source-tag"><span class="ai-source-title">${title}</span>${series}${epNum}</span>${playBtn}</span>`;
+    return `<span class="ai-source-card"><span class="ai-source-tag"><span class="ai-source-title-row">${citationId}<span class="ai-source-title">${title}</span></span>${series}${epNum}</span>${playBtn}</span>`;
 }
 
 function renderEvidenceCard(s, fallbackQuery = '') {
     const title = escapeHtml(s.title || '相关讲记');
+    const citationBadge = s.citation_id ? `<span class="ai-evidence-badge">${escapeHtml(s.citation_id)}</span>` : '';
     const originParts = [];
     if (s.series_name) originParts.push(escapeHtml(s.series_name));
     if (s.audio_episode_num) originParts.push(`第${s.audio_episode_num}讲`);
@@ -846,7 +972,7 @@ function renderEvidenceCard(s, fallbackQuery = '') {
         : '';
 
     const contentHtml = `
-        <span class="ai-evidence-title">${title}</span>
+        <span class="ai-evidence-title-row">${citationBadge}<span class="ai-evidence-title">${title}</span></span>
         ${origin ? `<span class="ai-evidence-origin">${origin}</span>` : ''}
         ${snippet ? `<span class="ai-evidence-snippet">${escapeHtml(snippet)}</span>` : ''}
     `;

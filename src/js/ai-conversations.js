@@ -2,16 +2,52 @@ function generateId() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
-const ASSISTANT_MESSAGE_MODES = new Set(['answer', 'search_only', 'no_result']);
+const ASSISTANT_MESSAGE_MODES = new Set(['answer', 'partial', 'search_only', 'no_result']);
 
 function normalizeText(value) {
     return typeof value === 'string' ? value : String(value || '');
 }
 
 function normalizeConfidence(value) {
+    if (value === null || value === undefined || value === '') return null;
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return null;
     return Math.max(0, Math.min(1, Math.round(numeric * 100) / 100));
+}
+
+function normalizePositiveNumber(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) return null;
+    return numeric;
+}
+
+function normalizeCitationId(value) {
+    const normalized = normalizeText(value).trim().toUpperCase().replace(/\s+/g, '');
+    const match = /^S(\d+)$/.exec(normalized);
+    if (!match) return '';
+    return `S${Number.parseInt(match[1], 10)}`;
+}
+
+function normalizeCitationIdList(values, maxLength = 6) {
+    const items = Array.isArray(values)
+        ? values
+        : typeof values === 'string'
+            ? values.split(/[\s,，、|]+/)
+            : [];
+
+    const normalized = [];
+    const seen = new Set();
+
+    for (const value of items) {
+        const citationId = normalizeCitationId(value);
+        if (!citationId || seen.has(citationId)) continue;
+        seen.add(citationId);
+        normalized.push(citationId);
+        if (normalized.length >= maxLength) break;
+    }
+
+    return normalized;
 }
 
 function normalizeStringList(values, maxLength = 6) {
@@ -29,6 +65,26 @@ function normalizeStringList(values, maxLength = 6) {
     return normalized;
 }
 
+function normalizePlainObject(value, allowedKeys) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+
+    const normalized = {};
+    for (const key of allowedKeys) {
+        const next = value[key];
+        if (next === null || next === undefined) continue;
+        if (typeof next === 'string') {
+            const text = normalizeText(next).trim();
+            if (text) normalized[key] = text;
+            continue;
+        }
+        if (typeof next === 'number' || typeof next === 'boolean') {
+            normalized[key] = next;
+        }
+    }
+
+    return Object.keys(normalized).length ? normalized : null;
+}
+
 function normalizeSources(sources) {
     if (!Array.isArray(sources)) return [];
 
@@ -41,11 +97,10 @@ function normalizeSources(sources) {
             const previewQuery = normalizeText(source.preview_query).trim();
             const seriesName = normalizeText(source.series_name).trim();
             const audioSeriesId = normalizeText(source.audio_series_id).trim();
-            const audioEpisodeNum = Number.isFinite(Number(source.audio_episode_num))
-                ? Number(source.audio_episode_num)
-                : null;
+            const audioEpisodeNum = normalizePositiveNumber(source.audio_episode_num);
             const score = Number.isFinite(Number(source.score)) ? Number(source.score) : null;
-            const refIndex = Number.isFinite(Number(source.ref_index)) ? Number(source.ref_index) : null;
+            const refIndex = normalizePositiveNumber(source.ref_index);
+            const citationId = normalizeCitationId(source.citation_id || source.citationId || source.id || (refIndex ? `S${refIndex}` : ''));
 
             if (!title && !docId && !snippet) return null;
 
@@ -60,10 +115,90 @@ function normalizeSources(sources) {
                 snippet,
                 preview_query: previewQuery,
                 ref_index: refIndex,
+                citation_id: citationId,
             };
         })
         .filter(Boolean)
         .slice(0, 3);
+}
+
+function normalizeCitations(citations) {
+    if (!Array.isArray(citations)) return [];
+
+    return citations
+        .map((citation) => {
+            if (!citation || typeof citation !== 'object') return null;
+
+            const title = normalizeText(citation.title).trim();
+            const docId = normalizeText(citation.docId || citation.doc_id).trim();
+            const quote = normalizeText(citation.quote || citation.snippet).trim();
+            const seriesName = normalizeText(citation.seriesName || citation.series_name).trim();
+            const audioSeriesId = normalizeText(citation.audioSeriesId || citation.audio_series_id).trim();
+            const audioEpisodeNum = normalizePositiveNumber(citation.audioEpisodeNum ?? citation.audio_episode_num);
+            const score = Number.isFinite(Number(citation.score)) ? Number(citation.score) : null;
+            const refIndex = normalizePositiveNumber(citation.refIndex ?? citation.ref_index);
+            const citationId = normalizeCitationId(citation.id || citation.citation_id || (refIndex ? `S${refIndex}` : ''));
+
+            if (!title && !docId && !quote) return null;
+
+            return {
+                id: citationId,
+                refIndex,
+                docId,
+                title,
+                seriesName,
+                quote,
+                score,
+                category: normalizeText(citation.category).trim(),
+                audioSeriesId,
+                audioEpisodeNum,
+            };
+        })
+        .filter(Boolean)
+        .slice(0, 3);
+}
+
+function normalizeClaimMap(claimMap) {
+    if (!Array.isArray(claimMap)) return [];
+
+    return claimMap
+        .map((entry) => {
+            if (!entry || typeof entry !== 'object') return null;
+            const claim = normalizeText(entry.claim).trim();
+            const citationIds = normalizeCitationIdList(
+                entry.citationIds || entry.citation_ids || entry.citations || entry.sources,
+                6,
+            );
+            if (!claim || !citationIds.length) return null;
+            return { claim, citationIds };
+        })
+        .filter(Boolean)
+        .slice(0, 6);
+}
+
+function normalizeUncertainty(uncertainty) {
+    if (!uncertainty || typeof uncertainty !== 'object' || Array.isArray(uncertainty)) return null;
+
+    const normalized = {};
+    const level = normalizeText(uncertainty.level).trim();
+    if (level) normalized.level = level;
+
+    const message = normalizeText(uncertainty.message).trim();
+    if (message) normalized.message = message;
+
+    const retrievalConfidence = normalizeConfidence(uncertainty.retrievalConfidence);
+    if (retrievalConfidence !== null) normalized.retrievalConfidence = retrievalConfidence;
+
+    const citationCount = Number.isFinite(Number(uncertainty.citationCount)) ? Number(uncertainty.citationCount) : null;
+    if (citationCount !== null) normalized.citationCount = citationCount;
+
+    const claimCount = Number.isFinite(Number(uncertainty.claimCount)) ? Number(uncertainty.claimCount) : null;
+    if (claimCount !== null) normalized.claimCount = claimCount;
+
+    const reason = normalizeText(uncertainty.reason).trim();
+    if (reason) normalized.reason = reason;
+
+    return Object.keys(normalized).length ? normalized : null;
 }
 
 function normalizeAssistantMode(message) {
@@ -99,8 +234,29 @@ export function createAiConversationStore(options = {}) {
         normalized.mode = normalizeAssistantMode(message);
         normalized.sources = normalizeSources(message?.sources);
 
+        const citations = normalizeCitations(message?.citations);
+        if (citations.length) normalized.citations = citations;
+
+        const claimMap = normalizeClaimMap(message?.claimMap);
+        if (claimMap.length) normalized.claimMap = claimMap;
+
         const confidence = normalizeConfidence(message?.confidence);
         if (confidence !== null) normalized.confidence = confidence;
+
+        const uncertainty = normalizeUncertainty(message?.uncertainty);
+        if (uncertainty) normalized.uncertainty = uncertainty;
+
+        const downgradeReason = normalizeText(message?.downgradeReason).trim();
+        if (downgradeReason) normalized.downgradeReason = downgradeReason;
+
+        const contractVersion = normalizeText(message?.contractVersion).trim();
+        if (contractVersion) normalized.contractVersion = contractVersion;
+
+        const promptVersion = normalizePlainObject(message?.promptVersion, ['contract', 'router', 'evidence', 'answer', 'style']);
+        if (promptVersion) normalized.promptVersion = promptVersion;
+
+        const modelInfo = normalizePlainObject(message?.modelInfo, ['provider', 'model', 'used', 'stage', 'via']);
+        if (modelInfo) normalized.modelInfo = modelInfo;
 
         const disclaimer = normalizeText(message?.disclaimer).trim();
         if (disclaimer) normalized.disclaimer = disclaimer;

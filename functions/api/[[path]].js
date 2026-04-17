@@ -75,6 +75,209 @@ import {
 } from '../lib/ai-brain.js';
 
 let episodeMetaColumnCache = null;
+let analyticsSchemaCache = null;
+
+const ANALYTICS_SCHEMA_CACHE_TTL_MS = 60_000;
+
+async function getAnalyticsSchema(db) {
+  const now = Date.now();
+  if (analyticsSchemaCache?.value && analyticsSchemaCache.expiresAt > now) {
+    return analyticsSchemaCache.value;
+  }
+
+  const [playLogColumnsResult, appreciationColumnsResult, playLogIndexesResult, appreciationIndexesResult] = await Promise.all([
+    db.prepare("PRAGMA table_info('play_logs')").all().catch(() => ({ results: [] })),
+    db.prepare("PRAGMA table_info('appreciations')").all().catch(() => ({ results: [] })),
+    db.prepare("PRAGMA index_list('play_logs')").all().catch(() => ({ results: [] })),
+    db.prepare("PRAGMA index_list('appreciations')").all().catch(() => ({ results: [] })),
+  ]);
+
+  const playLogColumns = new Set((playLogColumnsResult.results || []).map(row => row.name));
+  const appreciationColumns = new Set((appreciationColumnsResult.results || []).map(row => row.name));
+  const playLogIndexes = new Set((playLogIndexesResult.results || []).map(row => row.name));
+  const appreciationIndexes = new Set((appreciationIndexesResult.results || []).map(row => row.name));
+
+  const schema = {
+    playLogs: {
+      hasOrigin: playLogColumns.has('origin'),
+      hasVisitorId: playLogColumns.has('visitor_id'),
+      hasRequestId: playLogColumns.has('request_id'),
+      hasRequestIdUniqueIndex: playLogIndexes.has('idx_play_logs_request_id_unique'),
+    },
+    appreciations: {
+      hasOrigin: appreciationColumns.has('origin'),
+      hasEpisodeNum: appreciationColumns.has('episode_num'),
+      hasSeriesClientUniqueIndex: appreciationIndexes.has('idx_appreciations_series_client_unique'),
+    },
+  };
+
+  analyticsSchemaCache = {
+    value: schema,
+    expiresAt: now + ANALYTICS_SCHEMA_CACHE_TTL_MS,
+  };
+
+  return schema;
+}
+
+function normalizeOpaqueId(value, maxLength = 160) {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return trimmed.slice(0, maxLength);
+}
+
+function normalizeEpisodeNum(value) {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function getBodyValue(body, keys) {
+  if (!body || typeof body !== 'object') return undefined;
+  for (const key of keys) {
+    if (body[key] !== undefined && body[key] !== null) return body[key];
+  }
+  return undefined;
+}
+
+function getHeaderValue(request, headerNames) {
+  for (const headerName of headerNames) {
+    const value = request.headers.get(headerName);
+    if (value !== null && value !== undefined) return value;
+  }
+  return undefined;
+}
+
+function getClientIp(request) {
+  return request.headers.get('CF-Connecting-IP')
+    || request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim()
+    || '';
+}
+
+function getRequestId(body, request) {
+  return normalizeOpaqueId(
+    getBodyValue(body, ['requestId', 'request_id'])
+    || getHeaderValue(request, ['X-Play-Request-Id', 'X-Request-Id'])
+  );
+}
+
+function getProvidedVisitorId(body, request) {
+  return normalizeOpaqueId(
+    getBodyValue(body, ['visitorId', 'visitor_id'])
+    || getHeaderValue(request, ['X-Visitor-Id'])
+  );
+}
+
+async function resolvePlayVisitorId(body, request) {
+  const providedVisitorId = getProvidedVisitorId(body, request);
+  if (providedVisitorId) return providedVisitorId;
+
+  const clientIp = getClientIp(request) || 'unknown';
+  const userAgent = normalizeOpaqueId(request.headers.get('User-Agent') || '', 200) || 'unknown';
+  return hashString(`play-visitor:${clientIp}:${userAgent}`);
+}
+
+async function buildAppreciationClientHash(body, request) {
+  const providedVisitorId = getProvidedVisitorId(body, request);
+  if (providedVisitorId) {
+    return hashString(`appreciate:visitor:${providedVisitorId}`);
+  }
+
+  const clientIp = getClientIp(request);
+  if (clientIp) {
+    return hashString(`appreciate:ip:${clientIp}`);
+  }
+
+  const userAgent = normalizeOpaqueId(request.headers.get('User-Agent') || '', 200) || 'unknown';
+  return hashString(`appreciate:fallback:${userAgent}`);
+}
+
+function buildPlayLogInsert(schema, payload, options = {}) {
+  const columns = ['series_id', 'episode_num', 'user_agent'];
+  const values = [payload.seriesId, payload.episodeNum, payload.userAgent];
+
+  if (schema.playLogs.hasVisitorId) {
+    columns.push('visitor_id');
+    values.push(payload.visitorId || '');
+  }
+
+  if (schema.playLogs.hasRequestId) {
+    columns.push('request_id');
+    values.push(payload.requestId || null);
+  }
+
+  if (schema.playLogs.hasOrigin) {
+    columns.push('origin');
+    values.push(payload.origin || '');
+  }
+
+  const verb = options.ignoreDuplicates ? 'INSERT OR IGNORE' : 'INSERT';
+  return {
+    sql: `${verb} INTO play_logs (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
+    values,
+  };
+}
+
+function buildAppreciationInsert(schema, payload, options = {}) {
+  const columns = ['series_id', 'client_hash'];
+  const values = [payload.seriesId, payload.clientHash];
+
+  if (schema.appreciations.hasEpisodeNum) {
+    columns.push('episode_num');
+    values.push(payload.episodeNum);
+  }
+
+  if (schema.appreciations.hasOrigin) {
+    columns.push('origin');
+    values.push(payload.origin || '');
+  }
+
+  const verb = options.ignoreDuplicates ? 'INSERT OR IGNORE' : 'INSERT';
+  return {
+    sql: `${verb} INTO appreciations (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
+    values,
+  };
+}
+
+async function getPlayCountSnapshot(db, seriesId, episodeNum) {
+  const [seriesCount, episodeCount] = await Promise.all([
+    db.prepare('SELECT COUNT(*) as total FROM play_logs WHERE series_id = ?').bind(seriesId).first(),
+    db.prepare('SELECT COUNT(*) as total FROM play_logs WHERE series_id = ? AND episode_num = ?').bind(seriesId, episodeNum).first(),
+  ]);
+
+  return {
+    totalPlayCount: Number(seriesCount?.total) || 0,
+    episodePlayCount: Number(episodeCount?.total) || 0,
+  };
+}
+
+async function syncPlayCountsFromLogs(db, seriesId, episodeNum) {
+  const counts = await getPlayCountSnapshot(db, seriesId, episodeNum);
+
+  await db.batch([
+    db.prepare('UPDATE series SET play_count = ? WHERE id = ?').bind(counts.totalPlayCount, seriesId),
+    db.prepare('UPDATE episodes SET play_count = ? WHERE series_id = ? AND episode_num = ?').bind(counts.episodePlayCount, seriesId, episodeNum),
+  ]);
+
+  return counts;
+}
+
+async function findExistingAppreciation(db, schema, seriesId, clientHash) {
+  const selectFields = ['id'];
+  if (schema.appreciations.hasEpisodeNum) {
+    selectFields.push('episode_num');
+  }
+
+  return db.prepare(
+    `SELECT ${selectFields.join(', ')} FROM appreciations WHERE series_id = ? AND client_hash = ? ORDER BY id LIMIT 1`
+  ).bind(seriesId, clientHash).first().catch(() => null);
+}
+
+async function maybeBackfillAppreciationEpisodeNum(db, schema, appreciationId, episodeNum) {
+  if (!appreciationId || !schema.appreciations.hasEpisodeNum || !episodeNum) return;
+
+  await db.prepare(
+    'UPDATE appreciations SET episode_num = ? WHERE id = ? AND (episode_num IS NULL OR episode_num = 0)'
+  ).bind(episodeNum, appreciationId).run().catch(() => { });
+}
 
 async function getEpisodeMetaColumns(db) {
   if (episodeMetaColumnCache) return episodeMetaColumnCache;
@@ -117,7 +320,7 @@ export async function onRequest(context) {
     'Access-Control-Allow-Origin': corsOrigin,
     'Vary': 'Origin',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Token',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Token, X-Visitor-Id, X-Play-Request-Id, X-Request-Id',
   };
 
   if (method === 'OPTIONS') {
@@ -988,9 +1191,9 @@ async function getEpisodes(db, seriesId) {
 }
 
 async function recordPlay(db, body, request) {
-  const { seriesId, episodeNum } = body;
-  if (!seriesId || typeof seriesId !== 'string' ||
-    typeof episodeNum !== 'number' || !Number.isInteger(episodeNum) || episodeNum < 1) {
+  const seriesId = typeof body?.seriesId === 'string' ? body.seriesId : '';
+  const episodeNum = normalizeEpisodeNum(body?.episodeNum);
+  if (!seriesId || !episodeNum) {
     return { error: 'Missing or invalid seriesId/episodeNum' };
   }
 
@@ -1005,16 +1208,70 @@ async function recordPlay(db, body, request) {
     return { error: 'Episode not found' };
   }
 
+  const schema = await getAnalyticsSchema(db);
   const origin = new URL(request.url).hostname;
-  const ua = request.headers.get('User-Agent') || '';
-  await db.batch([
-    db.prepare('UPDATE series SET play_count = play_count + 1 WHERE id = ?').bind(seriesId),
-    db.prepare('UPDATE episodes SET play_count = play_count + 1 WHERE series_id = ? AND episode_num = ?').bind(seriesId, episodeNum),
-    db.prepare('INSERT INTO play_logs (series_id, episode_num, user_agent, origin) VALUES (?, ?, ?, ?)').bind(seriesId, episodeNum, ua.substring(0, 200), origin),
-  ]);
+  const userAgent = normalizeOpaqueId(request.headers.get('User-Agent') || '', 200);
+  const visitorId = await resolvePlayVisitorId(body, request);
+  const requestId = getRequestId(body, request);
 
-  const result = await db.prepare('SELECT play_count FROM series WHERE id = ?').bind(seriesId).first();
-  return { success: true, playCount: result?.play_count || 0 };
+  let inserted = false;
+  let duplicate = false;
+
+  if (requestId && schema.playLogs.hasRequestId) {
+    if (schema.playLogs.hasRequestIdUniqueIndex) {
+      const insert = buildPlayLogInsert(schema, {
+        seriesId,
+        episodeNum,
+        userAgent,
+        visitorId,
+        requestId,
+        origin,
+      }, { ignoreDuplicates: true });
+      const result = await db.prepare(insert.sql).bind(...insert.values).run();
+      inserted = (result.meta?.changes || 0) > 0;
+      duplicate = !inserted;
+    } else {
+      const existing = await db.prepare(
+        'SELECT id FROM play_logs WHERE request_id = ? LIMIT 1'
+      ).bind(requestId).first().catch(() => null);
+
+      duplicate = !!existing;
+      if (!existing) {
+        const insert = buildPlayLogInsert(schema, {
+          seriesId,
+          episodeNum,
+          userAgent,
+          visitorId,
+          requestId,
+          origin,
+        });
+        await db.prepare(insert.sql).bind(...insert.values).run();
+        inserted = true;
+      }
+    }
+  } else {
+    const insert = buildPlayLogInsert(schema, {
+      seriesId,
+      episodeNum,
+      userAgent,
+      visitorId,
+      requestId,
+      origin,
+    });
+    await db.prepare(insert.sql).bind(...insert.values).run();
+    inserted = true;
+  }
+
+  const counts = inserted
+    ? await syncPlayCountsFromLogs(db, seriesId, episodeNum)
+    : await getPlayCountSnapshot(db, seriesId, episodeNum);
+
+  return {
+    success: true,
+    playCount: counts.totalPlayCount,
+    episodePlayCount: counts.episodePlayCount,
+    duplicate,
+  };
 }
 
 async function getPlayCount(db, seriesId) {
@@ -1029,36 +1286,49 @@ async function getPlayCount(db, seriesId) {
 }
 
 async function appreciate(db, seriesId, body, request) {
+  const schema = await getAnalyticsSchema(db);
   const origin = new URL(request.url).hostname;
-  const episodeNum = (body && typeof body.episodeNum === 'number' && Number.isInteger(body.episodeNum)) ? body.episodeNum : null;
-  const clientIp = request.headers.get('CF-Connecting-IP') ||
-    request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ||
-    request.headers.get('User-Agent') ||
-    'unknown';
-  const clientHash = await hashString('appreciate:' + clientIp);
+  const episodeNum = normalizeEpisodeNum(body?.episodeNum);
+  const clientHash = await buildAppreciationClientHash(body, request);
 
-  const existing = await db.prepare(
-    'SELECT id FROM appreciations WHERE series_id = ? AND client_hash = ? LIMIT 1'
-  ).bind(seriesId, clientHash).first().catch(() => null);
+  let existing = null;
+  let duplicate = false;
 
-  if (!existing) {
-    // Backward-compatible: try with episode_num first, fall back to without if column doesn't exist yet
-    try {
-      await db.prepare(
-        'INSERT INTO appreciations (series_id, client_hash, episode_num, origin) VALUES (?, ?, ?, ?)'
-      ).bind(seriesId, clientHash, episodeNum, origin).run();
-    } catch (e) {
-      // episode_num column may not exist yet (migration 0005 not applied)
-      await db.prepare(
-        'INSERT INTO appreciations (series_id, client_hash, origin) VALUES (?, ?, ?)'
-      ).bind(seriesId, clientHash, origin).run();
+  if (schema.appreciations.hasSeriesClientUniqueIndex) {
+    const insert = buildAppreciationInsert(schema, {
+      seriesId,
+      clientHash,
+      episodeNum,
+      origin,
+    }, { ignoreDuplicates: true });
+    const result = await db.prepare(insert.sql).bind(...insert.values).run();
+    duplicate = (result.meta?.changes || 0) === 0;
+    if (duplicate) {
+      existing = await findExistingAppreciation(db, schema, seriesId, clientHash);
     }
+  } else {
+    existing = await findExistingAppreciation(db, schema, seriesId, clientHash);
+    duplicate = !!existing;
+
+    if (!existing) {
+      const insert = buildAppreciationInsert(schema, {
+        seriesId,
+        clientHash,
+        episodeNum,
+        origin,
+      });
+      await db.prepare(insert.sql).bind(...insert.values).run();
+    }
+  }
+
+  if (duplicate && existing?.id) {
+    await maybeBackfillAppreciationEpisodeNum(db, schema, existing.id, episodeNum);
   }
 
   const count = await db.prepare(
     'SELECT COUNT(*) as total FROM appreciations WHERE series_id = ?'
   ).bind(seriesId).first();
-  return { success: true, total: count.total, duplicate: !!existing };
+  return { success: true, total: count.total, duplicate };
 }
 
 async function getAppreciateCount(db, seriesId) {

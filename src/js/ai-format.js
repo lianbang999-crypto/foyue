@@ -8,18 +8,189 @@ const SUGGESTIONS = [
 
 const BOT_MODE_LABELS = Object.freeze({
     answer: '文库回答',
+    partial: '部分回答',
     search_only: '文库检索',
     no_result: '未找到直接依据',
 });
 
 const BOT_MODE_DETAILS = Object.freeze({
+    partial: '仅保留已生成片段，请优先核对原文',
     search_only: '先看相关原文，再决定是否继续追问',
     no_result: '这次检索没有找到可直接支持结论的原文',
 });
 
+const DOWNGRADE_REASON_PRESENTATION = Object.freeze({
+    insufficient_evidence: {
+        label: '证据不足',
+        detail: '当前证据更适合先返回相关原文，再决定是否继续追问。',
+    },
+    invalid_citation: {
+        label: '引用校验未通过',
+        detail: '这次回答没有通过最小引用校验，已回退为相关原文检索结果。',
+    },
+    no_documents: {
+        label: '暂无直接原文',
+        detail: '当前未检索到可直接支撑回答的文库原文。',
+    },
+    answer_generation_empty: {
+        label: '未生成稳定回答',
+        detail: '这次没有形成稳定回答，建议换个问法或先查看相关原文。',
+    },
+    answer_generation_failed: {
+        label: '回答生成失败',
+        detail: '这次回答生成失败，已回退到更保守的展示方式。',
+    },
+    stream_interrupted: {
+        label: '回答中断',
+        detail: '回答生成过程中断，仅保留已生成片段供参考。',
+    },
+});
+
+const UNCERTAINTY_LEVELS = new Set(['low', 'medium', 'high']);
+
+function normalizeDisplayText(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeNumeric(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
+}
+
+function normalizeCitationId(value) {
+    const normalized = normalizeDisplayText(value).toUpperCase().replace(/\s+/g, '');
+    const match = /^S(\d+)$/.exec(normalized);
+    if (!match) return '';
+    return `S${Number.parseInt(match[1], 10)}`;
+}
+
+function normalizeCitationIdList(values, maxLength = 4) {
+    const items = Array.isArray(values)
+        ? values
+        : typeof values === 'string'
+            ? values.split(/[\s,，、|]+/)
+            : [];
+
+    const normalized = [];
+    const seen = new Set();
+
+    for (const value of items) {
+        const citationId = normalizeCitationId(value);
+        if (!citationId || seen.has(citationId)) continue;
+        seen.add(citationId);
+        normalized.push(citationId);
+        if (normalized.length >= maxLength) break;
+    }
+
+    return normalized;
+}
+
+function normalizeClaimMapEntry(entry, knownCitationIds) {
+    if (!entry || typeof entry !== 'object') return null;
+
+    const claim = normalizeDisplayText(entry.claim || entry.summary || entry.text);
+    const citationIds = normalizeCitationIdList(
+        entry.citationIds || entry.citation_ids || entry.citations || entry.sources,
+        4,
+    ).filter((citationId) => !knownCitationIds.size || knownCitationIds.has(citationId));
+
+    if (!claim || !citationIds.length) return null;
+    return { claim, citationIds };
+}
+
+function normalizeEvidenceItem(item, question, origin) {
+    if (!item || typeof item !== 'object') return null;
+
+    const previewQuery = normalizeDisplayText(item.preview_query || item.previewQuery || question);
+    const refIndex = normalizeNumeric(item.ref_index ?? item.refIndex);
+    const citationId = normalizeCitationId(item.citation_id || item.citationId || item.id || (refIndex ? `S${refIndex}` : ''));
+    const normalized = {
+        title: normalizeDisplayText(item.title),
+        doc_id: normalizeDisplayText(item.doc_id || item.docId),
+        score: normalizeNumeric(item.score),
+        category: normalizeDisplayText(item.category),
+        series_name: normalizeDisplayText(item.series_name || item.seriesName),
+        audio_series_id: normalizeDisplayText(item.audio_series_id || item.audioSeriesId),
+        audio_episode_num: normalizeNumeric(item.audio_episode_num ?? item.audioEpisodeNum),
+        snippet: normalizeDisplayText(item.snippet || item.quote),
+        preview_query: previewQuery,
+        ref_index: refIndex,
+        citation_id: citationId,
+        location: item.location && typeof item.location === 'object' ? item.location : null,
+        origin,
+    };
+
+    if (!normalized.title && !normalized.doc_id && !normalized.snippet) return null;
+    return normalized;
+}
+
+function normalizeEvidenceList(items, question, origin, maxLength = 3) {
+    if (!Array.isArray(items)) return [];
+
+    const highlightQuery = extractHighlightQuery(question);
+    const normalized = [];
+    const seen = new Set();
+
+    for (const item of items) {
+        const next = normalizeEvidenceItem(item, highlightQuery, origin);
+        if (!next) continue;
+
+        const key = `${next.citation_id || next.doc_id || next.title}|${next.snippet}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        normalized.push(next);
+
+        if (normalized.length >= maxLength) break;
+    }
+
+    return normalized;
+}
+
 export function normalizeAnswerMode(mode) {
-    if (mode === 'search_only' || mode === 'no_result') return mode;
+    if (mode === 'partial' || mode === 'search_only' || mode === 'no_result') return mode;
     return 'answer';
+}
+
+export function getDowngradeReasonPresentation(reason) {
+    const normalized = normalizeDisplayText(reason);
+    return normalized ? (DOWNGRADE_REASON_PRESENTATION[normalized] || null) : null;
+}
+
+export function normalizeUncertainty(uncertainty, mode = 'answer', downgradeReason = null) {
+    const normalizedMode = normalizeAnswerMode(mode);
+    const fallbackReason = normalizeDisplayText(downgradeReason);
+    const fallbackPresentation = getDowngradeReasonPresentation(fallbackReason);
+
+    if (!uncertainty || typeof uncertainty !== 'object') {
+        if (normalizedMode === 'answer' && !fallbackPresentation) return null;
+
+        const fallbackLevel = normalizedMode === 'partial' || normalizedMode === 'no_result'
+            ? 'high'
+            : normalizedMode === 'search_only'
+                ? 'medium'
+                : 'low';
+
+        return {
+            level: fallbackLevel,
+            message: fallbackPresentation?.detail || BOT_MODE_DETAILS[normalizedMode] || '',
+            retrievalConfidence: null,
+            citationCount: null,
+            claimCount: null,
+            reason: fallbackReason || null,
+        };
+    }
+
+    const reason = normalizeDisplayText(uncertainty.reason || fallbackReason) || null;
+    const reasonPresentation = getDowngradeReasonPresentation(reason);
+    return {
+        level: UNCERTAINTY_LEVELS.has(uncertainty.level) ? uncertainty.level : (normalizedMode === 'answer' ? 'low' : 'medium'),
+        message: normalizeDisplayText(uncertainty.message) || reasonPresentation?.detail || BOT_MODE_DETAILS[normalizedMode] || '',
+        retrievalConfidence: normalizeNumeric(uncertainty.retrievalConfidence),
+        citationCount: normalizeNumeric(uncertainty.citationCount),
+        claimCount: normalizeNumeric(uncertainty.claimCount),
+        reason,
+    };
 }
 
 export function formatConfidenceHint(confidence) {
@@ -30,17 +201,72 @@ export function formatConfidenceHint(confidence) {
     return `依据匹配约 ${Math.round(ratio * 100)}%`;
 }
 
-export function getAnswerModePresentation(mode, confidence) {
+export function getAnswerModePresentation(mode, confidence, options = {}) {
     const normalizedMode = normalizeAnswerMode(mode);
+    const uncertainty = normalizeUncertainty(options.uncertainty, normalizedMode, options.downgradeReason);
+    const downgrade = getDowngradeReasonPresentation(options.downgradeReason || uncertainty?.reason);
     const detail = normalizedMode === 'answer'
-        ? formatConfidenceHint(confidence) || '基于检索到的讲记原文整理'
-        : BOT_MODE_DETAILS[normalizedMode];
+        ? formatConfidenceHint(confidence) || (options.evidenceSource === 'citations' ? '已附回答依据' : '基于检索到的讲记原文整理')
+        : downgrade?.label || BOT_MODE_DETAILS[normalizedMode];
 
     return {
         mode: normalizedMode,
         label: BOT_MODE_LABELS[normalizedMode],
         detail,
+        uncertainty,
+        downgrade,
     };
+}
+
+export function normalizeEvidenceItems({ citations = [], sources = [], question = '' } = {}) {
+    const citationItems = normalizeEvidenceList(citations, question, 'citation');
+    if (citationItems.length) {
+        return {
+            items: citationItems,
+            source: 'citations',
+        };
+    }
+
+    return {
+        items: normalizeEvidenceList(sources, question, 'source'),
+        source: 'sources',
+    };
+}
+
+export function normalizeClaimMapItems({ claimMap = [], citations = [], maxLength = 4 } = {}) {
+    if (!Array.isArray(claimMap)) return [];
+
+    const knownCitationIds = new Set(
+        (Array.isArray(citations) ? citations : [])
+            .map((item) => {
+                if (typeof item === 'string') return normalizeCitationId(item);
+                return normalizeCitationId(
+                    item?.citation_id
+                    || item?.citationId
+                    || item?.id
+                    || (item?.ref_index ? `S${item.ref_index}` : '')
+                    || (item?.refIndex ? `S${item.refIndex}` : ''),
+                );
+            })
+            .filter(Boolean),
+    );
+
+    const normalized = [];
+    const seen = new Set();
+
+    for (const entry of claimMap) {
+        const next = normalizeClaimMapEntry(entry, knownCitationIds);
+        if (!next) continue;
+
+        const key = `${next.claim}|${next.citationIds.join(',')}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        normalized.push(next);
+
+        if (normalized.length >= maxLength) break;
+    }
+
+    return normalized;
 }
 
 export function mergeQuestionSuggestions(rewriteSuggestions = [], followUps = [], maxCount = 4) {
@@ -230,6 +456,11 @@ function inlineFormat(text) {
             return `<a href="${escapedHref}" class="ai-inline-link" target="_blank" rel="noopener noreferrer">${label}</a>`;
         }
         return `<a href="${escapedHref}" class="ai-inline-link">${label}</a>`;
+    });
+    s = s.replace(/\[(S\d+)\](?!\()/gi, (_match, rawId) => {
+        const citationId = normalizeCitationId(rawId);
+        if (!citationId) return _match;
+        return `<span class="ai-inline-citation" data-citation-id="${escapeHtml(citationId)}">${escapeHtml(citationId)}</span>`;
     });
     return s;
 }
