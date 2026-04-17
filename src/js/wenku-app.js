@@ -948,7 +948,16 @@ function wireReaderShare(data) {
     wkReader.querySelector('#readerShare')?.addEventListener('click', async () => {
         const bookName = data.series_name || '大安法师讲记';
         const chapterName = data.title || '';
+        const shareDocId = String(data.id || _readerState?.docId || '').trim();
         const selectedText = window.getSelection()?.toString().trim() || '';
+        const episodeLabel = data.episode_num ? `第${data.episode_num}讲` : '当前讲';
+        const shareSummary = selectedText
+            || (chapterName
+                ? `摘自《${bookName}》${episodeLabel}「${chapterName}」，开经释义，断疑生信。`
+                : `摘自《${bookName}》${episodeLabel}，开经释义，断疑生信。`);
+        const shareUrl = shareDocId
+            ? new URL(`/share/wenku/${encodeURIComponent(shareDocId)}`, window.location.origin).toString()
+            : window.location.href;
 
         try {
             const { showSharePanel } = await import('./share-panel.js');
@@ -956,8 +965,9 @@ function wireReaderShare(data) {
                 type: 'wenku',
                 title: bookName,
                 subtitle: chapterName,
-                quote: selectedText || '开经释义，断疑生信。',
-                url: window.location.href
+                quote: selectedText,
+                summary: shareSummary,
+                url: shareUrl
             });
         } catch (e) {
             console.error('加载分享面板失败', e);

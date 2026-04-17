@@ -1,4 +1,4 @@
-import { AI_CONFIG, GATEWAY_PROFILES, extractAIResponse, runAIWithLogging, timingSafeCompare, resolveAIModel } from './ai-utils.js';
+import { AI_CONFIG, GATEWAY_PROFILES, extractAIResponse, isEnvFlagEnabled, runAIWithLogging, timingSafeCompare, resolveAIModel } from './ai-utils.js';
 
 export async function handleTranscriptAvailability(db, seriesId, cors, json) {
   if (!seriesId || typeof seriesId !== 'string') {
@@ -329,6 +329,58 @@ export async function handleIncrementalTranscribe(env, request, cors, json) {
       ? 'Some episodes were not processed. Run again tomorrow to continue.'
       : undefined,
   }, cors, 200, 'no-store');
+}
+
+export async function handleTranscriptStatus(env, cors, json) {
+  const db = env.DB;
+  const enabled = isEnvFlagEnabled(env, 'ENABLE_AI_TRANSCRIPT_JOB');
+
+  try {
+    const counts = await db.prepare(
+      `SELECT status, COUNT(*) as cnt FROM episode_transcripts GROUP BY status`
+    ).all();
+
+    const doneStats = await db.prepare(
+      `SELECT COUNT(*) as total, SUM(duration) as total_s
+       FROM episode_transcripts WHERE status = 'done'`
+    ).first();
+
+    const recentLogs = await db.prepare(
+      `SELECT response_path, created_at
+       FROM ai_query_log
+       WHERE query = '__transcript_cron_log__'
+       ORDER BY created_at DESC
+       LIMIT 3`
+    ).all();
+
+    const recentFailures = await db.prepare(
+      `SELECT t.series_id, t.episode_num, t.error, t.updated_at,
+              s.title as series_title, e.title as episode_title
+       FROM episode_transcripts t
+       LEFT JOIN series s ON s.id = t.series_id
+       LEFT JOIN episodes e ON e.series_id = t.series_id AND e.episode_num = t.episode_num
+       WHERE t.status = 'failed'
+       ORDER BY t.updated_at DESC
+       LIMIT 5`
+    ).all();
+
+    return json({
+      enabled,
+      status_counts: counts.results,
+      done_stats: {
+        total: doneStats?.total || 0,
+        total_seconds: Math.round(doneStats?.total_s || 0),
+        total_hours: Math.round(((doneStats?.total_s || 0) / 3600) * 10) / 10,
+      },
+      recent_logs: (recentLogs.results || []).map(item => ({
+        time: item.created_at,
+        log: item.response_path,
+      })),
+      recent_failures: recentFailures.results || [],
+    }, cors, 200, 'no-store');
+  } catch (err) {
+    return json({ enabled, error: err.message }, cors, 500, 'no-store');
+  }
 }
 
 export async function handleGetChapters(env, seriesId, episodeNum, cors, json) {

@@ -15,6 +15,14 @@ const MAX_DOCS_PER_RUN = 3;       // 每次 Cron 最多处理几篇（每天1次
 const MAX_SEGMENTS_PER_RUN = 30;   // 每次 Cron 最多处理几个段落（~30×4.5s≈2分钟）
 const AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
+function isJobEnabled(env, envKey) {
+    const rawValue = env?.[envKey];
+    if (rawValue === undefined || rawValue === null) return true;
+    const normalized = String(rawValue).trim();
+    if (!normalized) return true;
+    return !/^(false|0|off|no)$/i.test(normalized);
+}
+
 // ============================================================
 // 文本处理
 // ============================================================
@@ -351,6 +359,11 @@ async function processDocument(doc, db, env, topics, log) {
 
 export default {
     async scheduled(event, env, ctx) {
+        if (!isJobEnabled(env, 'ENABLE_AI_BRAIN_JOB')) {
+            console.log('ENABLE_AI_BRAIN_JOB=false, skipping brain cron');
+            return;
+        }
+
         const db = env.DB;
         const logs = [];
         const log = (msg) => { logs.push(`[${new Date().toISOString()}] ${msg}`); };
@@ -455,6 +468,7 @@ export default {
     // HTTP 入口（手动触发 + 状态查询）
     async fetch(request, env) {
         const url = new URL(request.url);
+        const enabled = isJobEnabled(env, 'ENABLE_AI_BRAIN_JOB');
 
         // 简单鉴权
         const token = request.headers.get('X-Admin-Token') || url.searchParams.get('token');
@@ -479,6 +493,7 @@ export default {
             ).all();
 
             return Response.json({
+                enabled,
                 status_counts: counts.results,
                 totals: { qa: totals?.qa || 0, quotes: totals?.quotes || 0, concepts: totals?.concepts || 0 },
                 recent_cron_logs: (recentLogs.results || []).map(r => ({
@@ -490,12 +505,15 @@ export default {
 
         // POST /trigger — 手动触发一次学习（和 Cron 一样的逻辑）
         if (url.pathname === '/trigger' && request.method === 'POST') {
-            // 用 waitUntil 异步执行，立即返回
-            const ctrl = new AbortController();
-            const fakeEvent = { scheduledTime: Date.now() };
-            env.__ctx?.waitUntil?.(this.scheduled(fakeEvent, env, { waitUntil: () => { } }));
+            if (!enabled) {
+                return Response.json({
+                    success: false,
+                    enabled: false,
+                    error: 'Brain job is disabled by ENABLE_AI_BRAIN_JOB',
+                }, { status: 409 });
+            }
 
-            // 也同步执行一次（如果 waitUntil 不可用）
+            const fakeEvent = { scheduledTime: Date.now() };
             try {
                 await this.scheduled(fakeEvent, env, { waitUntil: () => { } });
                 return Response.json({ success: true, message: '学习任务已执行' });

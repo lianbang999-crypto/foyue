@@ -25,6 +25,8 @@ const MAX_CONVERSATIONS = 20;
 const LS_KEY = 'ai-page-history';       // 废弃的旧 key（迁移用）
 const LS_CONV_KEY = 'ai-conversations'; // 新 key
 const CHAR_WARN_RATIO = 0.85;
+const AI_SHARE_SUMMARY_MIN = 28;
+const AI_SHARE_SUMMARY_MAX = 84;
 const THEME_COLORS = {
     light: '#F7F5F0',
     dark: '#1A1614',
@@ -55,6 +57,51 @@ function ensureActiveConv() {
         activeConvId = conv.id;
     }
     return getActiveConv();
+}
+
+function normalizeAiShareSummaryText(value) {
+    return String(value || '')
+        .replace(/\r/g, '')
+        .replace(/\u00a0/g, ' ')
+        .replace(/\s*\n+\s*/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+}
+
+function buildAiShareSummary(value) {
+    const text = normalizeAiShareSummaryText(value);
+    if (!text) return '';
+    if (text.length <= AI_SHARE_SUMMARY_MAX) return text;
+
+    const sentences = text.match(/[^。！？!?；;.]+[。！？!?；;.]?/gu) || [];
+    let summary = '';
+
+    for (const sentence of sentences) {
+        const fragment = sentence.trim();
+        if (!fragment) continue;
+        if ((summary + fragment).length > AI_SHARE_SUMMARY_MAX) break;
+        summary += fragment;
+        if (summary.length >= AI_SHARE_SUMMARY_MIN) {
+            return summary;
+        }
+    }
+
+    const clipped = text.slice(0, AI_SHARE_SUMMARY_MAX - 1);
+    const breakpoints = ['。', '！', '？', '；', '.', '!', '?', ';', '，', '、', ',', ' '];
+    let cutoff = -1;
+
+    for (const mark of breakpoints) {
+        cutoff = Math.max(cutoff, clipped.lastIndexOf(mark));
+    }
+
+    const safeCutoff = cutoff >= AI_SHARE_SUMMARY_MIN ? cutoff : AI_SHARE_SUMMARY_MAX - 1;
+    const concise = clipped.slice(0, safeCutoff).replace(/[，。！？；、,.!?;:\s]+$/gu, '');
+    return concise ? `${concise}…` : `${text.slice(0, AI_SHARE_SUMMARY_MAX - 1)}…`;
+}
+
+function getAiShareSummaryFromMessage(msgEl) {
+    const answerText = msgEl?.querySelector('.ai-bot-summary')?.innerText || '';
+    return buildAiShareSummary(answerText);
 }
 
 /* --- 状态 --- */
@@ -296,6 +343,7 @@ function wireEvents() {
             const msgEl = actionBtn.closest('.ai-message');
             if (action === 'copy') {
                 const text = msgEl.querySelector('.ai-message-content')?.innerText || '';
+                const summary = getAiShareSummaryFromMessage(msgEl);
                 // 获取对应的问题标题
                 const questionEl = msgEl.previousElementSibling?.classList.contains('ai-message--user') ? msgEl.previousElementSibling : null;
                 const title = questionEl ? questionEl.innerText.trim() : 'AI 解答';
@@ -303,6 +351,7 @@ function wireEvents() {
                     type: 'ai',
                     title: title,
                     quote: text,
+                    summary: summary,
                     url: window.location.href
                 }));
             }

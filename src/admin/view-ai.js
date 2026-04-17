@@ -30,6 +30,119 @@ function fmtProgress(done, total) {
   return `${done}/${total} (${fmtPct(done, total)})`;
 }
 
+function fmtCount(n) {
+  if (n == null || Number.isNaN(Number(n))) return '--';
+  return Number(n).toLocaleString('zh-CN');
+}
+
+function normalizeStatusCounts(statusCounts) {
+  if (Array.isArray(statusCounts)) {
+    return statusCounts.map(row => ({
+      status: row?.status || row?.label || row?.name || 'unknown',
+      count: Number(row?.cnt ?? row?.count ?? row?.total ?? 0),
+    }));
+  }
+  if (statusCounts && typeof statusCounts === 'object') {
+    return Object.entries(statusCounts).map(([status, count]) => ({
+      status,
+      count: Number(count || 0),
+    }));
+  }
+  return [];
+}
+
+function getJobStateText(enabled) {
+  if (enabled === false) return '已暂停';
+  if (enabled === true) return '运行中';
+  return '状态未知';
+}
+
+function getJobStateBadgeClass(enabled) {
+  if (enabled === false) return 'adm-badge adm-badge-red';
+  if (enabled === true) return 'adm-badge adm-badge-green';
+  return 'adm-badge adm-badge-yellow';
+}
+
+function getStatusBadgeClass(status) {
+  const key = String(status || '').toLowerCase();
+  if (['done', 'completed', 'complete', 'learned', 'success'].includes(key)) return 'adm-badge adm-badge-green';
+  if (['failed', 'error'].includes(key)) return 'adm-badge adm-badge-red';
+  if (['processing', 'running', 'working', 'in_progress'].includes(key)) return 'adm-badge adm-badge-accent';
+  if (['pending', 'queued', 'waiting'].includes(key)) return 'adm-badge adm-badge-yellow';
+  return 'adm-badge';
+}
+
+function renderStatusCountBadges(statusCounts) {
+  const rows = normalizeStatusCounts(statusCounts);
+  if (!rows.length) return '<span class="adm-text-muted">暂无状态计数</span>';
+  return rows.map(row =>
+    `<span class="${getStatusBadgeClass(row.status)}">${esc(row.status)} ${fmtCount(row.count)}</span>`
+  ).join(' ');
+}
+
+function renderStatusMeta(items) {
+  const rows = (items || []).filter(item => item && item.value != null && item.value !== '');
+  if (!rows.length) return '<div class="adm-text-muted">暂无总量信息</div>';
+  return rows.map(item =>
+    `<div class="adm-text-muted" style="font-size:.82rem">${esc(item.label)}：${esc(String(item.value))}</div>`
+  ).join('');
+}
+
+function renderJobStatusBlock({ title, enabled, statusCounts, metaItems, error }) {
+  return `<div style="border:1px solid rgba(0,0,0,.06);border-radius:12px;padding:14px;min-width:0">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px">
+      <div class="adm-section-title" style="margin:0;font-size:1rem">${esc(title)}</div>
+      <span class="${getJobStateBadgeClass(enabled)}">${getJobStateText(enabled)}</span>
+    </div>
+    ${error ? `<div class="adm-text-muted" style="margin-bottom:10px">${esc(error)}</div>` : ''}
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">${renderStatusCountBadges(statusCounts)}</div>
+    <div style="display:grid;gap:4px">${renderStatusMeta(metaItems)}</div>
+  </div>`;
+}
+
+function getTranscriptStatusMeta(data) {
+  const doneStats = data?.done_stats || {};
+  return [
+    { label: '已完成转写', value: fmtCount(doneStats.total) },
+    { label: '累计音频时长', value: doneStats.total_hours != null ? `${doneStats.total_hours} 小时` : '--' },
+    { label: '最近运行日志', value: Array.isArray(data?.recent_logs) ? `${data.recent_logs.length} 条` : '--' },
+    { label: '最近失败', value: Array.isArray(data?.recent_failures) ? `${data.recent_failures.length} 条` : '--' },
+  ];
+}
+
+function getBrainStatusMeta(data) {
+  const totals = data?.totals || {};
+  return [
+    { label: '问答', value: fmtCount(totals.qa_pairs) },
+    { label: '金句', value: fmtCount(totals.key_quotes) },
+    { label: '概念', value: fmtCount(totals.concepts) },
+    { label: '主题分布', value: Array.isArray(data?.topic_distribution) ? `${data.topic_distribution.length} 项` : '--' },
+  ];
+}
+
+function getEmbeddingStatusCounts(data) {
+  if (data?.status_counts) return data.status_counts;
+  return [
+    { status: 'pending', count: data?.pending ?? 0 },
+    { status: 'completed', count: data?.completed ?? 0 },
+    { status: 'failed', count: data?.failed ?? 0 },
+  ];
+}
+
+function getEmbeddingStatusMeta(data) {
+  return [
+    { label: '总文档', value: fmtCount(data?.totalDocuments) },
+    { label: '已处理', value: fmtCount(data?.processed) },
+    { label: '剩余', value: fmtCount(data?.remaining) },
+    { label: '完成率', value: data?.completionRate != null ? `${data.completionRate}%` : '--' },
+  ];
+}
+
+function unwrapSettledData(result, fallbackError) {
+  if (result.status === 'fulfilled' && result.value) return result.value;
+  return { error: result.reason?.message || fallbackError };
+}
+
 const SCENARIO_LABELS = {
   embedding: '向量生成（构建）',
   searchEmbedding: '向量生成（搜索）',
@@ -177,12 +290,40 @@ async function renderStats(el, days = 7) {
 function renderOps(el) {
   el.innerHTML = '';
 
+  const taskState = {
+    transcript: null,
+    brain: null,
+    embedding: null,
+  };
+
+  const trackedStatusTexts = new Set([
+    '',
+    '读取任务状态...',
+    '状态未确认，暂不可执行',
+    '运行中，可执行',
+    '已暂停，暂不可执行',
+    '已暂停，后端拒绝执行',
+  ]);
+
+  const overviewCard = document.createElement('div');
+  overviewCard.className = 'adm-section';
+  overviewCard.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <div>
+        <div class="adm-section-title">后台任务状态</div>
+        <p class="adm-text-muted" style="margin:0">查看 Transcript、Brain、Embedding 三类任务的进度与是否已暂停</p>
+      </div>
+      <button class="adm-btn adm-btn-sm" id="refresh-ai-job-status">刷新状态</button>
+    </div>
+    <div id="ai-job-status-body" class="adm-loading" style="margin-top:12px">加载中...</div>`;
+  el.appendChild(overviewCard);
+
   const statusCard = document.createElement('div');
   statusCard.className = 'adm-section';
   statusCard.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
       <div>
-        <div class="adm-section-title">Embedding 构建状态</div>
+        <div class="adm-section-title">Embedding 构建详情</div>
         <p class="adm-text-muted" style="margin:0">查看当前已完成、失败和剩余待构建文档，便于安全续跑和全量重建</p>
+        <div class="adm-text-muted" id="embedding-status-note" style="margin-top:6px"></div>
       </div>
       <button class="adm-btn adm-btn-sm" id="refresh-embedding-status">刷新状态</button>
     </div>
@@ -194,6 +335,7 @@ function renderOps(el) {
       id: 'embedding', title: 'Embedding 向量构建',
       desc: '对文档生成向量，存入 Vectorize 索引；支持续跑、失败重试和全量重建',
       endpoint: '/embeddings/build', method: 'post',
+      statusKey: 'embedding',
       params: [
         { key: 'limit', label: '每批数量', type: 'number', value: 3, min: 1, max: 10 },
         { key: 'offset', label: '偏移量', type: 'number', value: 0, min: 0 },
@@ -206,6 +348,7 @@ function renderOps(el) {
       id: 'transcribe', title: '语音转写 (Whisper)',
       desc: '对无文本的音频单集进行增量 Whisper 转写',
       endpoint: '/transcript/transcribe', method: 'post',
+      statusKey: 'transcript',
       params: [
         { key: 'limit', label: '每批数量', type: 'number', value: 3, min: 1, max: 10 },
       ],
@@ -221,6 +364,148 @@ function renderOps(el) {
       endpoint: '/cleanup', method: 'post', params: [],
     },
   ];
+
+  function syncActionButtons() {
+    ops.forEach(op => {
+      if (!op.statusKey) return;
+      const btn = document.getElementById('run-' + op.id);
+      const statusEl = document.getElementById('status-' + op.id);
+      const state = taskState[op.statusKey];
+      if (!btn || !statusEl) return;
+
+      if (!state) {
+        btn.disabled = true;
+        statusEl.textContent = '读取任务状态...';
+        statusEl.dataset.mode = 'status';
+        return;
+      }
+
+      if (state.enabled === false) {
+        btn.disabled = true;
+        statusEl.textContent = '已暂停，暂不可执行';
+        statusEl.dataset.mode = 'status';
+        return;
+      }
+
+      if (state.enabled !== true) {
+        btn.disabled = true;
+        statusEl.textContent = '状态未确认，暂不可执行';
+        statusEl.dataset.mode = 'status';
+        return;
+      }
+
+      btn.disabled = false;
+      if (statusEl.dataset.mode !== 'result' || trackedStatusTexts.has(statusEl.textContent)) {
+        statusEl.textContent = '运行中，可执行';
+        statusEl.dataset.mode = 'status';
+      }
+    });
+  }
+
+  function renderOverview(transcriptData, brainData, embeddingData) {
+    const body = document.getElementById('ai-job-status-body');
+    body.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">
+      ${renderJobStatusBlock({
+      title: 'Transcript',
+      enabled: transcriptData?.enabled,
+      statusCounts: transcriptData?.status_counts,
+      metaItems: getTranscriptStatusMeta(transcriptData),
+      error: transcriptData?.error,
+    })}
+      ${renderJobStatusBlock({
+      title: 'Brain',
+      enabled: brainData?.enabled,
+      statusCounts: brainData?.status_counts,
+      metaItems: getBrainStatusMeta(brainData),
+      error: brainData?.error,
+    })}
+      ${renderJobStatusBlock({
+      title: 'Embedding',
+      enabled: embeddingData?.enabled,
+      statusCounts: getEmbeddingStatusCounts(embeddingData),
+      metaItems: getEmbeddingStatusMeta(embeddingData),
+      error: embeddingData?.error,
+    })}
+    </div>`;
+  }
+
+  function renderEmbeddingDetail(data) {
+    const body = document.getElementById('embedding-status-body');
+    const noteEl = document.getElementById('embedding-status-note');
+    noteEl.textContent = data?.enabled === false
+      ? '任务已暂停，当前仅展示进度快照，手动构建按钮已禁用。'
+      : data?.enabled === true
+        ? '任务运行中，可结合下方按钮继续增量构建或失败重试。'
+        : '状态暂未确认，手动构建按钮保持禁用。';
+
+    const hasEmbeddingPayload = data && (
+      data.success === true ||
+      data.totalDocuments != null ||
+      Array.isArray(data.latestCompleted) ||
+      Array.isArray(data.latestFailed)
+    );
+
+    if (!hasEmbeddingPayload || data.success === false) {
+      body.innerHTML = `<div class="adm-empty">${esc(data?.error || '加载失败')}</div>`;
+      return;
+    }
+
+    const latestCompleted = data.latestCompleted || [];
+    const latestFailed = data.latestFailed || [];
+    body.innerHTML = `<div class="adm-metrics" style="margin-bottom:16px">
+          <div class="adm-metric"><div class="adm-metric-label">任务状态</div><div class="adm-metric-value">${getJobStateText(data.enabled)}</div></div>
+          <div class="adm-metric"><div class="adm-metric-label">总文档</div><div class="adm-metric-value">${fmtCount(data.totalDocuments)}</div></div>
+          <div class="adm-metric"><div class="adm-metric-label">已完成</div><div class="adm-metric-value">${fmtProgress(data.completed, data.totalDocuments)}</div></div>
+          <div class="adm-metric"><div class="adm-metric-label">失败</div><div class="adm-metric-value">${fmtCount(data.failed)}</div></div>
+          <div class="adm-metric"><div class="adm-metric-label">剩余</div><div class="adm-metric-value">${fmtCount(data.remaining)}</div></div>
+        </div>
+        <div class="adm-table-wrap" style="margin-bottom:16px"><table class="adm-table">
+          <thead><tr><th colspan="4">最近完成</th></tr><tr><th>文档</th><th>系列</th><th>Chunks</th><th>完成时间</th></tr></thead>
+          <tbody>${latestCompleted.length ? latestCompleted.map(row => `<tr class="no-click"><td>${esc(row.title || row.document_id)}</td><td>${esc(row.series_name || '--')}</td><td>${fmtCount(row.chunks_count || 0)}</td><td>${esc(row.completed_at || '--')}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center">暂无完成记录</td></tr>'}</tbody>
+        </table></div>
+        <div class="adm-table-wrap"><table class="adm-table">
+          <thead><tr><th colspan="4">最近失败</th></tr><tr><th>文档</th><th>系列</th><th>失败时间</th><th>错误</th></tr></thead>
+          <tbody>${latestFailed.length ? latestFailed.map(row => `<tr class="no-click"><td>${esc(row.title || row.document_id)}</td><td>${esc(row.series_name || '--')}</td><td>${esc(row.created_at || '--')}</td><td>${esc(row.error || '--')}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center">暂无失败记录</td></tr>'}</tbody>
+        </table></div>`;
+  }
+
+  async function loadOpsStatus() {
+    const overviewBody = document.getElementById('ai-job-status-body');
+    const embeddingBody = document.getElementById('embedding-status-body');
+    const refreshOverviewBtn = document.getElementById('refresh-ai-job-status');
+    const refreshEmbeddingBtn = document.getElementById('refresh-embedding-status');
+
+    taskState.transcript = null;
+    taskState.brain = null;
+    taskState.embedding = null;
+    syncActionButtons();
+
+    refreshOverviewBtn.disabled = true;
+    refreshEmbeddingBtn.disabled = true;
+    overviewBody.innerHTML = '<div class="adm-loading">加载中...</div>';
+    embeddingBody.innerHTML = '<div class="adm-loading">加载中...</div>';
+
+    const [transcriptResult, brainResult, embeddingResult] = await Promise.allSettled([
+      api.get('/transcript/status'),
+      api.get('/brain/status'),
+      api.get('/embeddings/status'),
+    ]);
+
+    const transcriptData = unwrapSettledData(transcriptResult, 'Transcript 状态加载失败');
+    const brainData = unwrapSettledData(brainResult, 'Brain 状态加载失败');
+    const embeddingData = unwrapSettledData(embeddingResult, 'Embedding 状态加载失败');
+
+    taskState.transcript = transcriptData;
+    taskState.brain = brainData;
+    taskState.embedding = embeddingData;
+
+    renderOverview(transcriptData, brainData, embeddingData);
+    renderEmbeddingDetail(embeddingData);
+    syncActionButtons();
+
+    refreshOverviewBtn.disabled = false;
+    refreshEmbeddingBtn.disabled = false;
+  }
 
   ops.forEach(op => {
     const card = document.createElement('div');
@@ -246,15 +531,24 @@ function renderOps(el) {
       const btn = document.getElementById('run-' + op.id);
       const statusEl = document.getElementById('status-' + op.id);
       const resultEl = document.getElementById('result-' + op.id);
+
+      if (op.statusKey && taskState[op.statusKey]?.enabled === false) {
+        statusEl.textContent = '已暂停，暂不可执行';
+        statusEl.dataset.mode = 'status';
+        resultEl.textContent = `${op.title} 当前已暂停，请先在后端重新启用任务后再执行。`;
+        resultEl.style.display = 'block';
+        return;
+      }
+
       btn.disabled = true;
       statusEl.textContent = '执行中...';
+      statusEl.dataset.mode = 'result';
       resultEl.style.display = 'none';
 
       try {
         let result;
         if (op.method === 'post') {
           if (op.queryMode) {
-            // embedding build uses query params on POST
             const inputs = document.querySelectorAll(`#params-${op.id} input`);
             const qs = Array.from(inputs).flatMap(i => {
               if (i.type === 'checkbox') return i.checked ? [`${i.dataset.key}=true`] : [];
@@ -271,57 +565,49 @@ function renderOps(el) {
             result = await api.post(op.endpoint, {});
           }
         }
-        statusEl.textContent = result?.success ? '完成' : '失败';
+
+        if (!result) return;
+
+        if (result.enabled === false) {
+          statusEl.textContent = '已暂停，后端拒绝执行';
+          statusEl.dataset.mode = 'status';
+          resultEl.textContent = `${op.title} 当前已暂停，后端已拒绝执行。\n${result.error || '请先启用任务后再试。'}`;
+          resultEl.style.display = 'block';
+          if (op.statusKey && taskState[op.statusKey]) {
+            taskState[op.statusKey] = { ...taskState[op.statusKey], enabled: false, error: result.error };
+          }
+          syncActionButtons();
+          await loadOpsStatus();
+          return;
+        }
+
+        const ok = result.success !== false && !result.error;
+        statusEl.textContent = ok ? '完成' : '失败';
         resultEl.textContent = JSON.stringify(result, null, 2);
         resultEl.style.display = 'block';
+
+        if (op.statusKey) {
+          await loadOpsStatus();
+        }
       } catch (err) {
         statusEl.textContent = '出错';
+        statusEl.dataset.mode = 'result';
         resultEl.textContent = err.message;
         resultEl.style.display = 'block';
       } finally {
-        btn.disabled = false;
+        if (!op.statusKey || taskState[op.statusKey]?.enabled !== false) {
+          btn.disabled = false;
+        }
+        syncActionButtons();
       }
     });
   });
 
-  loadEmbeddingStatus();
+  syncActionButtons();
+  loadOpsStatus();
 
-  async function loadEmbeddingStatus() {
-    const body = document.getElementById('embedding-status-body');
-    const refreshBtn = document.getElementById('refresh-embedding-status');
-    refreshBtn.disabled = true;
-    body.innerHTML = '<div class="adm-loading">加载中...</div>';
-    try {
-      const data = await api.get('/embeddings/status');
-      if (!data?.success) {
-        body.innerHTML = `<div class="adm-empty">${esc(data?.error || '加载失败')}</div>`;
-        return;
-      }
-
-      const latestCompleted = data.latestCompleted || [];
-      const latestFailed = data.latestFailed || [];
-      body.innerHTML = `<div class="adm-metrics" style="margin-bottom:16px">
-          <div class="adm-metric"><div class="adm-metric-label">总文档</div><div class="adm-metric-value">${data.totalDocuments}</div></div>
-          <div class="adm-metric"><div class="adm-metric-label">已完成</div><div class="adm-metric-value">${fmtProgress(data.completed, data.totalDocuments)}</div></div>
-          <div class="adm-metric"><div class="adm-metric-label">失败</div><div class="adm-metric-value">${data.failed}</div></div>
-          <div class="adm-metric"><div class="adm-metric-label">剩余</div><div class="adm-metric-value">${data.remaining}</div></div>
-        </div>
-        <div class="adm-table-wrap" style="margin-bottom:16px"><table class="adm-table">
-          <thead><tr><th colspan="4">最近完成</th></tr><tr><th>文档</th><th>系列</th><th>Chunks</th><th>完成时间</th></tr></thead>
-          <tbody>${latestCompleted.length ? latestCompleted.map(row => `<tr class="no-click"><td>${esc(row.title || row.document_id)}</td><td>${esc(row.series_name || '--')}</td><td>${row.chunks_count || 0}</td><td>${esc(row.completed_at || '--')}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center">暂无完成记录</td></tr>'}</tbody>
-        </table></div>
-        <div class="adm-table-wrap"><table class="adm-table">
-          <thead><tr><th colspan="4">最近失败</th></tr><tr><th>文档</th><th>系列</th><th>失败时间</th><th>错误</th></tr></thead>
-          <tbody>${latestFailed.length ? latestFailed.map(row => `<tr class="no-click"><td>${esc(row.title || row.document_id)}</td><td>${esc(row.series_name || '--')}</td><td>${esc(row.created_at || '--')}</td><td>${esc(row.error || '--')}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center">暂无失败记录</td></tr>'}</tbody>
-        </table></div>`;
-    } catch (err) {
-      body.innerHTML = `<div class="adm-empty">${esc(err.message)}</div>`;
-    } finally {
-      refreshBtn.disabled = false;
-    }
-  }
-
-  document.getElementById('refresh-embedding-status').addEventListener('click', loadEmbeddingStatus);
+  document.getElementById('refresh-ai-job-status').addEventListener('click', loadOpsStatus);
+  document.getElementById('refresh-embedding-status').addEventListener('click', loadOpsStatus);
 }
 
 /* ── Tab 3: 模型诊断 ── */

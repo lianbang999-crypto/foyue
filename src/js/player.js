@@ -1318,18 +1318,64 @@ export function cycleLoop() {
   saveState();
 }
 
+function normalizeShareSnippet(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function trimShareSnippet(value, maxLength) {
+  const text = normalizeShareSnippet(value);
+  if (!text) return '';
+  if (text.length <= maxLength) return text.replace(/[，。；：、,.!?！？\s]+$/u, '');
+  return `${text.slice(0, maxLength - 1).replace(/[，。；：、,.!?！？\s]+$/u, '')}…`;
+}
+
+function getShareEpisodeLabel(ep) {
+  const rawValue = ep?.episodeNum ?? ep?.episode_num ?? ep?.id;
+  const episodeNum = Number(rawValue);
+  return Number.isFinite(episodeNum) && episodeNum > 0 ? `第${episodeNum}讲` : '';
+}
+
+function buildTrackShareSummary(ep, series) {
+  const speaker = normalizeShareSnippet(series?.speaker);
+  const episodeLabel = getShareEpisodeLabel(ep);
+  const episodeTitle = normalizeShareSnippet(ep?.title || ep?.fileName);
+  const intro = trimShareSnippet(series?.intro, 28);
+  const episodePart = episodeLabel
+    ? `${episodeLabel}${episodeTitle ? `「${episodeTitle}」` : ''}`
+    : (episodeTitle ? `「${episodeTitle}」` : '');
+  const lead = [speaker ? `${speaker}主讲` : '', episodePart].filter(Boolean).join('，');
+
+  if (intro) return `${lead || '本期法音'}，${intro}`;
+  return `${lead || '本期法音'}，适合静心片刻时聆听。`;
+}
+
+function buildSeriesShareSummary(series, unit) {
+  const speaker = normalizeShareSnippet(series?.speaker);
+  const episodeCount = Number(series?.totalEpisodes || series?.episodes?.length || 0);
+  const intro = trimShareSnippet(series?.intro, 34);
+  const lead = [
+    speaker ? `${speaker}主讲` : '',
+    episodeCount > 0 ? `共${episodeCount}${unit}` : '',
+  ].filter(Boolean).join('，');
+
+  if (intro) return lead ? `${lead}，${intro}` : intro;
+  return lead ? `${lead}，适合按次第连续收听。` : '适合按次第连续收听的净土法音系列。';
+}
+
 /* ===== Share ===== */
 export function shareTrack(ep, series) {
   const title = '\u300A' + (series.title || '') + '\u300B' + (ep.title || ep.fileName);
   const url = window.location.origin + '/share/' + encodeURIComponent(series.id) + '/' + ep.id;
+  const summary = buildTrackShareSummary(ep, series);
   import('./share-panel.js').then(mod => {
     mod.showSharePanel({
       type: 'track',
       title: series.title || '',
       subtitle: ep.title || ep.fileName,
+      summary,
       url,
     });
-  }).catch(() => shareContent(title, url));
+  }).catch(() => shareContent(title, url, summary));
 }
 
 export function shareSeries(series) {
@@ -1337,14 +1383,16 @@ export function shareSeries(series) {
   const unit = t('episodes') || '\u96C6';
   const title = '\u300A' + (series.title || '') + '\u300B' + (epCount ? '\u5171' + epCount + unit : '');
   const url = window.location.origin + '/share/' + encodeURIComponent(series.id);
+  const summary = buildSeriesShareSummary(series, unit);
   import('./share-panel.js').then(mod => {
     mod.showSharePanel({
       type: 'series',
       title: series.title || '',
       subtitle: epCount ? '\u5171' + epCount + unit : (series.speaker || ''),
+      summary,
       url,
     });
-  }).catch(() => shareContent(title, url));
+  }).catch(() => shareContent(title, url, summary));
 }
 
 /* ===== Speed Control ===== */

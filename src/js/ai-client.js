@@ -84,7 +84,54 @@ export async function searchQuotes(question, options = {}) {
 export function askQuestionStream(question, options = {}, callbacks = {}) {
   const { onToken, onDone, onError } = callbacks;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT);
+  let didTimeout = false;
+  let completed = false;
+  const timer = setTimeout(() => {
+    didTimeout = true;
+    controller.abort();
+  }, AI_TIMEOUT);
+
+  function finishWithDone(payload) {
+    if (completed) return;
+    completed = true;
+    onDone?.(payload);
+  }
+
+  async function handleJsonResponse(res) {
+    let parsed;
+    try {
+      parsed = await res.json();
+    } catch {
+      throw new Error('响应解析失败');
+    }
+
+    if (parsed?.error) throw new Error(parsed.error);
+    finishWithDone(parsed);
+  }
+
+  function handleSsePayload(payload, eventType) {
+    if (!payload || payload === '[DONE]') return false;
+
+    let parsed;
+    try {
+      parsed = JSON.parse(payload);
+    } catch {
+      return false;
+    }
+
+    if (parsed?.error) throw new Error(parsed.error);
+
+    if (eventType === 'done') {
+      finishWithDone(parsed);
+      return true;
+    }
+
+    if (parsed.token) {
+      onToken?.(parsed.token);
+    }
+
+    return false;
+  }
 
   (async () => {
     try {
@@ -106,45 +153,81 @@ export function askQuestionStream(question, options = {}, callbacks = {}) {
         throw new Error(errMsg);
       }
 
+      const contentType = String(res.headers.get('content-type') || '').toLowerCase();
+      if (contentType.includes('application/json')) {
+        await handleJsonResponse(res);
+        return;
+      }
+
+      if (!res.body) {
+        throw new Error('响应流不可用');
+      }
+
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buf = '';
       let eventType = 'message';
 
+      const processLines = (lines) => {
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) {
+            eventType = 'message';
+            continue;
+          }
+          if (trimmed.startsWith('event:')) {
+            eventType = trimmed.slice(6).trim();
+            continue;
+          }
+          if (trimmed.startsWith('data:')) {
+            const payload = trimmed.slice(5).trim();
+            const isDone = handleSsePayload(payload, eventType);
+            eventType = 'message';
+            if (isDone) return true;
+          }
+        }
+        return false;
+      };
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buf += decoder.decode(value, { stream: true });
-        const lines = buf.split('\n');
+        const lines = buf.split(/\r?\n/);
         buf = lines.pop() ?? '';
 
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) { eventType = 'message'; continue; }
-          if (trimmed.startsWith('event:')) {
-            eventType = trimmed.slice(6).trim();
-          } else if (trimmed.startsWith('data:')) {
-            const payload = trimmed.slice(5).trim();
-            if (!payload || payload === '[DONE]') continue;
-            try {
-              const parsed = JSON.parse(payload);
-              if (eventType === 'done') {
-                onDone?.(parsed);
-              } else if (parsed.error) {
-                onError?.(new Error(parsed.error));
-              } else if (parsed.token) {
-                onToken?.(parsed.token);
-              }
-            } catch { }
-            eventType = 'message';
+        if (processLines(lines)) {
+          try {
+            await reader.cancel();
+          } catch {
+            // 忽略取消 reader 的失败，onDone 已经发出
           }
+          return;
         }
       }
+
+      buf += decoder.decode();
+      if (buf) {
+        if (processLines(buf.split(/\r?\n/))) {
+          try {
+            await reader.cancel();
+          } catch {
+            // 忽略取消 reader 的失败，onDone 已经发出
+          }
+          return;
+        }
+      }
+
+      if (!completed) {
+        throw new Error('响应未正常结束');
+      }
     } catch (err) {
-      if (err.name === 'AbortError') {
-        onError?.(new Error(controller.signal.reason === 'timeout' ? '请求超时，请稍后再试' : '请求已取消'));
-      } else {
-        onError?.(err);
+      if (!completed) {
+        if (err.name === 'AbortError') {
+          onError?.(new Error(didTimeout ? '请求超时，请稍后再试' : '请求已取消'));
+        } else {
+          onError?.(err);
+        }
       }
     } finally {
       clearTimeout(timer);

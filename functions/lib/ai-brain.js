@@ -3,7 +3,7 @@
  * 后台学习文库讲记，提取结构化知识存入 D1
  */
 
-import { resolveAIModel } from './ai-utils.js';
+import { isEnvFlagEnabled, resolveAIModel } from './ai-utils.js';
 
 // 知识提取的分段参数
 const SEGMENT_MAX_LEN = 2000;  // 每段最大字数（小段 = LLM 更快完成）
@@ -381,6 +381,7 @@ export async function handleBrainLearn(env, request, cors, json) {
  */
 export async function handleBrainStatus(env, cors, json) {
     const db = env.DB;
+    const enabled = isEnvFlagEnabled(env, 'ENABLE_AI_BRAIN_JOB');
 
     const statusCounts = await db.prepare(
         `SELECT status, COUNT(*) as cnt FROM ai_learning_state GROUP BY status`
@@ -408,6 +409,7 @@ export async function handleBrainStatus(env, cors, json) {
     ).all();
 
     return json({
+        enabled,
         status_counts: statusCounts.results,
         totals: {
             qa_pairs: totals?.total_qa || 0,

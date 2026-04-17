@@ -13,6 +13,14 @@ const MAX_EPISODES_PER_RUN = 50;         // 每次最多处理几集
 const MAX_AUDIO_SECONDS_PER_RUN = 3600;  // 每次最多处理 60 分钟音频（Groq 日额度 14400sq 日额度 14400s）
 const GROQ_MIN_INTERVAL = 3200;          // 20 RPM → 每次间隔 3.2 秒
 
+function isJobEnabled(env, envKey) {
+    const rawValue = env?.[envKey];
+    if (rawValue === undefined || rawValue === null) return true;
+    const normalized = String(rawValue).trim();
+    if (!normalized) return true;
+    return !/^(false|0|off|no)$/i.test(normalized);
+}
+
 // ============================================================
 // 工具函数
 // ============================================================
@@ -195,6 +203,11 @@ async function processEpisode(ep, db, apiKey, log) {
 
 export default {
     async scheduled(event, env, ctx) {
+        if (!isJobEnabled(env, 'ENABLE_AI_TRANSCRIPT_JOB')) {
+            console.log('ENABLE_AI_TRANSCRIPT_JOB=false, skipping transcript cron');
+            return;
+        }
+
         const db = env.DB;
         const apiKey = env.GROQ_API_KEY;
         if (!apiKey) { console.log('GROQ_API_KEY not set, skipping'); return; }
@@ -252,15 +265,7 @@ export default {
                WHEN 'fohao' THEN 1
                WHEN 'jingdiandusong' THEN 2
                ELSE 3
-            
-           ORDER BY
-             CASE t.status WHEN 'processing' THEN 0 ELSE 1 END,
-             CASE s.category_id
-               WHEN 'youshengshu' THEN 0
-               WHEN 'fohao' THEN 1
-               WHEN 'jingdiandusong' THEN 2
-               ELSE 3
-             END,
+                         END,
              COALESCE(e.duration, 999999) ASC
            LIMIT 1`
                 ).first();
@@ -305,6 +310,7 @@ export default {
     async fetch(request, env) {
         const url = new URL(request.url);
         const token = request.headers.get('X-Admin-Token') || url.searchParams.get('token');
+        const enabled = isJobEnabled(env, 'ENABLE_AI_TRANSCRIPT_JOB');
 
         if (token !== env.ADMIN_TOKEN) {
             return new Response('Unauthorized', { status: 401 });
@@ -326,6 +332,7 @@ export default {
             ).all();
 
             return Response.json({
+                enabled,
                 status_counts: counts.results,
                 done_stats: {
                     total: totalDuration?.total || 0,
@@ -341,6 +348,13 @@ export default {
 
         // POST /trigger — 手动触发
         if (url.pathname === '/trigger' && request.method === 'POST') {
+            if (!enabled) {
+                return Response.json({
+                    success: false,
+                    enabled: false,
+                    error: 'Transcript job is disabled by ENABLE_AI_TRANSCRIPT_JOB',
+                }, { status: 409 });
+            }
             try {
                 await this.scheduled({ scheduledTime: Date.now() }, env, { waitUntil: () => { } });
                 return Response.json({ success: true, message: '转录任务已执行' });

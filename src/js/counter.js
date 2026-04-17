@@ -1547,14 +1547,19 @@ export function openHistory(counterView, data, hooks = {}) {
 
   hist.querySelector('#chToolShare')?.addEventListener('click', () => {
     const ps = getPracticeStats(data);
+    const practiceName = getPracticeDisplayName(data);
+    const dailyCount = ps.daily || 0;
+    const totalCount = ps.total || 0;
+    const summary = `${practiceName}今日持念 ${formatCount(dailyCount)} 声，累计 ${formatCount(totalCount)} 声。`;
     import('./share-panel.js').then(mod => {
       mod.showSharePanel({
         type: 'practice',
-        title: getPracticeDisplayName(data),
+        title: practiceName,
         url: getNianfoShareUrl(),
-        count: ps.daily || 0,
-        totalCount: ps.total || 0,
-        practice: getPracticeDisplayName(data),
+        count: dailyCount,
+        totalCount: totalCount,
+        practice: practiceName,
+        summary,
       });
     });
   });

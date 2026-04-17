@@ -1,7 +1,10 @@
 import {
   AI_CONFIG,
   GATEWAY_PROFILES,
+  buildRAGMessages,
+  consumeOpenAICompatibleStream,
   generateEmbeddings,
+  getGroqConfig,
   semanticSearch,
   retrieveDocuments,
   rerankResults,
@@ -14,6 +17,7 @@ import {
   extractAIResponse,
   runAIWithLogging,
   resolveAIModel,
+  streamExternalLLM,
 } from './ai-utils.js';
 import {
   AI_NO_RESULT_ANSWER,
@@ -829,6 +833,92 @@ export async function handleAiAsk(env, request, cors, ctx, json) {
   }), cors, 200, 'no-store');
 }
 
+async function buildAskStreamFallbackPayload(env, askInput, docs, matches, keywords, references, retrieval, ctx) {
+  try {
+    const result = await ragAnswer(env, askInput.question, docs, {
+      history: askInput.history,
+      vectorMatches: matches,
+      ctx,
+    });
+
+    const answer = result?.response?.trim();
+    if (answer) {
+      return buildVerifiedAiAnswerPayload(answer, askInput.question, {
+        references,
+        keywords,
+        docs,
+        matches,
+        retrieval,
+      });
+    }
+  } catch (err) {
+    console.error('Ask stream fallback answer failed:', err.message);
+  }
+
+  return buildSearchOnlyPayload(askInput.question, {
+    matches,
+    docs,
+    keywords,
+    confidence: retrieval.confidence,
+  });
+}
+
+function buildPartialStreamPayload(answer, question, options = {}) {
+  const {
+    matches = [],
+    docs = [],
+    keywords = [],
+    retrieval = evaluateRetrievalEvidence(matches, docs),
+  } = options;
+
+  const normalized = normalizeAiAnswerContract(answer, question, { docs });
+  const partialAnswer = String(normalized.answer || answer || '').trim();
+  if (!partialAnswer) {
+    return buildSearchOnlyPayload(question, {
+      matches,
+      docs,
+      keywords,
+      confidence: retrieval.confidence,
+    });
+  }
+
+  return buildAiAnswerPayload(partialAnswer, question, {
+    mode: AI_RESPONSE_MODE.SEARCH_ONLY,
+    sources: buildSearchSourceList(matches, docs, keywords),
+    docs,
+    confidence: Math.min(
+      Math.max(roundConfidence(retrieval.confidence), 0.55),
+      AI_RESPONSE_THRESHOLDS.answerConfidence - 0.01,
+    ),
+    rewriteSuggestions: resolveRewriteSuggestions(question, keywords, docs),
+  });
+}
+
+function buildAskStreamDoneResponse(payload, cors) {
+  const encoder = new TextEncoder();
+  const sseStream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(': retrieving\n\n'));
+
+      for (const token of splitAnswerIntoChunks(payload?.answer)) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token })}\n\n`));
+      }
+
+      controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify(payload)}\n\n`));
+      controller.close();
+    },
+  });
+
+  return new Response(sseStream, {
+    headers: {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-store',
+      Connection: 'keep-alive',
+      ...cors,
+    },
+  });
+}
+
 export async function handleAiAskStream(env, request, cors, ctx, json) {
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
   const limit = await checkRateLimit(env, ip, 'ai_ask');
@@ -848,39 +938,121 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
   const { matches, docs } = await loadAiDocs(env, askInput.question, askInput.seriesId, askInput.episodeNum, ctx);
   const retrieval = evaluateRetrievalEvidence(matches, docs);
   if (!docs.length) {
-    return json(buildNoResultPayload(askInput.question, { keywords }), cors, 200, 'no-store');
+    return buildAskStreamDoneResponse(buildNoResultPayload(askInput.question, { keywords }), cors);
   }
 
   if (retrieval.mode !== AI_RESPONSE_MODE.ANSWER || !hasAnswerGenerationCapability(env)) {
-    return json(buildSearchOnlyPayload(askInput.question, {
+    return buildAskStreamDoneResponse(buildSearchOnlyPayload(askInput.question, {
       matches,
       docs,
       keywords,
       confidence: retrieval.confidence,
-    }), cors, 200, 'no-store');
+    }), cors);
   }
 
   const { references } = buildRAGContext(docs, { vectorMatches: matches });
+  const messages = buildRAGMessages(askInput.question, docs, {
+    history: askInput.history,
+    vectorMatches: matches,
+  });
+  const streamConfig = env?.EXTERNAL_LLM_KEY
+    ? null
+    : (env?.GROQ_API_KEY ? getGroqConfig(env) : null);
+  const hasTrueStreamProvider = !!(env?.EXTERNAL_LLM_KEY || env?.GROQ_API_KEY);
   const encoder = new TextEncoder();
 
   const sseStream = new ReadableStream({
     async start(controller) {
       controller.enqueue(encoder.encode(': retrieving\n\n'));
 
+      let emittedChunks = 0;
+      let streamedAnswer = '';
+      const emitToken = (token) => {
+        const value = String(token || '');
+        if (!value) return;
+        streamedAnswer += value;
+        emittedChunks += 1;
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: value })}\n\n`));
+      };
+
       let finalPayload;
       try {
-        const result = await ragAnswer(env, askInput.question, docs, {
-          history: askInput.history,
-          vectorMatches: matches,
-          ctx,
-        });
-        const answer = result?.response?.trim();
-        finalPayload = answer
-          ? buildVerifiedAiAnswerPayload(answer, askInput.question, {
-            references,
-            keywords,
+        if (hasTrueStreamProvider) {
+          try {
+            const llmStream = await streamExternalLLM(env, messages, {
+              maxTokens: 500,
+              temperature: 0.2,
+              ...(streamConfig ? { config: streamConfig } : {}),
+            });
+
+            await consumeOpenAICompatibleStream(llmStream, {
+              onToken(token) {
+                emitToken(token);
+              },
+            });
+
+            if (streamedAnswer.trim()) {
+              finalPayload = buildVerifiedAiAnswerPayload(streamedAnswer, askInput.question, {
+                references,
+                keywords,
+                docs,
+                matches,
+                retrieval,
+              });
+            } else {
+              finalPayload = await buildAskStreamFallbackPayload(
+                env,
+                askInput,
+                docs,
+                matches,
+                keywords,
+                references,
+                retrieval,
+                ctx,
+              );
+            }
+          } catch (err) {
+            console.error('Ask stream external streaming failed:', err.message);
+
+            if (!emittedChunks) {
+              finalPayload = await buildAskStreamFallbackPayload(
+                env,
+                askInput,
+                docs,
+                matches,
+                keywords,
+                references,
+                retrieval,
+                ctx,
+              );
+            } else {
+              finalPayload = buildPartialStreamPayload(streamedAnswer, askInput.question, {
+                matches,
+                docs,
+                keywords,
+                retrieval,
+              });
+            }
+          }
+        } else {
+          finalPayload = await buildAskStreamFallbackPayload(
+            env,
+            askInput,
             docs,
             matches,
+            keywords,
+            references,
+            retrieval,
+            ctx,
+          );
+        }
+      } catch (err) {
+        console.error('Ask stream answer failed:', err.message);
+        finalPayload = emittedChunks
+          ? buildPartialStreamPayload(streamedAnswer, askInput.question, {
+            matches,
+            docs,
+            keywords,
             retrieval,
           })
           : buildSearchOnlyPayload(askInput.question, {
@@ -889,18 +1061,12 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
             keywords,
             confidence: retrieval.confidence,
           });
-      } catch (err) {
-        console.error('Ask stream answer failed:', err.message);
-        finalPayload = buildSearchOnlyPayload(askInput.question, {
-          matches,
-          docs,
-          keywords,
-          confidence: retrieval.confidence,
-        });
       }
 
-      for (const token of splitAnswerIntoChunks(finalPayload.answer)) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token })}\n\n`));
+      if (!emittedChunks) {
+        for (const token of splitAnswerIntoChunks(finalPayload.answer)) {
+          emitToken(token);
+        }
       }
 
       controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify(finalPayload)}\n\n`));

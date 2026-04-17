@@ -6,6 +6,12 @@ name = "amituofo"
 compatibility_date = "2025-01-01"
 pages_build_output_dir = "dist"
 
+# 后台重任务开关（默认关闭，需手动改回 true 并重新部署）
+[vars]
+ENABLE_AI_TRANSCRIPT_JOB = false
+ENABLE_AI_BRAIN_JOB = false
+ENABLE_AI_EMBEDDING_JOB = false
+
 [[d1_databases]]
 binding = "DB"
 database_name = "foyue-db"

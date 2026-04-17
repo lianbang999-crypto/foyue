@@ -5,7 +5,7 @@
 
 import {
   AI_CONFIG, GATEWAY_PROFILES, chunkText, generateEmbeddings,
-  checkRateLimit, cleanupRateLimits, timingSafeCompare,
+  checkRateLimit, cleanupRateLimits, isEnvFlagEnabled, timingSafeCompare,
   extractAIResponse, stripThinkTags, getAICallStats, runAIWithLogging, resolveAIModel,
 } from '../lib/ai-utils.js';
 import { buildAudioUrl } from '../lib/audio-utils.js';
@@ -45,6 +45,7 @@ import {
   handlePopulateTranscriptMapping,
   handleAutoMatchTranscripts,
   handleIncrementalTranscribe,
+  handleTranscriptStatus,
   handleGetChapters,
   handleGenerateChapters,
 } from '../lib/transcript-routes.js';
@@ -285,7 +286,19 @@ export async function onRequest(context) {
 
     // POST /api/admin/transcript/transcribe — 增量 Whisper 转写
     if (path === '/api/admin/transcript/transcribe' && method === 'POST') {
+      if (!isEnvFlagEnabled(env, 'ENABLE_AI_TRANSCRIPT_JOB')) {
+        return json({ error: 'Transcript job is disabled by ENABLE_AI_TRANSCRIPT_JOB', enabled: false }, cors, 409);
+      }
       return await handleIncrementalTranscribe(env, request, cors, json);
+    }
+
+    // GET /api/admin/transcript/status — 查看转写进度
+    if (path === '/api/admin/transcript/status' && method === 'GET') {
+      const token = request.headers.get('X-Admin-Token');
+      if (!token || !env.ADMIN_TOKEN || !timingSafeCompare(token, env.ADMIN_TOKEN)) {
+        return json({ error: 'Unauthorized' }, cors, 401);
+      }
+      return await handleTranscriptStatus(env, cors, json);
     }
 
     // ==================== AI 路由 ====================
@@ -396,6 +409,9 @@ export async function onRequest(context) {
       if (!token || !env.ADMIN_TOKEN || !timingSafeCompare(token, env.ADMIN_TOKEN)) {
         return json({ error: 'Unauthorized' }, cors, 401);
       }
+      if (!isEnvFlagEnabled(env, 'ENABLE_AI_BRAIN_JOB')) {
+        return json({ error: 'Brain job is disabled by ENABLE_AI_BRAIN_JOB', enabled: false }, cors, 409);
+      }
       return await handleBrainLearn(env, request, cors, json);
     }
 
@@ -419,6 +435,9 @@ export async function onRequest(context) {
 
     // POST /api/admin/embeddings/build — 批量构建向量
     if (path === '/api/admin/embeddings/build' && method === 'POST') {
+      if (!isEnvFlagEnabled(env, 'ENABLE_AI_EMBEDDING_JOB')) {
+        return json({ error: 'Embedding job is disabled by ENABLE_AI_EMBEDDING_JOB', enabled: false }, cors, 409);
+      }
       return await handleBuildEmbeddings(env, request, cors);
     }
 
@@ -426,7 +445,7 @@ export async function onRequest(context) {
     if (path === '/api/admin/embeddings/status' && method === 'GET') {
       const authErr = requireAdmin();
       if (authErr) return authErr;
-      return await handleEmbeddingStatus(db, cors);
+      return await handleEmbeddingStatus(db, env, cors);
     }
 
     // POST /api/admin/chapters/generate — 生成章节标记
@@ -1236,7 +1255,8 @@ async function handleBuildEmbeddings(env, request, cors) {
   }, cors);
 }
 
-async function handleEmbeddingStatus(db, cors) {
+async function handleEmbeddingStatus(db, env, cors) {
+  const enabled = isEnvFlagEnabled(env, 'ENABLE_AI_EMBEDDING_JOB');
   try {
     const totalDocs = await db.prepare(
       `SELECT COUNT(*) AS c
@@ -1279,6 +1299,7 @@ async function handleEmbeddingStatus(db, cors) {
 
     return json({
       success: true,
+      enabled,
       totalDocuments: total,
       completed: counts.completed,
       failed: counts.failed,
@@ -1290,7 +1311,7 @@ async function handleEmbeddingStatus(db, cors) {
       latestFailed: latestFailed.results || [],
     }, cors, 200, 'no-store');
   } catch (err) {
-    return json({ success: false, error: err.message }, cors, 500);
+    return json({ success: false, enabled, error: err.message }, cors, 500);
   }
 }
 

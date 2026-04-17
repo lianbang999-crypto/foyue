@@ -157,6 +157,14 @@ export function getGroqConfig(env) {
   };
 }
 
+export function isEnvFlagEnabled(env, envKey, defaultValue = true) {
+  const rawValue = env?.[envKey];
+  if (rawValue === undefined || rawValue === null) return defaultValue;
+  const normalized = String(rawValue).trim();
+  if (!normalized) return defaultValue;
+  return !/^(false|0|off|no)$/i.test(normalized);
+}
+
 // 非流式调用外部 LLM（支持 config 注入，用于 Groq 等备用提供商）
 export async function callExternalLLM(env, messages, options = {}) {
   const config = options.config || getExternalLLMConfig(env);
@@ -209,6 +217,99 @@ export async function streamExternalLLM(env, messages, options = {}) {
     throw new Error(`External LLM stream ${res.status}: ${errText.slice(0, 200)}`);
   }
   return res.body;
+}
+
+function extractOpenAICompatibleStreamText(event) {
+  const delta = event?.choices?.[0]?.delta;
+
+  if (typeof delta?.content === 'string' && delta.content) {
+    return delta.content;
+  }
+
+  if (Array.isArray(delta?.content)) {
+    return delta.content
+      .map(part => {
+        if (typeof part === 'string') return part;
+        if (part?.type === 'text' && typeof part.text === 'string') return part.text;
+        return '';
+      })
+      .join('');
+  }
+
+  const fallback = extractAIResponse(event);
+  return typeof fallback === 'string' ? fallback : '';
+}
+
+async function consumeSseBlock(block, handlers = {}) {
+  const lines = String(block || '').split('\n');
+  let eventType = 'message';
+  const dataLines = [];
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    if (!line) continue;
+    if (line.startsWith('event:')) {
+      eventType = line.slice(6).trim() || 'message';
+      continue;
+    }
+    if (line.startsWith('data:')) {
+      dataLines.push(line.slice(5).trimStart());
+    }
+  }
+
+  if (!dataLines.length) return false;
+
+  const data = dataLines.join('\n').trim();
+  if (!data) return false;
+  if (data === '[DONE]') return true;
+
+  let parsed;
+  try {
+    parsed = JSON.parse(data);
+  } catch {
+    return false;
+  }
+
+  await handlers.onEvent?.(parsed, eventType);
+
+  const token = extractOpenAICompatibleStreamText(parsed);
+  if (token) {
+    await handlers.onToken?.(token, parsed, eventType);
+  }
+
+  return false;
+}
+
+export async function consumeOpenAICompatibleStream(stream, handlers = {}) {
+  if (!stream?.getReader) {
+    throw new Error('OpenAI compatible stream body is not readable');
+  }
+
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+
+    const blocks = buffer.split(/\n\n/);
+    buffer = blocks.pop() ?? '';
+
+    for (const block of blocks) {
+      const shouldStop = await consumeSseBlock(block, handlers);
+      if (shouldStop) {
+        await reader.cancel().catch(() => { });
+        return;
+      }
+    }
+
+    if (done) break;
+  }
+
+  if (buffer.trim()) {
+    await consumeSseBlock(buffer, handlers);
+  }
 }
 
 // ============================================================
