@@ -56,13 +56,15 @@ function buildPlaylistEntries(episodes, series) {
   });
 }
 
-/* ===== Play count (server-side series.play_count) =====
- * 旧逻辑：在 playCurrent() 末尾立刻 recordPlay → 加载失败也会 +1，且连点同一集会重复计数。
- * 现逻辑：仅在 audio.play() 成功且仍为当前 callId 时上报，并对同一 series+集号短时去重。
+/* ===== 播放计数上报 =====
+ * 仅在 audio.play() 成功且仍属于当前播放会话时上报。
+ * 同一 series+集号 6 秒内前端去重；同一次起播会话复用同一个 requestId，供后端做幂等。
  */
 const PLAY_COUNT_DEBOUNCE_MS = 6000;
 let _lastPlayCountKey = '';
 let _lastPlayCountAt = 0;
+let _playRequestCallId = 0;
+let _playRequestId = '';
 
 function episodeNumForPlayCount(tr) {
   const id = tr.id;
@@ -71,15 +73,34 @@ function episodeNumForPlayCount(tr) {
   return state.epIdx + 1;
 }
 
+function createPlayRequestId() {
+  try {
+    if (globalThis.crypto?.randomUUID) {
+      return `play-${globalThis.crypto.randomUUID()}`;
+    }
+  } catch { }
+
+  return `play-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function getPlayRequestId(callId) {
+  if (_playRequestCallId !== callId || !_playRequestId) {
+    _playRequestCallId = callId;
+    _playRequestId = createPlayRequestId();
+  }
+  return _playRequestId;
+}
+
 function maybeRecordPlayCount(tr, callId) {
   if (!isPlaybackSessionCurrent(callId)) return;
   const epNum = episodeNumForPlayCount(tr);
+  const requestId = getPlayRequestId(callId);
   const key = `${tr.seriesId}:${epNum}`;
   const now = Date.now();
   if (key === _lastPlayCountKey && now - _lastPlayCountAt < PLAY_COUNT_DEBOUNCE_MS) return;
   _lastPlayCountKey = key;
   _lastPlayCountAt = now;
-  recordPlay(tr.seriesId, epNum);
+  recordPlay(tr.seriesId, epNum, requestId);
 }
 
 /* ===== Network Quality State ===== */

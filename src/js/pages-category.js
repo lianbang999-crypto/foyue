@@ -6,7 +6,7 @@ import { CATEGORY_ICONS, ICON_PLAY_FILLED, ICON_PAUSE_FILLED } from './icons.js'
 import { playList, togglePlay, isCurrentTrack, getIsSwitching, markAppreciated, isAppreciated, shareSeries } from './player.js';
 import { renderHomePage } from './pages-home.js';
 import { getHistory, findHistoryEntryForEpisode, resolveHistoryEpisodeIndex } from './history.js';
-import { getPlayCount, appreciate } from './api.js';
+import { getPlayCount, appreciate, getAppreciateCount } from './api.js';
 import { showToast, escapeHtml, showFloatText, fmtCount, fmtDuration } from './utils.js';
 import { getBatchCachedStatus } from './audio-cache.js';
 import { mountSummary } from './ai-summary.js';
@@ -533,48 +533,104 @@ export async function showEpisodes(series, tabId) {
     });
   });
 
-  // Add appreciation button
+  // 系列级随喜按钮：首屏加载当前总数，仅在服务端确认后更新本地状态
   const actionsDiv = view.querySelector('#epActions');
-  const _alreadyAppreciated = isAppreciated(series.id);
-  actionsDiv.innerHTML = `<button class="appreciate-btn${_alreadyAppreciated ? ' appreciated' : ''}" id="appreciateBtn">
+  const hasSeriesAppreciated = isAppreciated(series.id);
+  actionsDiv.innerHTML = `<button class="appreciate-btn${hasSeriesAppreciated ? ' appreciated' : ''}" id="appreciateBtn">
     <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="currentColor" stroke="none"/></svg>
     <span id="appreciateLabel">${t('appreciate') || '\u968F\u559C'}</span><span id="appreciateCount"></span>
   </button>`;
 
-  // 添加防抖和乐观更新
+  const appreciateBtn = view.querySelector('#appreciateBtn');
+  const appreciateCountEl = view.querySelector('#appreciateCount');
+
+  // 系列级随喜：防抖 + 单次请求，避免本地先成功再被服务端打回
   let _lastAppreciateTime = 0;
+  let _isAppreciating = false;
+  let _highWaterAppreciateCount = -1;
   const APPRECIATE_COOLDOWN = 1000;
 
-  view.querySelector('#appreciateBtn').addEventListener('click', async () => {
-    // 防抖检查
+  function renderSeriesAppreciateTotal(total, { animate = false } = {}) {
+    const numericTotal = Number(total);
+    if (!Number.isFinite(numericTotal) || numericTotal < 0) return;
+    if (numericTotal < _highWaterAppreciateCount) return;
+
+    const didChange = numericTotal !== _highWaterAppreciateCount;
+    _highWaterAppreciateCount = numericTotal;
+
+    if (!appreciateCountEl) return;
+    appreciateCountEl.textContent = ' ' + (numericTotal > 0 ? fmtCount(numericTotal) : '0');
+
+    if (animate && didChange) {
+      appreciateCountEl.classList.remove('badge-bump');
+      void appreciateCountEl.offsetWidth;
+      appreciateCountEl.classList.add('badge-bump');
+      setTimeout(() => appreciateCountEl.classList.remove('badge-bump'), 300);
+    }
+  }
+
+  function confirmSeriesAppreciated(total, { duplicate = false, animateCount = false, notify = true } = {}) {
+    appreciateBtn.classList.add('appreciated');
+    markAppreciated(series.id);
+    if (total != null) renderSeriesAppreciateTotal(total, { animate: animateCount });
+
+    if (!notify) return;
+    if (duplicate) {
+      showToast(t('appreciate_done') || '已随喜');
+      return;
+    }
+    showFloatText(appreciateBtn, t('appreciate_thanks') || '\u968F\u559C\u529F\u5FB7');
+  }
+
+  getAppreciateCount(series.id).then(data => {
+    if (!isContentRequestCurrent(requestId) || !view.isConnected) return;
+    if (!data || data.total == null) return;
+    renderSeriesAppreciateTotal(data.total);
+  });
+
+  appreciateBtn.addEventListener('click', async () => {
     const now = Date.now();
     if (now - _lastAppreciateTime < APPRECIATE_COOLDOWN) return;
+    if (_isAppreciating) return;
     _lastAppreciateTime = now;
+    _isAppreciating = true;
 
-    const btn = view.querySelector('#appreciateBtn');
-    const countEl = view.querySelector('#appreciateCount');
-
-    // ✅ 乐观UI更新 - 立即显示浮动文字动画
-    btn.classList.add('appreciated');
-    markAppreciated(series.id);
-    showFloatText(btn, t('appreciate_thanks') || '\u968F\u559C\u529F\u5FB7');
-
-    // 后台发送请求
     try {
       const result = await appreciate(series.id);
-      if (result && result.total != null) {
-        // 更新计数（带动画）
-        if (countEl) {
-          countEl.textContent = ' ' + fmtCount(result.total);
-          countEl.classList.add('badge-bump');
-          setTimeout(() => countEl.classList.remove('badge-bump'), 300);
-        }
+      if (!result || result.success !== true) {
+        showToast(t('appreciate_fail') || '网络异常，请稍后再试');
+        return;
       }
-    } catch (err) {
-      // 静默失败
-      console.log('Appreciate request failed:', err);
+
+      confirmSeriesAppreciated(result.total, {
+        duplicate: !!result.duplicate,
+        animateCount: true,
+      });
+    } catch {
+      showToast(t('appreciate_fail') || '网络异常，请稍后再试');
+    } finally {
+      _isAppreciating = false;
     }
   });
+
+  // 基础层会在系列级随喜成功后派发全局事件，详情页在同系列时同步数字与状态
+  const onAppreciateUpdated = (e) => {
+    const detail = e.detail;
+    if (!detail || detail.seriesId !== series.id) return;
+    if (detail.success !== true && detail.duplicate !== true && detail.total == null) return;
+
+    confirmSeriesAppreciated(detail.total, {
+      duplicate: !!detail.duplicate,
+      animateCount: true,
+      notify: false,
+    });
+  };
+  window.addEventListener('appreciate:updated', onAppreciateUpdated);
+  const prevCleanupAppreciateResources = cleanupViewResources;
+  cleanupViewResources = () => {
+    prevCleanupAppreciateResources();
+    window.removeEventListener('appreciate:updated', onAppreciateUpdated);
+  };
 
   // Track the highest play count we've seen to prevent a stale getPlayCount response
   // from overwriting a fresher value delivered by the playcount:updated event.

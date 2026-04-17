@@ -27,7 +27,7 @@ import {
   togglePlaylist, closePlaylist, getPlaylistVisible, saveState, restoreState,
   getIsSwitching, getIsRecovering, setDragging, initPlaylistTabs, closeFullScreen,
   openFullScreen,
-  markAppreciated, updateAppreciateBtn, appreciateSuccess, updateAppreciateCount, isAppreciated,
+  markAppreciated, updateAppreciateBtn, appreciateSuccess,
   retryPlayback, startStallWatch, clearStallWatch, setBuffering,
   onVisibilityResume, reconcilePlaybackUiAfterForeground,
 } from './player.js';
@@ -586,12 +586,13 @@ async function ensureSeriesDetail(seriesId, categoryId) {
   dom.expQueue.addEventListener('click', () => { haptic(); togglePlaylist(); });
   initPlaylistTabs();
 
-  // Appreciate button — per-episode, no daily limit
+  // Appreciate button — 系列级随喜；episodeNum 仅作为后端上下文
   let _appreciating = false;
   let _lastAppreciateTime = 0;
   const APPRECIATE_COOLDOWN = 1000; // 1秒冷却时间
 
-  document.getElementById('expAppreciate').addEventListener('click', async () => {
+  const expAppreciateBtn = document.getElementById('expAppreciate');
+  expAppreciateBtn.addEventListener('click', async () => {
     haptic();
 
     // 防抖：1秒内不允许重复点击
@@ -599,33 +600,54 @@ async function ensureSeriesDetail(seriesId, categoryId) {
     if (now - _lastAppreciateTime < APPRECIATE_COOLDOWN) return;
     if (_appreciating) return;
 
-    if (state.epIdx < 0 || !state.playlist[state.epIdx]) return;
-    const tr = state.playlist[state.epIdx];
+    const tr = getCurrentTrack();
+    if (!tr) return;
     const seriesId = tr.seriesId;
     if (!seriesId) return;
-    const episodeNum = tr.id || state.epIdx + 1;
+    const rawEpisodeNum = Number(tr.id);
+    const episodeNum = Number.isInteger(rawEpisodeNum) && rawEpisodeNum > 0 ? rawEpisodeNum : state.epIdx + 1;
+    let shouldRefreshCurrentButton = false;
 
-    // ✅ 乐观UI更新 - 立即显示成功动画
     _appreciating = true;
     _lastAppreciateTime = now;
+    expAppreciateBtn.classList.add('loading');
+    expAppreciateBtn.setAttribute('aria-busy', 'true');
 
-    // 立即显示成功状态和动画
-    appreciateSuccess(null);  // 先显示动画，不更新数字
-    markAppreciated(seriesId);  // 持久化到localStorage
-    showFloatText(document.getElementById('expAppreciate'), t('appreciate_thanks') || '随喜功德');
-
-    // 后台发送请求
     try {
       const result = await appreciate(seriesId, episodeNum);
-      if (result && result.total != null) {
-        // ✅ 成功后更新数字（带动画）
-        updateAppreciateCount(result.total);
+      if (!result) {
+        shouldRefreshCurrentButton = true;
+        showToast(t('appreciate_fail') || '网络异常，请稍后再试');
+        return;
       }
-      // 失败也静默处理，因为UI已经显示成功
+
+      markAppreciated(seriesId);
+
+      const appreciateDoneText = t('appreciate_done');
+      const successText = result.duplicate
+        ? (appreciateDoneText && appreciateDoneText !== 'appreciate_done' ? appreciateDoneText : '已随喜，功德已记')
+        : (t('appreciate_thanks') || '随喜功德');
+
+      if (getCurrentTrack()?.seriesId === seriesId) {
+        appreciateSuccess(result.total);
+        showFloatText(expAppreciateBtn, successText);
+      } else {
+        shouldRefreshCurrentButton = true;
+        showToast(successText);
+      }
     } catch (err) {
-      // 静默失败，不影响用户体验
-      console.log('Appreciate request failed:', err);
+      shouldRefreshCurrentButton = true;
+      if (import.meta.env.DEV) console.warn('[Appreciate] request failed', err);
+      showToast(t('appreciate_fail') || '网络异常，请稍后再试');
     } finally {
+      expAppreciateBtn.classList.remove('loading');
+      expAppreciateBtn.removeAttribute('aria-busy');
+      if (shouldRefreshCurrentButton) {
+        const currentTrack = getCurrentTrack();
+        if (currentTrack?.seriesId) {
+          updateAppreciateBtn(currentTrack.seriesId);
+        }
+      }
       _appreciating = false;
     }
   });
@@ -851,6 +873,18 @@ async function ensureSeriesDetail(seriesId, categoryId) {
   }
   // #23: Also retry on online event (works on all browsers)
   window.addEventListener('online', tryNetworkRecovery);
+
+  window.addEventListener('appreciate:updated', (e) => {
+    const seriesId = e.detail?.seriesId;
+    if (!seriesId) return;
+
+    markAppreciated(seriesId);
+
+    const currentTrack = getCurrentTrack();
+    if (currentTrack?.seriesId === seriesId) {
+      updateAppreciateBtn(seriesId, e.detail?.total);
+    }
+  });
 
   applyI18n();
   loadData();
