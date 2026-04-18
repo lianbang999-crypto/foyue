@@ -61,6 +61,19 @@ async function aiFetch(url, options = {}) {
 }
 
 /**
+ * 获取欢迎页随机问题
+ * @returns {Promise<string[]>}
+ */
+export async function fetchRandomQuestions() {
+  try {
+    const data = await aiFetch(`${AI_BASE}/random-questions`);
+    return data.questions || [];
+  } catch {
+    return [];
+  }
+}
+
+/**
  * 法音智搜 — 搜索法师讲记原文片段
  * @param {string} question
  * @param {object} options - { series_id? }
@@ -82,7 +95,7 @@ export async function searchQuotes(question, options = {}) {
  * @returns {AbortController} — 调用 .abort() 可取消
  */
 export function askQuestionStream(question, options = {}, callbacks = {}) {
-  const { onToken, onDone, onError } = callbacks;
+  const { onToken, onDone, onError, onStage } = callbacks;
   const controller = new AbortController();
   let didTimeout = false;
   let completed = false;
@@ -173,6 +186,12 @@ export function askQuestionStream(question, options = {}, callbacks = {}) {
           const trimmed = line.trim();
           if (!trimmed) {
             eventType = 'message';
+            continue;
+          }
+          // SSE comment 行，用于阶段提示
+          if (trimmed.startsWith(':')) {
+            const stage = trimmed.slice(1).trim();
+            if (stage) onStage?.(stage);
             continue;
           }
           if (trimmed.startsWith('event:')) {

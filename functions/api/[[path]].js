@@ -63,6 +63,7 @@ import {
   handleAiAskStream,
   handleAiSummary,
   handleAiSearch,
+  handleAiRandomQuestions,
   handleDailyRecommend,
   handleVoiceToText,
   handlePersonalizedRecommend,
@@ -509,6 +510,11 @@ export async function onRequest(context) {
     // POST /api/ai/ask — RAG 问答
     if (path === '/api/ai/ask' && method === 'POST') {
       return await handleAiAsk(env, request, cors, context, json);
+    }
+
+    // GET /api/ai/random-questions — 欢迎页随机问题
+    if (path === '/api/ai/random-questions' && method === 'GET') {
+      return await handleAiRandomQuestions(env, cors, json);
     }
 
     // POST /api/ai/search-quotes — 法音智搜（搜索讲记原文）

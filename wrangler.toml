@@ -31,3 +31,8 @@ index_name = "dharma-content"
 [[r2_buckets]]
 binding = "R2_WENKU"
 bucket_name = "jingdianwendang"
+
+# AI Search 绑定 — 替代 Vectorize 自定义 RAG
+[[ai_search]]
+binding = "DHARMA_SEARCH"
+instance_name = "foyue-wenku"

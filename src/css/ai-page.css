@@ -375,6 +375,28 @@ body {
     letter-spacing: 0.02em;
     vertical-align: baseline;
     white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.ai-inline-citation:hover {
+    background: rgba(217, 119, 87, 0.18);
+    border-color: rgba(217, 119, 87, 0.3);
+}
+
+/* 出处卡片高亮动画 */
+.ai-evidence-highlight {
+    animation: evidencePulse 1.5s ease-out;
+}
+
+@keyframes evidencePulse {
+    0% {
+        box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.4);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(217, 119, 87, 0);
+    }
 }
 
 .ai-bot-status {
@@ -382,6 +404,14 @@ body {
     flex-wrap: wrap;
     align-items: center;
     gap: 8px 10px;
+}
+
+.ai-bot-status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #66b87a;
+    flex-shrink: 0;
 }
 
 .ai-bot-status-badge {
@@ -711,6 +741,42 @@ body {
     font-family: var(--ai-font-serif);
 }
 
+.ai-evidence-expand {
+    appearance: none;
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 12px;
+    color: var(--ai-accent);
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.ai-evidence-expand:hover {
+    text-decoration: underline;
+}
+
+.ai-evidence-play-action {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    margin-top: 4px;
+    padding: 8px 0;
+    border-top: 1px solid var(--ai-border);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ai-accent);
+    text-decoration: none;
+    transition: background 0.2s;
+    border-radius: 0 0 12px 12px;
+}
+
+.ai-evidence-play-action:hover {
+    background: var(--ai-accent-soft);
+}
+
 .ai-sources {
     display: flex;
     flex-wrap: wrap;
@@ -930,8 +996,15 @@ body {
 /* --- Typing Indicator --- */
 .ai-typing {
     display: flex;
+    align-items: center;
     gap: 5px;
     padding: 8px 0;
+}
+
+.ai-typing-text {
+    font-size: 13px;
+    color: var(--ai-text-secondary);
+    animation: breatheFade 2s ease-in-out infinite;
 }
 
 .ai-typing-dot {
@@ -948,6 +1021,18 @@ body {
 
 .ai-typing-dot:nth-child(3) {
     animation-delay: 0.32s;
+}
+
+@keyframes breatheFade {
+
+    0%,
+    100% {
+        opacity: 0.5;
+    }
+
+    50% {
+        opacity: 1;
+    }
 }
 
 @keyframes dotPulse {

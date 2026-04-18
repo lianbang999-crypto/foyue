@@ -1,7 +1,7 @@
 /* ===== 法音AI 独立页面入口 ===== */
 import '../css/ai-page.css';
 import { syncSystemTheme } from './theme.js';
-import { askQuestionStream } from './ai-client.js';
+import { askQuestionStream, fetchRandomQuestions } from './ai-client.js';
 import { createAiConversationStore } from './ai-conversations.js';
 import {
     buildWelcomeHTML,
@@ -283,7 +283,7 @@ function wireEvents() {
 
     // 来源标签 → 跳转
     chatArea.addEventListener('click', (e) => {
-        // 热门话题标签
+        // 热门话题标签 — 填入输入框，不自动发送
         const hotTag = e.target.closest('.ai-hot-tag');
         if (hotTag) {
             e.preventDefault();
@@ -291,7 +291,41 @@ function wireEvents() {
             if (question) {
                 chatInput.value = question;
                 btnSend.disabled = false;
-                handleSubmit();
+                autoResize();
+                chatInput.focus();
+                chatInput.setSelectionRange(question.length, question.length);
+            }
+            return;
+        }
+
+        // 内联引用标注 → 滚动到对应出处卡片并高亮
+        const inlineCite = e.target.closest('.ai-inline-citation');
+        if (inlineCite) {
+            const citeId = inlineCite.dataset.citationId;
+            if (citeId) {
+                const card = chatArea.querySelector(`#evidence-${citeId}`);
+                if (card) {
+                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    card.classList.add('ai-evidence-highlight');
+                    setTimeout(() => card.classList.remove('ai-evidence-highlight'), 1500);
+                }
+            }
+            return;
+        }
+
+        // 出处卡片"展开全文"按钮
+        const expandBtn = e.target.closest('.ai-evidence-expand');
+        if (expandBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const card = expandBtn.closest('.ai-evidence-link') || expandBtn.parentElement;
+            const shortEl = card.querySelector('.ai-evidence-snippet--short');
+            const fullEl = card.querySelector('.ai-evidence-snippet--full');
+            if (shortEl && fullEl) {
+                const isExpanded = fullEl.style.display !== 'none';
+                shortEl.style.display = isExpanded ? '' : 'none';
+                fullEl.style.display = isExpanded ? 'none' : '';
+                expandBtn.textContent = isExpanded ? '展开全文' : '收起';
             }
             return;
         }
@@ -440,7 +474,13 @@ function renderWelcomeOrHistory() {
         }
         scrollToBottom();
     } else {
+        // 欢迎页：先显示静态版本，异步加载随机问题后替换
         chatArea.innerHTML = buildWelcomeHTML();
+        fetchRandomQuestions().then(questions => {
+            if (questions.length > 0 && chatArea.querySelector('.ai-welcome')) {
+                chatArea.innerHTML = buildWelcomeHTML(questions);
+            }
+        });
     }
 }
 
@@ -559,6 +599,14 @@ async function handleSubmit(options = {}) {
     }
 
     askQuestionStream(question, streamOpts, {
+        onStage(stage) {
+            const stageMap = {
+                retrieving: '检索文库中…',
+                generating: '正在整理回答…',
+            };
+            updateTypingStage(stageMap[stage] || stage);
+        },
+
         onToken(token) {
             ensureStreamingMessage();
             rawTokens += token;
@@ -830,10 +878,19 @@ function buildStatusHeader(presentation) {
     if (presentation.uncertainty?.level) {
         status.dataset.uncertaintyLevel = presentation.uncertainty.level;
     }
-    status.innerHTML = `
-        <span class="ai-bot-status-badge">${escapeHtml(presentation.label)}</span>
-        ${presentation.detail ? `<span class="ai-bot-status-detail">${escapeHtml(presentation.detail)}</span>` : ''}
-    `;
+
+    if (presentation.mode === 'answer') {
+        // answer 模式：小圆点 + 简洁文字
+        status.innerHTML = `
+            <span class="ai-bot-status-dot"></span>
+            <span class="ai-bot-status-detail">${escapeHtml(presentation.detail)}</span>
+        `;
+    } else {
+        status.innerHTML = `
+            <span class="ai-bot-status-badge">${escapeHtml(presentation.label)}</span>
+            ${presentation.detail ? `<span class="ai-bot-status-detail">${escapeHtml(presentation.detail)}</span>` : ''}
+        `;
+    }
     return status;
 }
 
@@ -930,9 +987,14 @@ function addErrorMessage(errText, question) {
 function showTyping() {
     const el = document.createElement('div');
     el.className = 'ai-message ai-message--bot ai-typing-msg';
-    el.innerHTML = '<div class="ai-typing"><span class="ai-typing-dot"></span><span class="ai-typing-dot"></span><span class="ai-typing-dot"></span></div>';
+    el.innerHTML = '<div class="ai-typing"><span class="ai-typing-text">正在查阅文库…</span></div>';
     chatArea.appendChild(el);
     scrollToBottom();
+}
+
+function updateTypingStage(stage) {
+    const el = chatArea.querySelector('.ai-typing-text');
+    if (el) el.textContent = stage;
 }
 
 function removeTyping() {
@@ -969,42 +1031,63 @@ function renderSourceTag(s, fallbackQuery = '') {
 
 function renderEvidenceCard(s, fallbackQuery = '') {
     const title = escapeHtml(s.title || '相关讲记');
-    const citationBadge = s.citation_id ? `<span class="ai-evidence-badge">${escapeHtml(s.citation_id)}</span>` : '';
+    const citationId = s.citation_id || '';
+    const cardId = citationId ? ` id="evidence-${escapeHtml(citationId)}"` : '';
+    const citationBadge = citationId ? `<span class="ai-evidence-badge">${escapeHtml(citationId)}</span>` : '';
     const originParts = [];
     if (s.series_name) originParts.push(escapeHtml(s.series_name));
     if (s.audio_episode_num) originParts.push(`第${s.audio_episode_num}讲`);
     const origin = originParts.join(' · ');
-    const snippet = summarizeEvidenceSnippet(s.snippet, 118);
 
-    const playBtn = s.audio_series_id
-        ? `<a class="ai-source-play ai-source-play--card" href="/?series=${encodeURIComponent(s.audio_series_id)}${s.audio_episode_num ? `&ep=${s.audio_episode_num}` : ''}" title="播放此讲">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5,3 19,12 5,21"/></svg>
+    // snippet 展开/折叠：原文超长时显示"展开"按钮
+    const fullSnippet = String(s.snippet || '').replace(/\s+/g, ' ').trim();
+    const shortSnippet = summarizeEvidenceSnippet(s.snippet, 118);
+    const hasMore = fullSnippet.length > 120;
+
+    let snippetHtml = '';
+    if (shortSnippet) {
+        if (hasMore) {
+            snippetHtml = `
+                <span class="ai-evidence-snippet ai-evidence-snippet--short">${escapeHtml(shortSnippet)}</span>
+                <span class="ai-evidence-snippet ai-evidence-snippet--full" style="display:none">${escapeHtml(fullSnippet)}</span>
+                <button type="button" class="ai-evidence-expand">展开全文</button>
+            `;
+        } else {
+            snippetHtml = `<span class="ai-evidence-snippet">${escapeHtml(shortSnippet)}</span>`;
+        }
+    }
+
+    // 播放按钮：底部全宽操作栏
+    const epLabel = s.audio_episode_num ? `第 ${s.audio_episode_num} 讲` : '此讲';
+    const playAction = s.audio_series_id
+        ? `<a class="ai-evidence-play-action ai-result-play" href="/?series=${encodeURIComponent(s.audio_series_id)}${s.audio_episode_num ? `&ep=${s.audio_episode_num}` : ''}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5,3 19,12 5,21"/></svg>
+            <span>听${epLabel}</span>
           </a>`
         : '';
 
     const contentHtml = `
         <span class="ai-evidence-title-row">${citationBadge}<span class="ai-evidence-title">${title}</span></span>
         ${origin ? `<span class="ai-evidence-origin">${origin}</span>` : ''}
-        ${snippet ? `<span class="ai-evidence-snippet">${escapeHtml(snippet)}</span>` : ''}
+        ${snippetHtml}
+        ${playAction}
     `;
 
     if (s.doc_id) {
         const rawQuery = String(s.preview_query || fallbackQuery || extractHighlightQuery(_lastQuestion) || '').trim();
         const queryAttr = rawQuery ? ` data-query="${escapeHtml(rawQuery)}"` : '';
         const snippetAttr = s.snippet ? ` data-snippet="${escapeHtml(s.snippet || '')}"` : '';
-        return `<article class="ai-evidence-card">
+        return `<article class="ai-evidence-card"${cardId}>
             <button type="button" class="ai-evidence-link ai-source-tag" data-doc-id="${escapeHtml(s.doc_id)}"${queryAttr}${snippetAttr}>
                 ${contentHtml}
             </button>
-            ${playBtn}
         </article>`;
     }
 
-    return `<article class="ai-evidence-card">
+    return `<article class="ai-evidence-card"${cardId}>
         <div class="ai-evidence-link ai-evidence-link--static">
             ${contentHtml}
         </div>
-        ${playBtn}
     </article>`;
 }
 

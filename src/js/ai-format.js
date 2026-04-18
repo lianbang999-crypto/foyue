@@ -205,9 +205,14 @@ export function getAnswerModePresentation(mode, confidence, options = {}) {
     const normalizedMode = normalizeAnswerMode(mode);
     const uncertainty = normalizeUncertainty(options.uncertainty, normalizedMode, options.downgradeReason);
     const downgrade = getDowngradeReasonPresentation(options.downgradeReason || uncertainty?.reason);
-    const detail = normalizedMode === 'answer'
-        ? formatConfidenceHint(confidence) || (options.evidenceSource === 'citations' ? '已附回答依据' : '基于检索到的讲记原文整理')
-        : downgrade?.label || BOT_MODE_DETAILS[normalizedMode];
+
+    let detail;
+    if (normalizedMode === 'answer') {
+        // 简化：answer 模式不再显示百分比，只显示"已附出处"
+        detail = '已附出处';
+    } else {
+        detail = downgrade?.label || BOT_MODE_DETAILS[normalizedMode];
+    }
 
     return {
         mode: normalizedMode,
@@ -292,8 +297,9 @@ export function summarizeEvidenceSnippet(snippet, maxLength = 120) {
     return `${normalized.slice(0, maxLength).trim()}...`;
 }
 
-export function buildWelcomeHTML() {
-    const tags = SUGGESTIONS.map(t =>
+export function buildWelcomeHTML(questions) {
+    const list = (questions && questions.length > 0) ? questions : SUGGESTIONS;
+    const tags = list.map(t =>
         `<button class="ai-hot-tag" data-question="${escapeHtml(t)}">${escapeHtml(t)}</button>`
     ).join('');
     return `

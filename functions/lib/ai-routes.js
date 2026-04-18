@@ -208,12 +208,16 @@ function buildSearchOnlyPayload(question, options = {}) {
     ? sources.slice(0, 3)
     : buildSearchSourceList(matches, docs, keywords);
 
+  const finalRewrite = rewriteSuggestions.length > 0
+    ? rewriteSuggestions
+    : buildRewriteSuggestions(question, { keywords, docs });
+
   return buildAiAnswerPayload(answer, question, {
     mode: AI_RESPONSE_MODE.SEARCH_ONLY,
     sources: finalSources,
     docs,
     confidence: Math.min(roundConfidence(confidence), 0.74),
-    rewriteSuggestions: buildRewriteSuggestions(question, { keywords, docs }),
+    rewriteSuggestions: finalRewrite,
     downgradeReason,
     modelInfo,
   });
@@ -226,12 +230,16 @@ function buildNoResultPayload(question, options = {}) {
     rewriteSuggestions = [],
     modelInfo = buildIdleModelInfo('retrieval_only'),
   } = options;
+  const finalRewrite = rewriteSuggestions.length > 0
+    ? rewriteSuggestions
+    : buildRewriteSuggestions(question, { keywords, docs });
+
   return buildAiAnswerPayload(AI_NO_RESULT_ANSWER, question, {
     mode: AI_RESPONSE_MODE.NO_RESULT,
     sources: [],
     docs,
     confidence: 0,
-    rewriteSuggestions: buildRewriteSuggestions(question, { keywords, docs }),
+    rewriteSuggestions: finalRewrite,
     downgradeReason: 'no_documents',
     modelInfo,
   });
@@ -342,6 +350,44 @@ async function loadKnowledgeQAPseudoMatches(env, question, keywords, seriesId) {
       }));
   } catch (err) {
     console.warn('Knowledge QA lookup failed:', err.message);
+    return [];
+  }
+}
+
+// ============================================================
+// 从 ai_qa_pairs 查询相关问题作为追问建议
+// ============================================================
+async function loadRelatedQuestions(env, question, keywords) {
+  if (!env?.DB) return [];
+  try {
+    const currentClean = question.replace(/[？?。，！\s]/g, '').slice(0, 30);
+    // 使用多个关键词查询，提高召回
+    const searchTerms = keywords.filter(kw => kw && kw.length >= 2).slice(0, 3);
+    if (!searchTerms.length) {
+      searchTerms.push(question.slice(0, 10));
+    }
+    const conditions = searchTerms.map(() => 'q.question LIKE ?').join(' OR ');
+    const binds = searchTerms.map(kw => `%${kw}%`);
+
+    const { results } = await env.DB.prepare(
+      `SELECT DISTINCT q.question
+       FROM ai_qa_pairs q
+       WHERE (${conditions})
+       ORDER BY CASE q.importance WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END
+       LIMIT 8`
+    ).bind(...binds).all();
+
+    return (results || [])
+      .map(row => String(row.question || '').trim())
+      .filter(q => {
+        if (!q || q.length < 4 || q.length > 60) return false;
+        // 排除与当前问题太相似的
+        const qClean = q.replace(/[？?。，！\s]/g, '').slice(0, 30);
+        return qClean !== currentClean && !currentClean.includes(qClean) && !qClean.includes(currentClean);
+      })
+      .slice(0, 4);
+  } catch (err) {
+    console.warn('Related questions lookup failed:', err.message);
     return [];
   }
 }
@@ -475,26 +521,59 @@ function parseAskInput(body) {
 }
 
 async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
-  const filter = {};
-  if (seriesId && typeof seriesId === 'string') filter.audio_series_id = seriesId.slice(0, 100);
   const keywords = extractSearchKeywords(question);
-
   let matches = [];
-  try {
-    matches = await semanticSearch(env, question, {
-      topK: 6,
-      filter: Object.keys(filter).length > 0 ? filter : undefined,
-      ctx,
-    });
-    // 系列内语义搜索无结果时，退避到全局搜索
-    if (!matches.length && Object.keys(filter).length > 0) {
-      matches = await semanticSearch(env, question, { topK: 6, ctx });
+  let docs = [];
+
+  // ── AI Search 检索（替代 Vectorize + D1 自定义 RAG） ──
+  if (env?.DHARMA_SEARCH) {
+    try {
+      const searchResult = await env.DHARMA_SEARCH.search(question, {
+        max_num_results: 8,
+        score_threshold: 0.35,
+      });
+      const chunks = searchResult?.chunks || searchResult?.data || [];
+      for (const chunk of chunks) {
+        const text = String(chunk.text || '').trim();
+        if (!text) continue;
+        const key = chunk.item?.key || '';
+        // 从 R2 key 推断元信息
+        const titleFromKey = key.split('/').pop()?.replace(/\.txt$/i, '') || '法音文库';
+        matches.push({
+          score: typeof chunk.score === 'number' ? chunk.score : 0.6,
+          metadata: {
+            doc_id: key || `ai-search-${matches.length}`,
+            title: chunk.item?.metadata?.title || titleFromKey,
+            text,
+            series_name: chunk.item?.metadata?.series_name || '',
+            category: chunk.item?.metadata?.category || '',
+            audio_series_id: chunk.item?.metadata?.audio_series_id || '',
+          },
+        });
+      }
+    } catch (err) {
+      console.warn('AI Search failed, falling back to legacy:', err.message);
     }
-  } catch (err) {
-    console.warn('Vectorize search failed, falling back to D1:', err.message);
   }
 
-  let docs = await retrieveDocuments(env, matches);
+  // ── 旧版 Vectorize 退避（AI Search 无结果或未绑定时） ──
+  if (!matches.length) {
+    const filter = {};
+    if (seriesId && typeof seriesId === 'string') filter.audio_series_id = seriesId.slice(0, 100);
+    try {
+      matches = await semanticSearch(env, question, {
+        topK: 6,
+        filter: Object.keys(filter).length > 0 ? filter : undefined,
+        ctx,
+      });
+      if (!matches.length && Object.keys(filter).length > 0) {
+        matches = await semanticSearch(env, question, { topK: 6, ctx });
+      }
+    } catch (err) {
+      console.warn('Vectorize search failed, falling back to D1:', err.message);
+    }
+    docs = await retrieveDocuments(env, matches);
+  }
   let exactDoc = null;
 
   if (seriesId && Number.isInteger(episodeNum) && episodeNum > 0) {
@@ -582,6 +661,21 @@ async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
   return { matches, docs };
 }
 
+/**
+ * GET /api/ai/random-questions — 欢迎页随机问题
+ */
+export async function handleAiRandomQuestions(env, cors, jsonFn) {
+  try {
+    const { results } = await env.DB.prepare(
+      `SELECT question FROM ai_qa_pairs WHERE importance IN ('high','medium') ORDER BY RANDOM() LIMIT 6`
+    ).all();
+    const questions = (results || []).map(r => r.question);
+    return jsonFn({ questions }, cors);
+  } catch (e) {
+    return jsonFn({ questions: [] }, cors);
+  }
+}
+
 export async function handleAiAsk(env, request, cors, ctx, json) {
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
   const limit = await checkRateLimit(env, ip, 'ai_ask');
@@ -610,6 +704,9 @@ export async function handleAiAsk(env, request, cors, ctx, json) {
   const keywords = extractSearchKeywords(askInput.question);
   const { matches, docs } = await loadAiDocs(env, askInput.question, askInput.seriesId, askInput.episodeNum, ctx);
 
+  // 并行加载相关问题（用于追问建议）
+  const relatedQuestionsPromise = loadRelatedQuestions(env, askInput.question, keywords);
+
   // Fast path: 高匹配知识库 QA（score >= 0.85），0 次 LLM 调用
   const topMatch = matches[0];
   if (
@@ -622,12 +719,13 @@ export async function handleAiAsk(env, request, cors, ctx, json) {
     const precompiledAnswer = answerStart >= 0 ? text.slice(answerStart + 2).trim() : text.trim();
     if (precompiledAnswer) {
       const sources = buildSearchSourceList(matches, docs, keywords);
+      const relatedQuestions = await relatedQuestionsPromise;
       return json(buildAiAnswerPayload(precompiledAnswer, askInput.question, {
         mode: AI_RESPONSE_MODE.ANSWER,
         sources,
         docs,
         confidence: 0.92,
-        rewriteSuggestions: buildRewriteSuggestions(askInput.question, { keywords, docs }),
+        rewriteSuggestions: relatedQuestions,
         modelInfo: buildIdleModelInfo('knowledge_qa_direct'),
       }), cors, 200, 'no-store');
     }
@@ -635,13 +733,16 @@ export async function handleAiAsk(env, request, cors, ctx, json) {
 
   // 无文档 → 无结果
   if (!docs.length) {
-    return json(buildNoResultPayload(askInput.question, { keywords, docs }), cors, 200, 'no-store');
+    const relatedQuestions = await relatedQuestionsPromise;
+    return json(buildNoResultPayload(askInput.question, { keywords, docs, rewriteSuggestions: relatedQuestions }), cors, 200, 'no-store');
   }
 
   // 需要 LLM 但不可用 → 搜索模式
   if (!hasAnswerGenerationCapability(env)) {
+    const relatedQuestions = await relatedQuestionsPromise;
     return json(buildSearchOnlyPayload(askInput.question, {
       matches, docs, keywords,
+      rewriteSuggestions: relatedQuestions,
       downgradeReason: 'answer_generation_unavailable',
       modelInfo: buildIdleModelInfo('answer_generation_unavailable'),
     }), cors, 200, 'no-store');
@@ -657,8 +758,10 @@ export async function handleAiAsk(env, request, cors, ctx, json) {
     });
   } catch (err) {
     console.error('RAG answer failed:', err.message);
+    const relatedQuestions = await relatedQuestionsPromise;
     return json(buildSearchOnlyPayload(askInput.question, {
       matches, docs, keywords,
+      rewriteSuggestions: relatedQuestions,
       downgradeReason: 'answer_generation_failed',
       modelInfo: buildIdleModelInfo('answer_generation_failed'),
     }), cors, 200, 'no-store');
@@ -666,20 +769,23 @@ export async function handleAiAsk(env, request, cors, ctx, json) {
 
   const answer = result?.response?.trim();
   if (!answer) {
+    const relatedQuestions = await relatedQuestionsPromise;
     return json(buildSearchOnlyPayload(askInput.question, {
       matches, docs, keywords,
+      rewriteSuggestions: relatedQuestions,
       downgradeReason: 'answer_generation_empty',
       modelInfo: result?.modelInfo || buildIdleModelInfo('answer_generation_empty'),
     }), cors, 200, 'no-store');
   }
 
   const sources = buildSearchSourceList(matches, docs, keywords);
+  const relatedQuestions = await relatedQuestionsPromise;
   return json(buildAiAnswerPayload(answer, askInput.question, {
     mode: AI_RESPONSE_MODE.ANSWER,
     sources,
     docs,
     confidence: 0.82,
-    rewriteSuggestions: buildRewriteSuggestions(askInput.question, { keywords, docs }),
+    rewriteSuggestions: relatedQuestions,
     modelInfo: result?.modelInfo || buildIdleModelInfo('not_invoked'),
   }), cors, 200, 'no-store');
 }
@@ -737,6 +843,9 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
   const keywords = extractSearchKeywords(askInput.question);
   const { matches, docs } = await loadAiDocs(env, askInput.question, askInput.seriesId, askInput.episodeNum, ctx);
 
+  // 并行加载相关问题
+  const relatedQuestionsPromise = loadRelatedQuestions(env, askInput.question, keywords);
+
   // Fast path: 知识库直答
   const topMatch = matches[0];
   if (
@@ -749,12 +858,13 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
     const precompiledAnswer = answerStart >= 0 ? text.slice(answerStart + 2).trim() : text.trim();
     if (precompiledAnswer) {
       const sources = buildSearchSourceList(matches, docs, keywords);
+      const relatedQuestions = await relatedQuestionsPromise;
       return buildAskStreamDoneResponse(buildAiAnswerPayload(precompiledAnswer, askInput.question, {
         mode: AI_RESPONSE_MODE.ANSWER,
         sources,
         docs,
         confidence: 0.92,
-        rewriteSuggestions: buildRewriteSuggestions(askInput.question, { keywords, docs }),
+        rewriteSuggestions: relatedQuestions,
         modelInfo: buildIdleModelInfo('knowledge_qa_direct'),
       }), cors);
     }
@@ -762,13 +872,16 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
 
   // 无文档
   if (!docs.length) {
-    return buildAskStreamDoneResponse(buildNoResultPayload(askInput.question, { keywords, docs }), cors);
+    const relatedQuestions = await relatedQuestionsPromise;
+    return buildAskStreamDoneResponse(buildNoResultPayload(askInput.question, { keywords, docs, rewriteSuggestions: relatedQuestions }), cors);
   }
 
   // 无 LLM 能力
   if (!hasAnswerGenerationCapability(env)) {
+    const relatedQuestions = await relatedQuestionsPromise;
     return buildAskStreamDoneResponse(buildSearchOnlyPayload(askInput.question, {
       matches, docs, keywords,
+      rewriteSuggestions: relatedQuestions,
       downgradeReason: 'answer_generation_unavailable',
       modelInfo: buildIdleModelInfo('answer_generation_unavailable'),
     }), cors);
@@ -793,6 +906,9 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
         emittedChunks += 1;
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: value })}\n\n`));
       };
+
+      // 在流式过程中等待相关问题结果
+      const relatedQuestions = await relatedQuestionsPromise;
 
       let finalPayload;
       try {
@@ -821,7 +937,7 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
                 sources,
                 docs,
                 confidence: 0.82,
-                rewriteSuggestions: buildRewriteSuggestions(askInput.question, { keywords, docs }),
+                rewriteSuggestions: relatedQuestions,
                 modelInfo: streamModelInfo,
               });
             }
@@ -846,12 +962,13 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
                 sources,
                 docs,
                 confidence: 0.82,
-                rewriteSuggestions: buildRewriteSuggestions(askInput.question, { keywords, docs }),
+                rewriteSuggestions: relatedQuestions,
                 modelInfo: result?.modelInfo || streamModelInfo,
               });
             } else {
               finalPayload = buildSearchOnlyPayload(askInput.question, {
                 matches, docs, keywords,
+                rewriteSuggestions: relatedQuestions,
                 downgradeReason: 'answer_generation_empty',
                 modelInfo: result?.modelInfo || buildIdleModelInfo('answer_generation_empty'),
               });
@@ -860,6 +977,7 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
             console.error('Ask stream fallback RAG failed:', err.message);
             finalPayload = buildSearchOnlyPayload(askInput.question, {
               matches, docs, keywords,
+              rewriteSuggestions: relatedQuestions,
               downgradeReason: 'answer_generation_failed',
               modelInfo: buildIdleModelInfo('answer_generation_failed'),
             });
@@ -869,6 +987,7 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
         console.error('Ask stream answer failed:', err.message);
         finalPayload = buildSearchOnlyPayload(askInput.question, {
           matches, docs, keywords,
+          rewriteSuggestions: relatedQuestions,
           downgradeReason: 'answer_generation_failed',
           modelInfo: buildIdleModelInfo('answer_generation_failed'),
         });
