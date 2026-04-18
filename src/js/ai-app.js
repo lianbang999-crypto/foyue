@@ -897,12 +897,12 @@ function buildSuggestionSection(suggestions, options = {}) {
 
     const heading = document.createElement('div');
     heading.className = 'ai-followup-heading';
-    if (prioritized || mode === 'no_result') {
-        heading.textContent = '换个问法试试';
+    if (mode === 'no_result') {
+        heading.textContent = '您可以试试';
     } else if (mode === 'search_only') {
-        heading.textContent = '相关问法';
+        heading.textContent = '您可能还想了解';
     } else {
-        heading.textContent = '继续追问';
+        heading.textContent = '您可能还想了解';
     }
     section.appendChild(heading);
 

@@ -273,7 +273,8 @@ export function mergeQuestionSuggestions(rewriteSuggestions = [], followUps = []
     const merged = [];
     const seen = new Set();
 
-    for (const value of [...rewriteSuggestions, ...followUps]) {
+    // LLM 生成的追问优先，然后是模板化建议
+    for (const value of [...followUps, ...rewriteSuggestions]) {
         const normalized = String(value || '').trim();
         if (!normalized || seen.has(normalized)) continue;
         seen.add(normalized);

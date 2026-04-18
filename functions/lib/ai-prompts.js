@@ -27,6 +27,7 @@ export const AI_PROMPT_METADATA = Object.freeze({
 
 // 匹配 [FOLLOWUP]...[/FOLLOWUP]，容错：允许闭合标签缺失、标签前有杂散数字
 const FOLLOWUP_BLOCK_RE = /\s*\d*\s*\[FOLLOWUP\]([\s\S]*?)(?:\[\/FOLLOWUP\]|$)/i;
+const LLM_FOLLOWUP_RE = /【追问建议】\s*([\s\S]*?)$/;
 
 export const STOP_WORDS_RE = /什么|怎么|怎样|如何|为什么|哪些|哪个|可以|能够|应该|是不是|有没有|到底|究竟|请问|一下|的|了|吗|呢|吧|啊|在|是|有|和|与|或|也|都|就|把|被|对|又|要|让|给|从|用|以|而|但|却|不|很|最|更|还|这|那|它|你|我|他|她|们|个|着/g;
 
@@ -70,10 +71,15 @@ export function buildRagSystemPrompt(context) {
 【回答规则】
 1. 每段证据已分配编号 S1、S2、S3……你只能引用这些编号，格式为 [S1] 或 [S1][S2]
 2. 优先引用原文，再做简要解释；解释必须能回溯到给定的 S 编号
-3. 如果证据不足以稳妥作答，直接说"暂无相关内容"，不要补充推断
-4. 不要编造证据中没有的内容，不要输出模板占位符
-5. 语气平实、克制、简洁，优先短句
-6. 不要加"总之""综上""我认为"等主观总结腔
+3. 即使证据不完全对口，也应呈现最相关的原文内容，并说明"以下是最相关的文库内容"
+4. 只有当证据集完全为空或与问题毫无关联时，才说"暂未找到直接相关的内容"
+5. 不要编造证据中没有的内容，不要输出模板占位符
+6. 语气平实、克制、简洁，优先短句
+7. 不要加"总之""综上""我认为"等主观总结腔
+
+【追问要求】
+回答正文结束后，另起一行写"【追问建议】"，然后给出2个用户可能想进一步了解的问题，每个问题一行。
+追问必须与回答内容直接相关，帮助用户深入理解，而不是泛泛的建议。
 
 【证据集】
 ${context}`;
@@ -294,10 +300,26 @@ export function buildRewriteSuggestions(question, options = {}) {
 export function normalizeAiAnswerContract(rawText, question, options = {}) {
     const { forceNoResult = false } = options;
     const source = String(rawText || '').trim();
-    const body = source.replace(FOLLOWUP_BLOCK_RE, '').replace(/\n{3,}/g, '\n\n').trim();
+
+    // 从 LLM 输出中提取追问建议
+    const followUps = [];
+    const llmFollowUpMatch = source.match(LLM_FOLLOWUP_RE);
+    if (llmFollowUpMatch) {
+        const lines = llmFollowUpMatch[1].split('\n')
+            .map(line => line.replace(/^\s*[\d\-\*•·。]+[\.、)\s]*/, '').trim())
+            .filter(line => line.length >= 4 && line.length <= 60);
+        followUps.push(...lines.slice(0, 3));
+    }
+
+    // 移除追问标记和旧格式标记，清理正文
+    const body = source
+        .replace(LLM_FOLLOWUP_RE, '')
+        .replace(FOLLOWUP_BLOCK_RE, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+
     const noResult = forceNoResult || !body;
     const answer = noResult ? AI_NO_RESULT_ANSWER : body;
-    const followUps = [];
 
     return {
         answer,
