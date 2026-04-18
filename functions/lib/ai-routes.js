@@ -1,11 +1,11 @@
 import {
   AI_CONFIG,
   GATEWAY_PROFILES,
-  assessEvidence,
   buildRAGMessages,
   consumeOpenAICompatibleStream,
   generateEmbeddings,
   getPreferredChatProvider,
+  isUnsupportedQuestion,
   semanticSearch,
   retrieveDocuments,
   rerankResults,
@@ -16,13 +16,11 @@ import {
   checkRateLimit,
   cleanupRateLimits,
   extractAIResponse,
-  routeQuestion,
   runAIWithLogging,
   resolveAIModel,
   streamExternalLLM,
 } from './ai-utils.js';
 import {
-  AI_INVALID_CITATION_ANSWER,
   AI_NO_RESULT_ANSWER,
   AI_PROMPT_METADATA,
   AI_RESPONSE_DISCLAIMER,
@@ -31,6 +29,8 @@ import {
   STOP_WORDS_RE,
   buildRecommendMessages,
   buildRewriteSuggestions,
+  buildSourceFollowUps,
+  buildFallbackFollowUps,
   normalizeAiAnswerContract,
 } from './ai-prompts.js';
 import { getTodayBeijing } from './crypto-utils.js';
@@ -39,18 +39,7 @@ const AI_RESPONSE_MODE = Object.freeze({
   ANSWER: 'answer',
   SEARCH_ONLY: 'search_only',
   NO_RESULT: 'no_result',
-  PARTIAL: 'partial',
 });
-
-const AI_RESPONSE_THRESHOLDS = Object.freeze({
-  answerConfidence: 0.75,
-  answerTopScore: 0.72,
-  supportScore: 0.58,
-  singleSourceAnswer: 0.88,
-});
-
-const LEGACY_CITATION_RE = /资料\s*\d+/i;
-const LEGACY_CITATION_ALL_RE = /资料\s*\d+/gi;
 
 function roundConfidence(value) {
   const normalized = Number.isFinite(value) ? value : 0;
@@ -86,80 +75,6 @@ function hasAnswerGenerationCapability(env) {
   return !!(env?.AI?.run || env?.EXTERNAL_LLM_KEY || env?.GROQ_API_KEY);
 }
 
-function buildUnsupportedPayload(question, options = {}) {
-  const {
-    keywords = [],
-    docs = [],
-    references = [],
-    rewriteSuggestions = [],
-    modelInfo = buildIdleModelInfo('retrieval_only'),
-    routeDecision = null,
-    evidenceAssessment = null,
-  } = options;
-
-  return buildAiAnswerPayload(AI_UNSUPPORTED_ANSWER, question, {
-    mode: AI_RESPONSE_MODE.SEARCH_ONLY,
-    sources: [],
-    references,
-    docs,
-    confidence: 0.3,
-    rewriteSuggestions: resolveRewriteSuggestions(question, keywords, docs, rewriteSuggestions),
-    downgradeReason: 'unsupported_request',
-    modelInfo,
-    routeDecision,
-    evidenceAssessment,
-  });
-}
-
-function buildPhase3FallbackPayload(question, options = {}) {
-  const {
-    matches = [],
-    docs = [],
-    keywords = [],
-    references = [],
-    retrieval = evaluateRetrievalEvidence(matches, docs),
-    routeDecision = null,
-    evidenceAssessment = null,
-    answerGenerationAvailable = true,
-    modelInfo = buildIdleModelInfo('retrieval_only'),
-    downgradeReason = null,
-  } = options;
-
-  if (routeDecision?.kind === 'unsupported') {
-    return buildUnsupportedPayload(question, {
-      keywords,
-      docs,
-      references,
-      modelInfo,
-      routeDecision,
-      evidenceAssessment,
-    });
-  }
-
-  if (!docs.length || evidenceAssessment?.recommendedMode === AI_RESPONSE_MODE.NO_RESULT) {
-    return buildNoResultPayload(question, {
-      keywords,
-      docs,
-      modelInfo,
-      routeDecision,
-      evidenceAssessment,
-    });
-  }
-
-  return buildSearchOnlyPayload(question, {
-    matches,
-    docs,
-    keywords,
-    references,
-    confidence: evidenceAssessment?.confidence ?? retrieval.confidence,
-    downgradeReason: downgradeReason || (answerGenerationAvailable
-      ? (evidenceAssessment?.reasonCode || 'insufficient_evidence')
-      : 'answer_generation_unavailable'),
-    modelInfo,
-    routeDecision,
-    evidenceAssessment,
-  });
-}
 
 function buildSourceList(matches, docs, keywords = [], options = {}) {
   const { includeKnowledge = true } = options;
@@ -189,259 +104,6 @@ function buildSourceList(matches, docs, keywords = [], options = {}) {
     if (sources.length >= 3) break;
   }
   return sources;
-}
-
-function normalizeSourceText(text) {
-  return String(text || '').replace(/\s+/g, ' ').trim();
-}
-
-function normalizeCitationId(value) {
-  const normalized = String(value || '').trim().replace(/\s+/g, '');
-  const match = /^S(\d+)$/i.exec(normalized);
-  if (!match) return null;
-  return `S${Number.parseInt(match[1], 10)}`;
-}
-
-function buildReferenceMaps(references = []) {
-  const byId = new Map();
-  const byIndex = new Map();
-
-  for (const reference of Array.isArray(references) ? references : []) {
-    const citationId = normalizeCitationId(
-      reference?.id || (Number.isInteger(reference?.refIndex) ? `S${reference.refIndex}` : '')
-    );
-    const refIndex = Number(reference?.refIndex);
-
-    if (citationId) byId.set(citationId, reference);
-    if (Number.isInteger(refIndex) && refIndex > 0) byIndex.set(refIndex, reference);
-  }
-
-  return { byId, byIndex };
-}
-
-function extractInlineCitationIds(text) {
-  const citationIds = [];
-  const seen = new Set();
-
-  for (const match of String(text || '').matchAll(/[\[［【(（]\s*(S\d+)\s*[\]］】)）]/gi)) {
-    const citationId = normalizeCitationId(match[1]);
-    if (!citationId || seen.has(citationId)) continue;
-    seen.add(citationId);
-    citationIds.push(citationId);
-  }
-
-  return citationIds;
-}
-
-function stripInlineCitationTokens(text) {
-  return String(text || '')
-    .replace(/[\[［【(（]\s*S\d+\s*[\]］】)）]/gi, '')
-    .replace(LEGACY_CITATION_ALL_RE, '')
-    .trim();
-}
-
-function normalizeClaimText(sentence) {
-  return stripInlineCitationTokens(sentence)
-    .replace(/^\s*[-*•#]+\s*/, '')
-    .replace(/^\s*\d+[.)、]\s*/, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function splitAnswerIntoSentences(answer) {
-  const blocks = String(answer || '')
-    .split(/\n+/)
-    .map(block => block.trim())
-    .filter(Boolean);
-  const sentences = [];
-
-  for (const block of blocks) {
-    if (block.startsWith('>')) {
-      sentences.push(block);
-      continue;
-    }
-
-    const parts = block.match(/[^。！？；\n]+[。！？；]?/g) || [block];
-    for (const part of parts) {
-      const sentence = part.trim();
-      if (sentence) sentences.push(sentence);
-    }
-  }
-
-  return sentences;
-}
-
-function isSubstantiveSentence(sentence) {
-  const trimmed = String(sentence || '').trim();
-  if (!trimmed || trimmed.startsWith('>')) return false;
-
-  const signal = normalizeClaimText(trimmed)
-    .replace(/[，。！？；：、\s'"“”‘’《》〈〉（）()【】\[\]{}<>]/g, '');
-
-  return signal.length >= 5;
-}
-
-function buildStructuredCitations(sources = [], references = []) {
-  const { byIndex: referenceByIndex } = buildReferenceMaps(references);
-  const citations = [];
-  const seen = new Set();
-
-  for (const [index, source] of (Array.isArray(sources) ? sources : []).entries()) {
-    const resolvedIndex = Number.isInteger(source?.ref_index) && source.ref_index > 0
-      ? source.ref_index
-      : index + 1;
-    const reference = referenceByIndex.get(resolvedIndex);
-    const citationId = normalizeCitationId(source?.citation_id || source?.id || reference?.id)
-      || `S${resolvedIndex}`;
-    const docId = source?.doc_id || reference?.doc_id || '';
-    const quote = normalizeSourceText(source?.snippet || reference?.text || '');
-    const refIndex = Number.isInteger(source?.ref_index)
-      ? source.ref_index
-      : (Number.isInteger(reference?.refIndex) ? reference.refIndex : null);
-
-    if ((!docId && !quote) || seen.has(citationId)) continue;
-    seen.add(citationId);
-    citations.push({
-      id: citationId,
-      refIndex,
-      docId,
-      title: source?.title || reference?.title || '',
-      seriesName: source?.series_name || reference?.series_name || '',
-      quote,
-      score: typeof source?.score === 'number'
-        ? source.score
-        : (typeof reference?.score === 'number' ? reference.score : null),
-      category: source?.category || reference?.category || '',
-      audioSeriesId: source?.audio_series_id || reference?.audio_series_id || '',
-      audioEpisodeNum: source?.audio_episode_num ?? reference?.audio_episode_num ?? null,
-      location: null,
-    });
-  }
-
-  return citations;
-}
-
-function buildClaimMap(answer, citations = []) {
-  const citationIds = new Set(
-    (Array.isArray(citations) ? citations : [])
-      .map(citation => normalizeCitationId(citation?.id))
-      .filter(Boolean)
-  );
-  const claimMap = [];
-  const seen = new Set();
-
-  for (const sentence of splitAnswerIntoSentences(answer)) {
-    if (!isSubstantiveSentence(sentence)) continue;
-
-    const claim = normalizeClaimText(sentence);
-    const claimCitationIds = [...new Set(
-      extractInlineCitationIds(sentence).filter(citationId => citationIds.has(citationId))
-    )];
-
-    if (!claim || !claimCitationIds.length) continue;
-
-    const key = `${claim}|${claimCitationIds.join(',')}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    claimMap.push({ claim, citationIds: claimCitationIds });
-  }
-
-  return claimMap;
-}
-
-function buildUncertaintyPayload(mode, confidence, citations = [], claimMap = [], downgradeReason = null) {
-  const retrievalConfidence = mode === AI_RESPONSE_MODE.NO_RESULT ? 0 : roundConfidence(confidence);
-  let level = 'low';
-  let message = '基于当前检索到的原文整理，建议结合引用原文核对关键判断。';
-
-  if (mode === AI_RESPONSE_MODE.NO_RESULT) {
-    level = 'high';
-    message = '当前未检索到可直接支撑回答的文库原文。';
-  } else if (mode === AI_RESPONSE_MODE.PARTIAL) {
-    level = 'high';
-    message = '流式回答中断，仅保留已生成片段供参考。';
-  } else if (mode === AI_RESPONSE_MODE.SEARCH_ONLY) {
-    level = downgradeReason === 'invalid_citation' ? 'high' : 'medium';
-    message = downgradeReason === 'invalid_citation'
-      ? '回答未通过最小引用校验，已降级为相关原文检索结果。'
-      : '当前证据更适合先返回相关原文，再决定是否继续归纳。';
-  } else if (retrievalConfidence < 0.82 || citations.length < 2 || !claimMap.length) {
-    level = 'medium';
-    message = '已有可用原文依据，但仍建议逐条核对引用出处。';
-  }
-
-  return {
-    level,
-    message,
-    retrievalConfidence,
-    citationCount: Array.isArray(citations) ? citations.length : 0,
-    claimCount: Array.isArray(claimMap) ? claimMap.length : 0,
-    reason: downgradeReason || null,
-  };
-}
-
-function extractQuotedSegments(answer) {
-  const segments = [];
-  const blockMatches = String(answer || '').match(/^>\s*(.+)$/gm) || [];
-  for (const line of blockMatches) {
-    const value = normalizeSourceText(line.replace(/^>\s*/, ''));
-    if (value.length >= 10) segments.push(value);
-  }
-
-  const quoteRe = /[“"]([^”"]{10,200})[”"]/g;
-  let match;
-  while ((match = quoteRe.exec(String(answer || ''))) !== null) {
-    const value = normalizeSourceText(match[1]);
-    if (value.length >= 10) segments.push(value);
-  }
-
-  return [...new Set(segments)];
-}
-
-function buildBoundSourceList(answer, references, keywords = [], fallbackMatches = [], docs = []) {
-  const text = String(answer || '');
-  const usedCitationIds = extractInlineCitationIds(text);
-  const { byId: referenceById } = buildReferenceMaps(references);
-  const usedReferences = usedCitationIds
-    .map(citationId => referenceById.get(citationId))
-    .filter(Boolean);
-  const matchedQuoteByCitationId = new Map();
-
-  const quotedSegments = extractQuotedSegments(text);
-  for (const segment of quotedSegments) {
-    const matched = usedReferences.find(reference => {
-      const refText = normalizeSourceText(reference.text);
-      return refText && (refText.includes(segment) || segment.includes(refText.slice(0, Math.min(refText.length, 48))));
-    });
-    const citationId = normalizeCitationId(matched?.id || (Number.isInteger(matched?.refIndex) ? `S${matched.refIndex}` : ''));
-    if (!matched || !citationId || matchedQuoteByCitationId.has(citationId)) continue;
-    matchedQuoteByCitationId.set(citationId, segment);
-  }
-
-  if (!usedReferences.length) {
-    return [];
-  }
-
-  return usedReferences
-    .slice(0, 3)
-    .map(reference => {
-      const citationId = normalizeCitationId(reference.id || `S${reference.refIndex}`);
-      return {
-        title: reference.title || '',
-        doc_id: reference.doc_id,
-        score: reference.score,
-        category: reference.category || '',
-        series_name: reference.series_name || '',
-        audio_series_id: reference.audio_series_id || '',
-        audio_episode_num: reference.audio_episode_num || null,
-        snippet: matchedQuoteByCitationId.get(citationId)
-          || (keywords.length > 0
-            ? buildKeywordSnippet(reference.text, keywords) || reference.text.slice(0, 300)
-            : reference.text.slice(0, 300)),
-        ref_index: reference.refIndex,
-        citation_id: citationId,
-      };
-    });
 }
 
 function buildDocFallbackSources(docs, keywords = []) {
@@ -488,173 +150,19 @@ function buildSearchSourceList(matches, docs, keywords = []) {
   return merged;
 }
 
-function validateGroundedAnswerCitations(answer, references = []) {
-  const { byId: referenceById } = buildReferenceMaps(references);
-  const usedCitationIds = extractInlineCitationIds(answer);
-  const unknownCitationIds = usedCitationIds.filter(citationId => !referenceById.has(citationId));
-  const claimMap = [];
-  const uncitedClaims = [];
-  const seen = new Set();
-
-  for (const sentence of splitAnswerIntoSentences(answer)) {
-    if (!isSubstantiveSentence(sentence)) continue;
-
-    const claim = normalizeClaimText(sentence);
-    const sentenceCitationIds = [...new Set(extractInlineCitationIds(sentence))];
-    const validCitationIds = sentenceCitationIds.filter(citationId => referenceById.has(citationId));
-
-    if (!claim) continue;
-    if (!validCitationIds.length) {
-      uncitedClaims.push(claim);
-      continue;
-    }
-
-    const key = `${claim}|${validCitationIds.join(',')}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    claimMap.push({ claim, citationIds: validCitationIds });
-  }
-
-  const issues = [];
-  const hasLegacyCitationFormat = LEGACY_CITATION_RE.test(String(answer || ''));
-
-  if (hasLegacyCitationFormat) issues.push('legacy_citation_format');
-  if (!usedCitationIds.length) issues.push('missing_inline_citation');
-  if (unknownCitationIds.length) issues.push('unknown_citation_id');
-  if (uncitedClaims.length) issues.push('uncited_claim');
-  if (!claimMap.length) issues.push('empty_claim_map');
-
-  return {
-    valid: issues.length === 0,
-    claimMap,
-    usedCitationIds: usedCitationIds.filter(citationId => referenceById.has(citationId)),
-    unknownCitationIds,
-    uncitedClaims,
-    hasLegacyCitationFormat,
-    issues,
-  };
-}
-
-function resolveGroundedAnswerDowngradeReason(validation) {
-  if (
-    validation?.hasLegacyCitationFormat
-    || (validation?.unknownCitationIds || []).length
-    || (validation?.uncitedClaims || []).length
-    || !(validation?.usedCitationIds || []).length
-  ) {
-    return 'invalid_citation';
-  }
-
-  return 'insufficient_evidence';
-}
-
-function evaluateRetrievalEvidence(matches = [], docs = []) {
-  if (!docs.length) {
-    return {
-      mode: AI_RESPONSE_MODE.NO_RESULT,
-      confidence: 0,
-      topScore: 0,
-      secondScore: 0,
-      strongMatchCount: 0,
-      supportMatchCount: 0,
-      uniqueMatchedDocCount: 0,
-    };
-  }
-
-  const scores = (matches || [])
-    .map(match => (typeof match.score === 'number' ? match.score : null))
-    .filter(score => Number.isFinite(score))
-    .sort((left, right) => right - left);
-  const topScore = scores[0] || 0;
-  const secondScore = scores[1] || 0;
-  const strongMatchCount = scores.filter(score => score >= AI_RESPONSE_THRESHOLDS.answerTopScore).length;
-  const supportMatchCount = scores.filter(score => score >= AI_RESPONSE_THRESHOLDS.supportScore).length;
-  const uniqueMatchedDocCount = new Set(
-    (matches || []).map(match => match.metadata?.doc_id).filter(Boolean)
-  ).size;
-
-  let confidence = 0.22;
-  if (!scores.length) {
-    confidence += 0.08;
-  } else if (topScore >= 0.85) {
-    confidence += 0.4;
-  } else if (topScore >= 0.75) {
-    confidence += 0.32;
-  } else if (topScore >= 0.65) {
-    confidence += 0.22;
-  } else if (topScore >= AI_RESPONSE_THRESHOLDS.supportScore) {
-    confidence += 0.12;
-  } else {
-    confidence += 0.05;
-  }
-
-  if (secondScore >= AI_RESPONSE_THRESHOLDS.answerTopScore) {
-    confidence += 0.12;
-  } else if (secondScore >= 0.6) {
-    confidence += 0.07;
-  }
-
-  if (strongMatchCount >= 2) {
-    confidence += 0.08;
-  } else if (supportMatchCount >= 2) {
-    confidence += 0.04;
-  }
-
-  if (uniqueMatchedDocCount >= 2) {
-    confidence += 0.04;
-  }
-
-  confidence = roundConfidence(confidence);
-
-  const answerReady = confidence >= AI_RESPONSE_THRESHOLDS.answerConfidence
-    && topScore >= AI_RESPONSE_THRESHOLDS.answerTopScore
-    && (strongMatchCount >= 2 || secondScore >= 0.6);
-
-  return {
-    mode: answerReady ? AI_RESPONSE_MODE.ANSWER : AI_RESPONSE_MODE.SEARCH_ONLY,
-    confidence,
-    topScore,
-    secondScore,
-    strongMatchCount,
-    supportMatchCount,
-    uniqueMatchedDocCount,
-  };
-}
-
-function resolveRewriteSuggestions(question, keywords = [], docs = [], suggestions = []) {
-  const merged = [];
-  const seen = new Set();
-
-  for (const value of [...(Array.isArray(suggestions) ? suggestions : []), ...buildRewriteSuggestions(question, { keywords, docs })]) {
-    const normalized = String(value || '').trim();
-    if (!normalized || seen.has(normalized)) continue;
-    seen.add(normalized);
-    merged.push(normalized);
-    if (merged.length >= 3) break;
-  }
-
-  return merged;
-}
-
 function buildAiAnswerPayload(rawText, question, options = {}) {
   const {
     mode = AI_RESPONSE_MODE.ANSWER,
     sources = [],
-    references = [],
     forceNoResult = false,
     docs = [],
-    confidence = mode === AI_RESPONSE_MODE.NO_RESULT ? 0 : AI_RESPONSE_THRESHOLDS.answerConfidence,
+    confidence = mode === AI_RESPONSE_MODE.NO_RESULT ? 0 : 0.75,
     rewriteSuggestions = [],
     downgradeReason = null,
     modelInfo = buildIdleModelInfo(mode === AI_RESPONSE_MODE.NO_RESULT ? 'retrieval_only' : 'not_invoked'),
-    citations = null,
-    claimMap = null,
-    routeDecision = null,
-    evidenceAssessment = null,
   } = options;
 
   const normalized = mode === AI_RESPONSE_MODE.SEARCH_ONLY
-    || mode === AI_RESPONSE_MODE.PARTIAL
     ? {
       answer: String(rawText || AI_SEARCH_ONLY_ANSWER).trim(),
       followUps: [],
@@ -664,13 +172,6 @@ function buildAiAnswerPayload(rawText, question, options = {}) {
       docs,
     });
 
-  const citationList = Array.isArray(citations)
-    ? citations
-    : buildStructuredCitations(sources, references);
-  const claimMapList = Array.isArray(claimMap)
-    ? claimMap
-    : buildClaimMap(normalized.answer, citationList);
-
   return {
     contractVersion: AI_PROMPT_METADATA.contract,
     mode,
@@ -679,17 +180,11 @@ function buildAiAnswerPayload(rawText, question, options = {}) {
     answer: normalized.answer,
     followUps: normalized.followUps,
     sources,
-    citations: citationList,
-    claimMap: claimMapList,
-    uncertainty: buildUncertaintyPayload(
-      mode,
-      confidence,
-      citationList,
-      claimMapList,
-      downgradeReason,
-    ),
-    route: routeDecision ? { ...routeDecision } : null,
-    evidence: evidenceAssessment ? { ...evidenceAssessment } : null,
+    citations: [],
+    claimMap: [],
+    uncertainty: null,
+    route: null,
+    evidence: null,
     downgradeReason,
     promptVersion: buildPromptVersionInfo(),
     modelInfo: { ...modelInfo },
@@ -706,11 +201,8 @@ function buildSearchOnlyPayload(question, options = {}) {
     sources = [],
     rewriteSuggestions = [],
     answer = AI_SEARCH_ONLY_ANSWER,
-    references = [],
     downgradeReason = 'insufficient_evidence',
     modelInfo = buildIdleModelInfo('retrieval_only'),
-    routeDecision = null,
-    evidenceAssessment = null,
   } = options;
   const finalSources = Array.isArray(sources) && sources.length > 0
     ? sources.slice(0, 3)
@@ -719,14 +211,11 @@ function buildSearchOnlyPayload(question, options = {}) {
   return buildAiAnswerPayload(answer, question, {
     mode: AI_RESPONSE_MODE.SEARCH_ONLY,
     sources: finalSources,
-    references,
     docs,
-    confidence: Math.min(roundConfidence(confidence), AI_RESPONSE_THRESHOLDS.answerConfidence - 0.01),
-    rewriteSuggestions: resolveRewriteSuggestions(question, keywords, docs, rewriteSuggestions),
+    confidence: Math.min(roundConfidence(confidence), 0.74),
+    rewriteSuggestions: buildRewriteSuggestions(question, { keywords, docs }),
     downgradeReason,
     modelInfo,
-    routeDecision,
-    evidenceAssessment,
   });
 }
 
@@ -736,20 +225,15 @@ function buildNoResultPayload(question, options = {}) {
     docs = [],
     rewriteSuggestions = [],
     modelInfo = buildIdleModelInfo('retrieval_only'),
-    routeDecision = null,
-    evidenceAssessment = null,
   } = options;
   return buildAiAnswerPayload(AI_NO_RESULT_ANSWER, question, {
     mode: AI_RESPONSE_MODE.NO_RESULT,
     sources: [],
-    references: [],
     docs,
     confidence: 0,
-    rewriteSuggestions: resolveRewriteSuggestions(question, keywords, docs, rewriteSuggestions),
+    rewriteSuggestions: buildRewriteSuggestions(question, { keywords, docs }),
     downgradeReason: 'no_documents',
     modelInfo,
-    routeDecision,
-    evidenceAssessment,
   });
 }
 
@@ -775,143 +259,6 @@ function splitAnswerIntoChunks(answer, chunkSize = 48) {
     cursor = end;
   }
   return chunks;
-}
-
-function buildVerifiedAiAnswerPayload(rawText, question, options = {}) {
-  const {
-    references = [],
-    keywords = [],
-    docs = [],
-    matches = [],
-    forceNoResult = false,
-    retrieval = evaluateRetrievalEvidence(matches, docs),
-    modelInfo = buildIdleModelInfo('not_invoked'),
-    routeDecision = null,
-    evidenceAssessment = null,
-  } = options;
-
-  if (forceNoResult || !docs.length) {
-    return buildNoResultPayload(question, {
-      keywords,
-      docs,
-      modelInfo,
-      routeDecision,
-      evidenceAssessment,
-    });
-  }
-
-  const normalized = normalizeAiAnswerContract(rawText, question, { docs });
-  const searchSources = buildSearchSourceList(matches, docs, keywords);
-
-  if (routeDecision?.kind === 'unsupported') {
-    return buildUnsupportedPayload(question, {
-      keywords,
-      docs,
-      references,
-      modelInfo,
-      routeDecision,
-      evidenceAssessment,
-    });
-  }
-
-  if (evidenceAssessment?.recommendedMode === AI_RESPONSE_MODE.NO_RESULT) {
-    return buildNoResultPayload(question, {
-      keywords,
-      docs,
-      modelInfo,
-      routeDecision,
-      evidenceAssessment,
-    });
-  }
-
-  if ((evidenceAssessment?.recommendedMode || retrieval.mode) !== AI_RESPONSE_MODE.ANSWER || normalized.noResult) {
-    return buildSearchOnlyPayload(question, {
-      matches,
-      docs,
-      keywords,
-      confidence: evidenceAssessment?.confidence ?? retrieval.confidence,
-      sources: searchSources,
-      references,
-      downgradeReason: normalized.noResult
-        ? 'answer_generation_empty'
-        : (evidenceAssessment?.reasonCode || 'insufficient_evidence'),
-      modelInfo,
-      routeDecision,
-      evidenceAssessment,
-    });
-  }
-
-  const validation = validateGroundedAnswerCitations(normalized.answer, references);
-  if (!validation.valid) {
-    const downgradeReason = resolveGroundedAnswerDowngradeReason(validation);
-    return buildSearchOnlyPayload(question, {
-      matches,
-      docs,
-      keywords,
-      confidence: retrieval.confidence,
-      sources: searchSources,
-      references,
-      answer: downgradeReason === 'invalid_citation'
-        ? AI_INVALID_CITATION_ANSWER
-        : AI_SEARCH_ONLY_ANSWER,
-      downgradeReason,
-      modelInfo,
-      routeDecision,
-      evidenceAssessment,
-    });
-  }
-
-  const { byId: referenceById } = buildReferenceMaps(references);
-  const citationSources = validation.usedCitationIds
-    .map(citationId => {
-      const reference = referenceById.get(citationId);
-      if (!reference) return null;
-
-      return {
-        title: reference.title || '',
-        doc_id: reference.doc_id,
-        score: reference.score,
-        category: reference.category || '',
-        series_name: reference.series_name || '',
-        audio_series_id: reference.audio_series_id || '',
-        audio_episode_num: reference.audio_episode_num || null,
-        snippet: reference.text || '',
-        ref_index: reference.refIndex,
-        citation_id: citationId,
-      };
-    })
-    .filter(Boolean);
-  const sources = buildBoundSourceList(normalized.answer, references, keywords, [], docs);
-  const finalSources = sources.length ? sources : citationSources.slice(0, 3);
-  const answerConfidence = roundConfidence(Math.min(
-    0.96,
-    retrieval.confidence
-    + (validation.claimMap.length >= 2 ? 0.08 : 0.04)
-    + (validation.usedCitationIds.length >= 2 ? 0.04 : 0)
-  ));
-  const citations = buildStructuredCitations(citationSources, references);
-  const validCitationIds = new Set(citations.map(citation => citation.id));
-  const claimMap = validation.claimMap
-    .map(item => ({
-      claim: item.claim,
-      citationIds: item.citationIds.filter(citationId => validCitationIds.has(citationId)),
-    }))
-    .filter(item => item.claim && item.citationIds.length);
-
-  return buildAiAnswerPayload(normalized.answer, question, {
-    mode: AI_RESPONSE_MODE.ANSWER,
-    sources: finalSources,
-    references,
-    docs,
-    confidence: Math.max(answerConfidence, AI_RESPONSE_THRESHOLDS.answerConfidence),
-    rewriteSuggestions: resolveRewriteSuggestions(question, keywords, docs),
-    downgradeReason: null,
-    modelInfo,
-    citations,
-    claimMap,
-    routeDecision,
-    evidenceAssessment,
-  });
 }
 
 function normalizeSummaryKey(documentId) {
@@ -1235,34 +582,6 @@ async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
   return { matches, docs };
 }
 
-async function buildAskPhase3State(env, askInput, ctx) {
-  const routeDecision = await routeQuestion(env, askInput.question, {
-    history: askInput.history,
-    ctx,
-  });
-  const keywords = extractSearchKeywords(askInput.question);
-  const { matches, docs } = await loadAiDocs(env, askInput.question, askInput.seriesId, askInput.episodeNum, ctx);
-  const retrieval = evaluateRetrievalEvidence(matches, docs);
-  const { references } = buildRAGContext(docs, { vectorMatches: matches });
-  const evidenceAssessment = await assessEvidence(env, askInput.question, {
-    routeDecision,
-    retrieval,
-    references,
-    docs,
-    ctx,
-  });
-
-  return {
-    keywords,
-    matches,
-    docs,
-    retrieval,
-    references,
-    routeDecision,
-    evidenceAssessment,
-  };
-}
-
 export async function handleAiAsk(env, request, cors, ctx, json) {
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
   const limit = await checkRateLimit(env, ip, 'ai_ask');
@@ -1278,58 +597,68 @@ export async function handleAiAsk(env, request, cors, ctx, json) {
   const askInput = parseAskInput(body);
   if (askInput.error) return json({ error: askInput.error }, cors, 400);
 
-  const {
-    keywords,
-    matches,
-    docs,
-    retrieval,
-    references,
-    routeDecision,
-    evidenceAssessment,
-  } = await buildAskPhase3State(env, askInput, ctx);
-
-  const answerGenerationAvailable = hasAnswerGenerationCapability(env);
-  if (
-    routeDecision?.kind === 'unsupported'
-    || !docs.length
-    || evidenceAssessment?.recommendedMode !== AI_RESPONSE_MODE.ANSWER
-    || !answerGenerationAvailable
-  ) {
-    return json(buildPhase3FallbackPayload(askInput.question, {
-      matches,
-      docs,
-      keywords,
-      references,
-      retrieval,
-      routeDecision,
-      evidenceAssessment,
-      answerGenerationAvailable,
-      modelInfo: buildIdleModelInfo(
-        answerGenerationAvailable ? 'retrieval_only' : 'answer_generation_unavailable'
-      ),
+  // 不支持的问题直接返回
+  if (isUnsupportedQuestion(askInput.question)) {
+    return json(buildAiAnswerPayload(AI_UNSUPPORTED_ANSWER, askInput.question, {
+      mode: AI_RESPONSE_MODE.NO_RESULT,
+      confidence: 0,
+      downgradeReason: 'unsupported_question',
+      modelInfo: buildIdleModelInfo('retrieval_only'),
     }), cors, 200, 'no-store');
   }
 
+  const keywords = extractSearchKeywords(askInput.question);
+  const { matches, docs } = await loadAiDocs(env, askInput.question, askInput.seriesId, askInput.episodeNum, ctx);
+
+  // Fast path: 高匹配知识库 QA（score >= 0.85），0 次 LLM 调用
+  const topMatch = matches[0];
+  if (
+    topMatch?.score >= 0.85
+    && topMatch?.metadata?.category === 'knowledge'
+    && topMatch?.metadata?.text
+  ) {
+    const text = topMatch.metadata.text;
+    const answerStart = text.indexOf('\n\n');
+    const precompiledAnswer = answerStart >= 0 ? text.slice(answerStart + 2).trim() : text.trim();
+    if (precompiledAnswer) {
+      const sources = buildSearchSourceList(matches, docs, keywords);
+      return json(buildAiAnswerPayload(precompiledAnswer, askInput.question, {
+        mode: AI_RESPONSE_MODE.ANSWER,
+        sources,
+        docs,
+        confidence: 0.92,
+        rewriteSuggestions: buildRewriteSuggestions(askInput.question, { keywords, docs }),
+        modelInfo: buildIdleModelInfo('knowledge_qa_direct'),
+      }), cors, 200, 'no-store');
+    }
+  }
+
+  // 无文档 → 无结果
+  if (!docs.length) {
+    return json(buildNoResultPayload(askInput.question, { keywords, docs }), cors, 200, 'no-store');
+  }
+
+  // 需要 LLM 但不可用 → 搜索模式
+  if (!hasAnswerGenerationCapability(env)) {
+    return json(buildSearchOnlyPayload(askInput.question, {
+      matches, docs, keywords,
+      downgradeReason: 'answer_generation_unavailable',
+      modelInfo: buildIdleModelInfo('answer_generation_unavailable'),
+    }), cors, 200, 'no-store');
+  }
+
+  // RAG path: 1 次 LLM 调用
   let result;
   try {
     result = await ragAnswer(env, askInput.question, docs, {
       history: askInput.history,
       vectorMatches: matches,
       ctx,
-      routeDecision,
-      evidenceAssessment,
     });
   } catch (err) {
     console.error('RAG answer failed:', err.message);
-    return json(buildPhase3FallbackPayload(askInput.question, {
-      matches,
-      docs,
-      keywords,
-      references,
-      retrieval,
-      routeDecision,
-      evidenceAssessment,
-      answerGenerationAvailable: true,
+    return json(buildSearchOnlyPayload(askInput.question, {
+      matches, docs, keywords,
       downgradeReason: 'answer_generation_failed',
       modelInfo: buildIdleModelInfo('answer_generation_failed'),
     }), cors, 200, 'no-store');
@@ -1338,123 +667,21 @@ export async function handleAiAsk(env, request, cors, ctx, json) {
   const answer = result?.response?.trim();
   if (!answer) {
     return json(buildSearchOnlyPayload(askInput.question, {
-      matches,
-      docs,
-      keywords,
-      confidence: evidenceAssessment?.confidence ?? retrieval.confidence,
-      references,
+      matches, docs, keywords,
       downgradeReason: 'answer_generation_empty',
       modelInfo: result?.modelInfo || buildIdleModelInfo('answer_generation_empty'),
-      routeDecision,
-      evidenceAssessment,
     }), cors, 200, 'no-store');
   }
 
-  return json(buildVerifiedAiAnswerPayload(answer, askInput.question, {
-    references,
-    keywords,
+  const sources = buildSearchSourceList(matches, docs, keywords);
+  return json(buildAiAnswerPayload(answer, askInput.question, {
+    mode: AI_RESPONSE_MODE.ANSWER,
+    sources,
     docs,
-    matches,
-    retrieval,
-    modelInfo: result?.modelInfo || buildIdleModelInfo('answer_generation_failed'),
-    routeDecision,
-    evidenceAssessment,
+    confidence: 0.82,
+    rewriteSuggestions: buildRewriteSuggestions(askInput.question, { keywords, docs }),
+    modelInfo: result?.modelInfo || buildIdleModelInfo('not_invoked'),
   }), cors, 200, 'no-store');
-}
-
-async function buildAskStreamFallbackPayload(env, askInput, docs, matches, keywords, references, retrieval, routeDecision, evidenceAssessment, ctx) {
-  try {
-    const result = await ragAnswer(env, askInput.question, docs, {
-      history: askInput.history,
-      vectorMatches: matches,
-      ctx,
-      routeDecision,
-      evidenceAssessment,
-    });
-
-    const answer = result?.response?.trim();
-    if (answer) {
-      return buildVerifiedAiAnswerPayload(answer, askInput.question, {
-        references,
-        keywords,
-        docs,
-        matches,
-        retrieval,
-        modelInfo: result?.modelInfo || buildIdleModelInfo('answer_generation_failed'),
-        routeDecision,
-        evidenceAssessment,
-      });
-    }
-
-    return buildSearchOnlyPayload(askInput.question, {
-      matches,
-      docs,
-      keywords,
-      references,
-      confidence: evidenceAssessment?.confidence ?? retrieval.confidence,
-      downgradeReason: 'answer_generation_empty',
-      modelInfo: result?.modelInfo || buildIdleModelInfo('answer_generation_empty'),
-      routeDecision,
-      evidenceAssessment,
-    });
-  } catch (err) {
-    console.error('Ask stream fallback answer failed:', err.message);
-  }
-
-  return buildSearchOnlyPayload(askInput.question, {
-    matches,
-    docs,
-    keywords,
-    confidence: evidenceAssessment?.confidence ?? retrieval.confidence,
-    references,
-    downgradeReason: 'answer_generation_failed',
-    modelInfo: buildIdleModelInfo('answer_generation_failed'),
-    routeDecision,
-    evidenceAssessment,
-  });
-}
-
-function buildPartialStreamPayload(answer, question, options = {}) {
-  const {
-    matches = [],
-    docs = [],
-    keywords = [],
-    retrieval = evaluateRetrievalEvidence(matches, docs),
-    modelInfo = buildIdleModelInfo('stream_interrupted'),
-    routeDecision = null,
-    evidenceAssessment = null,
-  } = options;
-
-  const normalized = normalizeAiAnswerContract(answer, question, { docs });
-  const partialAnswer = String(normalized.answer || answer || '').trim();
-  if (!partialAnswer) {
-    return buildSearchOnlyPayload(question, {
-      matches,
-      docs,
-      keywords,
-      confidence: evidenceAssessment?.confidence ?? retrieval.confidence,
-      downgradeReason: 'stream_interrupted',
-      modelInfo,
-      routeDecision,
-      evidenceAssessment,
-    });
-  }
-
-  return buildAiAnswerPayload(partialAnswer, question, {
-    mode: AI_RESPONSE_MODE.PARTIAL,
-    sources: buildSearchSourceList(matches, docs, keywords),
-    references: [],
-    docs,
-    confidence: Math.min(
-      Math.max(roundConfidence(retrieval.confidence), 0.55),
-      AI_RESPONSE_THRESHOLDS.answerConfidence - 0.01,
-    ),
-    rewriteSuggestions: resolveRewriteSuggestions(question, keywords, docs),
-    downgradeReason: 'stream_interrupted',
-    modelInfo,
-    routeDecision,
-    evidenceAssessment,
-  });
 }
 
 function buildAskStreamDoneResponse(payload, cors) {
@@ -1497,38 +724,57 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
   const askInput = parseAskInput(body);
   if (askInput.error) return json({ error: askInput.error }, cors, 400);
 
-  const {
-    keywords,
-    matches,
-    docs,
-    retrieval,
-    references,
-    routeDecision,
-    evidenceAssessment,
-  } = await buildAskPhase3State(env, askInput, ctx);
-
-  const answerGenerationAvailable = hasAnswerGenerationCapability(env);
-  if (
-    routeDecision?.kind === 'unsupported'
-    || !docs.length
-    || evidenceAssessment?.recommendedMode !== AI_RESPONSE_MODE.ANSWER
-    || !answerGenerationAvailable
-  ) {
-    return buildAskStreamDoneResponse(buildPhase3FallbackPayload(askInput.question, {
-      matches,
-      docs,
-      keywords,
-      references,
-      retrieval,
-      routeDecision,
-      evidenceAssessment,
-      answerGenerationAvailable,
-      modelInfo: buildIdleModelInfo(
-        answerGenerationAvailable ? 'retrieval_only' : 'answer_generation_unavailable'
-      ),
+  // 不支持的问题
+  if (isUnsupportedQuestion(askInput.question)) {
+    return buildAskStreamDoneResponse(buildAiAnswerPayload(AI_UNSUPPORTED_ANSWER, askInput.question, {
+      mode: AI_RESPONSE_MODE.NO_RESULT,
+      confidence: 0,
+      downgradeReason: 'unsupported_question',
+      modelInfo: buildIdleModelInfo('retrieval_only'),
     }), cors);
   }
 
+  const keywords = extractSearchKeywords(askInput.question);
+  const { matches, docs } = await loadAiDocs(env, askInput.question, askInput.seriesId, askInput.episodeNum, ctx);
+
+  // Fast path: 知识库直答
+  const topMatch = matches[0];
+  if (
+    topMatch?.score >= 0.85
+    && topMatch?.metadata?.category === 'knowledge'
+    && topMatch?.metadata?.text
+  ) {
+    const text = topMatch.metadata.text;
+    const answerStart = text.indexOf('\n\n');
+    const precompiledAnswer = answerStart >= 0 ? text.slice(answerStart + 2).trim() : text.trim();
+    if (precompiledAnswer) {
+      const sources = buildSearchSourceList(matches, docs, keywords);
+      return buildAskStreamDoneResponse(buildAiAnswerPayload(precompiledAnswer, askInput.question, {
+        mode: AI_RESPONSE_MODE.ANSWER,
+        sources,
+        docs,
+        confidence: 0.92,
+        rewriteSuggestions: buildRewriteSuggestions(askInput.question, { keywords, docs }),
+        modelInfo: buildIdleModelInfo('knowledge_qa_direct'),
+      }), cors);
+    }
+  }
+
+  // 无文档
+  if (!docs.length) {
+    return buildAskStreamDoneResponse(buildNoResultPayload(askInput.question, { keywords, docs }), cors);
+  }
+
+  // 无 LLM 能力
+  if (!hasAnswerGenerationCapability(env)) {
+    return buildAskStreamDoneResponse(buildSearchOnlyPayload(askInput.question, {
+      matches, docs, keywords,
+      downgradeReason: 'answer_generation_unavailable',
+      modelInfo: buildIdleModelInfo('answer_generation_unavailable'),
+    }), cors);
+  }
+
+  // 流式 RAG
   const preferredProvider = getPreferredChatProvider(env);
   const hasTrueStreamProvider = preferredProvider?.supportsNativeStream === true;
   const streamModelInfo = buildStreamModelInfo(preferredProvider);
@@ -1554,8 +800,6 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
           const messages = buildRAGMessages(askInput.question, docs, {
             history: askInput.history,
             vectorMatches: matches,
-            routeDecision,
-            evidenceAssessment,
           });
           try {
             const llmStream = await streamExternalLLM(env, messages, {
@@ -1571,96 +815,63 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
             });
 
             if (streamedAnswer.trim()) {
-              finalPayload = buildVerifiedAiAnswerPayload(streamedAnswer, askInput.question, {
-                references,
-                keywords,
+              const sources = buildSearchSourceList(matches, docs, keywords);
+              finalPayload = buildAiAnswerPayload(streamedAnswer, askInput.question, {
+                mode: AI_RESPONSE_MODE.ANSWER,
+                sources,
                 docs,
-                matches,
-                retrieval,
+                confidence: 0.82,
+                rewriteSuggestions: buildRewriteSuggestions(askInput.question, { keywords, docs }),
                 modelInfo: streamModelInfo,
-                routeDecision,
-                evidenceAssessment,
               });
-            } else {
-              finalPayload = await buildAskStreamFallbackPayload(
-                env,
-                askInput,
-                docs,
-                matches,
-                keywords,
-                references,
-                retrieval,
-                routeDecision,
-                evidenceAssessment,
-                ctx,
-              );
             }
           } catch (err) {
             console.error('Ask stream external streaming failed:', err.message);
+          }
+        }
 
-            if (!emittedChunks) {
-              finalPayload = await buildAskStreamFallbackPayload(
-                env,
-                askInput,
+        // 流式失败或不支持流式 → 非流式 RAG 回退
+        if (!finalPayload) {
+          try {
+            const result = await ragAnswer(env, askInput.question, docs, {
+              history: askInput.history,
+              vectorMatches: matches,
+              ctx,
+            });
+            const answer = result?.response?.trim();
+            if (answer) {
+              const sources = buildSearchSourceList(matches, docs, keywords);
+              finalPayload = buildAiAnswerPayload(answer, askInput.question, {
+                mode: AI_RESPONSE_MODE.ANSWER,
+                sources,
                 docs,
-                matches,
-                keywords,
-                references,
-                retrieval,
-                routeDecision,
-                evidenceAssessment,
-                ctx,
-              );
+                confidence: 0.82,
+                rewriteSuggestions: buildRewriteSuggestions(askInput.question, { keywords, docs }),
+                modelInfo: result?.modelInfo || streamModelInfo,
+              });
             } else {
-              finalPayload = buildPartialStreamPayload(streamedAnswer, askInput.question, {
-                matches,
-                docs,
-                keywords,
-                retrieval,
-                modelInfo: streamModelInfo,
-                routeDecision,
-                evidenceAssessment,
+              finalPayload = buildSearchOnlyPayload(askInput.question, {
+                matches, docs, keywords,
+                downgradeReason: 'answer_generation_empty',
+                modelInfo: result?.modelInfo || buildIdleModelInfo('answer_generation_empty'),
               });
             }
+          } catch (err) {
+            console.error('Ask stream fallback RAG failed:', err.message);
+            finalPayload = buildSearchOnlyPayload(askInput.question, {
+              matches, docs, keywords,
+              downgradeReason: 'answer_generation_failed',
+              modelInfo: buildIdleModelInfo('answer_generation_failed'),
+            });
           }
-        } else {
-          finalPayload = await buildAskStreamFallbackPayload(
-            env,
-            askInput,
-            docs,
-            matches,
-            keywords,
-            references,
-            retrieval,
-            routeDecision,
-            evidenceAssessment,
-            ctx,
-          );
         }
       } catch (err) {
         console.error('Ask stream answer failed:', err.message);
-        finalPayload = emittedChunks
-          ? buildPartialStreamPayload(streamedAnswer, askInput.question, {
-            matches,
-            docs,
-            keywords,
-            retrieval,
-            modelInfo: streamModelInfo,
-            routeDecision,
-            evidenceAssessment,
-          })
-          : buildPhase3FallbackPayload(askInput.question, {
-            matches,
-            docs,
-            keywords,
-            references,
-            retrieval,
-            routeDecision,
-            evidenceAssessment,
-            answerGenerationAvailable: true,
-            downgradeReason: 'answer_generation_failed',
-            modelInfo: buildIdleModelInfo('answer_generation_failed'),
-          });
+        finalPayload = buildSearchOnlyPayload(askInput.question, {
+          matches, docs, keywords,
+          downgradeReason: 'answer_generation_failed',
+          modelInfo: buildIdleModelInfo('answer_generation_failed'),
+        });
       }
 
       if (!emittedChunks) {
