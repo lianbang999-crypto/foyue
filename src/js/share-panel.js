@@ -4,6 +4,7 @@
  * 支持：统一摘要、生成海报、复制链接、保存图片、原生分享
  */
 
+import '../css/share.css';
 import { shareContent, showToast } from './utils.js';
 import { generatePoster } from './share-poster.js';
 

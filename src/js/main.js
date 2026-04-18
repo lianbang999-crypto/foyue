@@ -9,7 +9,7 @@ import '../css/player.css';
 import '../css/cards.css';
 import '../css/pages.css';
 import '../css/components.css';
-import '../css/share.css';
+// share.css 随 share-panel.js 动态加载，无需在此静态引入
 // AI / 文库 / 共修等独立页样式在各自入口中按需加载，主站仅保留共享 UI。
 import { state, beginContentRequest, isContentRequestCurrent, getCurrentTrack } from './state.js';
 import { initDOM, getDOM } from './dom.js';
