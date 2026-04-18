@@ -259,15 +259,26 @@ function wireEvents() {
     btnSend.addEventListener('click', handleSubmit);
 
     // 清空当前对话
+    let _clearPending = false;
     btnClear.addEventListener('click', () => {
         const conv = getActiveConv();
-        if (!conv || !conv.messages.length) return;
-        if (!confirm('确定清空当前对话的所有消息？')) return;
+        if (!conv || !conv.messages.length) {
+            showAiToast('当前对话无消息');
+            return;
+        }
+        if (!_clearPending) {
+            _clearPending = true;
+            showAiToast('再次点击确认清空');
+            setTimeout(() => { _clearPending = false; }, 3000);
+            return;
+        }
+        _clearPending = false;
         conv.messages = [];
         conv.title = '';
         saveConversations();
         renderWelcomeOrHistory();
         renderConvList();
+        showAiToast('对话已清空');
     });
 
     // 来源标签 → 跳转
@@ -1331,5 +1342,10 @@ function exportConversation() {
         lines.push('');
     }
     const text = lines.join('\n');
-    import('./share-panel.js').then(m => m.quickShare('AI 解答全记录', text));
+    import('./share-panel.js').then(m => {
+        m.quickShare('AI 解答全记录', text);
+    }).catch(() => {
+        // share-panel 加载失败时回退到复制
+        _aiLegacyCopy(text, '对话已复制到剪贴板');
+    });
 }
