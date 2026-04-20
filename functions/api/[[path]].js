@@ -752,6 +752,37 @@ export async function onRequest(context) {
       }
     }
 
+    // GET /api/admin/test-ai-search — 诊断 AI Search 绑定和搜索
+    if (path === '/api/admin/test-ai-search' && method === 'GET') {
+      const query = url.searchParams.get('q') || '净土法门';
+      const result = { binding: !!env?.DHARMA_SEARCH, query };
+      if (env?.DHARMA_SEARCH) {
+        try {
+          const searchResult = await env.DHARMA_SEARCH.search(query, {
+            max_num_results: 5,
+            score_threshold: 0.3,
+          });
+          const chunks = searchResult?.chunks || searchResult?.data || [];
+          result.success = true;
+          result.totalResults = chunks.length;
+          result.results = chunks.slice(0, 3).map(c => ({
+            score: c.score,
+            text: (c.text || '').slice(0, 200),
+            key: c.item?.key || '',
+          }));
+        } catch (err) {
+          result.success = false;
+          result.error = err.message;
+        }
+        // Also test upload capability
+        result.uploadTest = 'not_tested';
+      } else {
+        result.success = false;
+        result.error = 'DHARMA_SEARCH binding not available';
+      }
+      return json(result, cors);
+    }
+
     // GET /api/admin/ai-stats — AI Gateway 调用统计
     if (path === '/api/admin/ai-stats' && method === 'GET') {
       const authErr = requireAdmin();

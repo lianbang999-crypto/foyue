@@ -538,7 +538,7 @@ async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
         if (!text) continue;
         const key = chunk.item?.key || '';
         // 从 R2 key 推断元信息
-        const titleFromKey = key.split('/').pop()?.replace(/\.txt$/i, '') || '法音文库';
+        const titleFromKey = key.split('/').pop()?.replace(/\.(txt|md|docx?)$/i, '') || '法音文库';
         matches.push({
           score: typeof chunk.score === 'number' ? chunk.score : 0.6,
           metadata: {

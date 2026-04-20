@@ -1,0 +1,16 @@
+# txt-to-md 转换 Worker 配置
+# 临时使用，转换完成后可删除
+
+name = "txt-to-md-worker"
+main = "txt-to-md-worker.js"
+compatibility_date = "2025-01-01"
+
+# R2 文库桶绑定
+[[r2_buckets]]
+binding = "R2_WENKU"
+bucket_name = "jingdianwendang"
+
+# AI Search 绑定
+[[ai_search]]
+binding = "DHARMA_SEARCH"
+instance_name = "foyue-wenku"
