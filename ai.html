@@ -69,7 +69,6 @@
                 </a>
                 <div class="ai-header-title-group" aria-label="法音AI">
                     <span class="ai-header-brand">法音AI</span>
-                    <span class="ai-header-caption">引文式问答</span>
                 </div>
                 <button class="ai-header-btn" id="btnConvList" type="button" aria-label="对话记录" title="对话记录">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -134,13 +133,9 @@
         <!-- 输入区域 -->
         <footer class="ai-input-area">
             <div class="ai-input-shell">
-                <div class="ai-input-intro">
-                    <p class="ai-input-kicker">原文优先</p>
-                    <p class="ai-input-hint">回答会尽量附出处、引用编号与文库深链</p>
-                </div>
                 <div class="ai-input-wrap">
-                    <textarea class="ai-input" id="chatInput" placeholder="输入一个修学问题，先看出处" maxlength="500"
-                        autocomplete="off" rows="1" aria-label="输入问题"></textarea>
+                    <textarea class="ai-input" id="chatInput" placeholder="请输入你的疑问" maxlength="500" autocomplete="off"
+                        rows="1" aria-label="输入问题"></textarea>
                     <button class="ai-send-btn" id="btnSend" type="button" aria-label="发送" disabled>
                         <svg viewBox="0 0 24 24" width="18" height="18">
                             <path d="M12 19V5M5 12l7-7 7 7" fill="none" stroke="currentColor" stroke-width="2.5"
@@ -150,7 +145,6 @@
                 </div>
                 <div class="ai-input-meta">
                     <span class="ai-char-count" id="charCount"></span>
-                    <p class="ai-disclaimer-footer">AI 仅作检索与摘录，请以法师原始开示为准</p>
                 </div>
             </div>
         </footer>

@@ -401,27 +401,48 @@ export function summarizeEvidenceSnippet(snippet, maxLength = 120) {
     return `${normalized.slice(0, maxLength).trim()}...`;
 }
 
-export function buildWelcomeHTML(questions) {
-    const list = (questions && questions.length > 0) ? questions : SUGGESTIONS;
+function buildWelcomeContextQuestion(context = {}) {
+    const episodeNum = Number.isFinite(Number(context?.episodeNum)) && Number(context.episodeNum) > 0
+        ? Number(context.episodeNum)
+        : null;
+    if (episodeNum) {
+        return `请结合我正在听的第${episodeNum}讲，概括这一讲的要点。`;
+    }
+    return '请结合我正在听的内容，概括这一段开示的要点。';
+}
+
+export function buildWelcomeHTML(options = {}) {
+    const normalizedOptions = Array.isArray(options) ? { questions: options } : (options || {});
+    const list = ((normalizedOptions.questions && normalizedOptions.questions.length > 0)
+        ? normalizedOptions.questions
+        : SUGGESTIONS).slice(0, 3);
+    const context = normalizedOptions.context && normalizedOptions.context.seriesId
+        ? normalizedOptions.context
+        : null;
     const tags = list.map(t =>
         `<button class="ai-hot-tag" data-question="${escapeHtml(t)}">${escapeHtml(t)}</button>`
     ).join('');
+    const contextBlock = context
+        ? `<div class="ai-welcome-context">
+                <div class="ai-welcome-context-meta">
+                    <p class="ai-welcome-label">当前在听</p>
+                    <p class="ai-welcome-context-title">${context.episodeNum ? `第 ${escapeHtml(String(context.episodeNum))} 讲` : '当前内容'}</p>
+                    <p class="ai-welcome-context-sub">顺着正在听的开示继续问。</p>
+                </div>
+                <button class="ai-hot-tag ai-hot-tag--primary" data-question="${escapeHtml(buildWelcomeContextQuestion(context))}">继续问本讲</button>
+            </div>`
+        : '';
     return `
     <div class="ai-welcome">
-            <div class="ai-welcome-mark" aria-hidden="true">
-                <span class="ai-welcome-mark-line"></span>
-                <span class="ai-welcome-mark-text">法音AI · 文库引文问答</span>
-            </div>
             <div class="ai-welcome-copy">
-                <p class="ai-welcome-eyebrow">以法音文库原文为先</p>
-                <h1>先看出处，再看归纳</h1>
-                <p class="ai-welcome-sub">围绕大安法师讲记检索，优先返回原文、引用编号与文库深链，便于继续核对与延伸阅读。</p>
+                <h1>你现在有什么疑问？</h1>
+                <p class="ai-welcome-sub">直接提问，回答附出处。</p>
             </div>
-            <div class="ai-welcome-panel">
-                <div class="ai-welcome-section-label">可以这样发问</div>
+            ${contextBlock}
+            <div class="ai-welcome-group">
+                <p class="ai-welcome-label">常见困惑</p>
                 <div class="ai-suggestions">${tags}</div>
             </div>
-            <p class="ai-welcome-note">AI 只负责摘录与整理，不代替法师开示。</p>
     </div>`;
 }
 

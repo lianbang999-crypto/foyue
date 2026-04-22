@@ -1,7 +1,7 @@
 /* ===== 法音AI 独立页面入口 ===== */
 import '../css/ai-page.css';
 import { syncSystemTheme } from './theme.js';
-import { askQuestionStream, fetchRandomQuestions } from './ai-client.js';
+import { askQuestionStream } from './ai-client.js';
 import { createAiConversationStore } from './ai-conversations.js';
 import {
     buildAiWenkuLink,
@@ -486,14 +486,9 @@ function renderWelcomeOrHistory() {
         }
         scrollToBottom();
     } else {
-        // 欢迎页：先显示静态版本，异步加载随机问题后替换
+        // 欢迎页：固定展示答疑入口与场景问题，避免随机问题破坏首页引导
         syncShellMode(true);
-        chatArea.innerHTML = buildWelcomeHTML();
-        fetchRandomQuestions().then(questions => {
-            if (questions.length > 0 && chatArea.querySelector('.ai-welcome')) {
-                chatArea.innerHTML = buildWelcomeHTML(questions);
-            }
-        });
+        chatArea.innerHTML = buildWelcomeHTML({ context: aiContext });
     }
 }
 
