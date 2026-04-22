@@ -10,8 +10,8 @@
  *   POST /?limit=N      → 处理 N 个文件
  *   POST /?dry=1        → 仅预览，不实际上传
  *   POST /?prefix=X     → 仅处理指定前缀下的文件
- *   POST /reindex       → 将 .md 文件上传到 AI Search 实例进行索引
- *   POST /reindex?limit=N → 索引 N 个文件
+ *   POST /reindex       → 默认从头开始，全量将 .md 文件上传到 AI Search 实例
+ *   POST /reindex?limit=N&offset=M → 按窗口索引指定范围，便于断点续跑
  *   POST /cleanup        → 删除已有 .md 对应的旧 .txt 文件
  *   POST /cleanup?limit=N → 删除 N 个 .txt 文件
  *   POST /cleanup?dry=1  → 仅预览，不实际删除
@@ -54,9 +54,13 @@ export default {
 
     // POST /reindex — 将 .md 文件上传到 AI Search
     if (method === 'POST' && url.pathname === '/reindex') {
-      const limit = Math.min(parseInt(url.searchParams.get('limit') || '20', 10), 50);
+      const limitParam = url.searchParams.get('limit');
+      const offset = Math.max(parseInt(url.searchParams.get('offset') || '0', 10), 0);
+      const processAll = !limitParam || limitParam === 'all';
+      const parsedLimit = parseInt(limitParam || '0', 10);
+      const limit = processAll ? Number.MAX_SAFE_INTEGER : Math.min(parsedLimit > 0 ? parsedLimit : 20, 200);
       const dryRun = url.searchParams.has('dry');
-      return handleReindex(bucket, env, { limit, dryRun }, cors);
+      return handleReindex(bucket, env, { limit, offset, dryRun, processAll }, cors);
     }
 
     // POST /cleanup — 删除已有 .md 对应的旧 .txt 文件
@@ -144,6 +148,9 @@ async function handleStatus(bucket, env, cors) {
 
 /**
  * 从 R2 key 推断文档元信息
+ *
+ * 注意：doc_id 不在此处生成，而是由 handleReindex 从 D1 查询获取，
+ * 避免与 wenku-routes.js 的 syncGenId 逻辑重复导致不一致。
  */
 function parseMetadataFromKey(key) {
   // key 格式: 大安法师/大安法师（讲法集）TXT/01 佛说阿弥陀经 30讲/第01讲 佛说阿弥陀经（第一讲）.txt
@@ -307,10 +314,13 @@ async function handleConvert(bucket, options, cors) {
  * AI Search 的 upload() API 接受文档列表，每个文档包含：
  *   - key: 唯一标识（使用 R2 key）
  *   - text: 文档文本内容
- *   - metadata: 可选元数据
+ *   - metadata: 可选元数据（含 doc_id，从 D1 查询获取）
+ *
+ * doc_id 从 D1 documents 表的 r2_key → id 映射获取，
+ * 确保与文库阅读器使用的 ID 体系一致，单一映射源，无双源不一致风险。
  */
 async function handleReindex(bucket, env, options, cors) {
-  const { limit, dryRun } = options;
+  const { limit, offset = 0, dryRun, processAll = false } = options;
 
   if (!env?.DHARMA_SEARCH) {
     return json({ error: 'DHARMA_SEARCH binding not available' }, 500, cors);
@@ -318,14 +328,44 @@ async function handleReindex(bucket, env, options, cors) {
 
   // 列出所有 .md 文件
   const allObjects = await listAllObjects(bucket, R2_BASE);
-  const mdFiles = allObjects.filter(obj => !obj.key.endsWith('/') && obj.key.endsWith('.md'));
-  const toProcess = mdFiles.slice(0, limit);
+  const mdFiles = allObjects
+    .filter(obj => !obj.key.endsWith('/') && obj.key.endsWith('.md'))
+    .sort((a, b) => a.key.localeCompare(b.key, 'zh-Hans-CN'));
+  const end = processAll ? mdFiles.length : Math.min(offset + limit, mdFiles.length);
+  const toProcess = mdFiles.slice(offset, end);
+
+  // 从 D1 查询 r2_key → id 映射表（单一映射源）
+  // 同时查 .txt 和 .md 版本的 r2_key，因为 D1 中可能存的是 .txt 的 r2_key
+  const r2KeysToQuery = [...new Set(toProcess.flatMap(obj => {
+    const txtKey = obj.key.replace(/\.md$/i, '.txt');
+    return [obj.key, txtKey !== obj.key ? txtKey : null].filter(Boolean);
+  }))];
+  const r2ToD1Id = new Map();
+  if (r2KeysToQuery.length > 0 && env?.DB) {
+    try {
+      const placeholders = r2KeysToQuery.map(() => '?').join(',');
+      const { results: mapRows } = await env.DB.prepare(
+        `SELECT id, r2_key FROM documents WHERE r2_key IN (${placeholders})`
+      ).bind(...r2KeysToQuery).all();
+      for (const row of mapRows) {
+        if (row.r2_key) r2ToD1Id.set(row.r2_key, row.id);
+      }
+    } catch (err) {
+      console.warn('D1 r2_key mapping query failed:', err.message);
+    }
+  }
 
   const results = {
     dryRun,
+    processMode: processAll ? 'all' : 'window',
     totalMdFiles: mdFiles.length,
+    offset,
     processingNow: toProcess.length,
-    remaining: mdFiles.length - toProcess.length,
+    remaining: Math.max(mdFiles.length - end, 0),
+    hasMore: end < mdFiles.length,
+    nextOffset: end < mdFiles.length ? end : null,
+    d1Mapped: 0,
+    d1Unmapped: 0,
     uploaded: [],
     errors: [],
   };
@@ -351,10 +391,18 @@ async function handleReindex(bucket, env, options, cors) {
         }
 
         const metadata = parseMetadataFromKey(obj.key);
+        // 从 D1 映射表获取 doc_id，同时尝试 .txt 版本的 r2_key
+        const docId = r2ToD1Id.get(obj.key)
+          || r2ToD1Id.get(obj.key.replace(/\.md$/i, '.txt'))
+          || '';
+        if (docId) results.d1Mapped++;
+        else results.d1Unmapped++;
+
         documents.push({
           key: obj.key,
           text,
           metadata: {
+            doc_id: docId,  // D1 格式的文档 ID，供搜索结果直接使用
             title: metadata.title,
             series_name: metadata.seriesName,
             category: '大安法师',
@@ -394,6 +442,8 @@ async function handleReindex(bucket, env, options, cors) {
       }
     }
   }
+
+  results.fullyProcessed = !results.hasMore;
 
   return json(results, 200, cors);
 }

@@ -533,16 +533,21 @@ async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
         score_threshold: 0.35,
       });
       const chunks = searchResult?.chunks || searchResult?.data || [];
+      const r2Keys = []; // 收集需要反查 D1 的 R2 key
       for (const chunk of chunks) {
         const text = String(chunk.text || '').trim();
         if (!text) continue;
         const key = chunk.item?.key || '';
         // 从 R2 key 推断元信息
         const titleFromKey = key.split('/').pop()?.replace(/\.(txt|md|docx?)$/i, '') || '法音文库';
+        // 优先使用 metadata 中的 doc_id（reindex 时已上传 D1 格式 ID），
+        // 否则回退到 R2 key（后续通过 D1 反查修正）
+        const metaDocId = chunk.item?.metadata?.doc_id || '';
+        const docId = (metaDocId && metaDocId.startsWith('daafs-')) ? metaDocId : (key || `ai-search-${matches.length}`);
         matches.push({
           score: typeof chunk.score === 'number' ? chunk.score : 0.6,
           metadata: {
-            doc_id: key || `ai-search-${matches.length}`,
+            doc_id: docId,
             title: chunk.item?.metadata?.title || titleFromKey,
             text,
             series_name: chunk.item?.metadata?.series_name || '',
@@ -550,6 +555,43 @@ async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
             audio_series_id: chunk.item?.metadata?.audio_series_id || '',
           },
         });
+        // 只有 doc_id 不是 D1 格式时才需要反查
+        if (key && !docId.startsWith('daafs-')) r2Keys.push(key);
+      }
+
+      // R2 key → D1 doc_id 映射：AI Search 返回的 key 是 R2 完整路径，
+      // 但前端文库阅读器需要 D1 documents.id（daafs-XXX-NN 格式）。
+      // 通过 D1 的 r2_key 字段反查，将 doc_id 替换为正确的 D1 id。
+      if (r2Keys.length > 0) {
+        try {
+          // 同时查 r2_key 和 r2_key 对应的 .txt/.md 互转版本
+          const allKeysToQuery = [...new Set(r2Keys.flatMap(k => {
+            const txtKey = k.replace(/\.md$/i, '.txt');
+            const mdKey = k.replace(/\.txt$/i, '.md');
+            return [k, txtKey !== k ? txtKey : null, mdKey !== k ? mdKey : null].filter(Boolean);
+          }))];
+          const placeholders = allKeysToQuery.map(() => '?').join(',');
+          const { results: r2MapRows } = await env.DB.prepare(
+            `SELECT id, r2_key FROM documents WHERE r2_key IN (${placeholders})`
+          ).bind(...allKeysToQuery).all();
+          const r2ToD1Id = new Map();
+          for (const row of r2MapRows) {
+            if (row.r2_key) r2ToD1Id.set(row.r2_key, row.id);
+          }
+          // 替换 matches 中的 doc_id
+          for (const match of matches) {
+            const rawDocId = match.metadata?.doc_id || '';
+            if (!rawDocId || rawDocId.startsWith('daafs-')) continue; // 已经是 D1 id
+            const d1Id = r2ToD1Id.get(rawDocId)
+              || r2ToD1Id.get(rawDocId.replace(/\.md$/i, '.txt'))
+              || r2ToD1Id.get(rawDocId.replace(/\.txt$/i, '.md'));
+            if (d1Id) {
+              match.metadata.doc_id = d1Id;
+            }
+          }
+        } catch (mapErr) {
+          console.warn('R2 key → D1 id mapping failed:', mapErr.message);
+        }
       }
     } catch (err) {
       console.warn('AI Search failed, falling back to legacy:', err.message);

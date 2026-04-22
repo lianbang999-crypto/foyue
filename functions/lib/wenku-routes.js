@@ -203,7 +203,7 @@ export async function handleWenkuSync(env, cors, json) {
     return json({ error: 'R2_WENKU binding not available' }, cors, 500);
   }
 
-  const stats = { scanned: 0, inserted: 0, skipped: 0, errors: 0, series: {} };
+  const stats = { scanned: 0, inserted: 0, updated: 0, skipped: 0, errors: 0, series: {} };
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS documents (
@@ -219,8 +219,8 @@ export async function handleWenkuSync(env, cors, json) {
     );
   `);
 
-  const existingResult = await db.prepare('SELECT id FROM documents').all();
-  const existing = new Set(existingResult.results.map(r => r.id));
+  const existingResult = await db.prepare('SELECT id, format FROM documents').all();
+  const existingById = new Map(existingResult.results.map(row => [row.id, row.format || 'txt']));
   const allObjects = await syncListAll(bucket, SYNC_R2_BASE);
   const mainFiles = [];
   const yiyongFiles = [];
@@ -232,51 +232,75 @@ export async function handleWenkuSync(env, cors, json) {
     else mainFiles.push(obj);
   }
 
-  async function processObj(obj, isYiyong) {
+  // .md 优先于 .txt：同一文档同时存在两种格式时，优先处理 .md
+  const mdFirstSort = (a, b) => {
+    const aMd = a.key.endsWith('.md') ? 0 : 1;
+    const bMd = b.key.endsWith('.md') ? 0 : 1;
+    return aMd - bMd;
+  };
+  mainFiles.sort(mdFirstSort);
+  yiyongFiles.sort(mdFirstSort);
+
+  function buildSyncCandidate(obj, isYiyong) {
     const fileName = obj.key.split('/').pop();
-    if (!fileName.endsWith('.txt')) {
-      stats.skipped++;
-      return;
-    }
-    if (syncIsGarbage(obj.key)) {
+    if (!fileName.endsWith('.txt') && !fileName.endsWith('.md')) return null;
+    if (syncIsGarbage(obj.key)) return null;
+
+    const base = isYiyong ? SYNC_R2_BASE + SYNC_YIYONG : SYNC_R2_BASE;
+    const rel = obj.key.slice(base.length);
+    const segs = rel.split('/');
+    if (segs.length < 2) return null;
+
+    const folderName = segs[0];
+    const parsed = syncParseFolder(folderName);
+    if (!parsed) return null;
+
+    const seriesName = parsed.num === '22' ? syncResolveFolder22(fileName) : parsed.series;
+    if (!seriesName) return null;
+    if (isYiyong && syncIsYiyongDup(seriesName)) return null;
+
+    const epNum = syncParseEpNum(fileName);
+    if (!epNum) return null;
+
+    const isMd = fileName.endsWith('.md');
+    return {
+      id: syncGenId(seriesName, epNum),
+      seriesName,
+      epNum,
+      isMd,
+      format: isMd ? 'md' : 'txt',
+      title: `${seriesName} 第${String(epNum).padStart(2, '0')}讲`,
+    };
+  }
+
+  const mainSourceIds = new Set();
+  for (const obj of mainFiles) {
+    const candidate = buildSyncCandidate(obj, false);
+    if (candidate) mainSourceIds.add(candidate.id);
+  }
+
+  async function processObj(obj, isYiyong) {
+    const candidate = buildSyncCandidate(obj, isYiyong);
+    if (!candidate) {
       stats.skipped++;
       return;
     }
     stats.scanned++;
 
-    const base = isYiyong ? SYNC_R2_BASE + SYNC_YIYONG : SYNC_R2_BASE;
-    const rel = obj.key.slice(base.length);
-    const segs = rel.split('/');
-    if (segs.length < 2) {
+    const { id, seriesName, epNum, isMd, format, title } = candidate;
+    const existingFormat = existingById.get(id) || '';
+
+    if (existingFormat && !isMd) {
       stats.skipped++;
       return;
     }
 
-    const folderName = segs[0];
-    const parsed = syncParseFolder(folderName);
-    if (!parsed) {
+    if (existingFormat === 'md') {
       stats.skipped++;
       return;
     }
 
-    let seriesName = parsed.num === '22' ? syncResolveFolder22(fileName) : parsed.series;
-    if (!seriesName) {
-      stats.skipped++;
-      return;
-    }
-    if (isYiyong && syncIsYiyongDup(seriesName)) {
-      stats.skipped++;
-      return;
-    }
-
-    const epNum = syncParseEpNum(fileName);
-    if (!epNum) {
-      stats.skipped++;
-      return;
-    }
-
-    const id = syncGenId(seriesName, epNum);
-    if (existing.has(id)) {
+    if (isYiyong && isMd && mainSourceIds.has(id)) {
       stats.skipped++;
       return;
     }
@@ -294,18 +318,25 @@ export async function handleWenkuSync(env, cors, json) {
       return;
     }
 
-    const title = `${seriesName} 第${String(epNum).padStart(2, '0')}讲`;
-
     try {
-      await db.prepare(
-        `INSERT INTO documents (id, title, type, category, series_name, episode_num,
-          format, r2_bucket, r2_key, content, file_size, created_at, updated_at)
-         VALUES (?, ?, 'transcript', '大安法师', ?, ?, 'txt', 'jingdianwendang', ?, ?, ?,
-                 datetime('now'), datetime('now'))`
-      ).bind(id, title, seriesName, epNum, obj.key, content, obj.size || 0).run();
-
-      existing.add(id);
-      stats.inserted++;
+      if (existingFormat && isMd) {
+        // 仅允许 .md 升级已有的 .txt 记录，避免不同来源的 .md 互相覆盖。
+        await db.prepare(
+          `UPDATE documents SET format = ?, r2_key = ?, content = ?, file_size = ?,
+                  updated_at = datetime('now') WHERE id = ?`
+        ).bind(format, obj.key, content, obj.size || 0, id).run();
+        existingById.set(id, format);
+        stats.updated++;
+      } else {
+        await db.prepare(
+          `INSERT INTO documents (id, title, type, category, series_name, episode_num,
+            format, r2_bucket, r2_key, content, file_size, created_at, updated_at)
+           VALUES (?, ?, 'transcript', '大安法师', ?, ?, ?, 'jingdianwendang', ?, ?, ?,
+                   datetime('now'), datetime('now'))`
+        ).bind(id, title, seriesName, epNum, format, obj.key, content, obj.size || 0).run();
+        existingById.set(id, format);
+        stats.inserted++;
+      }
       if (!stats.series[seriesName]) stats.series[seriesName] = 0;
       stats.series[seriesName]++;
     } catch {
@@ -320,10 +351,11 @@ export async function handleWenkuSync(env, cors, json) {
     success: true,
     scanned: stats.scanned,
     inserted: stats.inserted,
+    updated: stats.updated,
     skipped: stats.skipped,
     errors: stats.errors,
     series: stats.series,
-    totalInDb: existing.size,
+    totalInDb: existingById.size,
   }, cors, 200, 'no-store');
 }
 
