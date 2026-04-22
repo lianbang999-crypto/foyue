@@ -1,9 +1,10 @@
-import { renderHighlightedParagraph } from './ai-format.js';
+import { buildAiWenkuLink, renderHighlightedParagraph } from './ai-format.js';
 
 const AI_RETURN_KEY = 'ai-return-context';
 
-function buildWenkuUrl(docId, query) {
-    return `/wenku?doc=${encodeURIComponent(docId)}${query ? `&q=${encodeURIComponent(query)}` : ''}&from=ai`;
+function buildWenkuUrl(docId, query, location = null) {
+    return buildAiWenkuLink({ docId, query, location }).href
+        || `/wenku?doc=${encodeURIComponent(docId)}${query ? `&q=${encodeURIComponent(query)}` : ''}&from=ai`;
 }
 
 function persistAiSnippet(snippet) {
@@ -226,6 +227,7 @@ export function createAiPreviewController(options) {
         query: '',
         title: '',
         sourceSnippet: '',
+        sourceLocation: null,
         excerpt: [],
         activeIndex: 0,
         matchIndex: -1,
@@ -322,11 +324,11 @@ export function createAiPreviewController(options) {
         persistAiReturnContext(previewState.docId, previewState.query);
     });
 
-    async function openPreview(docId, query, fallbackTitle = '', sourceSnippet = '') {
+    async function openPreview(docId, query, fallbackTitle = '', sourceSnippet = '', sourceLocation = null) {
         if (!previewDrawer || !previewBody || !previewOpenBtn) {
             persistAiSnippet(sourceSnippet);
             persistAiReturnContext(docId, query);
-            window.location.href = buildWenkuUrl(docId, query);
+            window.location.href = buildWenkuUrl(docId, query, sourceLocation);
             return;
         }
 
@@ -338,6 +340,7 @@ export function createAiPreviewController(options) {
         previewState.query = query || '';
         previewState.title = fallbackTitle || '';
         previewState.sourceSnippet = sourceSnippet || '';
+        previewState.sourceLocation = sourceLocation;
         previewState.excerpt = [];
         previewState.activeIndex = 0;
         previewState.matchIndex = -1;
@@ -349,7 +352,7 @@ export function createAiPreviewController(options) {
         previewTitle.textContent = fallbackTitle || '文库引用';
         previewMeta.textContent = '正在提取原文片段…';
         previewBody.innerHTML = buildPreviewSkeleton();
-        previewOpenBtn.href = buildWenkuUrl(docId, query);
+        previewOpenBtn.href = buildWenkuUrl(docId, query, previewState.sourceLocation);
 
         try {
             const data = await getWenkuDocument(docId);
@@ -368,7 +371,7 @@ export function createAiPreviewController(options) {
             previewState.activeIndex = previewData.matchIndex >= 0 ? previewData.matchIndex : 0;
             renderPreviewView();
             previewBody.scrollTop = 0;
-            previewOpenBtn.href = buildWenkuUrl(docId, query);
+            previewOpenBtn.href = buildWenkuUrl(docId, query, previewState.sourceLocation);
         } catch {
             if (previewState.requestId !== requestId) return;
             previewMeta.textContent = '暂时无法提取引用原文';
@@ -377,7 +380,7 @@ export function createAiPreviewController(options) {
                     <p>当前无法在 AI 页内加载这篇讲记的预览。</p>
                     <p>你仍可直接进入文库独立页阅读全文。</p>
                 </div>`;
-            previewOpenBtn.href = buildWenkuUrl(docId, query);
+            previewOpenBtn.href = buildWenkuUrl(docId, query, previewState.sourceLocation);
         }
     }
 

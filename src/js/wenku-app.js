@@ -50,6 +50,62 @@ function isActiveViewRequest(requestId, view) {
     return activeViewRequestId === requestId && currentView === view;
 }
 
+function pickFirstUrlValue(values) {
+    for (const value of values) {
+        if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+    return '';
+}
+
+function parseOptionalInteger(value) {
+    if (value == null) return null;
+    const normalized = String(value).trim();
+    if (!normalized || !/^-?\d+$/.test(normalized)) return null;
+    const parsed = Number(normalized);
+    return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+function parseReaderDeepLinkParams(params = new URLSearchParams(location.search)) {
+    const paragraphIndex = parseOptionalInteger(pickFirstUrlValue([
+        params.get('pi'),
+        params.get('paragraphIndex'),
+        params.get('paragraph_index'),
+    ]));
+    const paragraphOffset = parseOptionalInteger(pickFirstUrlValue([
+        params.get('po'),
+        params.get('paragraphOffset'),
+        params.get('paragraph_offset'),
+    ]));
+    const matchText = pickFirstUrlValue([
+        params.get('mt'),
+        params.get('anchorText'),
+        params.get('anchor_text'),
+        params.get('matchText'),
+        params.get('match_text'),
+    ]);
+
+    if (paragraphIndex === null && paragraphOffset === null && !matchText) return null;
+
+    return {
+        paragraphIndex: paragraphIndex !== null && paragraphIndex >= 0 ? paragraphIndex : null,
+        paragraphOffset: paragraphOffset !== null && paragraphOffset >= 0 ? paragraphOffset : null,
+        matchText,
+    };
+}
+
+function appendReaderDeepLinkParams(params, deepLink) {
+    if (!deepLink) return;
+    if (Number.isInteger(deepLink.paragraphIndex) && deepLink.paragraphIndex >= 0) {
+        params.set('pi', String(deepLink.paragraphIndex));
+    }
+    if (Number.isInteger(deepLink.paragraphOffset) && deepLink.paragraphOffset >= 0) {
+        params.set('po', String(deepLink.paragraphOffset));
+    }
+    if (deepLink.matchText) {
+        params.set('mt', deepLink.matchText);
+    }
+}
+
 /* --- 初始化 --- */
 init();
 
@@ -63,9 +119,10 @@ function init() {
     const docId = params.get('doc');
     const series = params.get('series');
     const query = params.get('q');
+    const deepLink = parseReaderDeepLinkParams(params);
 
     if (docId) {
-        openReader(docId, query);
+        openReader(docId, query, false, deepLink);
     } else if (series) {
         renderHome(true);
         openBookSheet(series);
@@ -79,17 +136,21 @@ function init() {
 
 
 function onPopState(e) {
-    syncAiOriginState(new URLSearchParams(location.search));
+    const params = new URLSearchParams(location.search);
+    syncAiOriginState(params);
     renderHeaderActions();
     const s = e.state;
-    if (!s?.doc && wkReader.style.display !== 'none') {
+    const docId = s?.doc || params.get('doc');
+    const series = s?.series || params.get('series');
+    const query = s?.q || params.get('q');
+    if (!docId && wkReader.style.display !== 'none') {
         closeReader();
     }
-    if (s?.doc) {
-        openReader(s.doc, s.q, true);
-    } else if (s?.series) {
+    if (docId) {
+        openReader(docId, query, true, parseReaderDeepLinkParams(params));
+    } else if (series) {
         renderHome(true);
-        openBookSheet(s.series);
+        openBookSheet(series);
     } else {
         renderHome(true);
     }
@@ -690,7 +751,7 @@ async function restoreSearchContext(query) {
     if (results) await doHomeSearch(query, results);
 }
 
-async function openReader(docId, highlightQuery, skipPush) {
+async function openReader(docId, highlightQuery, skipPush, deepLink = null) {
     const wasReaderOpen = wkReader.style.display !== 'none' && !!_readerState;
     const fromAi = hasAiOrigin();
     const originType = getReaderOriginType(fromAi, highlightQuery);
@@ -699,8 +760,13 @@ async function openReader(docId, highlightQuery, skipPush) {
 
     const requestId = beginViewRequest('reader');
     if (!skipPush) {
-        const readerUrl = `/wenku?doc=${encodeURIComponent(docId)}${highlightQuery ? '&q=' + encodeURIComponent(highlightQuery) : ''}${fromAi ? '&from=ai' : ''}`;
-        const readerState = { doc: docId, q: highlightQuery, fromAi };
+        const readerParams = new URLSearchParams();
+        readerParams.set('doc', docId);
+        if (highlightQuery) readerParams.set('q', highlightQuery);
+        if (fromAi) readerParams.set('from', 'ai');
+        appendReaderDeepLinkParams(readerParams, deepLink);
+        const readerUrl = `/wenku?${readerParams.toString()}`;
+        const readerState = { doc: docId, q: highlightQuery, fromAi, deepLink };
         if (wasReaderOpen) history.replaceState(readerState, '', readerUrl);
         else history.pushState(readerState, '', readerUrl);
     }
@@ -773,7 +839,7 @@ async function openReader(docId, highlightQuery, skipPush) {
     if (!data?.document) {
         const scroll = wkReader.querySelector('#readerScroll');
         scroll.innerHTML = `<div class="wk-empty wk-empty--reader" style="padding-top:22vh">${buildEmptyStateMarkup('加载失败', '当前讲记未能成功打开，可稍后重试。')}<button class="wk-retry-btn" id="readerRetry">重试</button></div>`;
-        scroll.querySelector('#readerRetry')?.addEventListener('click', () => openReader(docId, highlightQuery, true));
+        scroll.querySelector('#readerRetry')?.addEventListener('click', () => openReader(docId, highlightQuery, true, deepLink));
         wireReaderClose();
         return;
     }
@@ -828,21 +894,24 @@ async function openReader(docId, highlightQuery, skipPush) {
     };
 
     updateReaderLocation();
+    wireReaderScroll(scroll, docId);
 
-    // Highlight search
-    if (highlightQuery) highlightText(highlightQuery);
-
-    // 恢复滚动位置
-    if (!highlightQuery) {
-        const pct = getScrollProgress(docId);
-        if (pct > 0) {
-            requestAnimationFrame(() => {
-                const sh = scroll.scrollHeight - scroll.clientHeight;
-                if (sh > 0) scroll.scrollTo(0, (pct / 100) * sh);
-            });
+    const deepLinkHandled = applyReaderDeepLink(deepLink);
+    if (!deepLinkHandled) {
+        const fallbackSnippet = deepLink?.matchText || '';
+        const fallbackQuery = highlightQuery || fallbackSnippet;
+        if (fallbackQuery) {
+            highlightText(fallbackQuery, fallbackSnippet ? { snippet: fallbackSnippet } : undefined);
+        } else {
+            const pct = getScrollProgress(docId);
+            if (pct > 0) {
+                requestAnimationFrame(() => {
+                    const sh = scroll.scrollHeight - scroll.clientHeight;
+                    if (sh > 0) scroll.scrollTo(0, (pct / 100) * sh);
+                });
+            }
         }
     }
-    wireReaderScroll(scroll, docId);
 
     // Wire events
     wireReaderClose();
@@ -1135,13 +1204,13 @@ function textToHtml(text, title) {
     const html = cleaned
         .split(/\n/)
         .filter(p => p.trim())
-        .map(p => {
+        .map((p, index) => {
             const t = p.trim();
             // 佛号结语居中展示
             if (/^南无.{1,10}佛[！!。]?$/.test(t)) {
-                return `<p class="wk-closing-namo">${esc(t)}</p>`;
+                return `<p class="wk-closing-namo" data-paragraph-index="${index}" id="wk-paragraph-${index}">${esc(t)}</p>`;
             }
-            return `<p>${esc(t)}</p>`;
+            return `<p data-paragraph-index="${index}" id="wk-paragraph-${index}">${esc(t)}</p>`;
         })
         .join('');
 
@@ -1165,16 +1234,159 @@ function extractContributor(text) {
     return '';
 }
 
-function highlightText(query) {
+function normalizeComparableText(text) {
+    return String(text || '').replace(/\s+/g, '');
+}
+
+function findReaderParagraph(body, deepLink) {
+    if (!body || !Number.isInteger(deepLink?.paragraphIndex) || deepLink.paragraphIndex < 0) return null;
+    const paragraphs = Array.from(body.querySelectorAll('[data-paragraph-index]'));
+    if (!paragraphs.length) return null;
+
+    const zeroBased = deepLink.paragraphIndex < paragraphs.length ? paragraphs[deepLink.paragraphIndex] : null;
+    const oneBased = deepLink.paragraphIndex > 0 && deepLink.paragraphIndex - 1 < paragraphs.length
+        ? paragraphs[deepLink.paragraphIndex - 1]
+        : null;
+
+    if (zeroBased && oneBased && zeroBased !== oneBased && deepLink.matchText) {
+        const matchText = normalizeComparableText(deepLink.matchText);
+        const zeroHasMatch = matchText && normalizeComparableText(zeroBased.textContent).includes(matchText);
+        const oneHasMatch = matchText && normalizeComparableText(oneBased.textContent).includes(matchText);
+        if (zeroHasMatch !== oneHasMatch) return zeroHasMatch ? zeroBased : oneBased;
+    }
+
+    return zeroBased || oneBased || null;
+}
+
+function findNormalizedRange(text, target, preferredOffset) {
+    const normalizedTarget = normalizeComparableText(target);
+    if (!text || !normalizedTarget) return null;
+
+    const normalizedTextChars = [];
+    const charMap = [];
+    for (let i = 0; i < text.length; i++) {
+        if (/\s/.test(text[i])) continue;
+        normalizedTextChars.push(text[i]);
+        charMap.push(i);
+    }
+
+    const normalizedText = normalizedTextChars.join('');
+    if (!normalizedText) return null;
+
+    const hasOffset = Number.isInteger(preferredOffset) && preferredOffset >= 0;
+    let bestIndex = -1;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    let searchFrom = 0;
+
+    while (searchFrom <= normalizedText.length - normalizedTarget.length) {
+        const index = normalizedText.indexOf(normalizedTarget, searchFrom);
+        if (index < 0) break;
+        if (!hasOffset) {
+            const endIndex = charMap[index + normalizedTarget.length - 1] + 1;
+            return { start: charMap[index], end: endIndex };
+        }
+        const distance = Math.abs(charMap[index] - preferredOffset);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            bestIndex = index;
+        }
+        searchFrom = index + 1;
+    }
+
+    if (bestIndex < 0) return null;
+    return {
+        start: charMap[bestIndex],
+        end: charMap[bestIndex + normalizedTarget.length - 1] + 1,
+    };
+}
+
+function findKeywordRange(text, query, preferredOffset) {
+    const words = extractHighlightKeywords(query).sort((a, b) => b.length - a.length);
+    if (!text || !words.length) return null;
+
+    const hasOffset = Number.isInteger(preferredOffset) && preferredOffset >= 0;
+    let best = null;
+
+    for (const word of words) {
+        let fromIndex = 0;
+        while (fromIndex < text.length) {
+            const index = text.indexOf(word, fromIndex);
+            if (index < 0) break;
+            if (!hasOffset) return { start: index, end: index + word.length };
+
+            const candidate = {
+                start: index,
+                end: index + word.length,
+                distance: Math.abs(index - preferredOffset),
+                length: word.length,
+            };
+            if (!best || candidate.distance < best.distance || (candidate.distance === best.distance && candidate.length > best.length)) {
+                best = candidate;
+            }
+            fromIndex = index + 1;
+        }
+    }
+
+    return best ? { start: best.start, end: best.end } : null;
+}
+
+function buildOffsetRange(text, preferredOffset) {
+    if (!text || !Number.isInteger(preferredOffset) || preferredOffset < 0) return null;
+    const clamped = Math.min(preferredOffset, Math.max(0, text.length - 1));
+    const start = Math.max(0, clamped - 4);
+    const end = Math.min(text.length, Math.max(start + 1, clamped + 4));
+    return { start, end };
+}
+
+function renderParagraphInlineHighlight(paragraph, range) {
+    if (!paragraph || !range) return null;
+    const text = paragraph.textContent || '';
+    const start = Math.max(0, Math.min(text.length, range.start));
+    const end = Math.max(start + 1, Math.min(text.length, range.end));
+    if (!text || start >= text.length) return null;
+
+    paragraph.innerHTML = `${esc(text.slice(0, start))}<span class="wk-highlight">${esc(text.slice(start, end))}</span>${esc(text.slice(end))}`;
+    return paragraph.querySelector('.wk-highlight');
+}
+
+function highlightParagraphAnchor(paragraph, matchText, paragraphOffset) {
+    const text = paragraph?.textContent || '';
+    if (!text) return null;
+
+    let range = matchText ? findNormalizedRange(text, matchText, paragraphOffset) : null;
+    if (!range && matchText) range = findKeywordRange(text, matchText, paragraphOffset);
+    if (!range) range = buildOffsetRange(text, paragraphOffset);
+    return range ? renderParagraphInlineHighlight(paragraph, range) : null;
+}
+
+function applyReaderDeepLink(deepLink) {
     const body = wkReader.querySelector('#readerBody');
-    if (!body || !query) return;
+    if (!body || !deepLink) return false;
+
+    const paragraph = findReaderParagraph(body, deepLink);
+    if (!paragraph) return false;
+
+    paragraph.classList.add('wk-highlight-block');
+    const inlineTarget = highlightParagraphAnchor(paragraph, deepLink.matchText, deepLink.paragraphOffset);
+
+    requestAnimationFrame(() => {
+        (inlineTarget || paragraph).scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+    return true;
+}
+
+function highlightText(query, options = {}) {
+    const body = wkReader.querySelector('#readerBody');
+    if (!body || (!query && !options?.snippet)) return;
 
     // 从 sessionStorage 读取 AI 页传来的 snippet（用于精确定位）
-    let snippet = '';
-    try {
-        snippet = sessionStorage.getItem('wenku-ai-snippet') || '';
-        sessionStorage.removeItem('wenku-ai-snippet');
-    } catch { /* 忽略 */ }
+    let snippet = typeof options?.snippet === 'string' ? options.snippet.trim() : '';
+    if (!snippet) {
+        try {
+            snippet = sessionStorage.getItem('wenku-ai-snippet') || '';
+            sessionStorage.removeItem('wenku-ai-snippet');
+        } catch { /* 忽略 */ }
+    }
 
     // 策略1：用 snippet 精确定位并高亮
     if (snippet && snippet.length >= 10) {
@@ -1183,6 +1395,7 @@ function highlightText(query) {
     }
 
     // 策略2：提取中文关键词（2-4字词组）
+    if (!query) return;
     const words = extractHighlightKeywords(query);
     if (!words.length) return;
 

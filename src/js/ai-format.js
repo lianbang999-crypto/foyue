@@ -47,6 +47,7 @@ const DOWNGRADE_REASON_PRESENTATION = Object.freeze({
 });
 
 const UNCERTAINTY_LEVELS = new Set(['low', 'medium', 'high']);
+const DEFAULT_WENKU_ORIGIN = 'https://foyue.org';
 
 function normalizeDisplayText(value) {
     return String(value || '').replace(/\s+/g, ' ').trim();
@@ -56,6 +57,109 @@ function normalizeNumeric(value) {
     if (value === null || value === undefined || value === '') return null;
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : null;
+}
+
+function getWenkuLinkOrigin() {
+    if (typeof window !== 'undefined' && window.location?.origin) {
+        return window.location.origin;
+    }
+    return DEFAULT_WENKU_ORIGIN;
+}
+
+function pickFirstText(...values) {
+    for (const value of values) {
+        const normalized = normalizeDisplayText(value);
+        if (normalized) return normalized;
+    }
+    return '';
+}
+
+function pickFirstNumeric(...values) {
+    for (const value of values) {
+        const normalized = normalizeNumeric(value);
+        if (normalized !== null) return normalized;
+    }
+    return null;
+}
+
+function toRelativeHref(url) {
+    return `${url.pathname}${url.search}${url.hash}`;
+}
+
+function parseRelativeUrl(href) {
+    const value = normalizeDisplayText(href);
+    if (!value) return null;
+
+    try {
+        return new URL(value, getWenkuLinkOrigin());
+    } catch {
+        return null;
+    }
+}
+
+export function buildAiWenkuLink({ docId = '', query = '', location = null, href = '' } = {}) {
+    const sourceLocation = location && typeof location === 'object' ? location : null;
+    const parsedHref = parseRelativeUrl(sourceLocation?.href || href);
+    const hasWenkuHref = parsedHref?.pathname === '/wenku';
+    const targetUrl = hasWenkuHref
+        ? parsedHref
+        : new URL('/wenku', getWenkuLinkOrigin());
+
+    const resolvedDocId = pickFirstText(targetUrl.searchParams.get('doc'), docId);
+    const resolvedQuery = pickFirstText(
+        targetUrl.searchParams.get('q'),
+        query,
+        sourceLocation?.previewQuery,
+        sourceLocation?.preview_query,
+    );
+    const paragraphIndex = pickFirstNumeric(
+        sourceLocation?.paragraphIndex,
+        sourceLocation?.paragraph_index,
+    );
+    const paragraphOffset = pickFirstNumeric(
+        sourceLocation?.paragraphOffset,
+        sourceLocation?.paragraph_offset,
+    );
+    const matchText = pickFirstText(
+        sourceLocation?.anchorText,
+        sourceLocation?.anchor_text,
+        sourceLocation?.matchText,
+        sourceLocation?.match_text,
+        targetUrl.searchParams.get('mt'),
+    );
+
+    if (resolvedDocId) {
+        targetUrl.searchParams.set('doc', resolvedDocId);
+    }
+
+    if (resolvedQuery) {
+        targetUrl.searchParams.set('q', resolvedQuery);
+    } else if (!targetUrl.searchParams.get('q')) {
+        targetUrl.searchParams.delete('q');
+    }
+
+    targetUrl.searchParams.set('from', pickFirstText(targetUrl.searchParams.get('from')) || 'ai');
+
+    if (paragraphIndex !== null) {
+        targetUrl.searchParams.set('pi', String(paragraphIndex));
+    }
+
+    if (paragraphOffset !== null) {
+        targetUrl.searchParams.set('po', String(paragraphOffset));
+    }
+
+    if (matchText) {
+        targetUrl.searchParams.set('mt', matchText);
+    }
+
+    return {
+        href: resolvedDocId ? toRelativeHref(targetUrl) : '',
+        docId: resolvedDocId,
+        query: resolvedQuery,
+        paragraphIndex: paragraphIndex ?? pickFirstNumeric(targetUrl.searchParams.get('pi')),
+        paragraphOffset: paragraphOffset ?? pickFirstNumeric(targetUrl.searchParams.get('po')),
+        matchText,
+    };
 }
 
 function normalizeCitationId(value) {
@@ -304,10 +408,20 @@ export function buildWelcomeHTML(questions) {
     ).join('');
     return `
     <div class="ai-welcome">
-      <div class="ai-welcome-icon" aria-hidden="true">☸</div>
-      <h1>有什么可以帮您的？</h1>
-            <p class="ai-welcome-sub">基于法音文库检索，优先呈现原文出处与相关讲记</p>
-      <div class="ai-suggestions">${tags}</div>
+            <div class="ai-welcome-mark" aria-hidden="true">
+                <span class="ai-welcome-mark-line"></span>
+                <span class="ai-welcome-mark-text">法音AI · 文库引文问答</span>
+            </div>
+            <div class="ai-welcome-copy">
+                <p class="ai-welcome-eyebrow">以法音文库原文为先</p>
+                <h1>先看出处，再看归纳</h1>
+                <p class="ai-welcome-sub">围绕大安法师讲记检索，优先返回原文、引用编号与文库深链，便于继续核对与延伸阅读。</p>
+            </div>
+            <div class="ai-welcome-panel">
+                <div class="ai-welcome-section-label">可以这样发问</div>
+                <div class="ai-suggestions">${tags}</div>
+            </div>
+            <p class="ai-welcome-note">AI 只负责摘录与整理，不代替法师开示。</p>
     </div>`;
 }
 
@@ -350,6 +464,12 @@ export function renderSearchResults(results, keywords, question, audioResults) {
             const source = item.series_name
                 ? `${escapeHtml(item.series_name)}${item.audio_episode_num ? ` · 第${item.audio_episode_num}讲` : ''}`
                 : '';
+            const wenkuLink = buildAiWenkuLink({
+                docId: item.doc_id,
+                query: item.preview_query || question,
+                location: item.location,
+            });
+            const snippetAttr = item.snippet ? ` data-snippet="${escapeHtml(item.snippet)}"` : '';
 
             html += `<div class="ai-quote-block" data-doc-id="${escapeHtml(item.doc_id)}">
                 <blockquote class="ai-quote-text">${highlightedSnippet}</blockquote>
@@ -361,9 +481,11 @@ export function renderSearchResults(results, keywords, question, audioResults) {
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5,3 19,12 5,21"/></svg>
                         </a>`
                     : ''}
-                        <a class="ai-result-read" href="/wenku?doc=${encodeURIComponent(item.doc_id)}&q=${encodeURIComponent(question)}" title="读讲记">
+                        ${wenkuLink.href
+                    ? `<a class="ai-result-read" href="${escapeHtml(wenkuLink.href)}"${snippetAttr} title="读讲记">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
-                        </a>
+                        </a>`
+                    : ''}
                     </span>
                 </div>
             </div>`;
@@ -410,21 +532,29 @@ function sanitizeMarkdownHref(href) {
 
     if (value.startsWith('#') || value.startsWith('?') || value.startsWith('/')) {
         const parsed = new URL(value, window.location.origin);
+        const normalizedHref = parsed.pathname === '/wenku'
+            ? (buildAiWenkuLink({ href: `${parsed.pathname}${parsed.search}${parsed.hash}` }).href || `${parsed.pathname}${parsed.search}${parsed.hash}`)
+            : `${parsed.pathname}${parsed.search}${parsed.hash}`;
+        const normalizedUrl = new URL(normalizedHref, window.location.origin);
         return {
-            href: `${parsed.pathname}${parsed.search}${parsed.hash}`,
+            href: normalizedHref,
             isExternal: false,
-            docId: parsed.pathname === '/wenku' ? (parsed.searchParams.get('doc') || '').trim() : '',
-            query: parsed.searchParams.get('q') || '',
+            docId: normalizedUrl.pathname === '/wenku' ? (normalizedUrl.searchParams.get('doc') || '').trim() : '',
+            query: normalizedUrl.searchParams.get('q') || '',
         };
     }
 
     if (value.startsWith('./') || value.startsWith('../')) {
         const parsed = new URL(value, window.location.origin);
+        const normalizedHref = parsed.pathname === '/wenku'
+            ? (buildAiWenkuLink({ href: `${parsed.pathname}${parsed.search}${parsed.hash}` }).href || `${parsed.pathname}${parsed.search}${parsed.hash}`)
+            : `${parsed.pathname}${parsed.search}${parsed.hash}`;
+        const normalizedUrl = new URL(normalizedHref, window.location.origin);
         return {
-            href: `${parsed.pathname}${parsed.search}${parsed.hash}`,
+            href: normalizedHref,
             isExternal: false,
-            docId: parsed.pathname === '/wenku' ? (parsed.searchParams.get('doc') || '').trim() : '',
-            query: parsed.searchParams.get('q') || '',
+            docId: normalizedUrl.pathname === '/wenku' ? (normalizedUrl.searchParams.get('doc') || '').trim() : '',
+            query: normalizedUrl.searchParams.get('q') || '',
         };
     }
 
@@ -432,11 +562,15 @@ function sanitizeMarkdownHref(href) {
         const parsed = new URL(value, window.location.origin);
         if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
             const isExternal = parsed.origin !== window.location.origin;
+            const normalizedHref = !isExternal && parsed.pathname === '/wenku'
+                ? (buildAiWenkuLink({ href: `${parsed.pathname}${parsed.search}${parsed.hash}` }).href || `${parsed.pathname}${parsed.search}${parsed.hash}`)
+                : (isExternal ? parsed.href : `${parsed.pathname}${parsed.search}${parsed.hash}`);
+            const normalizedUrl = !isExternal ? new URL(normalizedHref, window.location.origin) : parsed;
             return {
-                href: isExternal ? parsed.href : `${parsed.pathname}${parsed.search}${parsed.hash}`,
+                href: normalizedHref,
                 isExternal,
-                docId: !isExternal && parsed.pathname === '/wenku' ? (parsed.searchParams.get('doc') || '').trim() : '',
-                query: !isExternal ? (parsed.searchParams.get('q') || '') : '',
+                docId: !isExternal && normalizedUrl.pathname === '/wenku' ? (normalizedUrl.searchParams.get('doc') || '').trim() : '',
+                query: !isExternal ? (normalizedUrl.searchParams.get('q') || '') : '',
             };
         }
     } catch {

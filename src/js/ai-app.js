@@ -4,6 +4,7 @@ import { syncSystemTheme } from './theme.js';
 import { askQuestionStream, fetchRandomQuestions } from './ai-client.js';
 import { createAiConversationStore } from './ai-conversations.js';
 import {
+    buildAiWenkuLink,
     buildWelcomeHTML,
     escapeHtml,
     extractHighlightQuery,
@@ -127,6 +128,7 @@ const btnSend = document.getElementById('btnSend');
 const btnClear = document.getElementById('btnClear');
 const charCount = document.getElementById('charCount');
 const inputArea = document.querySelector('.ai-input-area');
+const aiApp = document.getElementById('ai-app');
 
 function init() {
     setupLayoutSync();
@@ -141,6 +143,12 @@ function setupLayoutSync() {
     syncChatBottomOffset();
     setupInputAreaResizeSync();
     setupVisualViewportSync();
+}
+
+function syncShellMode(isWelcome) {
+    if (!aiApp) return;
+    aiApp.classList.toggle('ai-app--welcome', !!isWelcome);
+    aiApp.classList.toggle('ai-app--conversation', !isWelcome);
 }
 
 function syncChatBottomOffset() {
@@ -340,7 +348,14 @@ function wireEvents() {
         }
 
         // 搜索结果 - 读讲记按钮
-        // 搜索结果 - 读讲记链接（已改为 <a>，不再需要 JS 拦截）
+        const directWenkuLink = e.target.closest('.ai-result-read, .ai-inline-source-link');
+        if (directWenkuLink) {
+            const snippet = directWenkuLink.dataset.snippet || '';
+            if (snippet) {
+                try { sessionStorage.setItem('wenku-ai-snippet', snippet); } catch { }
+            }
+            return;
+        }
 
         // 内联来源链接 → 直接跳转
         const inlineSourceLink = e.target.closest('.ai-inline-source-link');
@@ -353,18 +368,14 @@ function wireEvents() {
         const sourceTag = e.target.closest('.ai-source-tag');
         if (sourceTag) {
             e.preventDefault();
-            const docId = sourceTag.dataset.docId;
-            if (docId) {
-                const query = sourceTag.dataset.query || '';
+            const href = sourceTag.dataset.href || '';
+            if (href) {
                 const snippet = sourceTag.dataset.snippet || '';
                 // 文库页 highlightText() 会从 sessionStorage 读取 snippet 做精确定位
                 if (snippet) {
                     try { sessionStorage.setItem('wenku-ai-snippet', snippet); } catch { }
                 }
-                const params = new URLSearchParams({ doc: docId });
-                if (query) params.set('q', query);
-                params.set('from', 'ai');
-                window.location.href = `/wenku?${params.toString()}`;
+                window.location.href = href;
             }
             return;
         }
@@ -434,6 +445,7 @@ function wireEvents() {
 function renderWelcomeOrHistory() {
     const chatHistory = getChatHistory();
     if (chatHistory.length > 0) {
+        syncShellMode(false);
         chatArea.innerHTML = '';
         for (const [index, msg] of chatHistory.entries()) {
             // 搜索结果类型的消息：用结果卡片渲染
@@ -475,6 +487,7 @@ function renderWelcomeOrHistory() {
         scrollToBottom();
     } else {
         // 欢迎页：先显示静态版本，异步加载随机问题后替换
+        syncShellMode(true);
         chatArea.innerHTML = buildWelcomeHTML();
         fetchRandomQuestions().then(questions => {
             if (questions.length > 0 && chatArea.querySelector('.ai-welcome')) {
@@ -553,6 +566,7 @@ async function handleSubmit(options = {}) {
     // 移除欢迎内容
     const welcome = chatArea.querySelector('.ai-welcome');
     if (welcome) welcome.remove();
+    syncShellMode(false);
 
     _lastQuestion = question;
     const conv = ensureActiveConv();
@@ -1016,12 +1030,18 @@ function renderSourceTag(s, fallbackQuery = '') {
           </a>`
         : '';
 
-    if (s.doc_id) {
-        const rawQuery = String(s.preview_query || fallbackQuery || extractHighlightQuery(_lastQuestion) || '').trim();
-        const queryAttr = rawQuery ? ` data-query="${escapeHtml(rawQuery)}"` : '';
+    const rawQuery = String(s.preview_query || fallbackQuery || extractHighlightQuery(_lastQuestion) || '').trim();
+    const wenkuLink = buildAiWenkuLink({
+        docId: s.doc_id,
+        query: rawQuery,
+        location: s.location,
+    });
+
+    if (wenkuLink.href) {
+        const hrefAttr = ` data-href="${escapeHtml(wenkuLink.href)}"`;
         const snippetAttr = s.snippet ? ` data-snippet="${escapeHtml(s.snippet || '')}"` : '';
         return `<span class="ai-source-card">
-            <button class="ai-source-tag" data-doc-id="${escapeHtml(s.doc_id)}"${queryAttr}${snippetAttr}>
+            <button type="button" class="ai-source-tag"${hrefAttr}${snippetAttr}>
                 <span class="ai-source-title-row">${citationId}<span class="ai-source-title">${title}</span></span>${series}${epNum}
             </button>${playBtn}
         </span>`;
@@ -1073,12 +1093,18 @@ function renderEvidenceCard(s, fallbackQuery = '') {
         ${playAction}
     `;
 
-    if (s.doc_id) {
-        const rawQuery = String(s.preview_query || fallbackQuery || extractHighlightQuery(_lastQuestion) || '').trim();
-        const queryAttr = rawQuery ? ` data-query="${escapeHtml(rawQuery)}"` : '';
+    const rawQuery = String(s.preview_query || fallbackQuery || extractHighlightQuery(_lastQuestion) || '').trim();
+    const wenkuLink = buildAiWenkuLink({
+        docId: s.doc_id,
+        query: rawQuery,
+        location: s.location,
+    });
+
+    if (wenkuLink.href) {
+        const hrefAttr = ` data-href="${escapeHtml(wenkuLink.href)}"`;
         const snippetAttr = s.snippet ? ` data-snippet="${escapeHtml(s.snippet || '')}"` : '';
         return `<article class="ai-evidence-card"${cardId}>
-            <button type="button" class="ai-evidence-link ai-source-tag" data-doc-id="${escapeHtml(s.doc_id)}"${queryAttr}${snippetAttr}>
+            <button type="button" class="ai-evidence-link ai-source-tag"${hrefAttr}${snippetAttr}>
                 ${contentHtml}
             </button>
         </article>`;
@@ -1108,6 +1134,7 @@ function loadAiContext() {
 function autoResize() {
     chatInput.style.height = 'auto';
     chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+    chatInput.style.overflowY = chatInput.scrollHeight > 120 ? 'auto' : 'hidden';
     syncChatBottomOffset();
 }
 

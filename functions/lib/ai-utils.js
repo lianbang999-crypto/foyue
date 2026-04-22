@@ -743,8 +743,194 @@ export async function ragAnswer(env, question, contextDocs, options = {}) {
   });
 }
 
+function normalizeEvidenceText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function stripSnippetEllipsis(value) {
+  return normalizeEvidenceText(value).replace(/^[.…\s]+|[.…\s]+$/g, '').trim();
+}
+
+function buildAnchorText(value) {
+  const clean = stripSnippetEllipsis(value);
+  if (!clean) return '';
+  if (clean.length <= 36) return clean;
+  const anchorLength = Math.min(36, Math.max(12, Math.floor(clean.length * 0.45)));
+  const anchorStart = Math.max(0, Math.floor((clean.length - anchorLength) / 2));
+  return clean.slice(anchorStart, anchorStart + anchorLength).trim();
+}
+
+function collapseWhitespaceWithMap(text) {
+  let normalized = '';
+  const map = [];
+  let sawNonSpace = false;
+  let pendingSpace = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (/\s/.test(char)) {
+      pendingSpace = sawNonSpace;
+      continue;
+    }
+
+    if (pendingSpace && normalized) {
+      normalized += ' ';
+      map.push(index);
+      pendingSpace = false;
+    }
+
+    normalized += char;
+    map.push(index);
+    sawNonSpace = true;
+  }
+
+  return { normalized, map };
+}
+
+function splitParagraphRanges(content) {
+  const text = String(content || '');
+  if (!text) return [];
+
+  const segments = text.split(/\n\s*\n/);
+  const paragraphs = [];
+  let cursor = 0;
+
+  for (const segment of segments) {
+    const segmentStart = text.indexOf(segment, cursor);
+    if (segmentStart === -1) continue;
+    cursor = segmentStart + segment.length;
+
+    const trimmed = segment.trim();
+    if (!trimmed) continue;
+
+    const trimmedOffset = segment.indexOf(trimmed);
+    const start = segmentStart + Math.max(trimmedOffset, 0);
+    const end = start + trimmed.length;
+    paragraphs.push({ text: trimmed, start, end });
+  }
+
+  return paragraphs;
+}
+
+function locateSnippet(content, snippet) {
+  const source = String(content || '');
+  const cleanSnippet = stripSnippetEllipsis(snippet);
+  if (!source || !cleanSnippet) {
+    return {
+      rawOffset: null,
+      normalizedOffset: null,
+      matchText: cleanSnippet || null,
+      anchorText: buildAnchorText(cleanSnippet) || null,
+      matchMode: 'missing',
+    };
+  }
+
+  const exactOffset = source.indexOf(cleanSnippet);
+  if (exactOffset !== -1) {
+    return {
+      rawOffset: exactOffset,
+      normalizedOffset: null,
+      matchText: cleanSnippet,
+      anchorText: buildAnchorText(cleanSnippet) || cleanSnippet,
+      matchMode: 'exact',
+    };
+  }
+
+  const normalizedSource = collapseWhitespaceWithMap(source);
+  const normalizedSnippet = collapseWhitespaceWithMap(cleanSnippet).normalized;
+  if (normalizedSnippet) {
+    const normalizedOffset = normalizedSource.normalized.indexOf(normalizedSnippet);
+    if (normalizedOffset !== -1) {
+      return {
+        rawOffset: normalizedSource.map[normalizedOffset] ?? null,
+        normalizedOffset,
+        matchText: normalizedSnippet,
+        anchorText: buildAnchorText(normalizedSnippet) || normalizedSnippet,
+        matchMode: 'normalized',
+      };
+    }
+
+    const anchorText = buildAnchorText(normalizedSnippet);
+    if (anchorText) {
+      const anchorOffset = normalizedSource.normalized.indexOf(anchorText);
+      if (anchorOffset !== -1) {
+        return {
+          rawOffset: normalizedSource.map[anchorOffset] ?? null,
+          normalizedOffset: anchorOffset,
+          matchText: anchorText,
+          anchorText,
+          matchMode: 'anchor',
+        };
+      }
+    }
+  }
+
+  return {
+    rawOffset: null,
+    normalizedOffset: null,
+    matchText: cleanSnippet,
+    anchorText: buildAnchorText(cleanSnippet) || null,
+    matchMode: 'snippet_only',
+  };
+}
+
+export function buildEvidenceLocation(doc, snippet, options = {}) {
+  const content = String(doc?.content || '');
+  const docId = String(doc?.id || options.docId || '').trim();
+  const cleanSnippet = stripSnippetEllipsis(snippet || options.matchText || '');
+  const located = locateSnippet(content, options.matchText || cleanSnippet);
+  const paragraphs = splitParagraphRanges(content);
+
+  let paragraphIndex = null;
+  let paragraphOffset = null;
+  if (located.rawOffset !== null) {
+    const paragraph = paragraphs.find((item, index) => {
+      if (located.rawOffset < item.start || located.rawOffset > item.end) return false;
+      paragraphIndex = index;
+      paragraphOffset = located.rawOffset - item.start;
+      return true;
+    });
+    if (!paragraph) {
+      paragraphIndex = null;
+      paragraphOffset = null;
+    }
+  }
+
+  const resolvedPreviewQuery = normalizeEvidenceText(
+    options.previewQuery || located.anchorText || cleanSnippet.slice(0, 24)
+  );
+  let href = null;
+  if (docId) {
+    const params = new URLSearchParams({ doc: docId });
+    if (resolvedPreviewQuery) params.set('q', resolvedPreviewQuery);
+    params.set('from', 'ai');
+    href = `/wenku?${params.toString()}`;
+  }
+
+  return {
+    locator: located.matchMode,
+    href,
+    paragraphIndex,
+    paragraph_index: paragraphIndex,
+    paragraphOffset,
+    paragraph_offset: paragraphOffset,
+    offset: located.rawOffset,
+    normalizedOffset: located.normalizedOffset,
+    normalized_offset: located.normalizedOffset,
+    matchText: located.matchText || cleanSnippet || null,
+    match_text: located.matchText || cleanSnippet || null,
+    snippet: cleanSnippet || null,
+    anchorText: located.anchorText || null,
+    anchor_text: located.anchorText || null,
+    previewQuery: resolvedPreviewQuery || null,
+    preview_query: resolvedPreviewQuery || null,
+    chunkIndex: Number.isInteger(options.chunkIndex) ? options.chunkIndex : null,
+    chunk_index: Number.isInteger(options.chunkIndex) ? options.chunkIndex : null,
+  };
+}
+
 export function buildRAGContext(contextDocs, options = {}) {
-  const { maxContextLength = 10000, vectorMatches = [] } = options;
+  const { maxContextLength = 10000, vectorMatches = [], previewQuery = '' } = options;
 
   let context = '';
   let refIndex = 1;
@@ -768,9 +954,17 @@ export function buildRAGContext(contextDocs, options = {}) {
       seen.add(key);
 
       context += `${header}${chunkText}\n\n`;
+      const location = buildEvidenceLocation(doc, chunkText, {
+        docId,
+        chunkIndex: match.metadata?.chunk_index,
+        matchText: chunkText,
+        previewQuery,
+      });
       references.push({
         id: citationId,
+        citation_id: citationId,
         refIndex,
+        ref_index: refIndex,
         doc_id: docId,
         title,
         category: doc?.category || match.metadata?.category || '',
@@ -778,6 +972,10 @@ export function buildRAGContext(contextDocs, options = {}) {
         audio_series_id: doc?.audio_series_id || match.metadata?.audio_series_id || '',
         audio_episode_num: doc?.audio_episode_num || null,
         score: typeof match.score === 'number' ? Math.round(match.score * 100) / 100 : null,
+        snippet: chunkText,
+        quote: chunkText,
+        preview_query: location.previewQuery || previewQuery || '',
+        location,
         text: chunkText,
       });
       refIndex += 1;
@@ -793,9 +991,15 @@ export function buildRAGContext(contextDocs, options = {}) {
       const citationId = `S${refIndex}`;
       if (!snippet) continue;
       context += `【${citationId}】出处：${title}${seriesName ? `｜${seriesName}` : ''}\n${snippet}\n\n`;
+      const location = buildEvidenceLocation(doc, snippet, {
+        docId: doc.id,
+        previewQuery,
+      });
       references.push({
         id: citationId,
+        citation_id: citationId,
         refIndex,
+        ref_index: refIndex,
         doc_id: doc.id,
         title,
         category: doc.category || '',
@@ -803,6 +1007,10 @@ export function buildRAGContext(contextDocs, options = {}) {
         audio_series_id: doc.audio_series_id || '',
         audio_episode_num: doc.audio_episode_num || null,
         score: null,
+        snippet,
+        quote: snippet,
+        preview_query: location.previewQuery || previewQuery || '',
+        location,
         text: snippet,
       });
       refIndex += 1;
@@ -926,6 +1134,115 @@ export async function logAICall(env, { scenario, model, durationMs, cached = fal
   }
 }
 
+function normalizeAiAskResultText(value, maxLength = 160) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, maxLength);
+}
+
+function normalizeAiAskResultCount(value) {
+  const numeric = Number.parseInt(value, 10);
+  return Number.isInteger(numeric) && numeric > 0 ? numeric : 0;
+}
+
+function normalizeAiAskResultConfidence(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return Math.max(0, Math.min(1, Math.round(numeric * 100) / 100));
+}
+
+function roundStat(value, digits = 4) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  const factor = 10 ** digits;
+  return Math.round(numeric * factor) / factor;
+}
+
+function buildRatio(count, total) {
+  const normalizedCount = Number(count) || 0;
+  const normalizedTotal = Number(total) || 0;
+  if (!normalizedTotal) return 0;
+  return roundStat(normalizedCount / normalizedTotal, 4);
+}
+
+function buildEmptyAiAskResultStats(days = 7, available = true) {
+  return {
+    available,
+    days,
+    overview: {
+      totalRequests: 0,
+      totalResults: 0,
+      failedRequests: 0,
+      answerCount: 0,
+      searchOnlyCount: 0,
+      noResultCount: 0,
+      answerRate: 0,
+      searchOnlyRate: 0,
+      noResultRate: 0,
+      citationHitRate: 0,
+      avgCitationCount: 0,
+    },
+    modeBreakdown: [],
+    downgradeBreakdown: [],
+    routeBreakdown: [],
+    modelBreakdown: [],
+  };
+}
+
+// ============================================================
+// AI 问答结果日志 — 记录 ask / ask-stream 的结果级观测信息
+// ============================================================
+export async function logAIAskResult(env, {
+  route,
+  mode = null,
+  downgradeReason = null,
+  citationCount = 0,
+  citationHit = false,
+  claimCount = 0,
+  confidence = null,
+  provider = null,
+  model = null,
+  success = true,
+  error = null,
+  timestamp = Date.now(),
+} = {}) {
+  try {
+    await env.DB.prepare(
+      `INSERT INTO ai_ask_result_logs (
+        route,
+        mode,
+        downgrade_reason,
+        citation_count,
+        citation_hit,
+        claim_count,
+        confidence,
+        provider,
+        model,
+        success,
+        error,
+        timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      normalizeAiAskResultText(route, 64) || 'unknown',
+      normalizeAiAskResultText(mode, 32),
+      normalizeAiAskResultText(downgradeReason, 120),
+      normalizeAiAskResultCount(citationCount),
+      citationHit ? 1 : 0,
+      normalizeAiAskResultCount(claimCount),
+      normalizeAiAskResultConfidence(confidence),
+      normalizeAiAskResultText(provider, 80),
+      normalizeAiAskResultText(model, 160),
+      success ? 1 : 0,
+      normalizeAiAskResultText(error, 200),
+      Number.isFinite(timestamp) ? Math.round(timestamp) : Date.now(),
+    ).run();
+  } catch (e) {
+    // 日志写入失败不应影响主流程
+    console.warn('[logAIAskResult] Failed to log:', e.message);
+  }
+}
+
 // ============================================================
 // AI 调用统计 — 按场景汇总
 // ============================================================
@@ -945,6 +1262,162 @@ export async function getAICallStats(env, { days = 7 } = {}) {
      ORDER BY total_calls DESC`
   ).bind(since).all();
   return results;
+}
+
+// ============================================================
+// AI 问答结果统计 — 按 ask / ask-stream 结果日志汇总
+// ============================================================
+export async function getAIAskResultStats(env, { days = 7 } = {}) {
+  const safeDays = Math.max(1, Math.min(Number.parseInt(days, 10) || 7, 90));
+  const since = Date.now() - safeDays * 86_400_000;
+
+  try {
+    const [overviewRow, modeRowsResult, downgradeRowsResult, routeRowsResult, modelRowsResult] = await Promise.all([
+      env.DB.prepare(
+        `SELECT
+            COUNT(*) as total_requests,
+            SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as total_results,
+            SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as failed_requests,
+            SUM(CASE WHEN success = 1 AND mode = 'answer' THEN 1 ELSE 0 END) as answer_count,
+            SUM(CASE WHEN success = 1 AND mode = 'search_only' THEN 1 ELSE 0 END) as search_only_count,
+            SUM(CASE WHEN success = 1 AND mode = 'no_result' THEN 1 ELSE 0 END) as no_result_count,
+            AVG(CASE WHEN success = 1 THEN citation_hit END) as citation_hit_rate,
+            AVG(CASE WHEN success = 1 THEN citation_count END) as avg_citation_count
+         FROM ai_ask_result_logs
+         WHERE timestamp > ?`
+      ).bind(since).first(),
+      env.DB.prepare(
+        `SELECT
+            mode,
+            COUNT(*) as total,
+            SUM(CASE WHEN citation_hit = 1 THEN 1 ELSE 0 END) as citation_hit_count,
+            AVG(citation_count) as avg_citation_count,
+            AVG(confidence) as avg_confidence
+         FROM ai_ask_result_logs
+         WHERE timestamp > ?
+           AND success = 1
+           AND mode IS NOT NULL
+         GROUP BY mode
+         ORDER BY total DESC, mode ASC`
+      ).bind(since).all(),
+      env.DB.prepare(
+        `SELECT
+            downgrade_reason,
+            COUNT(*) as total
+         FROM ai_ask_result_logs
+         WHERE timestamp > ?
+           AND success = 1
+           AND downgrade_reason IS NOT NULL
+           AND downgrade_reason != ''
+         GROUP BY downgrade_reason
+         ORDER BY total DESC, downgrade_reason ASC`
+      ).bind(since).all(),
+      env.DB.prepare(
+        `SELECT
+            route,
+            COUNT(*) as total_requests,
+            SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as total_results,
+            SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as failed_requests,
+            SUM(CASE WHEN success = 1 AND mode = 'answer' THEN 1 ELSE 0 END) as answer_count,
+            SUM(CASE WHEN success = 1 AND mode = 'search_only' THEN 1 ELSE 0 END) as search_only_count,
+            SUM(CASE WHEN success = 1 AND mode = 'no_result' THEN 1 ELSE 0 END) as no_result_count,
+            AVG(CASE WHEN success = 1 THEN citation_hit END) as citation_hit_rate,
+            AVG(CASE WHEN success = 1 THEN citation_count END) as avg_citation_count
+         FROM ai_ask_result_logs
+         WHERE timestamp > ?
+         GROUP BY route
+         ORDER BY total_requests DESC, route ASC`
+      ).bind(since).all(),
+      env.DB.prepare(
+        `SELECT
+            provider,
+            model,
+            COUNT(*) as total,
+            SUM(CASE WHEN mode = 'answer' THEN 1 ELSE 0 END) as answer_count,
+            SUM(CASE WHEN mode = 'search_only' THEN 1 ELSE 0 END) as search_only_count,
+            SUM(CASE WHEN mode = 'no_result' THEN 1 ELSE 0 END) as no_result_count,
+            MAX(timestamp) as last_seen_at
+         FROM ai_ask_result_logs
+         WHERE timestamp > ?
+           AND success = 1
+         GROUP BY provider, model
+         ORDER BY total DESC, last_seen_at DESC
+         LIMIT 12`
+      ).bind(since).all(),
+    ]);
+
+    const totalRequests = Number(overviewRow?.total_requests) || 0;
+    const totalResults = Number(overviewRow?.total_results) || 0;
+    const failedRequests = Number(overviewRow?.failed_requests) || 0;
+    const answerCount = Number(overviewRow?.answer_count) || 0;
+    const searchOnlyCount = Number(overviewRow?.search_only_count) || 0;
+    const noResultCount = Number(overviewRow?.no_result_count) || 0;
+    const modeRows = Array.isArray(modeRowsResult?.results) ? modeRowsResult.results : [];
+    const modeMap = new Map(modeRows.map(row => [String(row.mode || ''), row]));
+    const downgradeRows = Array.isArray(downgradeRowsResult?.results) ? downgradeRowsResult.results : [];
+    const routeRows = Array.isArray(routeRowsResult?.results) ? routeRowsResult.results : [];
+    const modelRows = Array.isArray(modelRowsResult?.results) ? modelRowsResult.results : [];
+
+    return {
+      available: true,
+      days: safeDays,
+      overview: {
+        totalRequests,
+        totalResults,
+        failedRequests,
+        answerCount,
+        searchOnlyCount,
+        noResultCount,
+        answerRate: buildRatio(answerCount, totalResults),
+        searchOnlyRate: buildRatio(searchOnlyCount, totalResults),
+        noResultRate: buildRatio(noResultCount, totalResults),
+        citationHitRate: roundStat(overviewRow?.citation_hit_rate, 4),
+        avgCitationCount: roundStat(overviewRow?.avg_citation_count, 2),
+      },
+      modeBreakdown: ['answer', 'search_only', 'no_result']
+        .map(mode => {
+          const row = modeMap.get(mode);
+          const total = Number(row?.total) || 0;
+          return {
+            mode,
+            total,
+            share: buildRatio(total, totalResults),
+            citationHitRate: buildRatio(Number(row?.citation_hit_count) || 0, total),
+            avgCitationCount: roundStat(row?.avg_citation_count, 2),
+            avgConfidence: roundStat(row?.avg_confidence, 4),
+          };
+        })
+        .filter(row => row.total > 0 || totalResults === 0),
+      downgradeBreakdown: downgradeRows.map(row => ({
+        downgradeReason: row.downgrade_reason,
+        total: Number(row.total) || 0,
+        share: buildRatio(Number(row.total) || 0, totalResults),
+      })),
+      routeBreakdown: routeRows.map(row => ({
+        route: row.route || 'unknown',
+        totalRequests: Number(row.total_requests) || 0,
+        totalResults: Number(row.total_results) || 0,
+        failedRequests: Number(row.failed_requests) || 0,
+        answerCount: Number(row.answer_count) || 0,
+        searchOnlyCount: Number(row.search_only_count) || 0,
+        noResultCount: Number(row.no_result_count) || 0,
+        citationHitRate: roundStat(row.citation_hit_rate, 4),
+        avgCitationCount: roundStat(row.avg_citation_count, 2),
+      })),
+      modelBreakdown: modelRows.map(row => ({
+        provider: row.provider || null,
+        model: row.model || null,
+        total: Number(row.total) || 0,
+        answerCount: Number(row.answer_count) || 0,
+        searchOnlyCount: Number(row.search_only_count) || 0,
+        noResultCount: Number(row.no_result_count) || 0,
+        lastSeenAt: Number(row.last_seen_at) || null,
+      })),
+    };
+  } catch (err) {
+    console.warn('[getAIAskResultStats] Failed to load stats:', err.message);
+    return buildEmptyAiAskResultStats(safeDays, false);
+  }
 }
 
 // ============================================================

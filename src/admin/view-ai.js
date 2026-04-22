@@ -25,6 +25,20 @@ function fmtTtl(seconds) {
   return seconds + '秒';
 }
 
+function fmtDateTime(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return '--';
+  const date = new Date(numeric);
+  if (Number.isNaN(date.getTime())) return '--';
+  return date.toLocaleString('zh-CN', {
+    hour12: false,
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function fmtProgress(done, total) {
   if (!total) return '--';
   return `${done}/${total} (${fmtPct(done, total)})`;
@@ -155,6 +169,84 @@ const SCENARIO_LABELS = {
   diagnostic: '诊断测试',
 };
 
+const ASK_RESULT_MODE_LABELS = {
+  answer: '直接回答',
+  search_only: '降级检索',
+  no_result: '无结果',
+};
+
+const ASK_RESULT_ROUTE_LABELS = {
+  ask: '同步问答',
+  'ask-stream': '流式问答',
+};
+
+const ASK_RESULT_DOWNGRADE_LABELS = {
+  insufficient_evidence: '证据不足',
+  answer_generation_failed: '回答生成失败',
+  answer_generation_empty: '回答内容为空',
+  answer_generation_unavailable: '回答生成不可用',
+  unsupported_question: '当前问题暂不支持',
+  no_documents: '未检索到相关文档',
+};
+
+function fmtPercentValue(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return '--';
+  const normalized = Math.abs(num) <= 1 ? num * 100 : num;
+  return normalized.toFixed(1) + '%';
+}
+
+function fmtStatNumber(value, maxFractionDigits = 2) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return '--';
+  return num.toLocaleString('zh-CN', { maximumFractionDigits: maxFractionDigits });
+}
+
+function normalizeAskResultRoute(route) {
+  return String(route || 'unknown')
+    .trim()
+    .replace(/^\/+/, '')
+    .replace(/^api\/ai\//, '')
+    .replace(/^ai\//, '') || 'unknown';
+}
+
+function getAskResultModeLabel(mode) {
+  return ASK_RESULT_MODE_LABELS[mode] || mode || '未知模式';
+}
+
+function getAskResultModeBadgeClass(mode) {
+  if (mode === 'answer') return 'adm-badge adm-badge-green';
+  if (mode === 'search_only') return 'adm-badge adm-badge-yellow';
+  if (mode === 'no_result') return 'adm-badge adm-badge-red';
+  return 'adm-badge';
+}
+
+function getAskResultRouteLabel(route) {
+  const key = normalizeAskResultRoute(route);
+  return ASK_RESULT_ROUTE_LABELS[key] || key;
+}
+
+function getAskResultDowngradeLabel(reason) {
+  const key = String(reason || 'unknown').trim() || 'unknown';
+  return ASK_RESULT_DOWNGRADE_LABELS[key] || key;
+}
+
+function renderAskResultMetric(label, value, hint = '') {
+  return `<div class="adm-metric">
+    <div class="adm-metric-label">${esc(label)}</div>
+    <div class="adm-metric-value">${esc(String(value))}</div>
+    ${hint ? `<div class="adm-text-muted" style="margin-top:6px;font-size:.8rem">${esc(hint)}</div>` : ''}
+  </div>`;
+}
+
+function renderAskResultHeroStat(label, value, detail = '') {
+  return `<div class="adm-ai-hero-stat">
+    <div class="adm-ai-hero-stat-label">${esc(label)}</div>
+    <div class="adm-ai-hero-stat-value">${esc(String(value))}</div>
+    ${detail ? `<div class="adm-ai-hero-stat-detail">${esc(detail)}</div>` : ''}
+  </div>`;
+}
+
 /* ── Main render ── */
 export async function renderAI(container) {
   container.innerHTML = `<div class="adm-page">
@@ -203,6 +295,25 @@ async function renderStats(el, days = 7) {
 
   const stats = data.stats || [];
   const profiles = data.gatewayProfiles || {};
+  const askResults = data.askResults;
+  const askResultsAvailable = Boolean(askResults) && askResults.available !== false;
+  const askOverview = {
+    totalRequests: Number(askResults?.overview?.totalRequests) || 0,
+    totalResults: Number(askResults?.overview?.totalResults) || 0,
+    failedRequests: Number(askResults?.overview?.failedRequests) || 0,
+    answerCount: Number(askResults?.overview?.answerCount) || 0,
+    searchOnlyCount: Number(askResults?.overview?.searchOnlyCount) || 0,
+    noResultCount: Number(askResults?.overview?.noResultCount) || 0,
+    answerRate: Number(askResults?.overview?.answerRate) || 0,
+    searchOnlyRate: Number(askResults?.overview?.searchOnlyRate) || 0,
+    noResultRate: Number(askResults?.overview?.noResultRate) || 0,
+    citationHitRate: Number(askResults?.overview?.citationHitRate) || 0,
+    avgCitationCount: Number(askResults?.overview?.avgCitationCount) || 0,
+  };
+  const askModeBreakdown = Array.isArray(askResults?.modeBreakdown) ? askResults.modeBreakdown : [];
+  const askDowngradeBreakdown = Array.isArray(askResults?.downgradeBreakdown) ? askResults.downgradeBreakdown : [];
+  const askRouteBreakdown = Array.isArray(askResults?.routeBreakdown) ? askResults.routeBreakdown : [];
+  const askModelBreakdown = Array.isArray(askResults?.modelBreakdown) ? askResults.modelBreakdown : [];
 
   // Aggregate totals
   let totalCalls = 0, totalSuccess = 0, totalCached = 0, totalDuration = 0;
@@ -232,6 +343,10 @@ async function renderStats(el, days = 7) {
   });
   el.appendChild(toolbar);
 
+  const content = document.createElement('div');
+  content.className = 'adm-ai-stats-shell';
+  el.appendChild(content);
+
   // Metric cards
   const metrics = document.createElement('div');
   metrics.className = 'adm-metrics';
@@ -243,7 +358,172 @@ async function renderStats(el, days = 7) {
   ].map(m =>
     `<div class="adm-metric"><div class="adm-metric-label">${m.label}</div><div class="adm-metric-value">${m.value}</div></div>`
   ).join('');
-  el.appendChild(metrics);
+  content.appendChild(metrics);
+
+  const askSection = document.createElement('div');
+  askSection.className = 'adm-section';
+  if (!askResultsAvailable) {
+    askSection.classList.add('adm-ai-callout');
+    askSection.innerHTML = `<div class="adm-ai-callout-body">
+        <span class="adm-badge adm-badge-yellow">结果级统计未启用</span>
+        <div class="adm-section-title" style="margin:0">问答结果质量</div>
+        <div class="adm-text-muted">尚未应用 0030 migration / 暂无结果级统计。当前仅展示 Gateway 调用层统计；结果日志表可用后，这里会自动显示降级原因、引用命中率和接口结果质量。</div>
+      </div>`;
+    content.appendChild(askSection);
+  } else {
+    const topModels = askModelBreakdown.slice(0, 3).map(row => {
+      const provider = row?.provider ? `${row.provider} · ` : '';
+      const model = String(row?.model || 'unknown').split('/').pop();
+      return `<span class="adm-badge adm-badge-accent">${esc(provider + model)} ${fmtCount(row?.total || 0)}</span>`;
+    }).join('');
+
+    askSection.classList.add('adm-ai-hero-card');
+    askSection.innerHTML = `<div class="adm-ai-hero-layout">
+        <div class="adm-ai-hero-main">
+          <div class="adm-ai-hero-kicker">Grounded Answer</div>
+          <div class="adm-section-title adm-ai-hero-title">问答结果质量</div>
+          <p class="adm-ai-hero-copy">这里看的是最终用户能感知到的回答质量，不再只是模型调用是否成功，而是回答是否真正带出处、是否降级为检索，以及哪条接口更稳定。</p>
+          <div class="adm-ai-chip-row">
+            <span class="adm-badge adm-badge-green">直接回答 ${fmtPercentValue(askOverview.answerRate)}</span>
+            <span class="adm-badge adm-badge-yellow">降级检索 ${fmtPercentValue(askOverview.searchOnlyRate)}</span>
+            <span class="adm-badge adm-badge-accent">引用命中 ${fmtPercentValue(askOverview.citationHitRate)}</span>
+            <span class="adm-badge">近 ${fmtCount(askResults?.days ?? data.days)} 天</span>
+          </div>
+          ${topModels ? `<div class="adm-ai-model-strip">
+            <div class="adm-text-muted">最近命中模型</div>
+            <div class="adm-ai-chip-row">${topModels}</div>
+          </div>` : ''}
+        </div>
+        <div class="adm-ai-hero-side">
+          ${renderAskResultHeroStat('成功结果', fmtCount(askOverview.totalResults), `总请求 ${fmtCount(askOverview.totalRequests)}`)}
+          ${renderAskResultHeroStat('直接回答', fmtCount(askOverview.answerCount), `无结果 ${fmtCount(askOverview.noResultCount)}`)}
+          ${renderAskResultHeroStat('失败请求', fmtCount(askOverview.failedRequests), `平均引用 ${fmtStatNumber(askOverview.avgCitationCount, 2)}`)}
+        </div>
+      </div>
+      <div class="adm-metrics adm-metrics--compact">${[
+        {
+          label: '问答总数',
+          value: fmtCount(askOverview.totalRequests),
+          hint: `成功结果 ${fmtCount(askOverview.totalResults)}`,
+        },
+        {
+          label: '回答占比',
+          value: fmtPercentValue(askOverview.answerRate),
+          hint: `${fmtCount(askOverview.answerCount)} 次直接回答`,
+        },
+        {
+          label: '降级检索占比',
+          value: fmtPercentValue(askOverview.searchOnlyRate),
+          hint: `${fmtCount(askOverview.searchOnlyCount)} 次降级检索`,
+        },
+        {
+          label: '引用命中率',
+          value: fmtPercentValue(askOverview.citationHitRate),
+          hint: `成功样本 ${fmtCount(askOverview.totalResults)}`,
+        },
+        {
+          label: '平均引用数',
+          value: fmtStatNumber(askOverview.avgCitationCount, 2),
+          hint: '每条成功结果的平均 citation 数',
+        },
+        {
+          label: '失败请求数',
+          value: fmtCount(askOverview.failedRequests),
+          hint: `占总请求 ${fmtPct(askOverview.failedRequests, askOverview.totalRequests)}`,
+        },
+      ].map(item => renderAskResultMetric(item.label, item.value, item.hint)).join('')}</div>`;
+    content.appendChild(askSection);
+
+    const insightGrid = document.createElement('div');
+    insightGrid.className = 'adm-ai-grid-two';
+
+    const modeSection = document.createElement('div');
+    modeSection.className = 'adm-section';
+    modeSection.innerHTML = `<div class="adm-section-title">结果模式分布</div>
+      <div class="adm-table-wrap"><table class="adm-table">
+        <thead><tr>
+          <th>模式</th><th>数量</th><th>占比</th><th>引用命中率</th><th>平均引用数</th><th>平均置信度</th>
+        </tr></thead>
+        <tbody>${askModeBreakdown.length ? askModeBreakdown.map(row => `
+          <tr class="no-click">
+            <td><span class="${getAskResultModeBadgeClass(row.mode)}">${esc(getAskResultModeLabel(row.mode))}</span></td>
+            <td>${fmtCount(row.total)}</td>
+            <td>${fmtPercentValue(row.share)}</td>
+            <td>${fmtPercentValue(row.citationHitRate)}</td>
+            <td>${fmtStatNumber(row.avgCitationCount, 2)}</td>
+            <td>${fmtPercentValue(row.avgConfidence)}</td>
+          </tr>`).join('') : '<tr><td colspan="6" style="text-align:center">暂无结果模式统计</td></tr>'}</tbody>
+      </table></div>`;
+    insightGrid.appendChild(modeSection);
+
+    const downgradeSection = document.createElement('div');
+    downgradeSection.className = 'adm-section';
+    downgradeSection.innerHTML = `<div class="adm-section-title">降级原因分布</div>
+      <div class="adm-table-wrap"><table class="adm-table">
+        <thead><tr><th>降级原因</th><th>次数</th><th>占比</th></tr></thead>
+        <tbody>${askDowngradeBreakdown.length ? askDowngradeBreakdown.map(row => {
+      const code = String(row?.downgradeReason || 'unknown');
+      const label = getAskResultDowngradeLabel(code);
+      const codeMeta = label !== code ? `<div class="adm-text-muted" style="font-size:.8rem;margin-top:4px">${esc(code)}</div>` : '';
+      return `<tr class="no-click">
+            <td><span class="adm-badge adm-badge-yellow">${esc(label)}</span>${codeMeta}</td>
+            <td>${fmtCount(row.total)}</td>
+            <td>${fmtPercentValue(row.share)}</td>
+          </tr>`;
+    }).join('') : '<tr><td colspan="3" style="text-align:center">暂无降级记录</td></tr>'}</tbody>
+      </table></div>`;
+    insightGrid.appendChild(downgradeSection);
+    content.appendChild(insightGrid);
+
+    const routeSection = document.createElement('div');
+    routeSection.className = 'adm-section';
+    routeSection.innerHTML = `<div class="adm-section-title">接口路由结果</div>
+      <div class="adm-table-wrap"><table class="adm-table">
+        <thead><tr>
+          <th>接口</th><th>总请求</th><th>成功结果</th><th>失败</th><th>回答</th><th>降级检索</th><th>无结果</th><th>引用命中率</th><th>平均引用数</th>
+        </tr></thead>
+        <tbody>${askRouteBreakdown.length ? askRouteBreakdown.map(row => {
+      const routeKey = normalizeAskResultRoute(row.route);
+      const routeLabel = getAskResultRouteLabel(routeKey);
+      const routeMeta = routeLabel !== routeKey ? `<div class="adm-text-muted" style="font-size:.8rem;margin-top:4px">${esc(routeKey)}</div>` : '';
+      return `<tr class="no-click">
+            <td><span class="adm-badge adm-badge-accent">${esc(routeLabel)}</span>${routeMeta}</td>
+            <td>${fmtCount(row.totalRequests)}</td>
+            <td>${fmtCount(row.totalResults)}</td>
+            <td>${fmtCount(row.failedRequests)} <span class="adm-text-muted">(${fmtPct(row.failedRequests, row.totalRequests)})</span></td>
+            <td>${fmtCount(row.answerCount)} <span class="adm-text-muted">(${fmtPct(row.answerCount, row.totalResults)})</span></td>
+            <td>${fmtCount(row.searchOnlyCount)} <span class="adm-text-muted">(${fmtPct(row.searchOnlyCount, row.totalResults)})</span></td>
+            <td>${fmtCount(row.noResultCount)} <span class="adm-text-muted">(${fmtPct(row.noResultCount, row.totalResults)})</span></td>
+            <td>${fmtPercentValue(row.citationHitRate)}</td>
+            <td>${fmtStatNumber(row.avgCitationCount, 2)}</td>
+          </tr>`;
+    }).join('') : '<tr><td colspan="9" style="text-align:center">暂无接口路由统计</td></tr>'}</tbody>
+      </table></div>`;
+    content.appendChild(routeSection);
+
+    if (askModelBreakdown.length) {
+      const modelSection = document.createElement('div');
+      modelSection.className = 'adm-section';
+      modelSection.innerHTML = `<div class="adm-section-title">回答模型概览</div>
+        <div class="adm-table-wrap"><table class="adm-table">
+          <thead><tr>
+            <th>Provider</th><th>Model</th><th>结果数</th><th>直接回答</th><th>降级检索</th><th>无结果</th><th>最近命中</th>
+          </tr></thead>
+          <tbody>${askModelBreakdown.map(row => `
+            <tr class="no-click">
+              <td>${esc(row.provider || '--')}</td>
+              <td><code style="font-size:.72rem">${esc(String(row.model || '--').split('/').pop())}</code></td>
+              <td>${fmtCount(row.total)}</td>
+              <td>${fmtCount(row.answerCount)}</td>
+              <td>${fmtCount(row.searchOnlyCount)}</td>
+              <td>${fmtCount(row.noResultCount)}</td>
+              <td>${fmtDateTime(row.lastSeenAt)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table></div>`;
+      content.appendChild(modelSection);
+    }
+  }
 
   // Stats table by scenario
   const section = document.createElement('div');
@@ -268,7 +548,7 @@ async function renderStats(el, days = 7) {
         </tr>`;
   }).join('') : '<tr><td colspan="8" style="text-align:center">暂无数据（系统刚部署，请稍后再查看）</td></tr>'}</tbody>
     </table></div>`;
-  el.appendChild(section);
+  content.appendChild(section);
 
   // Gateway profiles
   const profSection = document.createElement('div');
@@ -283,7 +563,7 @@ async function renderStats(el, days = 7) {
     return `<tr class="no-click"><td><code style="font-size:.72rem">${key}</code></td><td>${esc(label)}</td><td>${strategy}</td><td>${fmtTtl(p.cacheTtl)}</td></tr>`;
   }).join('')}</tbody>
     </table></div>`;
-  el.appendChild(profSection);
+  content.appendChild(profSection);
 }
 
 /* ── Tab 2: 运维操作 ── */

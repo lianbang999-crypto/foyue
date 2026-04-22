@@ -6,7 +6,7 @@
 import {
   AI_CONFIG, GATEWAY_PROFILES, chunkText, generateEmbeddings,
   checkRateLimit, cleanupRateLimits, isEnvFlagEnabled, timingSafeCompare,
-  extractAIResponse, stripThinkTags, getAICallStats, runAIWithLogging, resolveAIModel,
+  extractAIResponse, stripThinkTags, getAICallStats, getAIAskResultStats, logAIAskResult, runAIWithLogging, resolveAIModel,
 } from '../lib/ai-utils.js';
 import { buildAudioUrl } from '../lib/audio-utils.js';
 import {
@@ -789,13 +789,17 @@ export async function onRequest(context) {
       if (authErr) return authErr;
       const days = parseInt(url.searchParams.get('days') || '7', 10);
       try {
-        const stats = await getAICallStats(env, { days: Math.min(days, 90) });
+        const safeDays = Math.min(days, 90);
+        const [stats, askResults] = await Promise.all([
+          getAICallStats(env, { days: safeDays }),
+          getAIAskResultStats(env, { days: safeDays }),
+        ]);
         // 额外获取 Gateway 配置快照
         const profiles = {};
         for (const [key, val] of Object.entries(GATEWAY_PROFILES)) {
           profiles[key] = { cacheTtl: val.cacheTtl || null, skipCache: val.skipCache };
         }
-        return json({ success: true, days, stats, gatewayProfiles: profiles }, cors);
+        return json({ success: true, days: safeDays, stats, gatewayProfiles: profiles, askResults }, cors);
       } catch (err) {
         return json({ success: false, error: err.message }, cors);
       }
@@ -988,6 +992,25 @@ export async function onRequest(context) {
     return json({ error: 'Not Found' }, cors, 404);
 
   } catch (err) {
+    const aiAskRoute = path === '/api/ai/ask'
+      ? 'ask'
+      : path === '/api/ai/ask-stream'
+        ? 'ask-stream'
+        : null;
+
+    if (aiAskRoute) {
+      const logPromise = logAIAskResult(env, {
+        route: aiAskRoute,
+        success: false,
+        error: String(err?.message || err || 'unknown_error').slice(0, 200),
+      });
+      if (typeof waitUntil === 'function') {
+        waitUntil(logPromise);
+      } else {
+        logPromise.catch(() => { });
+      }
+    }
+
     console.error('API Error:', err);
     return json({ error: 'Internal Server Error' }, cors, 500);
   }

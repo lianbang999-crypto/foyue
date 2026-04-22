@@ -12,10 +12,12 @@ import {
   expandContextFromDocs,
   ragAnswer,
   buildRAGContext,
+  buildEvidenceLocation,
   generateSummary,
   checkRateLimit,
   cleanupRateLimits,
   extractAIResponse,
+  logAIAskResult,
   runAIWithLogging,
   resolveAIModel,
   streamExternalLLM,
@@ -39,6 +41,11 @@ const AI_RESPONSE_MODE = Object.freeze({
   ANSWER: 'answer',
   SEARCH_ONLY: 'search_only',
   NO_RESULT: 'no_result',
+});
+
+const AI_RESULT_ROUTE = Object.freeze({
+  ASK: 'ask',
+  ASK_STREAM: 'ask-stream',
 });
 
 function roundConfidence(value) {
@@ -75,9 +82,190 @@ function hasAnswerGenerationCapability(env) {
   return !!(env?.AI?.run || env?.EXTERNAL_LLM_KEY || env?.GROQ_API_KEY);
 }
 
+const INLINE_CITATION_RE = /\[(S\d+)\]/g;
+
+function normalizePreviewQuery(question, keywords = [], fallback = '') {
+  const primaryKeyword = keywords.find(item => item.length >= 2) || '';
+  if (primaryKeyword) return primaryKeyword;
+  const normalizedFallback = String(fallback || '').replace(/\s+/g, ' ').trim();
+  if (normalizedFallback) return normalizedFallback.slice(0, 24);
+  return String(question || '').replace(/\s+/g, ' ').trim().slice(0, 24);
+}
+
+function normalizeEpisodeNumber(value) {
+  const numeric = Number.parseInt(value, 10);
+  return Number.isInteger(numeric) && numeric > 0 ? numeric : null;
+}
+
+function extractInlineCitationIds(answer) {
+  const text = String(answer || '');
+  if (!text) return [];
+  const ids = [];
+  for (const match of text.matchAll(INLINE_CITATION_RE)) {
+    if (!match[1] || ids.includes(match[1])) continue;
+    ids.push(match[1]);
+  }
+  return ids;
+}
+
+function buildClaimMap(answer, citations = []) {
+  const knownIds = new Set(
+    (Array.isArray(citations) ? citations : [])
+      .map(item => String(item?.citation_id || item?.id || '').trim())
+      .filter(Boolean)
+  );
+  if (!knownIds.size) return [];
+
+  const claims = [];
+  const seen = new Set();
+  const segments = String(answer || '')
+    .split(/\n+/)
+    .map(item => item.trim())
+    .filter(Boolean);
+
+  for (const segment of segments) {
+    const citationIds = extractInlineCitationIds(segment).filter(id => knownIds.has(id));
+    if (!citationIds.length) continue;
+
+    const claim = segment.replace(/\[(S\d+)\]/g, '').trim();
+    if (!claim) continue;
+
+    const key = `${claim}|${citationIds.join(',')}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    claims.push({ claim, citationIds });
+    if (claims.length >= 4) break;
+  }
+
+  return claims;
+}
+
+function hasGroundedInlineCitations(answer, citations = []) {
+  const knownIds = new Set(
+    (Array.isArray(citations) ? citations : [])
+      .map(item => String(item?.citation_id || item?.id || '').trim())
+      .filter(Boolean)
+  );
+  if (!knownIds.size) return false;
+  return extractInlineCitationIds(answer).some(id => knownIds.has(id));
+}
+
+function containsKeywordHit(text, keywords = []) {
+  const content = String(text || '');
+  return keywords.some(keyword => keyword && content.includes(keyword));
+}
+
+function buildCitationList(question, matches, docs, keywords = []) {
+  if (!Array.isArray(docs) || !docs.length) return [];
+  const previewQuery = normalizePreviewQuery(question, keywords);
+  const { references } = buildRAGContext(docs, {
+    maxContextLength: 4200,
+    vectorMatches: Array.isArray(matches) ? matches.slice(0, 6) : [],
+    previewQuery,
+  });
+
+  return (references || [])
+    .slice(0, 3)
+    .map(reference => ({
+      citation_id: reference.citation_id || reference.id || '',
+      ref_index: reference.ref_index ?? reference.refIndex ?? null,
+      doc_id: reference.doc_id || '',
+      title: reference.title || '',
+      score: typeof reference.score === 'number' ? reference.score : null,
+      category: reference.category || '',
+      series_name: reference.series_name || '',
+      audio_series_id: reference.audio_series_id || '',
+      audio_episode_num: reference.audio_episode_num || null,
+      snippet: reference.snippet || reference.text || '',
+      quote: reference.snippet || reference.text || '',
+      preview_query: reference.preview_query || previewQuery || '',
+      location: reference.location || null,
+    }))
+    .filter(item => item.doc_id && item.snippet);
+}
+
+function assessEvidenceStrength(matches, citations, options = {}) {
+  const { seriesId = null, episodeNum = null, keywords = [] } = options;
+  const topScore = typeof matches?.[0]?.score === 'number' ? matches[0].score : 0;
+  const exactEpisodeHit = citations.some(item => item.audio_series_id === seriesId && item.audio_episode_num === episodeNum);
+  const seriesHit = seriesId ? citations.some(item => item.audio_series_id === seriesId) : false;
+  const keywordHit = citations.some(item => containsKeywordHit(item.snippet, keywords));
+  const citationCount = Array.isArray(citations) ? citations.length : 0;
+  const strongEnough = exactEpisodeHit || topScore >= 0.72 || citationCount >= 2 || keywordHit;
+  const shouldDowngrade = citationCount > 0 && !strongEnough && topScore < 0.48 && !(seriesId && seriesHit);
+
+  return {
+    topScore,
+    citationCount,
+    exactEpisodeHit,
+    seriesHit,
+    keywordHit,
+    shouldDowngrade,
+  };
+}
+
+function getMatchSeriesId(match, docsById) {
+  const docId = match?.metadata?.doc_id;
+  const doc = docId ? docsById.get(docId) : null;
+  return String(match?.metadata?.audio_series_id || doc?.audio_series_id || '').trim();
+}
+
+function getMatchEpisodeNum(match, docsById) {
+  const docId = match?.metadata?.doc_id;
+  const doc = docId ? docsById.get(docId) : null;
+  return normalizeEpisodeNumber(match?.metadata?.audio_episode_num ?? doc?.audio_episode_num);
+}
+
+function preferSeriesScopedMatches(matches, docs, seriesId, episodeNum) {
+  if (!seriesId || !Array.isArray(matches) || !matches.length) return matches;
+  const docsById = new Map((Array.isArray(docs) ? docs : []).map(doc => [doc.id, doc]));
+  const seriesMatches = matches.filter(match => getMatchSeriesId(match, docsById) === seriesId);
+  if (!seriesMatches.length) return matches;
+
+  if (Number.isInteger(episodeNum) && episodeNum > 0) {
+    const exactEpisodeMatches = seriesMatches.filter(match => getMatchEpisodeNum(match, docsById) === episodeNum);
+    if (exactEpisodeMatches.length) {
+      const exactSet = new Set(exactEpisodeMatches);
+      return [...exactEpisodeMatches, ...seriesMatches.filter(match => !exactSet.has(match))];
+    }
+  }
+
+  return seriesMatches;
+}
+
+function preferSeriesScopedDocs(docs, seriesId, episodeNum) {
+  if (!seriesId || !Array.isArray(docs) || !docs.length) return docs;
+  const seriesDocs = docs.filter(doc => String(doc?.audio_series_id || '').trim() === seriesId);
+  if (!seriesDocs.length) return docs;
+
+  if (Number.isInteger(episodeNum) && episodeNum > 0) {
+    const exactDocs = seriesDocs.filter(doc => normalizeEpisodeNumber(doc?.audio_episode_num) === episodeNum);
+    if (exactDocs.length) {
+      return mergeDocs(exactDocs, seriesDocs);
+    }
+  }
+
+  return seriesDocs;
+}
+
+function ensureAnswerHasCitation(answer, citations = []) {
+  const text = String(answer || '').trim();
+  if (!text) return text;
+  if (hasGroundedInlineCitations(text, citations)) return text;
+  const firstCitationId = citations[0]?.citation_id;
+  return firstCitationId ? `${text} [${firstCitationId}]` : text;
+}
+
+function buildEvidenceBundle(question, matches, docs, keywords = []) {
+  return {
+    citations: buildCitationList(question, matches, docs, keywords),
+    sources: buildSearchSourceList(matches, docs, keywords, question),
+  };
+}
+
 
 function buildSourceList(matches, docs, keywords = [], options = {}) {
-  const { includeKnowledge = true } = options;
+  const { includeKnowledge = true, question = '' } = options;
   const seenDocIds = new Set();
   const sources = [];
   for (const match of matches) {
@@ -91,6 +279,13 @@ function buildSourceList(matches, docs, keywords = [], options = {}) {
     const snippet = keywords.length > 0
       ? buildKeywordSnippet(chunkText, keywords) || chunkText.slice(0, 300)
       : chunkText.slice(0, 300);
+    const previewQuery = normalizePreviewQuery(question, keywords, snippet);
+    const location = buildEvidenceLocation(doc, snippet, {
+      docId,
+      chunkIndex: match.metadata?.chunk_index,
+      matchText: chunkText,
+      previewQuery,
+    });
     sources.push({
       title: doc?.title || match.metadata.title || '',
       doc_id: docId,
@@ -98,19 +293,25 @@ function buildSourceList(matches, docs, keywords = [], options = {}) {
       category: doc?.category || match.metadata.category || '',
       series_name: doc?.series_name || match.metadata.series_name || '',
       audio_series_id: doc?.audio_series_id || match.metadata.audio_series_id || '',
-      audio_episode_num: doc?.audio_episode_num || null,
+      audio_episode_num: doc?.audio_episode_num || match.metadata?.audio_episode_num || null,
       snippet,
+      preview_query: previewQuery,
+      location,
     });
     if (sources.length >= 3) break;
   }
   return sources;
 }
 
-function buildDocFallbackSources(docs, keywords = []) {
+function buildDocFallbackSources(docs, keywords = [], question = '') {
   return (docs || [])
     .slice(0, 3)
     .map(doc => {
       const content = String(doc.content || '').replace(/\s+/g, ' ').trim();
+      const snippet = keywords.length > 0
+        ? buildKeywordSnippet(content, keywords) || content.slice(0, 300)
+        : content.slice(0, 300);
+      const previewQuery = normalizePreviewQuery(question, keywords, snippet);
       return {
         title: doc.title || '',
         doc_id: doc.id,
@@ -119,19 +320,22 @@ function buildDocFallbackSources(docs, keywords = []) {
         series_name: doc.series_name || '',
         audio_series_id: doc.audio_series_id || '',
         audio_episode_num: doc.audio_episode_num || null,
-        snippet: keywords.length > 0
-          ? buildKeywordSnippet(content, keywords) || content.slice(0, 300)
-          : content.slice(0, 300),
+        snippet,
+        preview_query: previewQuery,
+        location: buildEvidenceLocation(doc, snippet, {
+          docId: doc.id,
+          previewQuery,
+        }),
       };
     })
     .filter(item => item.doc_id && item.snippet);
 }
 
-function buildSearchSourceList(matches, docs, keywords = []) {
+function buildSearchSourceList(matches, docs, keywords = [], question = '') {
   const merged = [];
   const seenDocIds = new Set();
-  const primary = buildSourceList(matches, docs, keywords, { includeKnowledge: false });
-  const secondary = primary.length ? primary : buildSourceList(matches, docs, keywords);
+  const primary = buildSourceList(matches, docs, keywords, { includeKnowledge: false, question });
+  const secondary = primary.length ? primary : buildSourceList(matches, docs, keywords, { question });
 
   for (const source of secondary) {
     if (!source.doc_id || seenDocIds.has(source.doc_id)) continue;
@@ -140,7 +344,7 @@ function buildSearchSourceList(matches, docs, keywords = []) {
     if (merged.length >= 3) return merged;
   }
 
-  for (const source of buildDocFallbackSources(docs, keywords)) {
+  for (const source of buildDocFallbackSources(docs, keywords, question)) {
     if (!source.doc_id || seenDocIds.has(source.doc_id)) continue;
     seenDocIds.add(source.doc_id);
     merged.push(source);
@@ -154,11 +358,13 @@ function buildAiAnswerPayload(rawText, question, options = {}) {
   const {
     mode = AI_RESPONSE_MODE.ANSWER,
     sources = [],
+    citations = [],
     forceNoResult = false,
     docs = [],
     confidence = mode === AI_RESPONSE_MODE.NO_RESULT ? 0 : 0.75,
     rewriteSuggestions = [],
     downgradeReason = null,
+    claimMap = null,
     modelInfo = buildIdleModelInfo(mode === AI_RESPONSE_MODE.NO_RESULT ? 'retrieval_only' : 'not_invoked'),
   } = options;
 
@@ -172,6 +378,11 @@ function buildAiAnswerPayload(rawText, question, options = {}) {
       docs,
     });
 
+  const finalCitations = Array.isArray(citations) ? citations.slice(0, 3) : [];
+  const finalClaimMap = Array.isArray(claimMap) && claimMap.length > 0
+    ? claimMap.slice(0, 4)
+    : buildClaimMap(normalized.answer, finalCitations);
+
   return {
     contractVersion: AI_PROMPT_METADATA.contract,
     mode,
@@ -180,8 +391,8 @@ function buildAiAnswerPayload(rawText, question, options = {}) {
     answer: normalized.answer,
     followUps: normalized.followUps,
     sources,
-    citations: [],
-    claimMap: [],
+    citations: finalCitations,
+    claimMap: finalClaimMap,
     uncertainty: null,
     route: null,
     evidence: null,
@@ -199,6 +410,7 @@ function buildSearchOnlyPayload(question, options = {}) {
     keywords = [],
     confidence = 0.52,
     sources = [],
+    citations = [],
     rewriteSuggestions = [],
     answer = AI_SEARCH_ONLY_ANSWER,
     downgradeReason = 'insufficient_evidence',
@@ -206,7 +418,10 @@ function buildSearchOnlyPayload(question, options = {}) {
   } = options;
   const finalSources = Array.isArray(sources) && sources.length > 0
     ? sources.slice(0, 3)
-    : buildSearchSourceList(matches, docs, keywords);
+    : buildSearchSourceList(matches, docs, keywords, question);
+  const finalCitations = Array.isArray(citations) && citations.length > 0
+    ? citations.slice(0, 3)
+    : buildCitationList(question, matches, docs, keywords);
 
   const finalRewrite = rewriteSuggestions.length > 0
     ? rewriteSuggestions
@@ -215,6 +430,7 @@ function buildSearchOnlyPayload(question, options = {}) {
   return buildAiAnswerPayload(answer, question, {
     mode: AI_RESPONSE_MODE.SEARCH_ONLY,
     sources: finalSources,
+    citations: finalCitations,
     docs,
     confidence: Math.min(roundConfidence(confidence), 0.74),
     rewriteSuggestions: finalRewrite,
@@ -267,6 +483,46 @@ function splitAnswerIntoChunks(answer, chunkSize = 48) {
     cursor = end;
   }
   return chunks;
+}
+
+function scheduleBackgroundLog(ctx, promise) {
+  if (!promise || typeof promise.then !== 'function') return;
+  if (ctx?.waitUntil) {
+    ctx.waitUntil(promise);
+    return;
+  }
+  promise.catch(() => { });
+}
+
+function buildAiAskResultLogPayload(route, payload, options = {}) {
+  const modelInfo = payload?.modelInfo || {};
+  const citations = Array.isArray(payload?.citations) ? payload.citations : [];
+  const claimMap = Array.isArray(payload?.claimMap) ? payload.claimMap : [];
+  const answer = String(payload?.answer || '');
+
+  return {
+    route,
+    mode: typeof payload?.mode === 'string' ? payload.mode : null,
+    downgradeReason: typeof payload?.downgradeReason === 'string' ? payload.downgradeReason : null,
+    citationCount: citations.length,
+    citationHit: hasGroundedInlineCitations(answer, citations),
+    claimCount: claimMap.length,
+    confidence: payload?.confidence,
+    provider: typeof modelInfo.provider === 'string' ? modelInfo.provider : null,
+    model: typeof modelInfo.model === 'string' ? modelInfo.model : null,
+    success: options.success !== false,
+    error: typeof options.error === 'string' ? options.error : null,
+  };
+}
+
+function observeAiAskPayload(env, ctx, route, payload, options = {}) {
+  if (!payload) return;
+  scheduleBackgroundLog(ctx, logAIAskResult(env, buildAiAskResultLogPayload(route, payload, options)));
+}
+
+function respondWithObservedAiPayload(env, ctx, route, payload, cors, json, status = 200, cacheControl = 'no-store') {
+  observeAiAskPayload(env, ctx, route, payload);
+  return json(payload, cors, status, cacheControl);
 }
 
 function normalizeSummaryKey(documentId) {
@@ -342,7 +598,8 @@ async function loadKnowledgeQAPseudoMatches(env, question, keywords, seriesId) {
         metadata: {
           doc_id: item.doc_id,
           title: item.title || '法音文库',
-          text: `【精华解析】\n问：${item.question}\n\n${item.answer_quote}`,
+          text: item.answer_quote,
+          answer_quote: item.answer_quote,
           series_name: item.series_name || '',
           category: 'knowledge',
           audio_series_id: item.audio_series_id || '',
@@ -500,6 +757,8 @@ function appendPseudoMatch(matches, doc, snippet, score = 0.58) {
         text: snippet,
         category: doc.category || '',
         series_name: doc.series_name || '',
+        audio_series_id: doc.audio_series_id || '',
+        audio_episode_num: doc.audio_episode_num || null,
       },
     },
   ];
@@ -553,6 +812,7 @@ async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
             series_name: chunk.item?.metadata?.series_name || '',
             category: chunk.item?.metadata?.category || '',
             audio_series_id: chunk.item?.metadata?.audio_series_id || '',
+            audio_episode_num: chunk.item?.metadata?.audio_episode_num || null,
           },
         });
         // 只有 doc_id 不是 D1 格式时才需要反查
@@ -592,6 +852,10 @@ async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
         } catch (mapErr) {
           console.warn('R2 key → D1 id mapping failed:', mapErr.message);
         }
+      }
+
+      if (matches.length > 0) {
+        docs = await retrieveDocuments(env, matches);
       }
     } catch (err) {
       console.warn('AI Search failed, falling back to legacy:', err.message);
@@ -642,6 +906,8 @@ async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
   }
 
   docs = mergeDocs(docs, keywordDocs);
+  matches = preferSeriesScopedMatches(matches, docs, seriesId, episodeNum);
+  docs = preferSeriesScopedDocs(docs, seriesId, episodeNum);
 
   if (exactDoc) {
     matches = appendPseudoMatch(matches, exactDoc, buildKeywordSnippet(exactDoc.content, keywords), 0.78);
@@ -669,12 +935,15 @@ async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
     console.warn('Knowledge QA integration failed:', err.message);
   }
 
+  matches = preferSeriesScopedMatches(matches, docs, seriesId, episodeNum);
+  docs = preferSeriesScopedDocs(docs, seriesId, episodeNum);
+
   if (!docs.length) {
     try {
       // 第一轮退避：如果有 seriesId，先在该系列内搜索
       if (seriesId) {
         const seriesFallback = await env.DB.prepare(
-          `SELECT id, title, content, category, series_name FROM documents
+          `SELECT id, title, content, category, series_name, audio_series_id, audio_episode_num FROM documents
            WHERE audio_series_id = ? AND content IS NOT NULL
            ORDER BY audio_episode_num ASC LIMIT 5`
         ).bind(seriesId).all();
@@ -688,7 +957,7 @@ async function loadAiDocs(env, question, seriesId, episodeNum, ctx) {
           const conditions = kws.map(() => '(title LIKE ? OR content LIKE ?)').join(' OR ');
           const params = kws.flatMap(k => [`%${k}%`, `%${k}%`]);
           const kwFallback = await env.DB.prepare(
-            `SELECT id, title, content, category, series_name FROM documents
+            `SELECT id, title, content, category, series_name, audio_series_id, audio_episode_num FROM documents
              WHERE content IS NOT NULL AND (${conditions})
              LIMIT 5`
           ).bind(...params).all();
@@ -735,16 +1004,22 @@ export async function handleAiAsk(env, request, cors, ctx, json) {
 
   // 不支持的问题直接返回
   if (isUnsupportedQuestion(askInput.question)) {
-    return json(buildAiAnswerPayload(AI_UNSUPPORTED_ANSWER, askInput.question, {
+    return respondWithObservedAiPayload(env, ctx, AI_RESULT_ROUTE.ASK, buildAiAnswerPayload(AI_UNSUPPORTED_ANSWER, askInput.question, {
       mode: AI_RESPONSE_MODE.NO_RESULT,
       confidence: 0,
       downgradeReason: 'unsupported_question',
       modelInfo: buildIdleModelInfo('retrieval_only'),
-    }), cors, 200, 'no-store');
+    }), cors, json);
   }
 
   const keywords = extractSearchKeywords(askInput.question);
   const { matches, docs } = await loadAiDocs(env, askInput.question, askInput.seriesId, askInput.episodeNum, ctx);
+  const evidenceBundle = buildEvidenceBundle(askInput.question, matches, docs, keywords);
+  const evidenceStrength = assessEvidenceStrength(matches, evidenceBundle.citations, {
+    seriesId: askInput.seriesId,
+    episodeNum: askInput.episodeNum,
+    keywords,
+  });
 
   // 并行加载相关问题（用于追问建议）
   const relatedQuestionsPromise = loadRelatedQuestions(env, askInput.question, keywords);
@@ -756,38 +1031,56 @@ export async function handleAiAsk(env, request, cors, ctx, json) {
     && topMatch?.metadata?.category === 'knowledge'
     && topMatch?.metadata?.text
   ) {
-    const text = topMatch.metadata.text;
-    const answerStart = text.indexOf('\n\n');
-    const precompiledAnswer = answerStart >= 0 ? text.slice(answerStart + 2).trim() : text.trim();
+    const precompiledAnswer = String(topMatch.metadata.answer_quote || topMatch.metadata.text || '').trim();
     if (precompiledAnswer) {
-      const sources = buildSearchSourceList(matches, docs, keywords);
       const relatedQuestions = await relatedQuestionsPromise;
-      return json(buildAiAnswerPayload(precompiledAnswer, askInput.question, {
+      return respondWithObservedAiPayload(env, ctx, AI_RESULT_ROUTE.ASK, buildAiAnswerPayload(ensureAnswerHasCitation(precompiledAnswer, evidenceBundle.citations), askInput.question, {
         mode: AI_RESPONSE_MODE.ANSWER,
-        sources,
+        sources: evidenceBundle.sources,
+        citations: evidenceBundle.citations,
         docs,
         confidence: 0.92,
         rewriteSuggestions: relatedQuestions,
         modelInfo: buildIdleModelInfo('knowledge_qa_direct'),
-      }), cors, 200, 'no-store');
+      }), cors, json);
     }
   }
 
   // 无文档 → 无结果
   if (!docs.length) {
     const relatedQuestions = await relatedQuestionsPromise;
-    return json(buildNoResultPayload(askInput.question, { keywords, docs, rewriteSuggestions: relatedQuestions }), cors, 200, 'no-store');
+    return respondWithObservedAiPayload(env, ctx, AI_RESULT_ROUTE.ASK, buildNoResultPayload(askInput.question, {
+      keywords,
+      docs,
+      rewriteSuggestions: relatedQuestions,
+    }), cors, json);
+  }
+
+  if (evidenceStrength.shouldDowngrade) {
+    const relatedQuestions = await relatedQuestionsPromise;
+    return respondWithObservedAiPayload(env, ctx, AI_RESULT_ROUTE.ASK, buildSearchOnlyPayload(askInput.question, {
+      matches,
+      docs,
+      keywords,
+      sources: evidenceBundle.sources,
+      citations: evidenceBundle.citations,
+      rewriteSuggestions: relatedQuestions,
+      downgradeReason: 'insufficient_evidence',
+      modelInfo: buildIdleModelInfo('retrieval_only'),
+    }), cors, json);
   }
 
   // 需要 LLM 但不可用 → 搜索模式
   if (!hasAnswerGenerationCapability(env)) {
     const relatedQuestions = await relatedQuestionsPromise;
-    return json(buildSearchOnlyPayload(askInput.question, {
+    return respondWithObservedAiPayload(env, ctx, AI_RESULT_ROUTE.ASK, buildSearchOnlyPayload(askInput.question, {
       matches, docs, keywords,
+      sources: evidenceBundle.sources,
+      citations: evidenceBundle.citations,
       rewriteSuggestions: relatedQuestions,
       downgradeReason: 'answer_generation_unavailable',
       modelInfo: buildIdleModelInfo('answer_generation_unavailable'),
-    }), cors, 200, 'no-store');
+    }), cors, json);
   }
 
   // RAG path: 1 次 LLM 调用
@@ -801,38 +1094,56 @@ export async function handleAiAsk(env, request, cors, ctx, json) {
   } catch (err) {
     console.error('RAG answer failed:', err.message);
     const relatedQuestions = await relatedQuestionsPromise;
-    return json(buildSearchOnlyPayload(askInput.question, {
+    return respondWithObservedAiPayload(env, ctx, AI_RESULT_ROUTE.ASK, buildSearchOnlyPayload(askInput.question, {
       matches, docs, keywords,
+      sources: evidenceBundle.sources,
+      citations: evidenceBundle.citations,
       rewriteSuggestions: relatedQuestions,
       downgradeReason: 'answer_generation_failed',
       modelInfo: buildIdleModelInfo('answer_generation_failed'),
-    }), cors, 200, 'no-store');
+    }), cors, json);
   }
 
   const answer = result?.response?.trim();
   if (!answer) {
     const relatedQuestions = await relatedQuestionsPromise;
-    return json(buildSearchOnlyPayload(askInput.question, {
+    return respondWithObservedAiPayload(env, ctx, AI_RESULT_ROUTE.ASK, buildSearchOnlyPayload(askInput.question, {
       matches, docs, keywords,
+      sources: evidenceBundle.sources,
+      citations: evidenceBundle.citations,
       rewriteSuggestions: relatedQuestions,
       downgradeReason: 'answer_generation_empty',
       modelInfo: result?.modelInfo || buildIdleModelInfo('answer_generation_empty'),
-    }), cors, 200, 'no-store');
+    }), cors, json);
   }
 
-  const sources = buildSearchSourceList(matches, docs, keywords);
   const relatedQuestions = await relatedQuestionsPromise;
-  return json(buildAiAnswerPayload(answer, askInput.question, {
+  if (!hasGroundedInlineCitations(answer, evidenceBundle.citations)) {
+    return respondWithObservedAiPayload(env, ctx, AI_RESULT_ROUTE.ASK, buildSearchOnlyPayload(askInput.question, {
+      matches,
+      docs,
+      keywords,
+      sources: evidenceBundle.sources,
+      citations: evidenceBundle.citations,
+      rewriteSuggestions: relatedQuestions,
+      downgradeReason: 'insufficient_evidence',
+      modelInfo: result?.modelInfo || buildIdleModelInfo('answer_generation_empty'),
+    }), cors, json);
+  }
+
+  return respondWithObservedAiPayload(env, ctx, AI_RESULT_ROUTE.ASK, buildAiAnswerPayload(answer, askInput.question, {
     mode: AI_RESPONSE_MODE.ANSWER,
-    sources,
+    sources: evidenceBundle.sources,
+    citations: evidenceBundle.citations,
     docs,
     confidence: 0.82,
     rewriteSuggestions: relatedQuestions,
     modelInfo: result?.modelInfo || buildIdleModelInfo('not_invoked'),
-  }), cors, 200, 'no-store');
+  }), cors, json);
 }
 
-function buildAskStreamDoneResponse(payload, cors) {
+function buildAskStreamDoneResponse(env, ctx, payload, cors) {
+  observeAiAskPayload(env, ctx, AI_RESULT_ROUTE.ASK_STREAM, payload);
   const encoder = new TextEncoder();
   const sseStream = new ReadableStream({
     start(controller) {
@@ -874,7 +1185,7 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
 
   // 不支持的问题
   if (isUnsupportedQuestion(askInput.question)) {
-    return buildAskStreamDoneResponse(buildAiAnswerPayload(AI_UNSUPPORTED_ANSWER, askInput.question, {
+    return buildAskStreamDoneResponse(env, ctx, buildAiAnswerPayload(AI_UNSUPPORTED_ANSWER, askInput.question, {
       mode: AI_RESPONSE_MODE.NO_RESULT,
       confidence: 0,
       downgradeReason: 'unsupported_question',
@@ -884,6 +1195,12 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
 
   const keywords = extractSearchKeywords(askInput.question);
   const { matches, docs } = await loadAiDocs(env, askInput.question, askInput.seriesId, askInput.episodeNum, ctx);
+  const evidenceBundle = buildEvidenceBundle(askInput.question, matches, docs, keywords);
+  const evidenceStrength = assessEvidenceStrength(matches, evidenceBundle.citations, {
+    seriesId: askInput.seriesId,
+    episodeNum: askInput.episodeNum,
+    keywords,
+  });
 
   // 并行加载相关问题
   const relatedQuestionsPromise = loadRelatedQuestions(env, askInput.question, keywords);
@@ -895,15 +1212,13 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
     && topMatch?.metadata?.category === 'knowledge'
     && topMatch?.metadata?.text
   ) {
-    const text = topMatch.metadata.text;
-    const answerStart = text.indexOf('\n\n');
-    const precompiledAnswer = answerStart >= 0 ? text.slice(answerStart + 2).trim() : text.trim();
+    const precompiledAnswer = String(topMatch.metadata.answer_quote || topMatch.metadata.text || '').trim();
     if (precompiledAnswer) {
-      const sources = buildSearchSourceList(matches, docs, keywords);
       const relatedQuestions = await relatedQuestionsPromise;
-      return buildAskStreamDoneResponse(buildAiAnswerPayload(precompiledAnswer, askInput.question, {
+      return buildAskStreamDoneResponse(env, ctx, buildAiAnswerPayload(ensureAnswerHasCitation(precompiledAnswer, evidenceBundle.citations), askInput.question, {
         mode: AI_RESPONSE_MODE.ANSWER,
-        sources,
+        sources: evidenceBundle.sources,
+        citations: evidenceBundle.citations,
         docs,
         confidence: 0.92,
         rewriteSuggestions: relatedQuestions,
@@ -915,14 +1230,34 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
   // 无文档
   if (!docs.length) {
     const relatedQuestions = await relatedQuestionsPromise;
-    return buildAskStreamDoneResponse(buildNoResultPayload(askInput.question, { keywords, docs, rewriteSuggestions: relatedQuestions }), cors);
+    return buildAskStreamDoneResponse(env, ctx, buildNoResultPayload(askInput.question, {
+      keywords,
+      docs,
+      rewriteSuggestions: relatedQuestions,
+    }), cors);
+  }
+
+  if (evidenceStrength.shouldDowngrade) {
+    const relatedQuestions = await relatedQuestionsPromise;
+    return buildAskStreamDoneResponse(env, ctx, buildSearchOnlyPayload(askInput.question, {
+      matches,
+      docs,
+      keywords,
+      sources: evidenceBundle.sources,
+      citations: evidenceBundle.citations,
+      rewriteSuggestions: relatedQuestions,
+      downgradeReason: 'insufficient_evidence',
+      modelInfo: buildIdleModelInfo('retrieval_only'),
+    }), cors);
   }
 
   // 无 LLM 能力
   if (!hasAnswerGenerationCapability(env)) {
     const relatedQuestions = await relatedQuestionsPromise;
-    return buildAskStreamDoneResponse(buildSearchOnlyPayload(askInput.question, {
+    return buildAskStreamDoneResponse(env, ctx, buildSearchOnlyPayload(askInput.question, {
       matches, docs, keywords,
+      sources: evidenceBundle.sources,
+      citations: evidenceBundle.citations,
       rewriteSuggestions: relatedQuestions,
       downgradeReason: 'answer_generation_unavailable',
       modelInfo: buildIdleModelInfo('answer_generation_unavailable'),
@@ -945,8 +1280,6 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
         const value = String(token || '');
         if (!value) return;
         streamedAnswer += value;
-        emittedChunks += 1;
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: value })}\n\n`));
       };
 
       // 在流式过程中等待相关问题结果
@@ -973,15 +1306,28 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
             });
 
             if (streamedAnswer.trim()) {
-              const sources = buildSearchSourceList(matches, docs, keywords);
-              finalPayload = buildAiAnswerPayload(streamedAnswer, askInput.question, {
-                mode: AI_RESPONSE_MODE.ANSWER,
-                sources,
-                docs,
-                confidence: 0.82,
-                rewriteSuggestions: relatedQuestions,
-                modelInfo: streamModelInfo,
-              });
+              if (hasGroundedInlineCitations(streamedAnswer, evidenceBundle.citations)) {
+                finalPayload = buildAiAnswerPayload(streamedAnswer, askInput.question, {
+                  mode: AI_RESPONSE_MODE.ANSWER,
+                  sources: evidenceBundle.sources,
+                  citations: evidenceBundle.citations,
+                  docs,
+                  confidence: 0.82,
+                  rewriteSuggestions: relatedQuestions,
+                  modelInfo: streamModelInfo,
+                });
+              } else {
+                finalPayload = buildSearchOnlyPayload(askInput.question, {
+                  matches,
+                  docs,
+                  keywords,
+                  sources: evidenceBundle.sources,
+                  citations: evidenceBundle.citations,
+                  rewriteSuggestions: relatedQuestions,
+                  downgradeReason: 'insufficient_evidence',
+                  modelInfo: streamModelInfo,
+                });
+              }
             }
           } catch (err) {
             console.error('Ask stream external streaming failed:', err.message);
@@ -998,18 +1344,33 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
             });
             const answer = result?.response?.trim();
             if (answer) {
-              const sources = buildSearchSourceList(matches, docs, keywords);
-              finalPayload = buildAiAnswerPayload(answer, askInput.question, {
-                mode: AI_RESPONSE_MODE.ANSWER,
-                sources,
-                docs,
-                confidence: 0.82,
-                rewriteSuggestions: relatedQuestions,
-                modelInfo: result?.modelInfo || streamModelInfo,
-              });
+              if (hasGroundedInlineCitations(answer, evidenceBundle.citations)) {
+                finalPayload = buildAiAnswerPayload(answer, askInput.question, {
+                  mode: AI_RESPONSE_MODE.ANSWER,
+                  sources: evidenceBundle.sources,
+                  citations: evidenceBundle.citations,
+                  docs,
+                  confidence: 0.82,
+                  rewriteSuggestions: relatedQuestions,
+                  modelInfo: result?.modelInfo || streamModelInfo,
+                });
+              } else {
+                finalPayload = buildSearchOnlyPayload(askInput.question, {
+                  matches,
+                  docs,
+                  keywords,
+                  sources: evidenceBundle.sources,
+                  citations: evidenceBundle.citations,
+                  rewriteSuggestions: relatedQuestions,
+                  downgradeReason: 'insufficient_evidence',
+                  modelInfo: result?.modelInfo || streamModelInfo,
+                });
+              }
             } else {
               finalPayload = buildSearchOnlyPayload(askInput.question, {
                 matches, docs, keywords,
+                sources: evidenceBundle.sources,
+                citations: evidenceBundle.citations,
                 rewriteSuggestions: relatedQuestions,
                 downgradeReason: 'answer_generation_empty',
                 modelInfo: result?.modelInfo || buildIdleModelInfo('answer_generation_empty'),
@@ -1019,6 +1380,8 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
             console.error('Ask stream fallback RAG failed:', err.message);
             finalPayload = buildSearchOnlyPayload(askInput.question, {
               matches, docs, keywords,
+              sources: evidenceBundle.sources,
+              citations: evidenceBundle.citations,
               rewriteSuggestions: relatedQuestions,
               downgradeReason: 'answer_generation_failed',
               modelInfo: buildIdleModelInfo('answer_generation_failed'),
@@ -1029,6 +1392,8 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
         console.error('Ask stream answer failed:', err.message);
         finalPayload = buildSearchOnlyPayload(askInput.question, {
           matches, docs, keywords,
+          sources: evidenceBundle.sources,
+          citations: evidenceBundle.citations,
           rewriteSuggestions: relatedQuestions,
           downgradeReason: 'answer_generation_failed',
           modelInfo: buildIdleModelInfo('answer_generation_failed'),
@@ -1037,10 +1402,12 @@ export async function handleAiAskStream(env, request, cors, ctx, json) {
 
       if (!emittedChunks) {
         for (const token of splitAnswerIntoChunks(finalPayload.answer)) {
-          emitToken(token);
+          emittedChunks += 1;
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token })}\n\n`));
         }
       }
 
+      observeAiAskPayload(env, ctx, AI_RESULT_ROUTE.ASK_STREAM, finalPayload);
       controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify(finalPayload)}\n\n`));
       controller.close();
     }
