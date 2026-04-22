@@ -1,0 +1,8 @@
+# R2 代理临时 Worker 配置
+name = "r2-proxy-temp"
+main = "_r2-proxy.js"
+compatibility_date = "2025-01-01"
+
+[[r2_buckets]]
+binding = "R2_WENKU"
+bucket_name = "jingdianwendang"
