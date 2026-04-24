@@ -1,11 +1,27 @@
 const SYNC_R2_BASE = '大安法师/大安法师（讲法集）TXT/';
 const SYNC_YIYONG = '已用/';
+const SYNC_YINGUANG_PREFIX = '3000shan/印光法师文钞_';
+const SYNC_YINGUANG_SERIES_NAME = '印光法师文钞';
+const SYNC_YINGUANG_CATEGORY = '印光法师';
 const SYNC_YIYONG_DUPS = new Set(['一函遍复', '龙舒净土文（马来西亚）']);
 const SYNC_FOLDER22 = [
   { prefix: '净土十疑论', expected: 6 },
   { prefix: '净土决疑论', expected: 8 },
 ];
 const SYNC_GARBAGE = [/\.netdisk\.p\.downloading$/, /~\$/, /\.docx?$/i];
+const SYNC_DOCUMENTS_TABLE_SQL = [
+  'CREATE TABLE IF NOT EXISTS documents (',
+  'id TEXT PRIMARY KEY, title TEXT NOT NULL,',
+  "type TEXT DEFAULT 'transcript', category TEXT DEFAULT '大安法师',",
+  'series_name TEXT, episode_num INTEGER,',
+  "format TEXT DEFAULT 'txt', r2_bucket TEXT DEFAULT 'jingdianwendang',",
+  'r2_key TEXT, content TEXT, file_size INTEGER,',
+  'audio_series_id TEXT, audio_episode_num INTEGER,',
+  'read_count INTEGER DEFAULT 0,',
+  'created_at TEXT DEFAULT CURRENT_TIMESTAMP,',
+  'updated_at TEXT DEFAULT CURRENT_TIMESTAMP',
+  ')',
+].join(' ');
 
 export async function handleWenkuSeries(db) {
   const result = await db.prepare(
@@ -144,8 +160,8 @@ function syncNormalizeName(name) {
   return n;
 }
 
-function syncGenId(seriesName, epNum) {
-  return `daafs-${syncNormalizeName(seriesName)}-${String(epNum).padStart(2, '0')}`;
+function syncGenId(sourceKey, seriesName, epNum) {
+  return `${sourceKey}-${syncNormalizeName(seriesName)}-${String(epNum).padStart(2, '0')}`;
 }
 
 function syncIsGarbage(key) {
@@ -180,6 +196,14 @@ function syncIsYiyongDup(name) {
   return false;
 }
 
+function syncStripMarkdownFrontmatter(content) {
+  const normalized = content.replace(/^\uFEFF/, '');
+  const match = normalized.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  if (!match) return normalized;
+  if (!/:/.test(match[1])) return normalized;
+  return normalized.slice(match[0].length);
+}
+
 async function syncListAll(bucket, prefix) {
   const objects = [];
   let cursor;
@@ -205,23 +229,12 @@ export async function handleWenkuSync(env, cors, json) {
 
   const stats = { scanned: 0, inserted: 0, updated: 0, skipped: 0, errors: 0, series: {} };
 
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS documents (
-      id TEXT PRIMARY KEY, title TEXT NOT NULL,
-      type TEXT DEFAULT 'transcript', category TEXT DEFAULT '大安法师',
-      series_name TEXT, episode_num INTEGER,
-      format TEXT DEFAULT 'txt', r2_bucket TEXT DEFAULT 'jingdianwendang',
-      r2_key TEXT, content TEXT, file_size INTEGER,
-      audio_series_id TEXT, audio_episode_num INTEGER,
-      read_count INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
+  await db.prepare(SYNC_DOCUMENTS_TABLE_SQL).run();
 
   const existingResult = await db.prepare('SELECT id, format FROM documents').all();
   const existingById = new Map(existingResult.results.map(row => [row.id, row.format || 'txt']));
   const allObjects = await syncListAll(bucket, SYNC_R2_BASE);
+  const yinguangObjects = await syncListAll(bucket, SYNC_YINGUANG_PREFIX);
   const mainFiles = [];
   const yiyongFiles = [];
 
@@ -240,6 +253,7 @@ export async function handleWenkuSync(env, cors, json) {
   };
   mainFiles.sort(mdFirstSort);
   yiyongFiles.sort(mdFirstSort);
+  yinguangObjects.sort(mdFirstSort);
 
   function buildSyncCandidate(obj, isYiyong) {
     const fileName = obj.key.split('/').pop();
@@ -264,12 +278,34 @@ export async function handleWenkuSync(env, cors, json) {
 
     const isMd = fileName.endsWith('.md');
     return {
-      id: syncGenId(seriesName, epNum),
+      id: syncGenId('daafs', seriesName, epNum),
       seriesName,
       epNum,
       isMd,
       format: isMd ? 'md' : 'txt',
+      category: '大安法师',
       title: `${seriesName} 第${String(epNum).padStart(2, '0')}讲`,
+    };
+  }
+
+  function buildYinguangCandidate(obj) {
+    const fileName = obj.key.split('/').pop();
+    if (!fileName || !fileName.endsWith('.md')) return null;
+
+    const match = fileName.match(/^印光法师文钞_(\d{2})_(.+)\.md$/);
+    if (!match) return null;
+
+    const epNum = parseInt(match[1], 10);
+    if (!epNum) return null;
+
+    return {
+      id: syncGenId('ygwc', SYNC_YINGUANG_SERIES_NAME, epNum),
+      seriesName: SYNC_YINGUANG_SERIES_NAME,
+      epNum,
+      isMd: true,
+      format: 'md',
+      category: SYNC_YINGUANG_CATEGORY,
+      title: `${SYNC_YINGUANG_SERIES_NAME} ${match[2]}`,
     };
   }
 
@@ -279,15 +315,14 @@ export async function handleWenkuSync(env, cors, json) {
     if (candidate) mainSourceIds.add(candidate.id);
   }
 
-  async function processObj(obj, isYiyong) {
-    const candidate = buildSyncCandidate(obj, isYiyong);
+  async function processObj(obj, candidate, isYiyong = false) {
     if (!candidate) {
       stats.skipped++;
       return;
     }
     stats.scanned++;
 
-    const { id, seriesName, epNum, isMd, format, title } = candidate;
+    const { id, seriesName, epNum, isMd, format, title, category } = candidate;
     const existingFormat = existingById.get(id) || '';
 
     if (existingFormat && !isMd) {
@@ -313,6 +348,10 @@ export async function handleWenkuSync(env, cors, json) {
       content = '';
     }
 
+    if (isMd && content) {
+      content = syncStripMarkdownFrontmatter(content);
+    }
+
     if (!content || !content.trim()) {
       stats.skipped++;
       return;
@@ -331,9 +370,9 @@ export async function handleWenkuSync(env, cors, json) {
         await db.prepare(
           `INSERT INTO documents (id, title, type, category, series_name, episode_num,
             format, r2_bucket, r2_key, content, file_size, created_at, updated_at)
-           VALUES (?, ?, 'transcript', '大安法师', ?, ?, ?, 'jingdianwendang', ?, ?, ?,
+           VALUES (?, ?, 'transcript', ?, ?, ?, ?, 'jingdianwendang', ?, ?, ?,
                    datetime('now'), datetime('now'))`
-        ).bind(id, title, seriesName, epNum, format, obj.key, content, obj.size || 0).run();
+        ).bind(id, title, category, seriesName, epNum, format, obj.key, content, obj.size || 0).run();
         existingById.set(id, format);
         stats.inserted++;
       }
@@ -344,8 +383,9 @@ export async function handleWenkuSync(env, cors, json) {
     }
   }
 
-  for (const obj of mainFiles) await processObj(obj, false);
-  for (const obj of yiyongFiles) await processObj(obj, true);
+  for (const obj of mainFiles) await processObj(obj, buildSyncCandidate(obj, false));
+  for (const obj of yiyongFiles) await processObj(obj, buildSyncCandidate(obj, true), true);
+  for (const obj of yinguangObjects) await processObj(obj, buildYinguangCandidate(obj));
 
   return json({
     success: true,
