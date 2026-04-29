@@ -10,7 +10,6 @@ const BOOKMARK_DONE_THRESHOLD = 99.5;
 const SCROLL_KEY = 'wenku-reader-scroll';
 const SETTINGS_KEY = 'wenku-reader-settings';
 const YINGUANG_SERIES = '印光法师文钞';
-const YINGUANG_MODE_KEY = 'wenku-yinguang-mode';
 const RECENT_MAX = 5;
 const AI_RETURN_KEY = 'ai-return-context';
 const WENKU_AI_ORIGIN_KEY = 'wenku-origin-ai';
@@ -882,6 +881,24 @@ async function openReader(docId, highlightQuery, skipPush, deepLink = null) {
         wireBottombar();
         wireScrollCenterTap(scroll);
         wkReader.querySelector('#readerReturnAi')?.addEventListener('click', handleAiReturnClick);
+
+        const deepLinkHandled = applyReaderDeepLink(deepLink);
+        if (!deepLinkHandled) {
+            const fallbackSnippet = deepLink?.matchText || '';
+            const fallbackQuery = highlightQuery || fallbackSnippet;
+            if (fallbackQuery) {
+                highlightText(fallbackQuery, fallbackSnippet ? { snippet: fallbackSnippet } : undefined);
+            } else {
+                const pct = getScrollProgress(docId);
+                if (pct > 0) {
+                    requestAnimationFrame(() => {
+                        const sh = scroll.scrollHeight - scroll.clientHeight;
+                        if (sh > 0) scroll.scrollTo(0, (pct / 100) * sh);
+                    });
+                }
+            }
+        }
+
         return;
     }
 
@@ -1193,18 +1210,6 @@ function wireReaderNext(scroll) {
     });
 }
 
-function getYinguangMode() {
-    try {
-        const mode = localStorage.getItem(YINGUANG_MODE_KEY);
-        if (['parallel', 'original', 'translation'].includes(mode)) return mode;
-    } catch { /* ignore */ }
-    return 'parallel';
-}
-
-function persistYinguangMode(mode) {
-    try { localStorage.setItem(YINGUANG_MODE_KEY, mode); } catch { /* ignore */ }
-}
-
 function isYinguangTocGroup(line) {
     const compact = normalizeYinguangTitle(line);
     return /^卷[一二三四五六七八九十百零〇0-9].{0,10}$/.test(compact)
@@ -1400,20 +1405,6 @@ function parseYinguangDocument(content) {
     return { volumeTitle, groups, sections: found };
 }
 
-function buildYinguangModebar(mode) {
-    const modes = [
-        ['parallel', '文白对照'],
-        ['original', '只看原文'],
-        ['translation', '只看白话'],
-    ];
-    return `
-        <div class="wk-yinguang-modebar" role="toolbar" aria-label="文白阅读模式">
-            ${modes.map(([value, label]) => `
-                <button type="button" class="wk-yinguang-mode ${mode === value ? 'active' : ''}" data-yg-mode="${value}" aria-pressed="${mode === value ? 'true' : 'false'}">${label}</button>
-            `).join('')}
-        </div>`;
-}
-
 function renderYinguangReader(scroll, doc, data, settings) {
     const parsed = parseYinguangDocument(doc.content || '');
     scroll.__yinguangParsed = parsed;
@@ -1421,45 +1412,60 @@ function renderYinguangReader(scroll, doc, data, settings) {
         const { html: bodyHtml, contributor } = textToHtml(doc.content || '', doc.title);
         const contributorHtml = contributor ? `<span class="wk-reader-contributor">整理：${esc(contributor)}</span>` : '';
         scroll.innerHTML = `
-            <div class="wk-yinguang-kicker">整册阅读</div>
             <div class="wk-reader-title">${esc(doc.title)}</div>
             <div class="wk-reader-meta">${esc(doc.series_name || YINGUANG_SERIES)}${contributorHtml}</div>
-            <div class="wk-yinguang-intro">
-                <p>本册原始目录格式较复杂，暂以整册方式阅读。后续会继续整理为篇章目录。</p>
-            </div>
             <div class="wk-reader-body" id="readerBody" data-font="${settings.fontFamily}" style="font-size:${settings.fontSize}px">${bodyHtml}</div>`;
         return;
     }
-    const mode = getYinguangMode();
-    const groupsHtml = parsed.groups.map(group => `
+    const availableGroups = parsed.groups
+        .map(group => ({ ...group, items: group.items.filter(item => item.sectionIndex >= 0) }))
+        .filter(group => group.items.length);
+    const groupsHtml = availableGroups.map(group => `
         <section class="wk-yinguang-toc-group">
             <div class="wk-yinguang-toc-group-title">${esc(group.title)}</div>
             <div class="wk-yinguang-toc-list">
-                ${group.items.map(item => item.sectionIndex >= 0 ? `
-                    <button type="button" class="wk-yinguang-toc-item" data-yg-section="${item.sectionIndex}">
-                        <span>${esc(item.title)}</span>
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9,18 15,12 9,6"/></svg>
+                ${group.items.map(item => `
+                    <button type="button" class="wk-yinguang-toc-item" data-yg-jump="wk-yinguang-section-${item.sectionIndex}">
+                        <span>${esc(stripYinguangTocAuthor(item.title))}</span>
                     </button>
-                ` : `
-                    <div class="wk-yinguang-toc-item wk-yinguang-toc-item--disabled">
-                        <span>${esc(item.title)}</span>
-                    </div>
                 `).join('')}
             </div>
         </section>
     `).join('');
+    const tocHtml = groupsHtml ? `
+        <details class="wk-yinguang-toc-drawer">
+            <summary>
+                <span>目录</span>
+                <small>${parsed.sections.length} 篇</small>
+            </summary>
+            <div class="wk-yinguang-toc">${groupsHtml}</div>
+        </details>` : '';
+    let paragraphOffset = 0;
+    const bodyHtml = parsed.sections.map((section, index) => {
+        const blocks = yinguangBlocksFromLines(section.lines);
+        const sectionBody = renderYinguangBlocks(blocks, 'reader', `wk-yinguang-${index}`, paragraphOffset);
+        paragraphOffset += blocks.filter(block => block.type === 'original').length;
+        return `
+            <section class="wk-yinguang-section" id="wk-yinguang-section-${index}">
+                <h2>${esc(section.title)}</h2>
+                ${sectionBody}
+            </section>`;
+    }).join('');
+    const chapterNavHtml = `
+        <div class="wk-reader-chapter-nav">
+            ${data.prevId ? `<button class="wk-chapter-nav-btn wk-chapter-nav-btn--ghost" data-prev="${esc(data.prevId)}">上一册</button>` : '<span class="wk-chapter-nav-spacer"></span>'}
+            <div class="wk-reader-chapter-meta">${doc.episode_num ? `第 ${esc(doc.episode_num)} 册` : '当前册'}</div>
+            ${data.nextId ? `<button class="wk-chapter-nav-btn" data-next="${esc(data.nextId)}">下一册</button>` : '<span class="wk-chapter-nav-spacer"></span>'}
+        </div>`;
 
     scroll.innerHTML = `
-        <div class="wk-yinguang-reader">
-            <div class="wk-yinguang-kicker">文白对照阅读</div>
+        <article class="wk-yinguang-reader wk-yinguang-reader--continuous">
             <div class="wk-reader-title">${esc(doc.title)}</div>
-            <div class="wk-reader-meta">${esc(parsed.volumeTitle)} · ${parsed.sections.length} 篇</div>
-            <div class="wk-yinguang-intro">
-                <p>本册内容较长，已按篇章拆成目录。先点一篇进入阅读，再按需要切换原文、白话或文白对照。</p>
-            </div>
-            ${buildYinguangModebar(mode)}
-            <div class="wk-yinguang-toc">${groupsHtml}</div>
-        </div>`;
+            <div class="wk-reader-meta">${esc(parsed.volumeTitle)} · 原文阅读${parsed.sections.length ? ` · ${parsed.sections.length} 篇` : ''}</div>
+            ${tocHtml}
+            <div class="wk-reader-body wk-yinguang-body" id="readerBody" data-font="${settings.fontFamily}" style="font-size:${settings.fontSize}px">${bodyHtml}</div>
+            ${chapterNavHtml}
+        </article>`;
 }
 
 function yinguangBlocksFromLines(lines) {
@@ -1487,78 +1493,49 @@ function yinguangBlocksFromLines(lines) {
     return blocks;
 }
 
-function renderYinguangBlocks(blocks, mode) {
+function renderYinguangBlocks(blocks, mode = 'reader', idPrefix = 'wk-paragraph', indexOffset = 0) {
     const visible = blocks.filter(block => {
         if (mode === 'original') return block.type === 'original';
         if (mode === 'translation') return block.type === 'translation';
         return true;
     });
-    if (!visible.length) return '<p class="wk-yinguang-empty">此篇暂无对应内容。</p>';
+    if (!visible.length) return '';
+    let paragraphIndex = indexOffset;
     return visible.map((block, index) => {
         if (block.type === 'note') {
             const noteLines = block.lines.filter(Boolean);
             const noteBody = noteLines.slice(1).map(line => `<p>${esc(line)}</p>`).join('');
             return `
-                <details class="wk-yinguang-note" ${index > 8 ? '' : 'open'}>
+                <details class="wk-yinguang-note">
                     <summary>${esc(noteLines[0] || '注释')}</summary>
                     ${noteBody || '<p>暂无注释内容。</p>'}
                 </details>`;
         }
-        const label = block.type === 'translation' ? '<span class="wk-yinguang-label">译文</span>' : '';
-        return `<p class="wk-yinguang-p wk-yinguang-p--${block.type}" data-paragraph-index="${index}" id="wk-paragraph-${index}">${label}${esc(block.text)}</p>`;
+        if (block.type === 'translation' && mode !== 'translation') {
+            return `
+                <details class="wk-yinguang-translation">
+                    <summary>白话参考</summary>
+                    <p>${esc(block.text)}</p>
+                </details>`;
+        }
+        const currentIndex = paragraphIndex;
+        paragraphIndex += 1;
+        return `<p class="wk-yinguang-p wk-yinguang-p--${block.type}" data-paragraph-index="${currentIndex}" id="${idPrefix}-${currentIndex}">${esc(block.text)}</p>`;
     }).join('');
 }
 
-function renderYinguangSection(scroll, parsed, sectionIndex, doc) {
-    const section = parsed.sections[sectionIndex];
-    if (!section) return;
-    const settings = loadSettings();
-    const mode = getYinguangMode();
-    const blocks = yinguangBlocksFromLines(section.lines);
-    const bodyHtml = renderYinguangBlocks(blocks, mode);
-    const prev = parsed.sections[sectionIndex - 1];
-    const next = parsed.sections[sectionIndex + 1];
-    scroll.innerHTML = `
-        <div class="wk-yinguang-reader wk-yinguang-reader--section">
-            <button type="button" class="wk-yinguang-back" data-yg-back>返回本册目录</button>
-            <div class="wk-yinguang-section-count">第 ${sectionIndex + 1} / ${parsed.sections.length} 篇</div>
-            <div class="wk-reader-title">${esc(section.title)}</div>
-            <div class="wk-reader-meta">${esc(doc.title)} · ${mode === 'parallel' ? '文白对照' : mode === 'original' ? '原文' : '白话'}</div>
-            ${buildYinguangModebar(mode)}
-            <div class="wk-reader-body wk-yinguang-body" id="readerBody" data-font="${settings.fontFamily}" style="font-size:${settings.fontSize}px">${bodyHtml}</div>
-            <div class="wk-reader-chapter-nav">
-                ${prev ? `<button class="wk-chapter-nav-btn wk-chapter-nav-btn--ghost" data-yg-section="${sectionIndex - 1}">上一篇</button>` : '<span class="wk-chapter-nav-spacer"></span>'}
-                <div class="wk-reader-chapter-meta">${esc(section.title)}</div>
-                ${next ? `<button class="wk-chapter-nav-btn" data-yg-section="${sectionIndex + 1}">下一篇</button>` : '<span class="wk-chapter-nav-spacer"></span>'}
-            </div>
-        </div>`;
-    scroll.scrollTo({ top: 0 });
-    wkReader.querySelector('#readerTopTitle').textContent = section.title || doc.title || YINGUANG_SERIES;
-}
-
 function wireYinguangReader(scroll, doc, data, settings) {
+    void doc;
+    void data;
+    void settings;
     scroll.addEventListener('click', (e) => {
-        const sectionBtn = e.target.closest('[data-yg-section]');
-        if (sectionBtn) {
-            const index = parseInt(sectionBtn.dataset.ygSection, 10);
-            const parsed = scroll.__yinguangParsed || parseYinguangDocument(doc.content || '');
-            renderYinguangSection(scroll, parsed, index, doc);
-            return;
-        }
-
-        const modeBtn = e.target.closest('[data-yg-mode]');
-        if (modeBtn) {
-            persistYinguangMode(modeBtn.dataset.ygMode);
-            const parsed = scroll.__yinguangParsed || parseYinguangDocument(doc.content || '');
-            const sectionTitle = scroll.querySelector('.wk-yinguang-reader--section .wk-reader-title')?.textContent?.trim();
-            const sectionIndex = parsed.sections.findIndex(section => section.title === sectionTitle);
-            if (sectionIndex >= 0) renderYinguangSection(scroll, parsed, sectionIndex, doc);
-            else renderYinguangReader(scroll, doc, data, settings);
-            return;
-        }
-
-        if (e.target.closest('[data-yg-back]')) {
-            renderYinguangReader(scroll, doc, data, settings);
+        const jumpBtn = e.target.closest('[data-yg-jump]');
+        if (jumpBtn) {
+            const target = scroll.querySelector(`#${jumpBtn.dataset.ygJump}`);
+            if (target) {
+                target.scrollIntoView({ block: 'start' });
+                scroll.querySelector('.wk-yinguang-toc-drawer')?.removeAttribute('open');
+            }
         }
     });
 }
