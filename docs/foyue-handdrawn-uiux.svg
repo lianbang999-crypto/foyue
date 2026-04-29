@@ -1,0 +1,235 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1200" viewBox="0 0 1800 1200" role="img" aria-labelledby="title desc">
+  <title id="title">净土法音 UI/UX 手绘草图</title>
+  <desc id="desc">三张移动端手绘线框图，展示首页、播放器、AI 问法与文库阅读之间的听问读闭环。</desc>
+  <defs>
+    <filter id="paperNoise" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.72" numOctaves="4" seed="18" result="noise"/>
+      <feColorMatrix in="noise" type="saturate" values="0"/>
+      <feComponentTransfer>
+        <feFuncA type="table" tableValues="0 0.055"/>
+      </feComponentTransfer>
+      <feBlend in="SourceGraphic" mode="multiply"/>
+    </filter>
+    <filter id="pencil" x="-4%" y="-4%" width="108%" height="108%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.018" numOctaves="2" seed="7" result="warp"/>
+      <feDisplacementMap in="SourceGraphic" in2="warp" scale="1.3" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="softShadow" x="-12%" y="-12%" width="124%" height="124%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#6b4e35" flood-opacity="0.10"/>
+    </filter>
+    <linearGradient id="mist" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fffaf2"/>
+      <stop offset="0.56" stop-color="#f7f0e6"/>
+      <stop offset="1" stop-color="#efe2d1"/>
+    </linearGradient>
+    <linearGradient id="goldWash" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e6c873" stop-opacity="0.92"/>
+      <stop offset="1" stop-color="#c89443" stop-opacity="0.86"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="14" markerHeight="14" refX="10" refY="7" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L11,7 L2,12" fill="none" stroke="#8b5e3c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <style>
+      .bg { fill: #f7f3ec; }
+      .ink { stroke: #3a2c23; stroke-width: 2.2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+      .ink-thin { stroke: #5f5046; stroke-width: 1.35; fill: none; stroke-linecap: round; stroke-linejoin: round; opacity: .82; }
+      .ink-soft { stroke: #8c7a6b; stroke-width: 1.1; fill: none; stroke-linecap: round; stroke-linejoin: round; opacity: .55; }
+      .paper { fill: #fffdf7; }
+      .wash { fill: #f0e4d2; opacity: .78; }
+      .wash-2 { fill: #f8efe4; opacity: .9; }
+      .accent { fill: #d97757; }
+      .accent-line { stroke: #d97757; stroke-width: 2.4; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+      .gold { fill: #d7b15a; }
+      .sage { fill: #71907b; }
+      .muted { fill: #7c7067; }
+      .title { font-family: "Noto Serif SC", "Songti SC", "STSong", serif; font-size: 46px; font-weight: 700; fill: #2a241f; letter-spacing: 0; }
+      .subtitle { font-family: "Noto Sans SC", "PingFang SC", sans-serif; font-size: 20px; fill: #7c7067; letter-spacing: 0; }
+      .label { font-family: "Noto Sans SC", "PingFang SC", sans-serif; font-size: 20px; fill: #2a241f; font-weight: 700; letter-spacing: 0; }
+      .small { font-family: "Noto Sans SC", "PingFang SC", sans-serif; font-size: 15px; fill: #6c5e54; letter-spacing: 0; }
+      .tiny { font-family: "Noto Sans SC", "PingFang SC", sans-serif; font-size: 12px; fill: #8a7c70; letter-spacing: 0; }
+      .ui { font-family: "Noto Sans SC", "PingFang SC", sans-serif; font-size: 14px; fill: #2a241f; letter-spacing: 0; }
+      .ui-bold { font-family: "Noto Sans SC", "PingFang SC", sans-serif; font-size: 15px; fill: #2a241f; font-weight: 700; letter-spacing: 0; }
+      .serif { font-family: "Noto Serif SC", "Songti SC", "STSong", serif; font-size: 18px; fill: #2a241f; letter-spacing: 0; }
+      .note { font-family: "Noto Sans SC", "PingFang SC", sans-serif; font-size: 16px; fill: #5f5046; letter-spacing: 0; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1800" height="1200"/>
+  <rect class="bg" width="1800" height="1200" filter="url(#paperNoise)"/>
+
+  <g filter="url(#pencil)">
+    <path d="M78 76 C88 48, 138 40, 188 45 C310 58, 488 58, 606 48 C656 44, 698 58, 710 82" class="ink-soft"/>
+    <text x="90" y="112" class="title">净土法音 UI/UX 手绘草图</text>
+    <text x="92" y="148" class="subtitle">把首页、播放器、AI 问法、文库阅读整理成一个低干扰的「听 · 问 · 读」修学闭环</text>
+    <path d="M92 172 C280 182, 456 167, 646 176" class="accent-line"/>
+
+    <g transform="translate(1240 70)">
+      <path d="M8 12 C116 2, 326 8, 430 16 C448 18, 456 26, 455 42 C454 64, 444 78, 420 78 C292 78, 150 80, 25 72 C6 71,-4 60,1 39 C3 28,0 18,8 12 Z" fill="#fffaf4" stroke="#8b5e3c" stroke-width="1.8"/>
+      <circle cx="40" cy="43" r="14" class="accent"/>
+      <text x="66" y="39" class="label" font-size="18">设计气质</text>
+      <text x="66" y="62" class="small">纸感、留白、朱砂赤陶、引用原文</text>
+    </g>
+  </g>
+
+  <g id="flow" filter="url(#pencil)">
+    <path d="M540 265 C600 244, 648 244, 704 264" class="ink-thin" marker-end="url(#arrow)"/>
+    <text x="560" y="232" class="small">继续听</text>
+    <path d="M1090 265 C1153 244, 1200 245, 1260 268" class="ink-thin" marker-end="url(#arrow)"/>
+    <text x="1118" y="232" class="small">引用 → 原文</text>
+  </g>
+
+  <g id="phone-home" transform="translate(90 220)" filter="url(#softShadow)">
+    <path d="M24 2 C150 -8, 323 -2, 452 6 C478 8, 492 27, 489 58 C482 221, 481 543, 492 713 C495 753, 477 774, 437 778 C309 791, 173 786, 43 779 C16 777, -4 758, 1 728 C12 556, 9 196, 0 49 C-2 22, 5 6, 24 2 Z" class="paper" stroke="#3a2c23" stroke-width="2.4"/>
+    <path d="M39 17 C154 13, 330 16, 454 23" class="ink-soft"/>
+    <text x="36" y="58" class="ui-bold">净土法音</text>
+    <circle cx="418" cy="52" r="16" fill="#f0e4d2" stroke="#6d5c50" stroke-width="1.3"/>
+    <path d="M412 53 C416 46,423 47,425 54 C422 60,416 61,412 53 Z" class="ink-thin"/>
+
+    <g transform="translate(34 88)">
+      <text x="0" y="0" class="tiny">首页</text>
+      <text x="82" y="0" class="tiny muted">有声书</text>
+      <text x="176" y="0" class="tiny muted">听经台</text>
+      <text x="270" y="0" class="tiny muted">我的</text>
+      <path d="M-2 14 C36 18, 59 15, 82 14" class="accent-line"/>
+    </g>
+
+    <g transform="translate(34 128)">
+      <path d="M1 20 C68 5, 321 7, 419 18 C439 21, 449 35, 445 58 C441 91, 440 134, 447 174 C452 202, 435 218, 402 219 C280 220, 154 218, 24 220 C3 221,-6 203,0 178 C7 134,5 61,1 20 Z" fill="url(#mist)" stroke="#3a2c23" stroke-width="1.7"/>
+      <path d="M29 45 C105 30, 168 36, 220 56 C254 69, 293 71, 365 50" class="ink-soft"/>
+      <text x="28" y="64" class="serif">今日修学</text>
+      <text x="29" y="97" class="ui-bold">南无阿弥陀佛</text>
+      <text x="29" y="124" class="small">从一段开示开始，接上昨日进度。</text>
+      <path d="M29 154 C88 147, 172 151, 224 157 C239 159, 245 170, 239 184 C231 201, 49 202, 31 190 C19 181, 17 162, 29 154 Z" fill="#d97757" opacity=".9"/>
+      <text x="58" y="179" fill="#fffdf7" font-family="Noto Sans SC, PingFang SC, sans-serif" font-size="14" font-weight="700">继续听</text>
+      <path d="M278 151 C328 146, 386 149, 413 157 C426 161, 430 177, 420 188 C405 203, 302 201, 282 192 C263 183, 263 158, 278 151 Z" fill="#fffaf4" stroke="#8b5e3c" stroke-width="1.4"/>
+      <text x="309" y="179" class="ui-bold">问法</text>
+    </g>
+
+    <g transform="translate(34 382)">
+      <text x="0" y="0" class="label">三主动作</text>
+      <g transform="translate(0 25)">
+        <path d="M6 1 C121 -4, 183 3, 187 21 C192 45, 188 74, 181 93 C166 103, 20 102, 5 94 C-6 68,-4 24,6 1 Z" fill="#fffaf7" stroke="#3a2c23" stroke-width="1.4"/>
+        <circle cx="32" cy="48" r="20" class="gold"/>
+        <text x="66" y="42" class="ui-bold">继续听</text>
+        <text x="66" y="66" class="tiny">上次讲次 18%</text>
+      </g>
+      <g transform="translate(206 25)">
+        <path d="M8 3 C93 -2, 173 1, 187 20 C195 44, 190 76, 181 93 C151 104, 31 101, 7 94 C-4 73,-6 23,8 3 Z" fill="#fffaf7" stroke="#3a2c23" stroke-width="1.4"/>
+        <circle cx="34" cy="48" r="20" class="accent"/>
+        <text x="66" y="42" class="ui-bold">问法</text>
+        <text x="66" y="66" class="tiny">基于原文引用</text>
+      </g>
+      <g transform="translate(0 137)">
+        <path d="M5 2 C126 -5, 383 1, 421 16 C437 23, 441 48, 429 66 C411 92, 68 96, 12 84 C-4 79,-8 22,5 2 Z" fill="#fffaf7" stroke="#3a2c23" stroke-width="1.4"/>
+        <rect x="24" y="26" width="36" height="43" rx="5" class="sage"/>
+        <text x="79" y="40" class="ui-bold">继续阅读</text>
+        <text x="79" y="65" class="tiny">文库书签 · 净土百问</text>
+        <text x="344" y="58" class="tiny" fill="#d97757">打开</text>
+      </g>
+    </g>
+
+    <g transform="translate(34 650)">
+      <path d="M8 8 C101 1, 330 5, 421 11 C434 12, 441 22, 439 37 C437 62, 431 80, 406 82 C297 86, 127 83, 19 82 C6 82,-3 70,0 54 C2 36,-5 16,8 8 Z" fill="#fffdf7" stroke="#3a2c23" stroke-width="1.4"/>
+      <circle cx="35" cy="45" r="22" class="gold"/>
+      <text x="76" y="40" class="ui-bold">佛说阿弥陀经 · 第04讲</text>
+      <text x="76" y="62" class="tiny">正在播放 · 12:34</text>
+      <circle cx="389" cy="45" r="24" fill="#d97757"/>
+      <path d="M383 34 L383 56 L401 45 Z" fill="#fffdf7"/>
+    </g>
+
+    <text x="154" y="852" class="label">01 首页：让用户一动作进入听 / 问 / 读</text>
+  </g>
+
+  <g id="phone-player" transform="translate(650 220)" filter="url(#softShadow)">
+    <path d="M23 2 C156 -7, 327 -1, 454 8 C482 11, 492 31, 489 62 C481 228, 481 538, 491 714 C493 752, 477 774, 440 779 C303 791, 165 787, 39 779 C14 777,-3 756,1 728 C12 564,9 198,0 50 C-1 23,5 7,23 2 Z" class="paper" stroke="#3a2c23" stroke-width="2.4"/>
+    <text x="36" y="58" class="ui-bold">播放器</text>
+    <path d="M35 86 C78 91, 117 90, 152 84" class="accent-line"/>
+
+    <g transform="translate(42 112)">
+      <path d="M16 5 C110 -7, 305 -4, 389 7 C405 9, 416 24, 414 43 C409 107, 409 196, 416 260 C419 289, 402 308, 371 310 C250 317, 126 316, 29 311 C6 310,-5 292,1 268 C12 187,10 94,1 34 C-2 18,4 8,16 5 Z" fill="url(#goldWash)" stroke="#3a2c23" stroke-width="1.8"/>
+      <path d="M44 238 C104 198, 156 195, 215 236 C252 260, 304 255, 365 220" class="ink-soft"/>
+      <circle cx="332" cy="74" r="32" fill="#fff9ee" opacity=".32"/>
+      <path d="M73 82 C123 58, 187 55, 235 91 C267 115, 301 121, 354 100" class="ink-soft"/>
+    </g>
+
+    <text x="190" y="475" text-anchor="middle" class="serif">佛说阿弥陀经 第04讲</text>
+    <text x="244" y="507" text-anchor="middle" class="small">大安法师 · 45 分钟</text>
+    <g transform="translate(44 544)">
+      <path d="M0 13 C116 8, 288 10, 410 12" stroke="#eee7dd" stroke-width="12" fill="none" stroke-linecap="round"/>
+      <path d="M0 13 C48 9, 106 11, 154 12" stroke="#d97757" stroke-width="12" fill="none" stroke-linecap="round"/>
+      <text x="0" y="43" class="tiny">12:34</text>
+      <text x="372" y="43" class="tiny">45:00</text>
+    </g>
+
+    <g transform="translate(74 620)">
+      <circle cx="48" cy="48" r="28" fill="#fffaf4" stroke="#8b5e3c" stroke-width="1.4"/>
+      <path d="M58 35 L39 48 L58 61" class="ink"/>
+      <circle cx="176" cy="48" r="42" fill="#d97757"/>
+      <path d="M166 29 L166 68 L197 49 Z" fill="#fffdf7"/>
+      <circle cx="315" cy="48" r="28" fill="#fffaf4" stroke="#8b5e3c" stroke-width="1.4"/>
+      <path d="M305 35 L324 48 L305 61" class="ink"/>
+      <text x="23" y="103" class="tiny">上一讲</text>
+      <text x="151" y="103" class="tiny">播放 / 暂停</text>
+      <text x="291" y="103" class="tiny">下一讲</text>
+    </g>
+
+    <g transform="translate(48 760)">
+      <path d="M0 0 C92 -8, 324 -4, 394 4 C408 6, 416 20, 411 35 C405 54, 390 64, 364 61 C257 50, 122 58, 20 62 C3 62,-7 45,-2 27 C0 17,-9 5,0 0 Z" fill="#f8efe4" stroke="#8b5e3c" stroke-width="1.4"/>
+      <text x="26" y="39" class="tiny">倍速</text>
+      <text x="100" y="39" class="tiny">定时</text>
+      <text x="174" y="39" class="tiny">循环</text>
+      <text x="250" y="39" class="tiny">文稿</text>
+      <text x="326" y="39" class="tiny">随喜</text>
+    </g>
+
+    <text x="140" y="852" class="label">02 播放器：沉浸、稳定、工具轻量</text>
+  </g>
+
+  <g id="phone-aiwenku" transform="translate(1210 220)" filter="url(#softShadow)">
+    <path d="M24 2 C150 -8, 323 -2, 452 6 C478 8, 492 27, 489 58 C482 221, 481 543, 492 713 C495 753, 477 774, 437 778 C309 791, 173 786, 43 779 C16 777, -4 758, 1 728 C12 556, 9 196, 0 49 C-2 22, 5 6, 24 2 Z" class="paper" stroke="#3a2c23" stroke-width="2.4"/>
+    <text x="36" y="58" class="ui-bold">AI 问法 · 文库</text>
+    <path d="M36 84 C92 92, 161 88, 208 84" class="accent-line"/>
+    <text x="314" y="58" class="tiny">回首页</text>
+    <text x="382" y="58" class="tiny">文库</text>
+
+    <g transform="translate(34 112)">
+      <path d="M8 4 C89 -2, 346 0, 421 8 C440 10, 450 25, 443 42 C435 62, 25 64, 7 54 C-6 47,-5 14,8 4 Z" fill="#fffaf7" stroke="#3a2c23" stroke-width="1.4"/>
+      <circle cx="33" cy="33" r="12" fill="none" stroke="#7c7067" stroke-width="1.5"/>
+      <path d="M42 42 L55 53" class="ink-thin"/>
+      <text x="72" y="39" class="small">搜索讲记、经文、法师开示...</text>
+    </g>
+
+    <g transform="translate(34 197)">
+      <path d="M5 8 C93 -4, 343 -3, 421 9 C438 12, 448 28, 443 48 C434 88, 435 124, 446 162 C452 184, 437 200, 409 203 C291 211, 115 206, 19 202 C2 202,-7 182,-1 160 C11 111,10 61,5 8 Z" fill="#fffaf7" stroke="#3a2c23" stroke-width="1.5"/>
+      <text x="24" y="39" class="ui-bold">问：临终正念如何安住？</text>
+      <path d="M24 61 C86 55, 178 57, 238 61" class="ink-soft"/>
+      <text x="24" y="91" class="small">简短归纳</text>
+      <text x="24" y="118" class="small">回答以原文引用为中心，避免替代开示。</text>
+      <path d="M24 142 C108 136, 319 138, 407 145" class="ink-thin"/>
+      <text x="24" y="171" class="tiny">出处：净土百问 · 第十二讲</text>
+    </g>
+
+    <g transform="translate(34 432)">
+      <text x="0" y="0" class="label">原文预览</text>
+      <path d="M5 22 C84 15, 343 17, 420 25 C439 28, 448 45, 443 63 C434 102, 437 150, 445 184 C450 205, 436 219, 410 220 C292 222, 121 222, 19 219 C2 218,-7 201,-1 180 C9 135,9 70,5 22 Z" fill="#f8efe4" stroke="#3a2c23" stroke-width="1.5"/>
+      <rect x="25" y="50" width="44" height="56" rx="5" fill="#d7b15a"/>
+      <text x="89" y="62" class="ui-bold">佛说阿弥陀经讲记</text>
+      <text x="89" y="88" class="tiny">命中片段 · 关键词高亮</text>
+      <text x="89" y="120" class="small">「当下这一念，安住佛号……」</text>
+      <path d="M89 145 C154 139, 240 140, 302 145" class="accent-line"/>
+      <text x="89" y="174" class="tiny" fill="#d97757">去文库阅读全文</text>
+    </g>
+
+    <g transform="translate(34 693)">
+      <path d="M7 4 C113 -3, 321 0, 420 8 C438 10, 449 22, 444 38 C435 67, 29 70, 8 58 C-6 50,-5 14,7 4 Z" fill="#fffdf7" stroke="#3a2c23" stroke-width="1.4"/>
+      <text x="26" y="39" class="tiny">首页</text>
+      <text x="103" y="39" class="tiny">听经</text>
+      <circle cx="220" cy="33" r="25" fill="#d97757"/>
+      <path d="M212 21 L212 45 L232 33 Z" fill="#fffdf7"/>
+      <text x="293" y="39" class="tiny">文库</text>
+      <text x="366" y="39" class="tiny">我的</text>
+    </g>
+
+    <text x="86" y="852" class="label">03 AI / 文库：引用、预览、回到原文</text>
+  </g>
+</svg>

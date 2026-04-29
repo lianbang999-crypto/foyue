@@ -23,12 +23,28 @@ const SYNC_DOCUMENTS_TABLE_SQL = [
   ')',
 ].join(' ');
 
+function visibleWenkuDocumentCondition(alias = 'd') {
+  return `NOT (
+    ${alias}.id LIKE 'daafs-%'
+    AND ${alias}.format = 'md'
+    AND EXISTS (
+      SELECT 1 FROM documents legacy
+      WHERE legacy.type = 'transcript'
+        AND legacy.id NOT LIKE 'daafs-%'
+        AND legacy.series_name = ${alias}.series_name
+        AND legacy.episode_num = ${alias}.episode_num
+        AND legacy.content IS NOT NULL AND legacy.content != ''
+    )
+  )`;
+}
+
 export async function handleWenkuSeries(db) {
   const result = await db.prepare(
     `SELECT series_name, COUNT(*) as count
-     FROM documents
-     WHERE type = 'transcript' AND content IS NOT NULL AND content != ''
-       AND series_name IS NOT NULL
+     FROM documents d
+     WHERE d.type = 'transcript' AND d.content IS NOT NULL AND d.content != ''
+       AND d.series_name IS NOT NULL
+       AND ${visibleWenkuDocumentCondition('d')}
      GROUP BY series_name
      ORDER BY series_name`
   ).all();
@@ -44,6 +60,7 @@ export async function handleWenkuDocuments(db, seriesName) {
        LEFT JOIN ai_summaries s ON s.document_id = d.id
        WHERE d.series_name = ? AND d.type = 'transcript'
          AND d.content IS NOT NULL AND d.content != ''
+         AND ${visibleWenkuDocumentCondition('d')}
        ORDER BY d.episode_num`
     ).bind(seriesName).all();
     return { documents: result.results };
@@ -51,9 +68,10 @@ export async function handleWenkuDocuments(db, seriesName) {
     const result = await db.prepare(
       `SELECT id, title, type, category, series_name, episode_num, format,
               file_size, audio_series_id, read_count
-       FROM documents
-       WHERE series_name = ? AND type = 'transcript'
-         AND content IS NOT NULL AND content != ''
+       FROM documents d
+       WHERE d.series_name = ? AND d.type = 'transcript'
+         AND d.content IS NOT NULL AND d.content != ''
+         AND ${visibleWenkuDocumentCondition('d')}
        ORDER BY episode_num`
     ).bind(seriesName).all();
     return { documents: result.results };
@@ -79,6 +97,7 @@ export async function handleWenkuDocument(db, id) {
         AND t.episode_num IS NOT NULL
         AND d.type = 'transcript'
         AND d.content IS NOT NULL AND d.content != ''
+        AND ${visibleWenkuDocumentCondition('d')}
     )
     SELECT t.*, n.prev_id, n.next_id, COALESCE(n.total_count, 0) AS total_count
     FROM target t
@@ -106,6 +125,7 @@ export async function handleWenkuSearch(db, query) {
        JOIN documents d ON d.rowid = documents_fts.rowid
        WHERE documents_fts MATCH ?
          AND d.type = 'transcript' AND d.content IS NOT NULL AND d.content != ''
+         AND ${visibleWenkuDocumentCondition('d')}
        ORDER BY rank LIMIT 30`
     ).bind(query).all();
     return { documents: result.results };
@@ -115,9 +135,10 @@ export async function handleWenkuSearch(db, query) {
     const pattern = `%${escaped}%`;
     const result = await db.prepare(
       `SELECT id, title, type, category, series_name, episode_num, format, read_count
-       FROM documents
-       WHERE type = 'transcript' AND content IS NOT NULL AND content != ''
-         AND (title LIKE ? OR content LIKE ? OR series_name LIKE ?)
+       FROM documents d
+       WHERE d.type = 'transcript' AND d.content IS NOT NULL AND d.content != ''
+         AND (d.title LIKE ? OR d.content LIKE ? OR d.series_name LIKE ?)
+         AND ${visibleWenkuDocumentCondition('d')}
        ORDER BY read_count DESC LIMIT 30`
     ).bind(pattern, pattern, pattern).all();
     return { documents: result.results };
@@ -146,6 +167,98 @@ export async function handleWenkuReadCount(db, documentId, clientIp) {
     'UPDATE documents SET read_count = read_count + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
   ).bind(documentId).run();
   return { success: true };
+}
+
+async function cleanupWenkuDuplicateDocuments(db) {
+  const legacySql = `
+    SELECT series_name, episode_num, MIN(id) AS keep_id
+    FROM documents
+    WHERE type = 'transcript'
+      AND id NOT LIKE 'daafs-%'
+      AND series_name IS NOT NULL
+      AND episode_num IS NOT NULL
+      AND content IS NOT NULL AND content != ''
+    GROUP BY series_name, episode_num
+  `;
+  const duplicateJoinSql = `
+    FROM (${legacySql}) c
+    JOIN documents d
+      ON d.series_name = c.series_name
+     AND d.episode_num = c.episode_num
+     AND d.type = 'transcript'
+     AND d.id LIKE 'daafs-%'
+     AND d.format = 'md'
+  `;
+
+  await db.prepare(`
+    WITH duplicate_reads AS (
+      SELECT c.keep_id, SUM(COALESCE(d.read_count, 0)) AS duplicate_read_count
+      ${duplicateJoinSql}
+      GROUP BY c.keep_id
+    )
+    UPDATE documents
+    SET read_count = COALESCE(read_count, 0) + COALESCE((
+          SELECT duplicate_read_count
+          FROM duplicate_reads
+          WHERE duplicate_reads.keep_id = documents.id
+        ), 0),
+        updated_at = datetime('now')
+    WHERE id IN (SELECT keep_id FROM duplicate_reads)
+  `).run();
+
+  try {
+    await db.prepare(`
+      WITH summary_candidates AS (
+        SELECT c.keep_id, s.summary, s.model, s.created_at,
+               ROW_NUMBER() OVER (
+                 PARTITION BY c.keep_id
+                 ORDER BY COALESCE(s.created_at, ''), s.id
+               ) AS row_num
+        ${duplicateJoinSql}
+        JOIN ai_summaries s ON s.document_id = d.id
+        WHERE s.summary IS NOT NULL AND s.summary != ''
+      )
+      INSERT OR IGNORE INTO ai_summaries (document_id, summary, model, created_at)
+      SELECT keep_id, summary, model, created_at
+      FROM summary_candidates
+      WHERE row_num = 1
+    `).run();
+
+    await db.prepare(`
+      WITH doomed AS (
+        SELECT d.id
+        ${duplicateJoinSql}
+      )
+      DELETE FROM ai_summaries
+      WHERE document_id IN (SELECT id FROM doomed)
+    `).run();
+  } catch {
+    // Some early local D1 databases may not have AI summary tables yet.
+  }
+
+  try {
+    await db.prepare(`
+      WITH doomed AS (
+        SELECT d.id
+        ${duplicateJoinSql}
+      )
+      DELETE FROM ai_embedding_jobs
+      WHERE document_id IN (SELECT id FROM doomed)
+    `).run();
+  } catch {
+    // Same as above: cleanup should not fail sync on optional AI tables.
+  }
+
+  const deleteResult = await db.prepare(`
+    WITH doomed AS (
+      SELECT d.id
+      ${duplicateJoinSql}
+    )
+    DELETE FROM documents
+    WHERE id IN (SELECT id FROM doomed)
+  `).run();
+
+  return { removed: deleteResult?.meta?.changes || 0 };
 }
 
 function syncNormalizeName(name) {
@@ -387,6 +500,9 @@ export async function handleWenkuSync(env, cors, json) {
   for (const obj of yiyongFiles) await processObj(obj, buildSyncCandidate(obj, true), true);
   for (const obj of yinguangObjects) await processObj(obj, buildYinguangCandidate(obj));
 
+  const cleanup = await cleanupWenkuDuplicateDocuments(db);
+  const total = await db.prepare('SELECT COUNT(*) as c FROM documents').first();
+
   return json({
     success: true,
     scanned: stats.scanned,
@@ -394,8 +510,9 @@ export async function handleWenkuSync(env, cors, json) {
     updated: stats.updated,
     skipped: stats.skipped,
     errors: stats.errors,
+    cleanup,
     series: stats.series,
-    totalInDb: existingById.size,
+    totalInDb: total?.c || existingById.size,
   }, cors, 200, 'no-store');
 }
 
@@ -403,8 +520,9 @@ export async function handleWenkuSyncStatus(db, cors, json) {
   try {
     const total = await db.prepare('SELECT COUNT(*) as c FROM documents').first();
     const series = await db.prepare(
-      `SELECT series_name, COUNT(*) as count FROM documents
-       WHERE type = 'transcript' AND content IS NOT NULL AND content != ''
+      `SELECT series_name, COUNT(*) as count FROM documents d
+       WHERE d.type = 'transcript' AND d.content IS NOT NULL AND d.content != ''
+         AND ${visibleWenkuDocumentCondition('d')}
        GROUP BY series_name ORDER BY series_name`
     ).all();
     return json({
