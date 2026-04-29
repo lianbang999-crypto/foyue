@@ -1327,6 +1327,219 @@ body {
     opacity: 0.82;
 }
 
+/* 印光文钞专用阅读 */
+.wk-yinguang-reader {
+    padding-bottom: 22px;
+}
+
+.wk-yinguang-kicker {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 0 10px;
+    margin-bottom: 12px;
+    border: 1px solid color-mix(in srgb, var(--wk-accent) 22%, var(--wk-border) 78%);
+    border-radius: 999px;
+    color: var(--wk-accent);
+    background: color-mix(in srgb, var(--wk-accent-light) 62%, transparent 38%);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0;
+}
+
+.wk-yinguang-intro {
+    margin: 18px 0;
+    padding: 14px 16px;
+    border-left: 3px solid var(--wk-accent);
+    background: color-mix(in srgb, var(--wk-bg-card) 72%, transparent 28%);
+    color: var(--wk-text-secondary);
+    font-size: 14px;
+    line-height: 1.75;
+}
+
+.wk-yinguang-intro p {
+    margin: 0;
+}
+
+.wk-yinguang-modebar {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin: 18px 0;
+    padding: 6px;
+    border: 1px solid var(--wk-border);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--wk-bg-card) 92%, transparent 8%);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+}
+
+.wk-yinguang-mode {
+    appearance: none;
+    min-height: 36px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: inherit;
+    font-family: var(--wk-font-zh);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.wk-yinguang-mode.active {
+    background: var(--wk-accent);
+    color: #fff;
+}
+
+.wk-yinguang-toc {
+    display: grid;
+    gap: 18px;
+    margin-top: 18px;
+}
+
+.wk-yinguang-toc-group {
+    border-top: 1px solid var(--wk-border);
+    padding-top: 14px;
+}
+
+.wk-yinguang-toc-group-title {
+    margin-bottom: 10px;
+    color: var(--wk-text-secondary);
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0;
+}
+
+.wk-yinguang-toc-list {
+    display: grid;
+    gap: 8px;
+}
+
+.wk-yinguang-toc-item {
+    appearance: none;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid var(--wk-border);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--wk-bg-card) 76%, transparent 24%);
+    color: inherit;
+    text-align: left;
+    font-family: var(--wk-font-zh);
+    font-size: 15px;
+    line-height: 1.45;
+    cursor: pointer;
+    transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.wk-yinguang-toc-item:hover {
+    border-color: color-mix(in srgb, var(--wk-accent) 42%, var(--wk-border) 58%);
+    background: var(--wk-bg-card);
+    transform: translateY(-1px);
+}
+
+.wk-yinguang-toc-item--disabled {
+    opacity: 0.48;
+    cursor: default;
+}
+
+.wk-yinguang-toc-item--disabled:hover {
+    transform: none;
+    border-color: var(--wk-border);
+}
+
+.wk-yinguang-back {
+    appearance: none;
+    min-height: 36px;
+    margin-bottom: 14px;
+    padding: 0 12px;
+    border: 1px solid var(--wk-border);
+    border-radius: 999px;
+    background: var(--wk-bg-card);
+    color: var(--wk-text-secondary);
+    font-family: var(--wk-font-zh);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.wk-yinguang-section-count {
+    margin-bottom: 8px;
+    color: var(--wk-accent);
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.wk-yinguang-body {
+    margin-top: 22px;
+}
+
+.wk-yinguang-body .wk-yinguang-p {
+    text-indent: 0;
+    padding-left: 14px;
+    border-left: 2px solid transparent;
+}
+
+.wk-yinguang-body .wk-yinguang-p--original {
+    border-left-color: color-mix(in srgb, var(--wk-accent) 34%, transparent 66%);
+}
+
+.wk-yinguang-body .wk-yinguang-p--translation {
+    color: var(--wk-text-secondary);
+    background: color-mix(in srgb, var(--wk-bg-card) 58%, transparent 42%);
+    border-left-color: color-mix(in srgb, #6B8E6A 40%, transparent 60%);
+    padding-top: 10px;
+    padding-bottom: 10px;
+    padding-right: 12px;
+    border-radius: 0 8px 8px 0;
+}
+
+.wk-yinguang-label {
+    display: inline-flex;
+    margin-right: 8px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, #6B8E6A 16%, transparent 84%);
+    color: color-mix(in srgb, #3F6F43 80%, currentColor 20%);
+    font-size: 12px;
+    font-weight: 800;
+    text-indent: 0;
+}
+
+.wk-yinguang-note {
+    margin: 16px 0;
+    padding: 12px 14px;
+    border: 1px solid var(--wk-border);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--wk-bg-card) 66%, transparent 34%);
+    color: var(--wk-text-secondary);
+    font-size: 0.92em;
+}
+
+.wk-yinguang-note summary {
+    cursor: pointer;
+    font-weight: 800;
+    color: inherit;
+}
+
+.wk-yinguang-note p {
+    margin: 0.8em 0 0;
+    text-indent: 0;
+}
+
+.wk-yinguang-empty {
+    color: var(--wk-text-secondary);
+    text-indent: 0;
+}
+
 /* 阅读进度条 */
 .wk-reader-progress {
     position: fixed;
