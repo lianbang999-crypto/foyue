@@ -1222,19 +1222,32 @@ function stripYinguangTocAuthor(title) {
     return String(title || '').replace(/\s{2,}.+$/, '').trim();
 }
 
+function yinguangTitleVariants(title) {
+    const compact = normalizeYinguangTitle(title);
+    const variants = new Set([compact]);
+    variants.add(compact.replace(/（([一二三四五六七八九十廿卅百零〇0-9]+)）$/, '$1'));
+    variants.add(compact.replace(/（[^）]*）$/, ''));
+    variants.add(compact.replace(/[（），,）]/g, ''));
+    return [...variants].filter(Boolean);
+}
+
 function yinguangHeadingMatches(line, title) {
     const normalizedLine = normalizeYinguangTitle(line);
-    const normalizedTitle = normalizeYinguangTitle(title);
-    const normalizedTitleCore = normalizeYinguangTitle(stripYinguangTocAuthor(title));
-    if (normalizedLine === normalizedTitle) return true;
-    if (normalizedTitle.length >= 3 && normalizedLine.includes(normalizedTitle)) return true;
-    if (normalizedTitle.length >= 4
-        && normalizedLine.startsWith(normalizedTitle)
-        && normalizedLine.length - normalizedTitle.length <= 8) return true;
-    if (normalizedTitleCore.length >= 2
-        && normalizedLine.endsWith(normalizedTitleCore)
-        && normalizedLine.length - normalizedTitleCore.length <= 14) return true;
-    if (normalizedTitle === '卷首题词并序' && /题词并序$/.test(normalizedLine)) return true;
+    const titleVariants = yinguangTitleVariants(title);
+    const titleCoreVariants = yinguangTitleVariants(stripYinguangTocAuthor(title));
+    for (const normalizedTitle of titleVariants) {
+        if (normalizedLine === normalizedTitle) return true;
+        if (normalizedTitle.length >= 3 && normalizedLine.includes(normalizedTitle)) return true;
+        if (normalizedTitle.length >= 4
+            && normalizedLine.startsWith(normalizedTitle)
+            && normalizedLine.length - normalizedTitle.length <= 8) return true;
+        if (normalizedTitle === '卷首题词并序' && /题词并序$/.test(normalizedLine)) return true;
+    }
+    for (const normalizedTitleCore of titleCoreVariants) {
+        if (normalizedTitleCore.length >= 2
+            && normalizedLine.endsWith(normalizedTitleCore)
+            && normalizedLine.length - normalizedTitleCore.length <= 14) return true;
+    }
     return false;
 }
 
