@@ -1,7 +1,7 @@
 /* Service Worker — 净土法音 Offline Cache */
 'use strict';
 
-const CACHE_VERSION = 'v11';
+const CACHE_VERSION = 'v12';
 const STATIC_CACHE = 'static-' + CACHE_VERSION;
 const DATA_CACHE = 'data-' + CACHE_VERSION;
 const AUDIO_CACHE = 'audio-v3';
@@ -31,6 +31,7 @@ function isDataRequest(url) {
 function shouldSkip(url) {
   return (
     url.pathname.startsWith('/api/admin') ||
+    url.pathname.startsWith('/api/wenku') ||
     url.pathname === '/admin.html' ||
     url.protocol !== 'https:'
   );
